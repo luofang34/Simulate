@@ -1,0 +1,88 @@
+use fsg_geo::{ecef_to_geodetic, geodetic_to_ecef};
+use glam::{DQuat, DVec3};
+
+use crate::{Block, BlockError, ControlInputs, TickSpan, VehicleState};
+
+#[cfg(test)]
+mod tests;
+
+/// Full-stick body rates, rad/s: roll, pitch, yaw.
+const MAX_RATES: DVec3 = DVec3::new(1.0, 0.35, 0.2);
+/// Speed range from idle to full throttle, m/s.
+const IDLE_SPEED_M_S: f64 = 30.0;
+const FULL_SPEED_M_S: f64 = 120.0;
+/// Time constant of the speed response, seconds.
+const SPEED_TIME_CONSTANT_S: f64 = 4.0;
+/// Lowest height above the ellipsoid the placeholder will descend to.
+const FLOOR_HEIGHT_M: f64 = 2.0;
+const STEP_HZ: u64 = 120;
+
+/// Inputs to [`KinematicModel`].
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct KinematicInput {
+    /// Pilot controls.
+    pub controls: ControlInputs,
+}
+
+/// A stand-in vehicle that turns stick deflection directly into body rates
+/// and throttle into airspeed, with no aerodynamics. It exists so input,
+/// scheduling, camera, and rendering can be exercised end to end until the
+/// JSBSim-derived flight model is wrapped as a [`Block`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct KinematicModel {
+    state: VehicleState,
+    speed_m_s: f64,
+}
+
+impl KinematicModel {
+    /// A model starting from `state`, moving at the speed of its velocity.
+    pub fn new(state: VehicleState) -> Self {
+        Self {
+            speed_m_s: state.velocity_ecef.length(),
+            state,
+        }
+    }
+}
+
+impl Block for KinematicModel {
+    type Input = KinematicInput;
+    type Output = VehicleState;
+    type Snapshot = Self;
+
+    fn period(&self) -> TickSpan {
+        TickSpan::period_of_hz(STEP_HZ).unwrap_or(TickSpan::ZERO)
+    }
+
+    fn step(&mut self, input: &KinematicInput) -> Result<(), BlockError> {
+        let dt = self.period().as_seconds();
+        let controls = input.controls.clamped();
+        let rates = MAX_RATES * DVec3::new(controls.roll, controls.pitch, controls.yaw);
+        let target_speed = IDLE_SPEED_M_S + (FULL_SPEED_M_S - IDLE_SPEED_M_S) * controls.throttle;
+        self.speed_m_s += (target_speed - self.speed_m_s) * (dt / SPEED_TIME_CONSTANT_S);
+
+        let state = &mut self.state;
+        state.attitude = (state.attitude * DQuat::from_scaled_axis(rates * dt)).normalize();
+        state.angular_rate_body = rates;
+        state.velocity_ecef = state.forward_ecef() * self.speed_m_s;
+        state.position_ecef += state.velocity_ecef * dt;
+
+        let mut position = ecef_to_geodetic(state.position_ecef);
+        if position.height_m < FLOOR_HEIGHT_M {
+            position.height_m = FLOOR_HEIGHT_M;
+            state.position_ecef = geodetic_to_ecef(&position);
+        }
+        Ok(())
+    }
+
+    fn output(&self) -> VehicleState {
+        self.state
+    }
+
+    fn snapshot(&self) -> Self {
+        self.clone()
+    }
+
+    fn restore(&mut self, snapshot: &Self) {
+        self.clone_from(snapshot);
+    }
+}

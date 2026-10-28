@@ -1,0 +1,12 @@
+[package]
+name = "fsg-input"
+description = "Device-independent mapping from gamepad, joystick, and yoke axes to pilot controls"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fsg-sim = { workspace = true }

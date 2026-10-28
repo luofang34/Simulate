@@ -1,0 +1,60 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/fsg-app",
+    "crates/fsg-atmosphere",
+    "crates/fsg-geo",
+    "crates/fsg-input",
+    "crates/fsg-render",
+    "crates/fsg-scenery",
+    "crates/fsg-sim",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+fsg-atmosphere = { path = "crates/fsg-atmosphere" }
+fsg-geo = { path = "crates/fsg-geo" }
+fsg-input = { path = "crates/fsg-input" }
+fsg-render = { path = "crates/fsg-render" }
+fsg-scenery = { path = "crates/fsg-scenery" }
+fsg-sim = { path = "crates/fsg-sim" }
+
+bytemuck = "1.25"
+console_error_panic_hook = "0.1.7"
+gilrs = "0.11.2"
+glam = "0.33"
+pollster = "0.4"
+thiserror = "2"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-wasm = "0.2.1"
+wasm-bindgen-futures = "0.4.79"
+web-sys = "0.3.106"
+web-time = "1"
+wgpu = "30.0.1"
+winit = "0.30.13"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "forbid"
+expect_used = "forbid"
+panic = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+get_unwrap = "forbid"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"
