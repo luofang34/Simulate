@@ -1,7 +1,7 @@
 use fsg_geo::{ecef_to_geodetic, geodetic_to_ecef};
 use glam::{DQuat, DVec3};
 
-use crate::{Block, BlockError, ControlInputs, TickSpan, VehicleState};
+use crate::{Block, BlockError, ControlInputs, TICKS_PER_SECOND, TickSpan, VehicleState};
 
 #[cfg(test)]
 mod tests;
@@ -16,6 +16,10 @@ const SPEED_TIME_CONSTANT_S: f64 = 4.0;
 /// Lowest height above the ellipsoid the placeholder will descend to.
 const FLOOR_HEIGHT_M: f64 = 2.0;
 const STEP_HZ: u64 = 120;
+// A rate that does not divide the master clock would drift, so it is a build
+// error rather than a runtime fallback.
+const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(STEP_HZ));
+const STEP_PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / STEP_HZ);
 
 /// Inputs to [`KinematicModel`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -50,7 +54,7 @@ impl Block for KinematicModel {
     type Snapshot = Self;
 
     fn period(&self) -> TickSpan {
-        TickSpan::period_of_hz(STEP_HZ).unwrap_or(TickSpan::ZERO)
+        STEP_PERIOD
     }
 
     fn step(&mut self, input: &KinematicInput) -> Result<(), BlockError> {
