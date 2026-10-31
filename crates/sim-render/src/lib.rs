@@ -22,8 +22,9 @@ mod scene;
 
 pub use aperture::{
     APERTURE_COLOUR_FORMAT, APERTURE_DEPTH_FORMAT, ApertureFrame, ApertureImage, ApertureWaveband,
-    OcclusionOverlayConfig, OffscreenAperture, OpticalReticle, PinholeProjection, PropellerDisk,
-    SensorAperturePass, ThermalScale, WindowBezel, padded_bytes_per_row, reversed_z_range_m,
+    OcclusionOverlayConfig, OffscreenAperture, OpticalReticle, PinholeProjection,
+    PresentedViewport, PropellerDisk, SensorAperturePass, ThermalScale, WindowBezel,
+    padded_bytes_per_row, reversed_z_range_m,
 };
 pub use camera::{Camera, CameraPose};
 pub use error::{FrameOutcome, RenderError};

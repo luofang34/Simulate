@@ -48,7 +48,15 @@ aviate-core = { path = "../Aviate/aviate-core", default-features = false, featur
 aviate-hal-io = { path = "../Aviate/aviate-hal/io" }
 aviate-xil-contract = { path = "../Aviate/aviate-hal/xil/contract" }
 aviate-xil-direct = { path = "../Aviate/aviate-hal/xil/direct" }
-world-core = { git = "https://github.com/luofang34/world", rev = "8da6f84c0959d13b4554ade6e0fb166dfe8e2236" }
+flightbag = { path = "../Flightbag/crates/flightbag" }
+flightbag-core = { path = "../Flightbag/crates/flightbag-core" }
+world = { path = "../world/crates/world", features = ["moving"] }
+world-airmass = { path = "../world/crates/world-airmass" }
+world-atmosphere = { path = "../world/crates/world-atmosphere" }
+world-core = { path = "../world/crates/world-core" }
+world-geomag = { path = "../world/crates/world-geomag" }
+world-notices = { path = "../world/crates/world-notices" }
+world-surveillance = { path = "../world/crates/world-surveillance" }
 indicate-alerts = { path = "../Indicate/crates/indicate-alerts" }
 indicate-frames = { path = "../Indicate/crates/indicate-frames" }
 indicate-instrument-descriptor = { path = "../Indicate/crates/indicate-instrument-descriptor" }
@@ -145,3 +153,10 @@ indicate-instrument-panels = { path = "../Indicate/sets/indicate-instrument-pane
 indicate-instrument-registry = { path = "../Indicate/crates/indicate-instrument-registry" }
 indicate-instrument-scene = { path = "../Indicate/crates/indicate-instrument-scene" }
 indicate-instrument-state = { path = "../Indicate/crates/indicate-instrument-state" }
+
+# Aviate pins `world` by git revision; patching keeps every `world-*` crate a
+# single linked copy across firmware kernels and the simulator.
+[patch."https://github.com/luofang34/world"]
+world-atmosphere = { path = "../world/crates/world-atmosphere" }
+world-core = { path = "../world/crates/world-core" }
+world-geomag = { path = "../world/crates/world-geomag" }

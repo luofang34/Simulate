@@ -14,6 +14,7 @@ mod lunar;
 mod profile;
 mod reentry;
 mod run;
+mod supervisor;
 mod world;
 
 pub use bridge::{CaptureExposure, aperture_frame, render_capture};
@@ -23,4 +24,8 @@ pub use lunar::{LunarLandingConfig, LunarLandingReport, LunarLandingRun};
 pub use profile::ScenarioProfile;
 pub use reentry::{CapsuleReentryReport, CapsuleReentryRun};
 pub use run::ScenarioRun;
+pub use supervisor::{
+    OperatorBeliefView, OperatorViewportMode, RadioBeliefPolicy, RunwaySpawnError, SimSupervisor,
+    SimTimeScale,
+};
 pub use world::{ScenarioWorld, WorldScene};

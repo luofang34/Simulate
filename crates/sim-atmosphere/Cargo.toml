@@ -10,5 +10,8 @@ workspace = true
 
 [dependencies]
 sim-geo = { workspace = true }
+world-airmass = { workspace = true }
+world-atmosphere = { workspace = true }
+world-core = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }

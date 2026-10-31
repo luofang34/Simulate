@@ -52,6 +52,18 @@ pub enum ApertureWaveband {
     ThermalLwir(ThermalScale),
 }
 
+/// Frame-exact camera metadata paired with an [`OffscreenAperture`]'s bound
+/// [`wgpu::TextureView`] so a single-copy shell (`sokoly.app`, `simulate-app`,
+/// Swift Metal or WebXR) aligns conformal HUD/traffic/TFR symbology with the
+/// exact pose and intrinsics rendered into that texture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PresentedViewport {
+    /// Camera pose rendered into the bound texture.
+    pub pose: CameraPose,
+    /// Exact pinhole projection rendered into the bound texture.
+    pub projection: PinholeProjection,
+}
+
 /// One exposure of a [`SensorAperturePass`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ApertureFrame {

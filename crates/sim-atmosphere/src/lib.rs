@@ -12,9 +12,11 @@ mod field;
 mod isa;
 mod reentry;
 mod vacuum;
+mod world_bridge;
 
 pub use cloud::{ClearSky, CloudField, CloudKind, CloudSample};
 pub use field::{AtmosphereError, AtmosphereField, AtmosphereSample, StandardAtmosphere};
 pub use isa::{IsaState, geometric_to_geopotential_m, isa_at_geopotential};
 pub use reentry::ReentryAtmosphere;
 pub use vacuum::{COSMIC_BACKGROUND_K, VacuumAtmosphere};
+pub use world_bridge::{WorldAtmosphere, utc_to_decimal_year};

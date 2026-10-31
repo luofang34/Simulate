@@ -131,11 +131,15 @@ impl OffscreenAperture {
         &self.depth
     }
 
-    pub(super) fn colour_view(&self) -> &wgpu::TextureView {
+    /// The colour texture view (`RENDER_ATTACHMENT | TEXTURE_BINDING`), ready
+    /// to register once in a host UI/compositor (`egui_wgpu`, Metal, WebXR) for
+    /// single-copy presentation without CPU readback.
+    pub fn colour_view(&self) -> &wgpu::TextureView {
         &self.colour_view
     }
 
-    pub(super) fn depth_view(&self) -> &wgpu::TextureView {
+    /// The reversed-Z depth texture view (`RENDER_ATTACHMENT | TEXTURE_BINDING`).
+    pub fn depth_view(&self) -> &wgpu::TextureView {
         &self.depth_view
     }
 }
