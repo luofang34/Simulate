@@ -1,0 +1,384 @@
+{
+  "schema_version": 1,
+  "id": "apollo-11-eagle-lm",
+  "name": "Apollo 11 Lunar Module Eagle",
+  "version": "1.0.0",
+  "kind": "LunarLander",
+  "assets": {},
+  "components": [
+    {
+      "key": "lm_root",
+      "name": "LM reference",
+      "parent": null,
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "ascent_stage",
+      "name": "Ascent stage structure",
+      "parent": "lm_root",
+      "translation_m": [1.2, 0.0, 0.1],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 2180.0,
+      "dry_inertia_body": [[3000.0, 0.0, 0.0], [0.0, 2700.0, 0.0], [0.0, 0.0, 3400.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "aps_tank",
+      "name": "APS propellant tank",
+      "parent": "lm_root",
+      "translation_m": [0.9, -0.6, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 2353.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "rcs_tank",
+      "name": "RCS propellant tank",
+      "parent": "lm_root",
+      "translation_m": [1.0, 0.6, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 287.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "nav_base",
+      "name": "Navigation base",
+      "parent": "lm_root",
+      "translation_m": [1.3, 0.0, 0.6],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "imu_mount",
+      "name": "PGNCS IMU",
+      "parent": "nav_base",
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "aot",
+      "name": "Alignment Optical Telescope",
+      "parent": "nav_base",
+      "translation_m": [0.3, 0.0, 0.2],
+      "rotation_xyzw": [0.7071067811865476, 0.0, 0.7071067811865476, 0.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "asa",
+      "name": "Abort Sensor Assembly",
+      "parent": "nav_base",
+      "translation_m": [0.0, 0.3, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "rga",
+      "name": "Rate Gyro Assembly",
+      "parent": "nav_base",
+      "translation_m": [0.0, -0.3, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "rendezvous_radar",
+      "name": "Rendezvous radar",
+      "parent": "lm_root",
+      "translation_m": [2.2, 0.0, 1.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "cdr_eye",
+      "name": "Commander's eye",
+      "parent": "lm_root",
+      "translation_m": [1.5, -0.5, 1.2],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "descent_stage",
+      "name": "Descent stage structure",
+      "parent": "lm_root",
+      "translation_m": [-1.3, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 1834.0,
+      "dry_inertia_body": [[9000.0, 0.0, 0.0], [0.0, 6000.0, 0.0], [0.0, 0.0, 6000.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "dps_tank",
+      "name": "DPS propellant tank",
+      "parent": "descent_stage",
+      "translation_m": [0.3, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 8248.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "landing_radar",
+      "name": "Landing radar",
+      "parent": "descent_stage",
+      "translation_m": [-1.1, 0.0, 0.5],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "leg_plus_z",
+      "name": "Forward leg",
+      "parent": "descent_stage",
+      "translation_m": [-1.9, 0.0, 4.7],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 50.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "leg_minus_z",
+      "name": "Aft leg",
+      "parent": "descent_stage",
+      "translation_m": [-1.9, 0.0, -4.7],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 50.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "leg_plus_y",
+      "name": "Right leg",
+      "parent": "descent_stage",
+      "translation_m": [-1.9, 4.7, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 50.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "leg_minus_y",
+      "name": "Left leg",
+      "parent": "descent_stage",
+      "translation_m": [-1.9, -4.7, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 50.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "probe_aft",
+      "name": "Aft contact probe",
+      "parent": "leg_minus_z",
+      "translation_m": [-1.71, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "probe_right",
+      "name": "Right contact probe",
+      "parent": "leg_plus_y",
+      "translation_m": [-1.71, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "probe_left",
+      "name": "Left contact probe",
+      "parent": "leg_minus_y",
+      "translation_m": [-1.71, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "RigidBodyVacuum",
+  "devices": [
+    {
+      "id": "pgncs_imu",
+      "site": "imu_mount",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.pgncs_imu",
+          "parameters": {
+            "pipa_m_s_per_pulse": 0.01
+          }
+        }
+      }
+    },
+    {
+      "id": "abort_sensor_assembly",
+      "site": "asa",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.strapdown_asa",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "rate_gyro_assembly",
+      "site": "rga",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.rate_gyro",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "alignment_optical_telescope",
+      "site": "aot",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.optical_sight",
+          "parameters": {
+            "sight": "Detented"
+          }
+        }
+      }
+    },
+    {
+      "id": "landing_radar",
+      "site": "landing_radar",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.landing_radar",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "rendezvous_radar",
+      "site": "rendezvous_radar",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.rendezvous_radar",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "lunar_contact_probes",
+      "site": "descent_stage",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.lunar_contact_probes",
+          "parameters": {
+            "tips": ["probe_aft", "probe_right", "probe_left"],
+            "probe_length_m": 1.71
+          }
+        }
+      }
+    }
+  ]
+}

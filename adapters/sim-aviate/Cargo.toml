@@ -1,0 +1,24 @@
+[package]
+name = "sim-aviate"
+description = "In-process bridge between Simulate vehicles and the Aviate XIL shared-memory contract"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aviate-core = { workspace = true }
+aviate-hal-io = { workspace = true }
+aviate-xil-contract = { workspace = true }
+aviate-xil-direct = { workspace = true }
+sim-geo = { workspace = true }
+mbd-core = { workspace = true }
+sim-core = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+world-core = { workspace = true }
+
+[dev-dependencies]
+sim-atmosphere = { workspace = true }

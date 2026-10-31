@@ -1,0 +1,26 @@
+[package]
+name = "sim-scenario"
+description = "Deterministic flight scenarios over the Delaware corridor, the Sea of Tranquility, and Apollo 11's entry, and the bridge from camera captures to rendered frames"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sim-apollo = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-devices = { workspace = true }
+sim-geo = { workspace = true }
+mbd-core = { workspace = true }
+sim-pack = { workspace = true }
+sim-render = { workspace = true }
+sim-scenery = { workspace = true }
+sim-core = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }

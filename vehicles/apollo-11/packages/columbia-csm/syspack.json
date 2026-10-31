@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "id": "apollo-11-columbia-csm",
+  "name": "Apollo 11 Command and Service Module Columbia",
+  "version": "1.0.0",
+  "kind": "ReentryCapsule",
+  "assets": {},
+  "components": [
+    {
+      "key": "cm_root",
+      "name": "CM reference",
+      "parent": null,
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "cm_structure",
+      "name": "Command Module capsule",
+      "parent": "cm_root",
+      "translation_m": [-1.15, 0.0, -0.17],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 5560.0,
+      "dry_inertia_body": [[5600.0, 0.0, 0.0], [0.0, 4900.0, 0.0], [0.0, 0.0, 4500.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "nav_base",
+      "name": "Navigation base",
+      "parent": "cm_root",
+      "translation_m": [-1.6, 0.0, 0.5],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "imu_mount",
+      "name": "PGNCS IMU",
+      "parent": "nav_base",
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "bmag",
+      "name": "Body-mounted attitude gyros",
+      "parent": "nav_base",
+      "translation_m": [0.0, 0.3, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "optics",
+      "name": "Sextant and Scanning Telescope",
+      "parent": "nav_base",
+      "translation_m": [0.2, 0.0, 0.1],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "ems",
+      "name": "Entry Monitor System",
+      "parent": "nav_base",
+      "translation_m": [-0.2, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "service_module",
+      "name": "Service Module",
+      "parent": "cm_root",
+      "translation_m": [3.5, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 6100.0,
+      "dry_inertia_body": [[9000.0, 0.0, 0.0], [0.0, 22000.0, 0.0], [0.0, 0.0, 22000.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "sps_tank",
+      "name": "SPS propellant tank",
+      "parent": "service_module",
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 18410.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": {
+    "RigidBodyBluntCapsule": {
+      "base_radius_m": 1.9558,
+      "nose_radius_m": 4.69,
+      "reference_point_body_m": [-4.69, 0.0, 0.0],
+      "normal_force_slope": 0.17,
+      "axial_drag_coeff": 1.3,
+      "pitch_damping_coeff": -10.0,
+      "sutton_graves_k": 0.00017415
+    }
+  },
+  "devices": [
+    {
+      "id": "pgncs_imu",
+      "site": "imu_mount",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.pgncs_imu",
+          "parameters": {
+            "pipa_m_s_per_pulse": 0.0585
+          }
+        }
+      }
+    },
+    {
+      "id": "body_mounted_attitude_gyros",
+      "site": "bmag",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.rate_gyro",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "sextant_and_scanning_telescope",
+      "site": "optics",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.optical_sight",
+          "parameters": {
+            "sight": "Tracking"
+          }
+        }
+      }
+    },
+    {
+      "id": "entry_monitor",
+      "site": "ems",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.entry_monitor",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "id": "vhf_ranging",
+      "site": "cm_structure",
+      "kind": {
+        "Custom": {
+          "type_id": "apollo.vhf_ranging",
+          "parameters": {}
+        }
+      }
+    }
+  ]
+}

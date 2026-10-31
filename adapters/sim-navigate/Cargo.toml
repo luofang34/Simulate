@@ -1,0 +1,28 @@
+[package]
+name = "sim-navigate"
+description = "Bridges Simulate's master clock and visual harness into Navigate's real visual-fix admission and navigation filter"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sim-geo = { workspace = true }
+sim-core = { workspace = true }
+glam = { workspace = true }
+nalgebra = { workspace = true }
+navigate-contract = { workspace = true }
+navigate-fusion = { workspace = true }
+navigate-geodesy = { workspace = true }
+navigate-visual = { workspace = true }
+navigate-visual-fusion = { workspace = true }
+navigate-visual-session = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+sim-devices = { workspace = true }
+sim-scenario = { workspace = true }
+sim-scenery = { workspace = true }

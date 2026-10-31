@@ -1,0 +1,12 @@
+[package]
+name = "sim-geo"
+description = "Celestial geodesy, J2000 star catalog, local frames, floating origin, and UTC time for the simulator"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+glam = { workspace = true }

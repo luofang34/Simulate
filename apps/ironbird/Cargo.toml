@@ -1,0 +1,38 @@
+[package]
+name = "ironbird"
+description = "Headless multi-tier closed-loop XIL ironbird rig runner for Simulate (Tier 0 direct Aviate, Tier 1 SHM, Tier 2 MAVLink HIL and Betaflight SITL)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ironbird"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+aviate-core = { workspace = true }
+aviate-hal-io = { workspace = true }
+glam = { workspace = true }
+mbd-core = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-aviate = { workspace = true }
+sim-core = { workspace = true }
+sim-geo = { workspace = true }
+sim-pack = { workspace = true }
+sim-xil = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+web-time = { workspace = true }
+world-core = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+aviate-xil-contract = { workspace = true }

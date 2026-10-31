@@ -1,0 +1,25 @@
+[package]
+name = "sim-render"
+description = "wgpu world renderer: camera-relative terrain on any body, offscreen multi-spectral sensor apertures, reversed-Z depth"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bytemuck = { workspace = true }
+sim-geo = { workspace = true }
+sim-scenery = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+wgpu = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, features = ["webgl"] }
+
+[dev-dependencies]
+naga = { version = "30.0.1", features = ["glsl-out", "wgsl-in"] }
+pollster = { workspace = true }

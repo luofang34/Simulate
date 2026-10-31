@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<!-- A light fixed-wing trainer for Simulate's corridor scenarios: 600 kg on 14 m²,
+     stable in all axes, stalling near 20 m/s. The coefficients are representative
+     round numbers rather than the data of any real aircraft. The motor drives a
+     direct thruster, which reads the motor's power in ft·lbf/s as thrust in lbf,
+     so its 532 W are a constant 392 lbf (1,750 N) at any airspeed. -->
+<fdm_config name="sim_trainer" version="2.0" release="ALPHA">
+  <metrics>
+    <wingarea unit="FT2"> 150.0 </wingarea>
+    <wingspan unit="FT"> 33.0 </wingspan>
+    <chord unit="FT"> 4.6 </chord>
+    <htailarea unit="FT2"> 25.0 </htailarea>
+    <htailarm unit="FT"> 15.0 </htailarm>
+    <vtailarea unit="FT2"> 12.0 </vtailarea>
+    <vtailarm unit="FT"> 15.0 </vtailarm>
+    <location name="AERORP" unit="IN"> <x> 0 </x> <y> 0 </y> <z> 0 </z> </location>
+    <location name="EYEPOINT" unit="IN"> <x> -20 </x> <y> 0 </y> <z> 20 </z> </location>
+    <location name="VRP" unit="IN"> <x> 0 </x> <y> 0 </y> <z> 0 </z> </location>
+  </metrics>
+  <mass_balance>
+    <ixx unit="SLUG*FT2"> 500 </ixx>
+    <iyy unit="SLUG*FT2"> 800 </iyy>
+    <izz unit="SLUG*FT2"> 1150 </izz>
+    <emptywt unit="LBS"> 1320 </emptywt>
+    <location name="CG" unit="IN"> <x> 0 </x> <y> 0 </y> <z> 0 </z> </location>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="STRUCTURE" name="BELLY">
+      <location unit="IN"> <x> 0 </x> <y> 0 </y> <z> -40 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 8000 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 1500 </damping_coeff>
+    </contact>
+  </ground_reactions>
+  <propulsion>
+    <engine>
+      <electric_engine name="trainer_motor">
+        <power unit="WATTS"> 532 </power>
+      </electric_engine>
+      <thruster>
+        <location unit="IN"> <x> 0 </x> <y> 0 </y> <z> 0 </z> </location>
+        <direct name="trainer_thrust"/>
+      </thruster>
+    </engine>
+  </propulsion>
+  <flight_control name="sim_trainer">
+    <channel name="Pitch">
+      <aerosurface_scale name="fcs/elevator-control">
+        <input>fcs/elevator-cmd-norm</input>
+        <range> <min> -0.35 </min> <max> 0.35 </max> </range>
+        <output>fcs/elevator-pos-rad</output>
+      </aerosurface_scale>
+    </channel>
+    <channel name="Roll">
+      <aerosurface_scale name="fcs/aileron-control">
+        <input>fcs/aileron-cmd-norm</input>
+        <range> <min> -0.35 </min> <max> 0.35 </max> </range>
+        <output>fcs/left-aileron-pos-rad</output>
+      </aerosurface_scale>
+    </channel>
+    <channel name="Yaw">
+      <aerosurface_scale name="fcs/rudder-control">
+        <input>fcs/rudder-cmd-norm</input>
+        <range> <min> -0.35 </min> <max> 0.35 </max> </range>
+        <output>fcs/rudder-pos-rad</output>
+      </aerosurface_scale>
+    </channel>
+  </flight_control>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/force/lift">
+        <description>Lift through the stall</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <table>
+            <independentVar lookup="row">aero/alpha-rad</independentVar>
+            <tableData>
+              -0.50 -0.60
+              -0.20 -0.75
+               0.00  0.25
+               0.20  1.25
+               0.28  1.45
+               0.40  1.10
+               0.80  0.80
+            </tableData>
+          </table>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/force/drag">
+        <description>Parasite and induced drag</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <sum>
+            <value> 0.03 </value>
+            <product> <value> 0.06 </value> <property>aero/cl-squared</property> </product>
+          </sum>
+        </product>
+      </function>
+    </axis>
+    <axis name="SIDE">
+      <function name="aero/force/side_beta">
+        <description>Side force from sideslip</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>aero/beta-rad</property>
+          <value> -0.5 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="ROLL">
+      <function name="aero/moment/roll">
+        <description>Dihedral, damping, and ailerons</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/bw-ft</property>
+          <sum>
+            <product> <value> -0.08 </value> <property>aero/beta-rad</property> </product>
+            <product> <value> -0.45 </value> <property>aero/bi2vel</property> <property>velocities/p-aero-rad_sec</property> </product>
+            <product> <value> 0.10 </value> <property>aero/bi2vel</property> <property>velocities/r-aero-rad_sec</property> </product>
+            <product> <value> 0.20 </value> <property>fcs/left-aileron-pos-rad</property> </product>
+          </sum>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/moment/pitch">
+        <description>Static stability, damping, and elevator</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <sum>
+            <value> 0.03 </value>
+            <product> <value> -0.90 </value> <property>aero/alpha-rad</property> </product>
+            <product> <value> -14.0 </value> <property>aero/ci2vel</property> <property>velocities/q-aero-rad_sec</property> </product>
+            <product> <value> -1.20 </value> <property>fcs/elevator-pos-rad</property> </product>
+          </sum>
+        </product>
+      </function>
+    </axis>
+    <axis name="YAW">
+      <function name="aero/moment/yaw">
+        <description>Weathercock stability, damping, and rudder</description>
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/bw-ft</property>
+          <sum>
+            <product> <value> 0.12 </value> <property>aero/beta-rad</property> </product>
+            <product> <value> -0.15 </value> <property>aero/bi2vel</property> <property>velocities/r-aero-rad_sec</property> </product>
+            <product> <value> -0.12 </value> <property>fcs/rudder-pos-rad</property> </product>
+          </sum>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

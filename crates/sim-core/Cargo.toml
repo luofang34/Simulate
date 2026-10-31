@@ -1,0 +1,18 @@
+[package]
+name = "sim-core"
+description = "Simulation blocks on an integer master clock: block contract, multi-rate scheduling, vehicle state, rigid-body dynamics, crew and hardware-in-the-loop bridges, camera sensing"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sim-atmosphere = { workspace = true }
+sim-geo = { workspace = true }
+mbd-core = { workspace = true }
+glam = { workspace = true }
+jsbsim = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
