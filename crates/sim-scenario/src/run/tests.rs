@@ -49,10 +49,10 @@ fn every_profile_replays_the_same_bits() {
 
 #[test]
 fn the_digit_keys_reach_every_profile_once() {
-    let by_digit: Vec<_> = (1..=6).filter_map(ScenarioProfile::from_digit).collect();
+    let by_digit: Vec<_> = (1..=8).filter_map(ScenarioProfile::from_digit).collect();
     assert_eq!(by_digit, ScenarioProfile::ALL);
     assert_eq!(ScenarioProfile::from_digit(0), None);
-    assert_eq!(ScenarioProfile::from_digit(7), None);
+    assert_eq!(ScenarioProfile::from_digit(9), None);
 }
 
 #[test]

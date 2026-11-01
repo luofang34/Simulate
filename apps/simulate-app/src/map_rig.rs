@@ -8,17 +8,16 @@ use sim_indicate::{PANEL_HEIGHT_PX, PANEL_WIDTH_PX};
 use sim_maplibre::{
     BeliefAvionicsConfig, BeliefAvionicsMap, CatalogTileLoader, ChartCameraSpec, CockpitDeviceTier,
     ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, HostGpu, SharedMapRuntime,
-    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, ViewSlotMask,
-    belief_chart_style, belief_svs_relief_style, conformal_stamp_from_pose,
-    conformal_stamp_from_vehicle, symmetric_frustum, tile_id_to_world_coords, truth_otw_style,
+    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, ViewSlotId,
+    ViewSlotMask, belief_chart_style_with_aerodromes, belief_svs_relief_style,
+    conformal_stamp_from_pose, conformal_stamp_from_vehicle, frustum_from_intrinsics,
+    symmetric_frustum, tile_id_to_world_coords, truth_otw_style_with_aerodromes,
 };
 use sim_render::Camera;
-use sim_scenario::OperatorViewportMode;
-use sim_scenery::{CatalogScenery, SyntheticCorridorSpec, TileId};
+use sim_scenario::{OperatorViewportMode, ScenarioProfile};
+use sim_scenery::{CatalogScenery, OsmAerodromeDiagram, TileId};
 
-use crate::camera_view::{
-    COCKPIT_FOV_Y_DEG, SENSOR_FOV_Y_DEG, SVS_FOV_Y_DEG, belly_sensor_mount, svs_nose_mount,
-};
+use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_nose_mount};
 use crate::error::AppSimError;
 use crate::supervisor_rig::SupervisorRig;
 
@@ -33,13 +32,15 @@ pub struct MapFrameInput<'a> {
     pub surface_size: [u32; 2],
     /// Current simulation clock instant.
     pub timestamp: SimInstant,
-    /// True vehicle state (`TruthSceneMap` + simulated sensor gimbal).
+    /// Active scripted scenario profile (`None` in free flight).
+    pub profile: Option<ScenarioProfile>,
+    /// True vehicle state (`TruthSceneMap` + virtual camera rig).
     pub vehicle: VehicleState,
     /// Active camera in `sim-render` convention (for `Cockpit` / `Chase` / `VolumetricScene` OTW).
     pub otw_camera: Camera,
     /// Solar illumination direction in ECEF.
     pub sun_direction_ecef: DVec3,
-    /// Supervisor holding truth/belief `MovingWorld` surveillance and runway specs.
+    /// Supervisor holding OSM airport diagrams, virtual camera presets, and surveillance belief.
     pub supervisor: &'a SupervisorRig,
 }
 
@@ -48,15 +49,19 @@ pub struct MapFrameInput<'a> {
 pub struct DualWorldMapRig {
     truth: TruthSceneMap,
     belief: BeliefAvionicsMap,
+    aux_virtual_camera_slot: ViewSlotId,
     primary_dem_tile: Option<TileId>,
     last_sensor_tick: Option<u64>,
 }
 
 impl DualWorldMapRig {
-    /// Initializes `TruthSceneMap` and `BeliefAvionicsMap` over `gpu` using the synthetic
-    /// Delaware corridor orthoimagery and Terrarium DEM catalog.
+    /// Initializes `TruthSceneMap` and `BeliefAvionicsMap` over `gpu` using the regional
+    /// multi-airport `CatalogScenery` (`Delaware`, `KDOV`, `47N`, `KEWR`) and conflated
+    /// OpenStreetMap `aeroway=*` airport diagrams.
     pub fn new(gpu: HostGpu, initial_size: [u32; 2]) -> Result<Self, AppSimError> {
-        let scenery = CatalogScenery::synthetic_corridor(&SyntheticCorridorSpec::delaware())
+        let scenery = CatalogScenery::synthetic_regional_network()
+            .map_err(sim_scenario::ScenarioError::from)?;
+        let aerodrome_geojson = OsmAerodromeDiagram::builtin_all_merged_geojson()
             .map_err(sim_scenario::ScenarioError::from)?;
         let primary_dem_tile = scenery.elevation_tiles().next();
         let max_dem_z = scenery
@@ -78,7 +83,7 @@ impl DualWorldMapRig {
         let [w, h] = [w_in.max(16), h_in.max(16)];
         let mut truth = TruthSceneMap::new(
             &runtime,
-            truth_otw_style(max_dem_z, max_ortho_z)?,
+            truth_otw_style_with_aerodromes(max_dem_z, max_ortho_z, aerodrome_geojson.clone())?,
             TruthSceneConfig {
                 otw_size: [w, h],
                 stereo_otw: false,
@@ -87,12 +92,14 @@ impl DualWorldMapRig {
                 request_overscan: 1.15,
             },
         )?;
+        let aux_virtual_camera_slot =
+            truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true)?;
         let _supplied_truth = truth.supply_dem_synchronously(&scenery)?;
 
         let mut belief = BeliefAvionicsMap::new(
             &runtime,
             belief_svs_relief_style(max_dem_z)?,
-            belief_chart_style(max_dem_z, max_ortho_z)?,
+            belief_chart_style_with_aerodromes(max_dem_z, max_ortho_z, aerodrome_geojson)?,
             BeliefAvionicsConfig {
                 svs_size: [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
                 chart_size: [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
@@ -105,6 +112,7 @@ impl DualWorldMapRig {
         Ok(Self {
             truth,
             belief,
+            aux_virtual_camera_slot,
             primary_dem_tile,
             last_sensor_tick: None,
         })
@@ -122,6 +130,13 @@ impl DualWorldMapRig {
         &self.belief
     }
 
+    /// Secondary registered virtual camera [`ViewSlotId`] ready for multi-camera sensor feeds.
+    #[cfg(test)]
+    #[must_use]
+    pub const fn aux_virtual_camera_slot(&self) -> ViewSlotId {
+        self.aux_virtual_camera_slot
+    }
+
     /// Exports a stitched `129×129` resident DEM patch from `BeliefAvionicsMap` for `terrain-volume`.
     #[must_use]
     pub fn sample_belief_terrain_patch(&self) -> Option<TerrainPatchSnapshot> {
@@ -130,8 +145,9 @@ impl DualWorldMapRig {
         self.belief.resident_terrain_patch(coords)
     }
 
-    /// Steps `TruthSceneMap` (OTW + 30 Hz sensor) and `BeliefAvionicsMap` (60 Hz SVS + 15 Hz dirty-gated Chart).
+    /// Steps `TruthSceneMap` (OTW + 30 Hz virtual camera) and `BeliefAvionicsMap` (SVS + 15 Hz Chart).
     pub fn render_earth_frame(&mut self, input: &MapFrameInput<'_>) -> Result<(), AppSimError> {
+        let _ = self.aux_virtual_camera_slot;
         let [w_in, h_in] = input.surface_size;
         let [w, h] = [w_in.max(16), h_in.max(16)];
         self.truth.resize_otw(w, h)?;
@@ -158,18 +174,15 @@ impl DualWorldMapRig {
         let mode = input.supervisor.viewport_mode();
         let otw_stamp = build_camera_stamp(input.timestamp, &input.otw_camera, otw_size)?;
         let sensor_stamp = if self.should_step_sensor(input.timestamp, mode) {
-            let frustum = symmetric_frustum(
-                SENSOR_FOV_Y_DEG.to_radians(),
-                SENSOR_WIDTH_PX,
-                SENSOR_HEIGHT_PX,
-                DEFAULT_NEAR_CLIP_M,
-                DEFAULT_FAR_CLIP_M,
-            )?;
-            Some(conformal_stamp_from_vehicle(
+            let cam_spec = input.supervisor.active_virtual_camera(input.profile);
+            let (pose, intrinsics) = cam_spec
+                .pose_and_intrinsics(&input.vehicle, DVec3::ZERO)
+                .map_err(sim_scenario::ScenarioError::from)?;
+            let frustum =
+                frustum_from_intrinsics(&intrinsics, DEFAULT_NEAR_CLIP_M, DEFAULT_FAR_CLIP_M)?;
+            Some(conformal_stamp_from_pose(
                 input.timestamp,
-                &input.vehicle,
-                &belly_sensor_mount(),
-                DVec3::ZERO,
+                &pose,
                 frustum,
                 0.0,
             )?)
@@ -183,7 +196,8 @@ impl DualWorldMapRig {
                 otw_stamp,
                 stereo_right_stamp: None,
                 sensor_stamp,
-                runway: input.supervisor.delaware_runway(),
+                extra_camera_slots: &[],
+                runway: input.supervisor.active_runway(input.profile),
                 entities: &truth_entities,
             })?;
         }
@@ -217,13 +231,13 @@ impl DualWorldMapRig {
             sim_dur,
             svs_stamp,
             own_geo.height_m as f32,
-            input.supervisor.delaware_runway(),
+            input.supervisor.active_runway(input.profile),
             &belief_entities,
         )?;
         let chart_zoom = if mode == OperatorViewportMode::ChartMap {
-            13.2
+            13.6
         } else {
-            12.2
+            12.6
         };
         let _chart_redrawn = self.belief.render_chart_if_dirty(
             sim_dur,

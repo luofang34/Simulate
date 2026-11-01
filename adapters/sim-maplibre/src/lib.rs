@@ -11,6 +11,7 @@
 //! ([`encode_terrain_patch_aux`], [`extract_volumetric_mesh_patch`]), and
 //! fail-closed companion display streaming ([`CompanionStreamSession`]).
 
+mod aerodrome_style;
 mod budget;
 mod entities;
 mod error;
@@ -24,6 +25,7 @@ mod xvs_block;
 #[cfg(test)]
 mod tests;
 
+pub use aerodrome_style::{belief_chart_style_with_aerodromes, truth_otw_style_with_aerodromes};
 pub use budget::{CockpitDeviceTier, HANDHELD_AVAILABLE_MEMORY_BYTES};
 pub use entities::{
     DynamicEntity3D, DynamicEntityKind, build_conformal_overlay, entities_from_surveillance_belief,

@@ -39,6 +39,8 @@ pub fn log_changes(previous: &CockpitInstrumentSnapshot, current: &CockpitInstru
 pub fn title(
     flight: &Flight,
     viewport_mode: OperatorViewportMode,
+    virtual_camera_title: Option<&str>,
+    aerodrome_code: Option<&str>,
     time_scale: SimTimeScale,
     cockpit: &CockpitInstrumentSnapshot,
 ) -> String {
@@ -49,7 +51,7 @@ pub fn title(
     let view_label = match viewport_mode {
         OperatorViewportMode::Cockpit => "OTW",
         OperatorViewportMode::Chase => "Chase",
-        OperatorViewportMode::SensorAperture => "Sensor",
+        OperatorViewportMode::SensorAperture => virtual_camera_title.unwrap_or("Sensor"),
         OperatorViewportMode::ChartMap => "Chart",
         OperatorViewportMode::VolumetricScene => "Volume",
     };
@@ -61,6 +63,12 @@ pub fn title(
         line.push_str(" | ");
         line.push_str(&text);
     };
+    if let Some(code) = aerodrome_code {
+        add(code.to_owned());
+    }
+    if let Some(leg) = flight.pattern_leg() {
+        add(leg.title().to_owned());
+    }
     match time_scale {
         SimTimeScale::Paused => add("PAUSED".to_owned()),
         SimTimeScale::RealTime => {}

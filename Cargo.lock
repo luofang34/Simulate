@@ -2436,7 +2436,7 @@ dependencies = [
 
 [[package]]
 name = "jsbsim"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "libm",
  "roxmltree",
@@ -4936,6 +4936,7 @@ dependencies = [
 name = "sim-scenery"
 version = "0.1.0"
 dependencies = [
+ "flightbag",
  "glam 0.33.12",
  "image",
  "serde",
@@ -4944,6 +4945,7 @@ dependencies = [
  "sim-geo",
  "tempfile",
  "thiserror 2.0.21",
+ "world-core",
 ]
 
 [[package]]

@@ -33,6 +33,8 @@ use maplibre::{
 use crate::{CockpitDeviceTier, MapAdapterError};
 
 mod belief;
+#[cfg(not(target_arch = "wasm32"))]
+mod readback;
 mod truth;
 
 pub use belief::{BeliefAvionicsConfig, BeliefAvionicsMap, ChartCameraSpec, ChartFrameOutcome};

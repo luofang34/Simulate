@@ -90,4 +90,10 @@ pub enum MapAdapterError {
         #[source]
         source: indicate_interaction::InteractionError,
     },
+    /// On-demand offscreen texture readback failed.
+    #[error("virtual camera GPU readback failed: {detail}")]
+    Readback {
+        /// Diagnostic description.
+        detail: String,
+    },
 }

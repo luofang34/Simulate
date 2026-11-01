@@ -4,11 +4,13 @@ use sim_core::{
     CameraPoseEcef, ControlInputs, EngineStatus, RateAdapter, RealTimeClock, SimInstant,
     SystemControls, TICKS_PER_SECOND, TickSpan, VehicleState,
 };
-use sim_geo::ecef_to_geodetic;
+use sim_geo::{Geodetic, ecef_to_geodetic};
 use sim_render::Camera;
 use sim_scenario::{
-    OperatorViewportMode, ScenarioProfile, ScenarioRun, ScenarioWorld, SimTimeScale,
+    AirportPatternRun, FlightDynamics, OperatorViewportMode, PatternLeg, ScenarioProfile,
+    ScenarioRun, ScenarioWorld, SimTimeScale,
 };
+use sim_scenery::OsmAerodromeDiagram;
 use tracing::info;
 use web_time::Instant;
 
@@ -36,6 +38,20 @@ enum Mode {
 impl Mode {
     fn free(vehicle: FreeFlightVehicle) -> Result<Self, AppSimError> {
         let plant = FreeFlightPlant::new(vehicle)?;
+        Ok(Self::from_plant(vehicle, plant))
+    }
+
+    fn free_at(
+        vehicle: FreeFlightVehicle,
+        spawn: Geodetic,
+        heading_rad: f64,
+        field_elev_m: f64,
+    ) -> Result<Self, AppSimError> {
+        let plant = FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?;
+        Ok(Self::from_plant(vehicle, plant))
+    }
+
+    fn from_plant(vehicle: FreeFlightVehicle, plant: FreeFlightPlant) -> Self {
         let mut panel = Box::new(CockpitInstrumentPanel::new(SimInstant::START));
         let state = plant.state();
         panel.observe_earth(&EarthVehicleSources {
@@ -43,12 +59,12 @@ impl Mode {
             vehicle: state,
             height_m: ecef_to_geodetic(state.position_ecef).height_m,
         });
-        Ok(Self::Free {
+        Self::Free {
             vehicle,
             plant: Box::new(plant),
             panel,
             now: SimInstant::START,
-        })
+        }
     }
 
     fn period(&self) -> TickSpan {
@@ -88,9 +104,42 @@ impl Flight {
     /// Starts `profile` from its beginning, or returns to free flight on `None`.
     pub fn select(&mut self, profile: Option<ScenarioProfile>) -> Result<(), AppSimError> {
         self.mode = match profile {
-            Some(profile) => Mode::Scenario(Box::new(ScenarioRun::new(profile)?)),
+            Some(profile) => Mode::Scenario(Box::new(ScenarioRun::continuous_pattern(
+                profile,
+                FlightDynamics::Jsbsim,
+            )?)),
             None => Mode::free(self.preferred_vehicle)?,
         };
+        self.reset_clocks();
+        Ok(())
+    }
+
+    /// Respawns the preferred free-flight vehicle over `diagram`'s active runway.
+    pub fn respawn_at_diagram(&mut self, diagram: &OsmAerodromeDiagram) -> Result<(), AppSimError> {
+        let (spawn, heading_rad) = if let Some(rwy) = diagram.primary_runway_end() {
+            (
+                Geodetic::from_degrees(
+                    rwy.threshold.latitude_deg,
+                    rwy.threshold.longitude_deg,
+                    diagram.field_elevation_m + 300.0,
+                ),
+                rwy.true_bearing_rad,
+            )
+        } else {
+            (
+                Geodetic {
+                    height_m: diagram.field_elevation_m + 300.0,
+                    ..diagram.tower_viewpoint
+                },
+                0.0,
+            )
+        };
+        self.mode = Mode::free_at(
+            self.preferred_vehicle,
+            spawn,
+            heading_rad,
+            diagram.field_elevation_m,
+        )?;
         self.reset_clocks();
         Ok(())
     }
@@ -123,6 +172,15 @@ impl Flight {
         match &self.mode {
             Mode::Free { .. } => None,
             Mode::Scenario(run) => Some(run.profile()),
+        }
+    }
+
+    /// Active [`PatternLeg`] when flying an airport traffic-pattern scenario.
+    #[must_use]
+    pub fn pattern_leg(&self) -> Option<PatternLeg> {
+        match &self.mode {
+            Mode::Free { .. } => None,
+            Mode::Scenario(run) => run.pattern_run().map(AirportPatternRun::leg),
         }
     }
 

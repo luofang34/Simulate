@@ -21,6 +21,7 @@ mod rigid_body;
 mod schedule;
 mod state;
 mod time;
+mod virtual_camera;
 mod visual_harness;
 
 pub use block::{Block, BlockError};
@@ -51,6 +52,9 @@ pub use schedule::{RateAdapter, RealTimeClock};
 pub use sim_geo::SensorIntrinsics;
 pub use state::VehicleState;
 pub use time::{SimInstant, TICKS_PER_SECOND, TickSpan};
+pub use virtual_camera::{
+    VirtualCameraPlacement, VirtualCameraRigBlock, VirtualCameraRigSnapshot, VirtualCameraSpec,
+};
 pub use visual_harness::{
     FusionEligibility, MapCell, NeesSummary, TwoTierConfig, TwoTierVisualHarness, VisualEstimate,
     VisualFix, VisualFrame, VisualHarnessError,

@@ -1,4 +1,5 @@
 use glam::DVec3;
+use sim_geo::BodyEllipsoid;
 use sim_maplibre::HostGpu;
 use sim_render::{Camera, OverlayQuad, Renderer, ViewportRect};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld};
@@ -152,9 +153,10 @@ impl CockpitRig {
     ) -> Result<bool, AppSimError> {
         let now = flight.now();
         let vehicle = flight.vehicle_state();
-        self.supervisor.sync(vehicle.position_ecef, now);
+        let profile = flight.profile();
+        self.supervisor.sync(vehicle.position_ecef, now, profile);
 
-        let earth = flight.world() == ScenarioWorld::EarthGlobe;
+        let earth = flight.world().body() == BodyEllipsoid::WGS84;
         let viewport_mode = self.supervisor.viewport_mode();
         let mut terrain_patch = None;
         let mut svs_underlay_active = false;
@@ -163,6 +165,7 @@ impl CockpitRig {
             maps.render_earth_frame(&MapFrameInput {
                 surface_size,
                 timestamp: now,
+                profile,
                 vehicle,
                 otw_camera: *camera,
                 sun_direction_ecef,
@@ -198,7 +201,7 @@ impl CockpitRig {
     #[must_use]
     pub fn overlay_quads(&self, world: ScenarioWorld) -> Vec<OverlayQuad<'_>> {
         let mut quads = Vec::with_capacity(6);
-        let earth = world == ScenarioWorld::EarthGlobe;
+        let earth = world.body() == BodyEllipsoid::WGS84;
         let mode = self.supervisor.viewport_mode();
 
         if earth && let Some(full_view) = self.full_window_map_view() {

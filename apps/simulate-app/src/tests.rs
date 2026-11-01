@@ -53,7 +53,11 @@ fn free_flight_vehicles_cycle_step_and_accept_system_controls() -> Result<(), Ap
 fn supervisor_isolates_truth_traffic_from_operator_belief() -> Result<(), AppSimError> {
     let mut sup = SupervisorRig::new();
     let flight = Flight::new()?;
-    sup.sync(flight.vehicle_state().position_ecef, flight.now());
+    sup.sync(
+        flight.vehicle_state().position_ecef,
+        flight.now(),
+        flight.profile(),
+    );
 
     let truth = sup.truth_entities(ViewSlotMask::ALL);
     let belief = sup.belief_entities(ViewSlotMask::ALL);
@@ -121,9 +125,15 @@ fn headless_composite_cockpit_renders_all_viewports_and_apollo_fallback() -> Res
         assert_eq!(maps.truth().otw_has_readback_buffer(), Some(false));
         assert_eq!(maps.belief().svs_has_readback_buffer(), Some(false));
         assert_eq!(maps.belief().chart_has_readback_buffer(), Some(false));
+        assert!(
+            maps.truth()
+                .virtual_camera_size(maps.aux_virtual_camera_slot())
+                .is_some()
+        );
     }
     assert!(rig.avionics().last_volume_scene_bytes() > 0);
 
+    verify_airport_patterns_and_virtual_cameras(&gpu, &mut rig, &mut flight, size)?;
     verify_apollo_lunar_fallback(&gpu, &mut rig, &mut flight, size)?;
     assert!(gpu.device.poll(wgpu::PollType::wait_indefinitely()).is_ok());
     gpu.check_device()?;
@@ -212,6 +222,45 @@ fn step_all_earth_viewports(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn verify_airport_patterns_and_virtual_cameras(
+    gpu: &HeadlessGpu,
+    rig: &mut CockpitRig,
+    flight: &mut Flight,
+    size: [u32; 2],
+) -> Result<(), AppSimError> {
+    for profile in [
+        ScenarioProfile::Airport47NUncontrolledPattern,
+        ScenarioProfile::AirportKewrToweredPattern,
+    ] {
+        flight.select(Some(profile))?;
+        flight.advance_by(0.15, ControlInputs::default(), SimTimeScale::RealTime)?;
+        assert!(flight.pattern_leg().is_some());
+        for _ in 0..5 {
+            let cam_spec = rig.supervisor_mut().cycle_virtual_camera(flight.profile());
+            let cam = flight.camera(rig.supervisor().viewport_mode())?;
+            let world = flight.world();
+            let _need_globe =
+                rig.prepare_frame(&gpu.queue, size, flight, &cam, world.sun_direction_ecef())?;
+            let title_str = telemetry::title(
+                flight,
+                rig.supervisor().viewport_mode(),
+                Some(cam_spec.title),
+                Some(rig.supervisor().effective_aerodrome(Some(profile)).code()),
+                SimTimeScale::RealTime,
+                &flight.cockpit(),
+            );
+            assert!(title_str.contains(cam_spec.title));
+        }
+    }
+    let next_aero = rig.supervisor_mut().cycle_aerodrome();
+    if let Some(diag) = rig.supervisor().diagram(next_aero).cloned() {
+        flight.respawn_at_diagram(&diag)?;
+        assert!(flight.profile().is_none());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn verify_apollo_lunar_fallback(
     gpu: &HeadlessGpu,
     rig: &mut CockpitRig,
@@ -238,6 +287,8 @@ fn verify_apollo_lunar_fallback(
     let title_str = telemetry::title(
         flight,
         OperatorViewportMode::Cockpit,
+        None,
+        None,
         SimTimeScale::RealTime,
         &flight.cockpit(),
     );

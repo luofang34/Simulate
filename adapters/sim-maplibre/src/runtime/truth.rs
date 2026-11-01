@@ -1,7 +1,8 @@
 //! Simulator-only `TruthSceneMap`: OTW cockpit camera, optional stereo companion,
-//! and 30 Hz optical/EVS sensor slots over a single `HeadlessMap` world.
+//! 30 Hz optical/EVS sensor slot, and N dynamically registered virtual camera slots over
+//! a single `HeadlessMap` world.
 
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use flightbag::RunwayEndSpec;
 use glam::DVec3;
@@ -68,13 +69,17 @@ pub struct TruthSceneFrame<'a> {
     /// Optional 30 Hz optical / EVS sensor camera stamp; when `None`, the sensor slot is
     /// skipped this frame (`0.0 ms` GPU) without evicting its tiles or drapes.
     pub sensor_stamp: Option<ConformalFrameStamp>,
+    /// Additional virtual camera slots (`TowerPtz`, `ThresholdFinal`, wing/chase, multi-camera
+    /// array) active on this frame. Registered virtual camera slots omitted here incur `0.0 ms`
+    /// GPU cost without evicting resident tiles.
+    pub extra_camera_slots: &'a [(ViewSlotId, ConformalFrameStamp)],
     /// Optional runway outline drawn into depth-tested overlays.
     pub runway: Option<&'a RunwayEndSpec>,
     /// Truth-world dynamic 3D entities (per-slot visibility controlled by `ViewSlotMask`).
     pub entities: &'a [DynamicEntity3D],
 }
 
-/// Simulator-only `HeadlessMap` world serving OTW and synthetic optical sensors.
+/// Simulator-only `HeadlessMap` world serving OTW, synthetic optical sensors, and virtual cameras.
 pub struct TruthSceneMap {
     runtime: SharedMapRuntime,
     map: HeadlessMap,
@@ -83,6 +88,7 @@ pub struct TruthSceneMap {
     sensor_slot: ViewSlotId,
     otw_size: [u32; 2],
     sensor_size: [u32; 2],
+    extra_slots: BTreeMap<ViewSlotId, [u32; 2]>,
     request_overscan: f64,
     last_otw_stamp: Option<ConformalFrameStamp>,
     last_sensor_stamp: Option<ConformalFrameStamp>,
@@ -144,10 +150,63 @@ impl TruthSceneMap {
             sensor_slot,
             otw_size: config.otw_size,
             sensor_size: config.sensor_size,
+            extra_slots: BTreeMap::new(),
             request_overscan: config.request_overscan.max(1.0),
             last_otw_stamp: None,
             last_sensor_stamp: None,
         })
+    }
+
+    /// Registers an additional virtual camera [`ViewSlotId`] (`TowerPtz`, `ThresholdFinal`,
+    /// chase/wing camera, or multi-sensor rig channel) sharing the `TruthScene` tile world.
+    pub fn register_virtual_camera(
+        &mut self,
+        width: u32,
+        height: u32,
+        depth_readout: bool,
+    ) -> Result<ViewSlotId, MapAdapterError> {
+        let phys = validate_size(width, height)?;
+        let slot = self.map.register_view_slot(ViewSlotConfig {
+            size: phys,
+            depth_readout,
+        });
+        self.extra_slots.insert(slot, [width, height]);
+        Ok(slot)
+    }
+
+    /// Resizes a registered virtual camera [`ViewSlotId`]; zero dimensions are ignored.
+    pub fn resize_virtual_camera(
+        &mut self,
+        slot: ViewSlotId,
+        width: u32,
+        height: u32,
+    ) -> Result<(), MapAdapterError> {
+        if width == 0
+            || height == 0
+            || self.extra_slots.get(&slot).copied() == Some([width, height])
+        {
+            return Ok(());
+        }
+        let phys = validate_size(width, height)?;
+        self.map
+            .resize_view_slot(slot, phys)
+            .map_err(|source| MapAdapterError::MultiView { source })?;
+        if let Some(dim) = self.extra_slots.get_mut(&slot) {
+            *dim = [width, height];
+        }
+        Ok(())
+    }
+
+    /// Unregisters a virtual camera [`ViewSlotId`] and releases its GPU attachments.
+    pub fn remove_virtual_camera(&mut self, slot: ViewSlotId) -> bool {
+        self.extra_slots.remove(&slot);
+        self.map.remove_view_slot(slot)
+    }
+
+    /// Physical `[width, height]` pixel dimensions of a registered virtual camera slot.
+    #[must_use]
+    pub fn virtual_camera_size(&self, slot: ViewSlotId) -> Option<[u32; 2]> {
+        self.extra_slots.get(&slot).copied()
     }
 
     /// Synchronously populates resident DEM tiles from `scenery` for Frame-1 determinism.
@@ -212,7 +271,7 @@ impl TruthSceneMap {
     pub fn render_frame(&mut self, frame: TruthSceneFrame<'_>) -> Result<(), MapAdapterError> {
         self.apply_slot_overlay(self.otw_slot, self.otw_size, &frame.otw_stamp, &frame, true)?;
 
-        let mut slots = Vec::with_capacity(3);
+        let mut slots = Vec::with_capacity(3_usize.saturating_add(frame.extra_camera_slots.len()));
         slots.push(ViewSlotEntry {
             slot: self.otw_slot,
             view: SlotView::External(frame.otw_stamp.external_view),
@@ -242,6 +301,19 @@ impl TruthSceneMap {
                 policy: CoveringPolicy::Independent,
             });
             self.last_sensor_stamp = Some(sensor_stamp);
+        }
+        for &(slot, ref stamp) in frame.extra_camera_slots {
+            let viewport = self
+                .extra_slots
+                .get(&slot)
+                .copied()
+                .unwrap_or(self.sensor_size);
+            self.apply_slot_overlay(slot, viewport, stamp, &frame, true)?;
+            slots.push(ViewSlotEntry {
+                slot,
+                view: SlotView::External(stamp.external_view),
+                policy: CoveringPolicy::Independent,
+            });
         }
 
         let mv = MultiViewFrame {
@@ -289,6 +361,50 @@ impl TruthSceneMap {
     #[must_use]
     pub const fn sensor_slot(&self) -> ViewSlotId {
         self.sensor_slot
+    }
+
+    /// Zero-copy [`wgpu::TextureView`] of any registered slot's color attachment.
+    #[must_use]
+    pub fn slot_color_view(&self, slot: ViewSlotId) -> Option<&wgpu::TextureView> {
+        self.map.view_slot_color_view(slot)
+    }
+
+    /// Zero-copy [`wgpu::Texture`] of any registered slot's color attachment.
+    #[must_use]
+    pub fn slot_color_texture(&self, slot: ViewSlotId) -> Option<&wgpu::Texture> {
+        self.map.view_slot_color_texture(slot)
+    }
+
+    /// Zero-copy [`wgpu::TextureView`] of any registered slot's `Depth32Float` attachment.
+    #[must_use]
+    pub fn slot_depth_view(&self, slot: ViewSlotId) -> Option<&wgpu::TextureView> {
+        self.map.view_slot_depth_view(slot)
+    }
+
+    /// Zero-copy [`wgpu::Texture`] of any registered slot's `Depth32Float` attachment.
+    #[must_use]
+    pub fn slot_depth_texture(&self, slot: ViewSlotId) -> Option<&wgpu::Texture> {
+        self.map.view_slot_depth_texture(slot)
+    }
+
+    /// Whether `slot` has allocated a persistent CPU `MAP_READ` staging buffer.
+    #[must_use]
+    pub fn slot_has_readback_buffer(&self, slot: ViewSlotId) -> Option<bool> {
+        self.map.view_slot_has_readback_buffer(slot)
+    }
+
+    /// Lazily copies `slot`'s rendered color attachment into tight RGBA8 bytes (`width * height * 4`)
+    /// without keeping a persistent `MAP_READ` buffer on the slot.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn read_slot_rgba(&self, slot: ViewSlotId) -> Result<Vec<u8>, MapAdapterError> {
+        let texture =
+            self.map
+                .view_slot_color_texture(slot)
+                .ok_or_else(|| MapAdapterError::Readback {
+                    detail: format!("slot {slot:?} has no color attachment"),
+                })?;
+        let gpu = self.runtime.host_gpu();
+        super::readback::read_texture_rgba_blocking(&gpu.device, &gpu.queue, texture)
     }
 
     /// Zero-copy [`wgpu::TextureView`] of the cockpit OTW color attachment.
@@ -357,17 +473,23 @@ impl TruthSceneMap {
         self.last_sensor_stamp
     }
 
+    /// Takes the latest completed [`ProbeResults`] for any registered `slot`, if ready.
+    pub fn take_slot_probe_results(
+        &mut self,
+        slot: ViewSlotId,
+    ) -> Result<Option<ProbeResults>, MapAdapterError> {
+        self.map
+            .take_view_slot_depth_probe_results(slot)
+            .map_err(|source| MapAdapterError::MultiView { source })
+    }
+
     /// Takes the latest completed [`ProbeResults`] for the OTW slot, if ready.
     pub fn take_otw_probe_results(&mut self) -> Result<Option<ProbeResults>, MapAdapterError> {
-        self.map
-            .take_view_slot_depth_probe_results(self.otw_slot)
-            .map_err(|source| MapAdapterError::MultiView { source })
+        self.take_slot_probe_results(self.otw_slot)
     }
 
     /// Takes the latest completed [`ProbeResults`] for the sensor slot, if ready.
     pub fn take_sensor_probe_results(&mut self) -> Result<Option<ProbeResults>, MapAdapterError> {
-        self.map
-            .take_view_slot_depth_probe_results(self.sensor_slot)
-            .map_err(|source| MapAdapterError::MultiView { source })
+        self.take_slot_probe_results(self.sensor_slot)
     }
 }

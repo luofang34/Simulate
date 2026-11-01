@@ -15,6 +15,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
+use crate::camera_view::camera_from_virtual_spec;
 use crate::cockpit_rig::CockpitRig;
 use crate::error::AppSimError;
 use crate::flight::Flight;
@@ -107,6 +108,31 @@ impl FlightApp {
                     info!(?mode, "switched operator viewport mode");
                 }
             }
+            CockpitAction::CycleVirtualCamera => {
+                if let Some(rig) = self.cockpit_rig.as_mut() {
+                    let spec = rig
+                        .supervisor_mut()
+                        .cycle_virtual_camera(self.flight.profile());
+                    info!(camera = spec.title, id = spec.id, "selected virtual camera");
+                }
+            }
+            CockpitAction::CycleAirport => {
+                if let Some(rig) = self.cockpit_rig.as_mut() {
+                    let id = rig.supervisor_mut().cycle_aerodrome();
+                    if let Some(diag) = rig.supervisor().diagram(id).cloned() {
+                        self.mapper.set(Control::Throttle, INITIAL_CRUISE_THROTTLE);
+                        if let Err(err) = self.flight.respawn_at_diagram(&diag) {
+                            self.fail(event_loop, "respawning at airport failed", &err);
+                            return;
+                        }
+                        info!(
+                            airport = diag.id.code(),
+                            name = diag.name,
+                            "switched active airport"
+                        );
+                    }
+                }
+            }
             CockpitAction::CycleVehicle => {
                 self.mapper.set(Control::Throttle, INITIAL_CRUISE_THROTTLE);
                 match self.flight.cycle_vehicle() {
@@ -180,18 +206,36 @@ impl FlightApp {
             && let Some(window) = &self.window
         {
             self.title_age_s = 0.0;
-            let (viewport_mode, time_scale) = self.cockpit_rig.as_ref().map_or(
-                (OperatorViewportMode::Cockpit, SimTimeScale::RealTime),
-                |rig| {
+            let profile = self.flight.profile();
+            let (viewport_mode, cam_title, aero_code, time_scale) =
+                self.cockpit_rig.as_ref().map_or(
                     (
-                        rig.supervisor().viewport_mode(),
-                        rig.supervisor().time_scale(),
-                    )
-                },
-            );
+                        OperatorViewportMode::Cockpit,
+                        None,
+                        None,
+                        SimTimeScale::RealTime,
+                    ),
+                    |rig| {
+                        let sup = rig.supervisor();
+                        let earth = self.flight.world().body() == sim_geo::BodyEllipsoid::WGS84;
+                        (
+                            sup.viewport_mode(),
+                            Some(sup.active_virtual_camera(profile).title),
+                            earth.then(|| sup.effective_aerodrome(profile).code()),
+                            sup.time_scale(),
+                        )
+                    },
+                );
             platform::set_title(
                 window,
-                &telemetry::title(&self.flight, viewport_mode, time_scale, &cockpit),
+                &telemetry::title(
+                    &self.flight,
+                    viewport_mode,
+                    cam_title,
+                    aero_code,
+                    time_scale,
+                    &cockpit,
+                ),
             );
         }
     }
@@ -215,10 +259,20 @@ impl FlightApp {
             Err(err) => return self.fail(event_loop, "the flight model stopped", &err),
         }
 
-        let camera = match self.flight.camera(viewport_mode) {
+        let mut camera = match self.flight.camera(viewport_mode) {
             Ok(camera) => camera,
             Err(err) => return self.fail(event_loop, "the view could not be placed", &err),
         };
+        if viewport_mode == OperatorViewportMode::SensorAperture
+            && let Some(rig) = self.cockpit_rig.as_ref()
+            && let Some(vcam) = camera_from_virtual_spec(
+                &rig.supervisor()
+                    .active_virtual_camera(self.flight.profile()),
+                &self.flight.vehicle_state(),
+            )
+        {
+            camera = vcam;
+        }
         let world = self.flight.world();
         let lighting = SceneLighting {
             sun_direction_ecef: world.sun_direction_ecef(),

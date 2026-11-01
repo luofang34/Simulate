@@ -134,7 +134,7 @@ impl Renderer {
         self.render_composite(Some((camera, lighting)), &[])
     }
 
-    /// Draws an optional 3D [`GlobeScene`] pass followed by zero-copy [`OverlayQuad`] viewports/panels.
+    /// Draws an optional 3D `GlobeScene` pass followed by zero-copy [`OverlayQuad`] viewports/panels.
     ///
     /// Passing `globe = None` skips the `GlobeScene` pass completely when a full-window `maplibre`
     /// `OTW`, `SensorAperture`, or `ChartMap` quad covers the presentation surface.

@@ -11,9 +11,10 @@ use sim_scenery::{CatalogScenery, ImageryRaster, TerrariumTile, TileId};
 use crate::{
     BeliefAvionicsConfig, BeliefAvionicsMap, CatalogTileLoader, ChartCameraSpec, ChartFrameOutcome,
     CockpitDeviceTier, SharedMapRuntime, TruthSceneConfig, TruthSceneFrame, TruthSceneMap,
-    belief_chart_style, belief_svs_relief_style, conformal_stamp_from_vehicle,
-    emit_terrain_volume_with_patch, encode_terrain_patch_aux, extract_volumetric_mesh_patch,
-    symmetric_frustum, tile_id_to_world_coords, truth_otw_style,
+    belief_chart_style, belief_chart_style_with_aerodromes, belief_svs_relief_style,
+    conformal_stamp_from_pose, conformal_stamp_from_vehicle, emit_terrain_volume_with_patch,
+    encode_terrain_patch_aux, extract_volumetric_mesh_patch, frustum_from_intrinsics,
+    symmetric_frustum, tile_id_to_world_coords, truth_otw_style, truth_otw_style_with_aerodromes,
 };
 
 fn try_host_gpu() -> Option<HostGpu> {
@@ -111,6 +112,7 @@ fn dual_world_truth_scene_renders_otw_and_sensor_zero_copy() {
             otw_stamp,
             stereo_right_stamp: None,
             sensor_stamp: Some(sen_stamp),
+            extra_camera_slots: &[],
             runway: None,
             entities: &[],
         })
@@ -127,6 +129,7 @@ fn dual_world_truth_scene_renders_otw_and_sensor_zero_copy() {
             otw_stamp,
             stereo_right_stamp: None,
             sensor_stamp: None,
+            extra_camera_slots: &[],
             runway: None,
             entities: &[],
         })
@@ -231,4 +234,117 @@ fn verify_volumetric_patch_export(belief: &BeliefAvionicsMap, tile_z0: TileId) {
         .expect("volumetric mesh patch");
     assert_eq!(mesh_patch.positions_local_m.len(), 129 * 129);
     assert_eq!(mesh_patch.indices.len(), 128 * 128 * 6);
+}
+
+#[test]
+fn multi_slot_virtual_cameras_render_osm_aerodromes_and_lazy_readback() {
+    let Some(gpu) = try_host_gpu() else {
+        return;
+    };
+    let (scenery, _, runtime) = sample_scenery_and_runtime(gpu);
+    let aerodrome_geojson = sim_scenery::OsmAerodromeDiagram::builtin_all_merged_geojson()
+        .expect("merged osm aerodromes");
+    let otw_style = truth_otw_style_with_aerodromes(0, 0, aerodrome_geojson.clone())
+        .expect("truth aerodrome style");
+    let chart_style =
+        belief_chart_style_with_aerodromes(0, 0, aerodrome_geojson).expect("chart aerodrome style");
+    assert!(chart_style.layers.len() > 8);
+
+    let mut truth = TruthSceneMap::new(
+        &runtime,
+        otw_style,
+        TruthSceneConfig {
+            otw_size: [128, 72],
+            stereo_otw: false,
+            otw_depth_readout: false,
+            sensor_size: [96, 72],
+            request_overscan: 1.1,
+        },
+    )
+    .expect("truth map");
+    assert_eq!(truth.supply_dem_synchronously(&scenery).expect("dem"), 1);
+    let tower_slot = truth
+        .register_virtual_camera(96, 72, true)
+        .expect("tower virtual camera");
+    let thresh_slot = truth
+        .register_virtual_camera(80, 60, false)
+        .expect("threshold virtual camera");
+
+    let kewr = sim_scenery::OsmAerodromeDiagram::builtin(sim_scenery::AerodromeId::NewarkKewr)
+        .expect("kewr");
+    let rwy_22l = kewr.primary_runway_end().expect("22L");
+    let (otw_stamp, tower_stamp) = sample_kewr_otw_and_tower_stamps(&kewr, rwy_22l);
+
+    truth
+        .render_frame(TruthSceneFrame {
+            timestamp: Duration::from_millis(33),
+            otw_stamp,
+            stereo_right_stamp: None,
+            sensor_stamp: None,
+            extra_camera_slots: &[(tower_slot, tower_stamp), (thresh_slot, otw_stamp)],
+            runway: Some(rwy_22l),
+            entities: &[],
+        })
+        .expect("render multi-slot");
+
+    assert!(truth.slot_color_view(tower_slot).is_some());
+    assert!(truth.slot_depth_view(tower_slot).is_some());
+    assert!(truth.slot_color_view(thresh_slot).is_some());
+    assert_eq!(truth.slot_has_readback_buffer(tower_slot), Some(false));
+    let rgba = truth
+        .read_slot_rgba(tower_slot)
+        .expect("lazy rgba readback");
+    assert_eq!(rgba.len(), 96 * 72 * 4);
+    assert_eq!(truth.slot_has_readback_buffer(tower_slot), Some(false));
+}
+
+fn sample_kewr_otw_and_tower_stamps(
+    kewr: &sim_scenery::OsmAerodromeDiagram,
+    rwy_22l: &flightbag::RunwayEndSpec,
+) -> (crate::ConformalFrameStamp, crate::ConformalFrameStamp) {
+    let c172 = sample_vehicle_at(
+        rwy_22l.threshold.latitude_deg,
+        rwy_22l.threshold.longitude_deg,
+        120.0,
+        DQuat::IDENTITY,
+    );
+    let rig_spec = sim_core::VirtualCameraSpec {
+        id: "kewr_tower",
+        title: "Newark Tower PTZ",
+        placement: sim_core::VirtualCameraPlacement::WorldAutoTrack {
+            position: kewr.tower_viewpoint,
+            lead_time_s: 0.35,
+            auto_zoom_span_m: Some(18.0),
+            min_fov_y_rad: 3.0_f64.to_radians(),
+            max_fov_y_rad: 50.0_f64.to_radians(),
+        },
+        base_intrinsics: sim_geo::SensorIntrinsics {
+            width: 96,
+            height: 72,
+            fx: 96.0,
+            fy: 96.0,
+            cx: 48.0,
+            cy: 36.0,
+        },
+        period: sim_core::CAMERA_DEFAULT_PERIOD,
+        depth_readout: true,
+    };
+    let (tower_pose, tower_intrinsics) = rig_spec
+        .pose_and_intrinsics(&c172, DVec3::ZERO)
+        .expect("tower pose");
+    let tower_frustum =
+        frustum_from_intrinsics(&tower_intrinsics, 0.5, 250_000.0).expect("tower frustum");
+    let tower_stamp = conformal_stamp_from_pose(SimInstant::START, &tower_pose, tower_frustum, 0.0)
+        .expect("tower stamp");
+    let otw_frustum = symmetric_frustum(1.0, 128, 72, 0.5, 250_000.0).expect("otw frustum");
+    let otw_stamp = conformal_stamp_from_vehicle(
+        SimInstant::START,
+        &c172,
+        &CameraMount::forward_nose(DVec3::ZERO),
+        DVec3::ZERO,
+        otw_frustum,
+        0.0,
+    )
+    .expect("otw stamp");
+    (otw_stamp, tower_stamp)
 }

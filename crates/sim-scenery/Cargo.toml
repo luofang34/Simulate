@@ -9,7 +9,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+flightbag = { workspace = true }
 sim-geo = { workspace = true }
+world-core = { workspace = true }
 glam = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }

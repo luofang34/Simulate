@@ -9,6 +9,7 @@
 //! Photogrammetry is deferred: its source is a [`Deferred`] stub that fails
 //! with a typed error.
 
+mod aerodrome;
 mod catalog;
 mod deferred;
 mod lunar;
@@ -17,6 +18,7 @@ mod noise;
 mod sources;
 mod terrarium;
 
+pub use aerodrome::{AerodromeId, AirspaceControl, OsmAerodromeDiagram};
 pub use catalog::{CatalogScenery, SyntheticCorridorSpec};
 pub use deferred::Deferred;
 pub use lunar::{

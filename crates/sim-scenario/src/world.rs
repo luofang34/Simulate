@@ -2,8 +2,8 @@ use glam::DVec3;
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use sim_render::{GlobeMesh, OrthoAtlas, OrthoFootprint, TerrainRegion, TerrainSources};
 use sim_scenery::{
-    CatalogScenery, ElevationSource, LunarTranquilityScenery, RadiometricSource, SceneryError,
-    SurfaceRadiometry, SyntheticCorridorSpec, TileId, tile_point_to_geodetic,
+    AerodromeId, CatalogScenery, ElevationSource, LunarTranquilityScenery, RadiometricSource,
+    SceneryError, SurfaceRadiometry, SyntheticCorridorSpec, TileId, tile_point_to_geodetic,
 };
 
 use crate::ScenarioError;
@@ -83,6 +83,10 @@ pub enum ScenarioWorld {
     EarthGlobe,
     /// The displaced, ortho-draped synthetic Delaware corridor on WGS84.
     DelawareCorridor,
+    /// Central Jersey Regional Airport (`47N`, uncontrolled CTAF) graded plateau on WGS84.
+    CentralJersey47N,
+    /// Newark Liberty International Airport (`KEWR`, Class B towered) graded plateau on WGS84.
+    NewarkKewr,
     /// The cratered Sea of Tranquility on the IAU Moon.
     LunarTranquility,
 }
@@ -137,11 +141,28 @@ fn footprint_corners(footprint: &OrthoFootprint) -> Result<(Geodetic, Geodetic),
 fn delaware_scene() -> Result<WorldScene, ScenarioError> {
     let spec = SyntheticCorridorSpec::delaware();
     let catalog = CatalogScenery::synthetic_corridor(&spec)?;
+    catalog_region_scene(&catalog, spec.tile_px)
+}
+
+fn aerodrome_scene(aerodrome: AerodromeId) -> Result<WorldScene, ScenarioError> {
+    let catalog = CatalogScenery::synthetic_aerodrome(aerodrome)?;
+    let tile_px = match aerodrome {
+        AerodromeId::DoverKdov => SyntheticCorridorSpec::dover_kdov().tile_px,
+        AerodromeId::CentralJersey47N => SyntheticCorridorSpec::central_jersey_47n().tile_px,
+        AerodromeId::NewarkKewr => SyntheticCorridorSpec::newark_kewr().tile_px,
+    };
+    catalog_region_scene(&catalog, tile_px)
+}
+
+fn catalog_region_scene(
+    catalog: &CatalogScenery,
+    tile_px: u32,
+) -> Result<WorldScene, ScenarioError> {
     let footprint =
         OrthoFootprint::covering(catalog.imagery_tiles()).ok_or(SceneryError::InvalidCatalog {
             detail: "the corridor has no imagery".to_owned(),
         })?;
-    let atlas = OrthoAtlas::from_source(&catalog, footprint, spec.tile_px)?;
+    let atlas = OrthoAtlas::from_source(catalog, footprint, tile_px)?;
     let (north_west, south_east) = footprint_corners(&footprint)?;
     let region = TerrainRegion {
         body: BodyEllipsoid::WGS84,
@@ -156,7 +177,7 @@ fn delaware_scene() -> Result<WorldScene, ScenarioError> {
     let terrain = GlobeMesh::build_region(
         &region,
         TerrainSources {
-            elevation: Some(&catalog),
+            elevation: Some(catalog),
             ortho: Some(&footprint),
             ..TerrainSources::default()
         },
@@ -212,7 +233,10 @@ impl ScenarioWorld {
     /// The body the world is on.
     pub const fn body(self) -> BodyEllipsoid {
         match self {
-            Self::EarthGlobe | Self::DelawareCorridor => BodyEllipsoid::WGS84,
+            Self::EarthGlobe
+            | Self::DelawareCorridor
+            | Self::CentralJersey47N
+            | Self::NewarkKewr => BodyEllipsoid::WGS84,
             Self::LunarTranquility => BodyEllipsoid::MOON_IAU,
         }
     }
@@ -223,6 +247,16 @@ impl ScenarioWorld {
             Self::EarthGlobe => EARTH_SUN_DIRECTION_ECEF,
             Self::DelawareCorridor => sun_above(
                 &SyntheticCorridorSpec::delaware().south_west,
+                DELAWARE_SUN_AZIMUTH_DEG,
+                DELAWARE_SUN_ELEVATION_DEG,
+            ),
+            Self::CentralJersey47N => sun_above(
+                &SyntheticCorridorSpec::central_jersey_47n().south_west,
+                DELAWARE_SUN_AZIMUTH_DEG,
+                DELAWARE_SUN_ELEVATION_DEG,
+            ),
+            Self::NewarkKewr => sun_above(
+                &SyntheticCorridorSpec::newark_kewr().south_west,
                 DELAWARE_SUN_AZIMUTH_DEG,
                 DELAWARE_SUN_ELEVATION_DEG,
             ),
@@ -244,6 +278,8 @@ impl ScenarioWorld {
                 atlas: None,
             }),
             Self::DelawareCorridor => delaware_scene(),
+            Self::CentralJersey47N => aerodrome_scene(AerodromeId::CentralJersey47N),
+            Self::NewarkKewr => aerodrome_scene(AerodromeId::NewarkKewr),
             Self::LunarTranquility => lunar_scene(),
         }
     }

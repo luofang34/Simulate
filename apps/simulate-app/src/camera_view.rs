@@ -1,5 +1,5 @@
 use glam::{DMat3, DQuat, DVec3};
-use sim_core::{CameraMount, CameraPoseEcef, VehicleState};
+use sim_core::{CameraMount, CameraPoseEcef, VehicleState, VirtualCameraSpec};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_render::{Camera, CameraPose};
 use sim_scenario::OperatorViewportMode;
@@ -51,6 +51,19 @@ pub fn scenario_camera(pose: CameraPoseEcef) -> Camera {
         fov_y_rad: COCKPIT_FOV_Y_DEG.to_radians(),
         near_m: COCKPIT_NEAR_M,
     }
+}
+
+/// Converts a [`VirtualCameraSpec`] evaluated against `state` into a `sim_render` [`Camera`].
+pub fn camera_from_virtual_spec(spec: &VirtualCameraSpec, state: &VehicleState) -> Option<Camera> {
+    let (pose, intrinsics) = spec.pose_and_intrinsics(state, DVec3::ZERO).ok()?;
+    Some(Camera {
+        pose: CameraPose {
+            position_ecef: pose.position_ecef,
+            orientation: pose.orientation,
+        },
+        fov_y_rad: VirtualCameraSpec::vertical_fov_rad(&intrinsics),
+        near_m: COCKPIT_NEAR_M,
+    })
 }
 
 /// Camera placed according to `mode` around `state` (with `aboard` used for `Cockpit`).

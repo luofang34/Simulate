@@ -117,29 +117,43 @@ pub struct AviateFixedWingRig {
 impl FreeFlightPlant {
     /// Instantiates `vehicle` over the Delaware corridor runway alignment.
     pub fn new(vehicle: FreeFlightVehicle) -> Result<Self, AppSimError> {
-        let spawn = default_delaware_spawn();
+        Self::new_at(
+            vehicle,
+            default_delaware_spawn(),
+            DELAWARE_RUNWAY_BEARING_RAD,
+            8.5,
+        )
+    }
+
+    /// Instantiates `vehicle` at `spawn` (`heading_rad`, `field_elev_m`).
+    pub fn new_at(
+        vehicle: FreeFlightVehicle,
+        spawn: Geodetic,
+        heading_rad: f64,
+        field_elev_m: f64,
+    ) -> Result<Self, AppSimError> {
         match vehicle {
             FreeFlightVehicle::JsbsimC172 => {
                 let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, DELAWARE_RUNWAY_BEARING_RAD, 52.0)
+                build_jsbsim_plant(&pkg, spawn, heading_rad, 52.0, field_elev_m)
             }
             FreeFlightVehicle::JsbsimLightTrainer => {
                 let pkg =
                     builtin_light_trainer_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, DELAWARE_RUNWAY_BEARING_RAD, 48.0)
+                build_jsbsim_plant(&pkg, spawn, heading_rad, 48.0, field_elev_m)
             }
             FreeFlightVehicle::AviateX500Direct => {
                 let hover_spawn = Geodetic {
-                    height_m: 120.0,
+                    height_m: field_elev_m + 110.0,
                     ..spawn
                 };
                 Ok(Self::AviateX500(Box::new(build_aviate_x500(hover_spawn)?)))
             }
             FreeFlightVehicle::AviateFixedWingDirect => Ok(Self::AviateFixedWing(Box::new(
-                build_aviate_fixed_wing(spawn)?,
+                build_aviate_fixed_wing(spawn, heading_rad, field_elev_m)?,
             ))),
             FreeFlightVehicle::Kinematic => Ok(Self::Kinematic(KinematicModel::new(
-                VehicleState::level_flight(&spawn, DELAWARE_RUNWAY_BEARING_RAD, 55.0),
+                VehicleState::level_flight(&spawn, heading_rad, 55.0),
             ))),
         }
     }
@@ -243,6 +257,7 @@ fn build_jsbsim_fdm(
     initial: Geodetic,
     heading_rad: f64,
     speed_m_s: f64,
+    field_elev_m: f64,
 ) -> Result<(JsbsimFdmBlock, DVec3), AppSimError> {
     let resolver = pkg
         .build_jsbsim_resolver()
@@ -262,6 +277,8 @@ fn build_jsbsim_fdm(
         engine_start: EngineStartMode::Running,
     })
     .map_err(sim_scenario::ScenarioError::from)?;
+    fdm.set_terrain_elevation_m(field_elev_m)
+        .map_err(sim_scenario::ScenarioError::from)?;
     drop(fdm.trim_level_flight());
     let state = fdm.output();
     let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(state.position_ecef);
@@ -274,8 +291,10 @@ fn build_jsbsim_plant(
     initial: Geodetic,
     heading_rad: f64,
     speed_m_s: f64,
+    field_elev_m: f64,
 ) -> Result<FreeFlightPlant, AppSimError> {
-    let (fdm, specific_force_frd_m_s2) = build_jsbsim_fdm(pkg, initial, heading_rad, speed_m_s)?;
+    let (fdm, specific_force_frd_m_s2) =
+        build_jsbsim_fdm(pkg, initial, heading_rad, speed_m_s, field_elev_m)?;
     Ok(FreeFlightPlant::Jsbsim {
         fdm: Box::new(fdm),
         specific_force_frd_m_s2,
@@ -396,10 +415,14 @@ fn step_aviate_x500(rig: &mut AviateX500Rig, controls: ControlInputs) -> Result<
     Ok(())
 }
 
-fn build_aviate_fixed_wing(origin: Geodetic) -> Result<AviateFixedWingRig, AppSimError> {
+fn build_aviate_fixed_wing(
+    origin: Geodetic,
+    heading_rad: f64,
+    field_elev_m: f64,
+) -> Result<AviateFixedWingRig, AppSimError> {
     let pkg = builtin_light_trainer_package().map_err(sim_scenario::ScenarioError::from)?;
     let (fdm, specific_force_frd_m_s2) =
-        build_jsbsim_fdm(&pkg, origin, DELAWARE_RUNWAY_BEARING_RAD, 48.0)?;
+        build_jsbsim_fdm(&pkg, origin, heading_rad, 48.0, field_elev_m)?;
     let kernel: DirectFixedWingKernel =
         build_direct_fixed_wing_kernel().ok_or(AppSimError::AviateKernel {
             detail: "fixed_wing",
@@ -422,7 +445,7 @@ fn build_aviate_fixed_wing(origin: Geodetic) -> Result<AviateFixedWingRig, AppSi
         specific_force_frd_m_s2,
         runner,
         sim_clock_offset: at,
-        heading_rad: DELAWARE_RUNWAY_BEARING_RAD as f32,
+        heading_rad: heading_rad as f32,
         seq: 1,
     })
 }

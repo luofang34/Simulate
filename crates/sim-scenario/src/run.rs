@@ -1,9 +1,10 @@
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{CameraPoseEcef, SimInstant, TickSpan, VehicleState};
+use sim_scenery::AerodromeId;
 
 use crate::{
-    CapsuleReentryRun, CorridorRun, FlightDynamics, LunarLandingConfig, LunarLandingRun,
-    ScenarioError, ScenarioProfile,
+    AirportPatternRun, CapsuleReentryRun, CorridorRun, FlightDynamics, LunarLandingConfig,
+    LunarLandingRun, ScenarioError, ScenarioProfile,
 };
 
 #[cfg(test)]
@@ -14,6 +15,7 @@ enum Flight {
     Corridor(Box<CorridorRun>),
     Lunar(Box<LunarLandingRun>),
     Reentry(Box<CapsuleReentryRun>),
+    Pattern(Box<AirportPatternRun>),
 }
 
 /// Any scenario in flight, stepped the same way whether a test or a window is
@@ -25,14 +27,13 @@ pub struct ScenarioRun {
 }
 
 impl ScenarioRun {
-    /// `profile` at its first instant, on the JSBSim trainer for a corridor
-    /// profile.
+    /// `profile` at its first instant, on JSBSim for fixed-wing profiles.
     pub fn new(profile: ScenarioProfile) -> Result<Self, ScenarioError> {
         Self::with_dynamics(profile, FlightDynamics::Jsbsim)
     }
 
-    /// `profile` at its first instant, with corridor profiles on `dynamics`.
-    /// The Apollo profiles fly their own rigid-body vehicles either way.
+    /// `profile` at its first instant, with corridor and airport-pattern profiles
+    /// on `dynamics`. The Apollo profiles fly their own rigid-body vehicles either way.
     pub fn with_dynamics(
         profile: ScenarioProfile,
         dynamics: FlightDynamics,
@@ -44,9 +45,43 @@ impl ScenarioRun {
             ScenarioProfile::Apollo11CapsuleReentry => {
                 Flight::Reentry(Box::new(CapsuleReentryRun::new()?))
             }
+            ScenarioProfile::Airport47NUncontrolledPattern => Flight::Pattern(Box::new(
+                AirportPatternRun::new(AerodromeId::CentralJersey47N, dynamics)?,
+            )),
+            ScenarioProfile::AirportKewrToweredPattern => Flight::Pattern(Box::new(
+                AirportPatternRun::new(AerodromeId::NewarkKewr, dynamics)?,
+            )),
             corridor => Flight::Corridor(Box::new(CorridorRun::new(corridor, dynamics)?)),
         };
         Ok(Self { profile, flight })
+    }
+
+    /// Starts a continuous multi-circuit airport traffic pattern (`max_circuits = None`),
+    /// ideal for interactive window sessions.
+    pub fn continuous_pattern(
+        profile: ScenarioProfile,
+        dynamics: FlightDynamics,
+    ) -> Result<Self, ScenarioError> {
+        let aerodrome = match profile {
+            ScenarioProfile::Airport47NUncontrolledPattern => AerodromeId::CentralJersey47N,
+            ScenarioProfile::AirportKewrToweredPattern => AerodromeId::NewarkKewr,
+            other => return Self::with_dynamics(other, dynamics),
+        };
+        Ok(Self {
+            profile,
+            flight: Flight::Pattern(Box::new(AirportPatternRun::with_max_circuits(
+                aerodrome, dynamics, None,
+            )?)),
+        })
+    }
+
+    /// Borrows the underlying [`AirportPatternRun`] when running an airport pattern profile.
+    #[must_use]
+    pub fn pattern_run(&self) -> Option<&AirportPatternRun> {
+        match &self.flight {
+            Flight::Pattern(run) => Some(run),
+            _ => None,
+        }
     }
 
     /// The profile being flown.
@@ -60,6 +95,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.period(),
             Flight::Lunar(run) => run.period(),
             Flight::Reentry(run) => run.period(),
+            Flight::Pattern(run) => run.period(),
         }
     }
 
@@ -69,6 +105,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.now(),
             Flight::Lunar(run) => run.now(),
             Flight::Reentry(run) => run.now(),
+            Flight::Pattern(run) => run.now(),
         }
     }
 
@@ -78,6 +115,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.vehicle(),
             Flight::Lunar(run) => run.vehicle(),
             Flight::Reentry(run) => run.vehicle(),
+            Flight::Pattern(run) => run.vehicle(),
         }
     }
 
@@ -87,6 +125,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.cockpit(),
             Flight::Lunar(run) => run.cockpit(),
             Flight::Reentry(run) => run.cockpit(),
+            Flight::Pattern(run) => run.cockpit(),
         }
     }
 
@@ -96,6 +135,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => Ok(run.eye_pose()),
             Flight::Lunar(run) => run.eye_pose(),
             Flight::Reentry(run) => Ok(run.eye_pose()),
+            Flight::Pattern(run) => Ok(run.eye_pose()),
         }
     }
 
@@ -105,6 +145,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.finished(),
             Flight::Lunar(run) => run.finished(),
             Flight::Reentry(run) => run.finished(),
+            Flight::Pattern(run) => run.finished(),
         }
     }
 
@@ -114,6 +155,7 @@ impl ScenarioRun {
             Flight::Corridor(run) => run.step(),
             Flight::Lunar(run) => run.step(),
             Flight::Reentry(run) => run.step(),
+            Flight::Pattern(run) => run.step(),
         }
     }
 }

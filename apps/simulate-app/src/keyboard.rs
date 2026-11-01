@@ -16,6 +16,10 @@ const MIXTURE_STEP: f64 = 0.10;
 pub enum CockpitAction {
     /// `Tab`: cycle `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, `VolumetricScene`).
     CycleViewport,
+    /// `C`: cycle virtual camera (`Nose Nav`, `Belly Nadir`, `Pattern Window`, `Tower PTZ`, `Threshold Final`).
+    CycleVirtualCamera,
+    /// `K`: cycle home airport (`KDOV` Dover, `47N` Central Jersey, `KEWR` Newark Liberty) in free flight.
+    CycleAirport,
     /// `V`: cycle free-flight vehicle (`C172`, `LightTrainer`, `Aviate X500`, `Aviate Fixed-Wing`, `Kinematic`).
     CycleVehicle,
     /// `H`: toggle glass-cockpit PFD/MFD/HSI dock visibility.
@@ -38,7 +42,7 @@ pub enum CockpitAction {
     MixtureLean,
 }
 
-/// What a number key picks: a scripted scenario (`1`–`6`), or `None` (`0`) for free flight.
+/// What a number key picks: a scripted scenario (`1`–`8`), or `None` (`0`) for free flight.
 pub fn scenario_key(event: &KeyEvent) -> Option<Option<ScenarioProfile>> {
     if event.state != ElementState::Pressed || event.repeat {
         return None;
@@ -54,6 +58,8 @@ pub fn scenario_key(event: &KeyEvent) -> Option<Option<ScenarioProfile>> {
         KeyCode::Digit4 => 4,
         KeyCode::Digit5 => 5,
         KeyCode::Digit6 => 6,
+        KeyCode::Digit7 => 7,
+        KeyCode::Digit8 => 8,
         _ => return None,
     };
     ScenarioProfile::from_digit(digit).map(Some)
@@ -69,6 +75,8 @@ pub fn cockpit_action(event: &KeyEvent) -> Option<CockpitAction> {
     };
     match code {
         KeyCode::Tab => Some(CockpitAction::CycleViewport),
+        KeyCode::KeyC => Some(CockpitAction::CycleVirtualCamera),
+        KeyCode::KeyK => Some(CockpitAction::CycleAirport),
         KeyCode::KeyV => Some(CockpitAction::CycleVehicle),
         KeyCode::KeyH => Some(CockpitAction::ToggleInstruments),
         KeyCode::KeyU => Some(CockpitAction::ToggleHud),
@@ -118,6 +126,8 @@ pub fn apply_aircraft_system_action(action: CockpitAction, flight: &mut Flight) 
             });
         }
         CockpitAction::CycleViewport
+        | CockpitAction::CycleVirtualCamera
+        | CockpitAction::CycleAirport
         | CockpitAction::CycleVehicle
         | CockpitAction::ToggleInstruments
         | CockpitAction::ToggleHud

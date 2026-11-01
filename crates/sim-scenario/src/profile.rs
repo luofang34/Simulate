@@ -19,20 +19,28 @@ pub enum ScenarioProfile {
     Apollo11LunarLanding,
     /// Columbia's Command Module from entry interface to subsonic speed.
     Apollo11CapsuleReentry,
+    /// C172 flying a closed-loop left-hand traffic pattern at `47N` (Central Jersey
+    /// Regional, uncontrolled CTAF `122.700 MHz`, Runway `07`).
+    Airport47NUncontrolledPattern,
+    /// C172 flying a closed-loop left-hand traffic pattern at `KEWR` (Newark Liberty
+    /// Class B towered `118.300 MHz`, Runway `22L`).
+    AirportKewrToweredPattern,
 }
 
 impl ScenarioProfile {
     /// Every profile, in key order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::CorridorNominalCruise,
         Self::CorridorOffSeedAcquisition,
         Self::CorridorAggressiveBank,
         Self::CorridorSameCellLoiter,
         Self::Apollo11LunarLanding,
         Self::Apollo11CapsuleReentry,
+        Self::Airport47NUncontrolledPattern,
+        Self::AirportKewrToweredPattern,
     ];
 
-    /// The profile on number key `digit`, `1` to `6`.
+    /// The profile on number key `digit`, `1` to `8`.
     pub const fn from_digit(digit: u8) -> Option<Self> {
         match digit {
             1 => Some(Self::CorridorNominalCruise),
@@ -41,6 +49,8 @@ impl ScenarioProfile {
             4 => Some(Self::CorridorSameCellLoiter),
             5 => Some(Self::Apollo11LunarLanding),
             6 => Some(Self::Apollo11CapsuleReentry),
+            7 => Some(Self::Airport47NUncontrolledPattern),
+            8 => Some(Self::AirportKewrToweredPattern),
             _ => None,
         }
     }
@@ -54,6 +64,8 @@ impl ScenarioProfile {
             Self::CorridorSameCellLoiter => "Same-Cell Loiter",
             Self::Apollo11LunarLanding => "Apollo 11 Lunar Landing",
             Self::Apollo11CapsuleReentry => "Apollo 11 CM Reentry",
+            Self::Airport47NUncontrolledPattern => "47N C172 Pattern (CTAF)",
+            Self::AirportKewrToweredPattern => "KEWR C172 Pattern (Tower)",
         }
     }
 
@@ -66,6 +78,8 @@ impl ScenarioProfile {
             | Self::CorridorSameCellLoiter => ScenarioWorld::DelawareCorridor,
             Self::Apollo11LunarLanding => ScenarioWorld::LunarTranquility,
             Self::Apollo11CapsuleReentry => ScenarioWorld::EarthGlobe,
+            Self::Airport47NUncontrolledPattern => ScenarioWorld::CentralJersey47N,
+            Self::AirportKewrToweredPattern => ScenarioWorld::NewarkKewr,
         }
     }
 }

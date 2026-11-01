@@ -211,6 +211,25 @@ impl JsbsimFdmBlock {
         self.latest.system = controls.clamped();
     }
 
+    /// Updates the uniform WGS84 ground elevation (`m` MSL) used by JSBSim's
+    /// default gear-contact callback (`position/terrain-elevation-asl-ft`).
+    pub fn set_terrain_elevation_m(&mut self, height_m: f64) -> Result<(), BlockError> {
+        if !height_m.is_finite() {
+            return Err(BlockError::InputOutOfRange {
+                block: BLOCK,
+                input: "terrain_elevation_m",
+                detail: format!("{height_m} is not finite"),
+            });
+        }
+        self.fdm
+            .set_property(
+                "position/terrain-elevation-asl-ft",
+                height_m / METRES_PER_FOOT,
+            )
+            .map_err(fdm_error)?;
+        self.capture()
+    }
+
     /// The engine as of the latest step.
     pub fn engine_status(&self) -> EngineStatus {
         self.latest.engine
@@ -223,7 +242,7 @@ impl JsbsimFdmBlock {
     /// its initial conditions.
     pub fn trim_level_flight(&mut self) -> Result<ControlInputs, BlockError> {
         self.nodes.system.write(&mut self.fdm, self.latest.system)?;
-        let trimmed = self.fdm.do_trim(TrimMode::Full);
+        let trimmed = self.fdm.do_trim(TrimMode::Full).map(|_| ());
         self.capture()?;
         trimmed.map_err(fdm_error)?;
         Ok(ControlInputs {

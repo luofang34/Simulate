@@ -16,14 +16,14 @@ The workspace has four top-level directories:
 |---|---|---|
 | `sim-geo` | `crates/` | WGS84 and lunar geodesy, J2000 frame and Apollo stars, local frames, floating origin, pinhole intrinsics, UTC |
 | `sim-atmosphere` | `crates/` | Atmosphere and cloud fields (ICAO, `world-atmosphere` / `world-airmass` bridges, and vacuum) |
-| `sim-core` | `crates/` | Integer master clock, the `Block` contract, multi-rate scheduling, vehicle state, 6-DoF rigid-body and JSBSim flight dynamics, crew and hardware-in-the-loop bridges, source-stamped instrument readings, mounted camera and visual-navigation harness |
+| `sim-core` | `crates/` | Integer master clock, the `Block` contract, multi-rate scheduling, vehicle state, 6-DoF rigid-body and JSBSim `0.2.0` flight dynamics, crew and hardware-in-the-loop bridges, source-stamped instrument readings, mounted/virtual camera rig (`VirtualCameraRigBlock`), and visual-navigation harness |
 | `sim-devices` | `crates/` | Shared sensors and buses: ICM-42688 IMU, BMP390 barometer, ARINC 429 channel |
 | `sim-xil` | `crates/` | FC-blind external SITL/HITL wire endpoints: MAVLink v2 (`HIL_SENSOR`/`HIL_GPS`/`HIL_ACTUATOR_CONTROLS`) and Betaflight (`144` B FDM/servo UDP + MSP v1/v2) |
 | `sim-pack` | `crates/` | Binds verified system packages to the simulator: device blocks, camera mounts, JSBSim resolvers, and the built-in vehicles |
 | `sim-input` | `crates/` | Gamepad, joystick, and yoke mapping to pilot controls |
-| `sim-scenery` | `crates/` | Elevation, imagery, radiometry, and photogrammetry sources: Web Mercator Terrarium and orthoimagery catalogs, a synthetic corridor, the procedural Apollo 11 site (photogrammetry is a deferred stub) |
+| `sim-scenery` | `crates/` | Elevation, imagery, radiometry, photogrammetry, and OpenStreetMap (`aeroway=*`) airport surface diagrams (`47N`, `KEWR`, `KDOV`): Web Mercator Terrarium and orthoimagery catalogs, flat-graded airport plateaus, and the procedural Apollo 11 site |
 | `sim-render` | `crates/` | wgpu renderer: camera-relative terrain on any body, ortho draping, offscreen visible, starfield, and thermal sensor apertures, zero-copy viewport textures, reversed-Z depth |
-| `sim-scenario` | `crates/` | The six deterministic scenarios, their terrain, `SimSupervisor` truth-to-belief radio projection, NOTAM-gated `Flightbag` spawn, and the bridge from camera captures to rendered frames |
+| `sim-scenario` | `crates/` | Deterministic scenarios (Delaware corridor, C172 airport traffic patterns at `47N` and `KEWR`, and Apollo 11), `SimSupervisor` truth-to-belief radio projection, NOTAM-gated `Flightbag` spawn, and 5-channel `30 Hz` virtual camera rigs |
 | `light-trainer` | `vehicles/` | Data-only vehicle package: a JSBSim light trainer with no Rust code of its own |
 | `c172` | `vehicles/` | Data-only vehicle package: a piston C172-class aeroplane, exported from its `ace-rs` design |
 | `sim-apollo` | `vehicles/apollo-11/` | Apollo 11: the Eagle and Columbia packages under `packages/`, gimballed IMU with gimbal lock, abort sensors, radars, optics, entry monitor, source-monitored cockpit panel |
@@ -74,7 +74,7 @@ trunk serve --release
 ```
 
 Controls: arrow keys fly (Down is stick back), `A`/`D` rudder, `W`/`S` throttle.
-`V` cycles free-flight vehicles (`C172 Skyhawk`, `Light Trainer`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `U` toggles the conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
+`V` cycles free-flight vehicles (`C172 Skyhawk`, `Light Trainer`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `K` cycles the active home airport (`KDOV`, `47N`, `KEWR`); `C` cycles virtual cameras (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`, `Tower PTZ Auto-Track`, and `Threshold Final Cam`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `U` toggles the conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
 A standard-layout gamepad flies with the left stick, rudder on the right stick,
 and throttle on the right trigger. Other joysticks and yokes bind axis 0 to
 roll, axis 1 to pitch, and axis 2 to the throttle lever.
@@ -91,6 +91,8 @@ instruments.
 | `4` | Same-cell loiter |
 | `5` | Apollo 11 lunar landing at the Sea of Tranquility |
 | `6` | Apollo 11 Command Module reentry |
+| `7` | `47N` C172 traffic pattern (Central Jersey Regional, uncontrolled CTAF `122.700 MHz`, Rwy `07`) |
+| `8` | `KEWR` C172 traffic pattern (Newark Liberty Class B towered `118.300 MHz`, Rwy `22L`) |
 | `0` | Free flight |
 
 ## Checks

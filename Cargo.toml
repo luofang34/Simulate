@@ -27,7 +27,7 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
-jsbsim = { path = "../jsbsim-rs/crates/jsbsim", default-features = false }
+jsbsim = { version = "0.2.0", path = "../jsbsim-rs/crates/jsbsim", default-features = false }
 ironbird = { path = "apps/ironbird" }
 sim-apollo = { path = "vehicles/apollo-11" }
 sim-atmosphere = { path = "crates/sim-atmosphere" }

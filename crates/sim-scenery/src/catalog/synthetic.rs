@@ -56,6 +56,51 @@ impl SyntheticCorridorSpec {
             seed: 0xDE1A_3A4E,
         }
     }
+
+    /// Eastward extension of the Delaware corridor covering Dover AFB (`KDOV`).
+    pub fn dover_kdov() -> Self {
+        Self {
+            south_west: Geodetic::from_degrees(39.05, -75.49, 0.0),
+            zoom: 12,
+            tiles_east: 2,
+            tiles_north: 2,
+            tile_px: 256,
+            seed: 0xDE1A_3A4E,
+        }
+    }
+
+    /// Central Jersey Regional Airport (`47N`, Manville, NJ — uncontrolled CTAF) and pattern airspace.
+    pub fn central_jersey_47n() -> Self {
+        Self {
+            south_west: Geodetic::from_degrees(40.48, -74.68, 0.0),
+            zoom: 12,
+            tiles_east: 3,
+            tiles_north: 2,
+            tile_px: 256,
+            seed: 0x0047_4E4A,
+        }
+    }
+
+    /// Newark Liberty International Airport (`KEWR` — Class B towered) and Newark Bay pattern airspace.
+    pub fn newark_kewr() -> Self {
+        Self {
+            south_west: Geodetic::from_degrees(40.62, -74.24, 0.0),
+            zoom: 12,
+            tiles_east: 3,
+            tiles_north: 3,
+            tile_px: 256,
+            seed: 0x4B45_5752,
+        }
+    }
+}
+
+/// Graded flat aerodrome plateau blended smoothly into surrounding synthetic relief.
+#[derive(Debug, Clone, Copy)]
+struct AerodromePlateau {
+    centre: Geodetic,
+    elevation_m: f64,
+    flat_radius_m: f64,
+    blend_collar_m: f64,
 }
 
 impl CatalogScenery {
@@ -84,18 +129,121 @@ impl CatalogScenery {
                     x: origin.x + east,
                     y,
                 };
-                let (elevation, imagery) = synthetic_tile(tile, spec)?;
+                let (elevation, imagery) = synthetic_tile(tile, spec, &[])?;
                 catalog.insert_elevation(tile, elevation)?;
                 catalog.insert_imagery(tile, imagery)?;
             }
         }
         Ok(catalog)
     }
+
+    /// Builds a multi-airport regional catalog covering the Delaware corridor, Dover (`KDOV`),
+    /// Central Jersey Regional (`47N` uncontrolled), and Newark Liberty (`KEWR` towered),
+    /// with flat-graded airport plateaus so runways and taxiways drape cleanly.
+    pub fn synthetic_regional_network() -> Result<Self, SceneryError> {
+        let plateaus = [
+            AerodromePlateau {
+                centre: Geodetic::from_degrees(39.129_5, -75.466_0, 0.0),
+                elevation_m: 8.5,
+                flat_radius_m: 2_600.0,
+                blend_collar_m: 1_800.0,
+            },
+            AerodromePlateau {
+                centre: Geodetic::from_degrees(40.524_5, -74.598_4, 0.0),
+                elevation_m: 26.0,
+                flat_radius_m: 1_500.0,
+                blend_collar_m: 1_500.0,
+            },
+            AerodromePlateau {
+                centre: Geodetic::from_degrees(40.692_5, -74.168_7, 0.0),
+                elevation_m: 4.5,
+                flat_radius_m: 3_400.0,
+                blend_collar_m: 2_000.0,
+            },
+        ];
+        let mut catalog = Self::new();
+        for spec in [
+            SyntheticCorridorSpec::delaware(),
+            SyntheticCorridorSpec::dover_kdov(),
+            SyntheticCorridorSpec::central_jersey_47n(),
+            SyntheticCorridorSpec::newark_kewr(),
+        ] {
+            append_corridor_into(&mut catalog, &spec, &plateaus)?;
+        }
+        Ok(catalog)
+    }
+
+    /// Builds a single flat-graded airport tile block for `aerodrome`.
+    pub fn synthetic_aerodrome(aerodrome: crate::AerodromeId) -> Result<Self, SceneryError> {
+        let (spec, plateau) = match aerodrome {
+            crate::AerodromeId::DoverKdov => (
+                SyntheticCorridorSpec::dover_kdov(),
+                AerodromePlateau {
+                    centre: Geodetic::from_degrees(39.129_5, -75.466_0, 0.0),
+                    elevation_m: 8.5,
+                    flat_radius_m: 2_600.0,
+                    blend_collar_m: 1_800.0,
+                },
+            ),
+            crate::AerodromeId::CentralJersey47N => (
+                SyntheticCorridorSpec::central_jersey_47n(),
+                AerodromePlateau {
+                    centre: Geodetic::from_degrees(40.524_5, -74.598_4, 0.0),
+                    elevation_m: 26.0,
+                    flat_radius_m: 1_500.0,
+                    blend_collar_m: 1_500.0,
+                },
+            ),
+            crate::AerodromeId::NewarkKewr => (
+                SyntheticCorridorSpec::newark_kewr(),
+                AerodromePlateau {
+                    centre: Geodetic::from_degrees(40.692_5, -74.168_7, 0.0),
+                    elevation_m: 4.5,
+                    flat_radius_m: 3_400.0,
+                    blend_collar_m: 2_000.0,
+                },
+            ),
+        };
+        let mut catalog = Self::new();
+        append_corridor_into(&mut catalog, &spec, &[plateau])?;
+        Ok(catalog)
+    }
+}
+
+fn append_corridor_into(
+    catalog: &mut CatalogScenery,
+    spec: &SyntheticCorridorSpec,
+    plateaus: &[AerodromePlateau],
+) -> Result<(), SceneryError> {
+    let invalid = |detail: &str| SceneryError::InvalidCatalog {
+        detail: detail.to_owned(),
+    };
+    let origin = project_to_tile(&spec.south_west, spec.zoom)
+        .ok_or_else(|| invalid("corridor origin has no tile"))?
+        .tile;
+    for north in 0..spec.tiles_north {
+        let y = origin
+            .y
+            .checked_sub(north)
+            .ok_or_else(|| invalid("corridor runs off the top of the map"))?;
+        for east in 0..spec.tiles_east {
+            let tile = TileId {
+                zoom: spec.zoom,
+                x: origin.x + east,
+                y,
+            };
+            let (elevation, imagery) = synthetic_tile(tile, spec, plateaus)?;
+            catalog.insert_elevation(tile, elevation)?;
+            catalog.insert_imagery(tile, imagery)?;
+        }
+    }
+    Ok(())
 }
 
 fn synthetic_tile(
     tile: TileId,
     spec: &SyntheticCorridorSpec,
+    plateaus: &[AerodromePlateau],
 ) -> Result<(TerrariumTile, ImageryRaster), SceneryError> {
     let size = spec.tile_px;
     let pixels = size as usize * size as usize;
@@ -107,7 +255,9 @@ fn synthetic_tile(
             let v = (f64::from(y) + 0.5) / f64::from(size);
             let position =
                 tile_point_to_geodetic(tile, u, v).ok_or(SceneryError::TileOutOfRange { tile })?;
-            terrarium.extend_from_slice(&encode_terrarium(ridge_height_m(&position, spec.seed)));
+            let raw_h = ridge_height_m(&position, spec.seed);
+            let graded_h = apply_plateaus(&position, raw_h, plateaus);
+            terrarium.extend_from_slice(&encode_terrarium(graded_h));
             let global_x = i64::from(tile.x) * i64::from(size) + i64::from(x);
             let global_y = i64::from(tile.y) * i64::from(size) + i64::from(y);
             rgba8.extend_from_slice(&ground_colour(global_x, global_y, spec.seed));
@@ -117,6 +267,25 @@ fn synthetic_tile(
         TerrariumTile::from_rgb(size, size, &terrarium)?,
         ImageryRaster::new(size, size, rgba8)?,
     ))
+}
+
+fn apply_plateaus(position: &Geodetic, raw_height_m: f64, plateaus: &[AerodromePlateau]) -> f64 {
+    let mut h = raw_height_m;
+    for p in plateaus {
+        let d_north_m = (position.lat_rad - p.centre.lat_rad) * 6_378_137.0;
+        let d_east_m = (position.lon_rad - p.centre.lon_rad) * 6_378_137.0 * p.centre.lat_rad.cos();
+        let dist_m = d_north_m.hypot(d_east_m);
+        if dist_m <= p.flat_radius_m {
+            return p.elevation_m;
+        }
+        let outer_m = p.flat_radius_m + p.blend_collar_m;
+        if dist_m < outer_m {
+            let frac = (dist_m - p.flat_radius_m) / p.blend_collar_m.max(1.0);
+            let smooth = 0.5 - 0.5 * (std::f64::consts::PI * frac).cos();
+            h = p.elevation_m * (1.0 - smooth) + h * smooth;
+        }
+    }
+    h
 }
 
 /// Rolling ridges running roughly north-east, tens of metres high, over
