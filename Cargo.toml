@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "adapters/sim-aviate",
     "adapters/sim-indicate",
+    "adapters/sim-maplibre",
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
     "apps/ironbird",
@@ -35,6 +36,7 @@ sim-devices = { path = "crates/sim-devices" }
 sim-geo = { path = "crates/sim-geo" }
 sim-indicate = { path = "adapters/sim-indicate" }
 sim-input = { path = "crates/sim-input" }
+sim-maplibre = { path = "adapters/sim-maplibre" }
 sim-navigate = { path = "adapters/sim-navigate" }
 sim-pack = { path = "crates/sim-pack" }
 sim-pilotage = { path = "adapters/sim-pilotage" }
@@ -85,8 +87,11 @@ pilotage-geo = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a
 pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 syspack = { path = "../mbd/crates/syspack" }
+maplibre = { path = "../maplibre-rs-experimental/maplibre", default-features = false, features = ["headless", "raster", "geojson", "experimental"] }
 
+async-trait = "0.1"
 bytemuck = "1.25"
+cgmath = "0.18"
 console_error_panic_hook = "0.1.7"
 gilrs = "0.11.2"
 glam = "0.33"
@@ -98,6 +103,7 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.11"
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-wasm = "0.2.1"

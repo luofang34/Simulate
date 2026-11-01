@@ -8,7 +8,7 @@ gate() {
     "$@"
 }
 
-gate cargo fmt --all --check
+gate cargo fmt --check
 gate cargo clippy --workspace --all-targets -- -D warnings
 gate cargo clippy --workspace --target wasm32-unknown-unknown -- -D warnings
 gate cargo test --workspace --all-targets

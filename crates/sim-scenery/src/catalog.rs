@@ -57,6 +57,16 @@ impl CatalogScenery {
         Ok(())
     }
 
+    /// Resident elevation tile addresses, in order.
+    pub fn elevation_tiles(&self) -> impl Iterator<Item = TileId> + '_ {
+        self.elevation.keys().copied()
+    }
+
+    /// Borrows the resident [`TerrariumTile`] at `tile`, if present.
+    pub fn elevation_tile(&self, tile: TileId) -> Option<&TerrariumTile> {
+        self.elevation.get(&tile)
+    }
+
     /// Resident imagery tile addresses, in order.
     pub fn imagery_tiles(&self) -> impl Iterator<Item = TileId> + '_ {
         self.imagery.keys().copied()

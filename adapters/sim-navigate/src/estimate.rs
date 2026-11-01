@@ -16,7 +16,7 @@ mod tests;
 /// A truth-derived estimate has no residuals to compute one from.
 const GEOMETRY_ATTITUDE_SIGMA_RAD: f64 = 0.0205;
 /// Names estimates that came from no image match.
-const BACKEND: &str = "fsgame-synthetic-estimator";
+const BACKEND: &str = "simulate-synthetic-estimator";
 
 /// The corridor catalog's anchor frame in both simulators' conventions: Simulate's
 /// tangent frame at the anchor, and Navigate's WGS84 east, north, up frame.
@@ -109,7 +109,7 @@ pub(crate) fn evidence_digest(
     intrinsics: &SensorIntrinsics,
 ) -> String {
     let mut hash = Sha256::new();
-    hash.update(b"fsgame-visual-frame-v1");
+    hash.update(b"simulate-visual-frame-v1");
     hash.update(sequence.to_le_bytes());
     hash.update(capture_time_ns.to_le_bytes());
     hash.update(captured_at.ticks_u128().to_le_bytes());

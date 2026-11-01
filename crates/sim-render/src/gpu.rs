@@ -26,7 +26,7 @@ impl LimitedDevice {
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("fsg device"),
+                label: Some("simulate device"),
                 required_limits,
                 ..Default::default()
             })

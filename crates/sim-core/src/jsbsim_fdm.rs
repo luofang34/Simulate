@@ -1,7 +1,5 @@
 use glam::{DQuat, DVec3};
-use jsbsim::snapshot::Snapshot;
-use jsbsim::trim::TrimMode;
-use jsbsim::{Fdm, LoadOptions, NodeId, Resolver};
+use jsbsim::{Fdm, LoadOptions, NodeId, Resolver, Snapshot, TrimMode};
 use sim_geo::Geodetic;
 
 use crate::{
@@ -117,6 +115,7 @@ pub struct JsbsimFdmSnapshot {
 /// `Fdm::snapshot_into` needs exclusive access but [`Block::snapshot`] does
 /// not have it, so each step keeps a snapshot of its result. That costs
 /// microseconds, and it also lets a failed step put the executive back.
+#[derive(Debug)]
 pub struct JsbsimFdmBlock {
     fdm: Fdm,
     nodes: Nodes,

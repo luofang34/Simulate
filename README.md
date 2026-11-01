@@ -15,21 +15,24 @@ The workspace has four top-level directories:
 | Package | Path | Role |
 |---|---|---|
 | `sim-geo` | `crates/` | WGS84 and lunar geodesy, J2000 frame and Apollo stars, local frames, floating origin, pinhole intrinsics, UTC |
-| `sim-atmosphere` | `crates/` | Atmosphere and cloud fields (ICAO, sea level to space, and vacuum) |
+| `sim-atmosphere` | `crates/` | Atmosphere and cloud fields (ICAO, `world-atmosphere` / `world-airmass` bridges, and vacuum) |
 | `sim-core` | `crates/` | Integer master clock, the `Block` contract, multi-rate scheduling, vehicle state, 6-DoF rigid-body and JSBSim flight dynamics, crew and hardware-in-the-loop bridges, source-stamped instrument readings, mounted camera and visual-navigation harness |
 | `sim-devices` | `crates/` | Shared sensors and buses: ICM-42688 IMU, BMP390 barometer, ARINC 429 channel |
+| `sim-xil` | `crates/` | FC-blind external SITL/HITL wire endpoints: MAVLink v2 (`HIL_SENSOR`/`HIL_GPS`/`HIL_ACTUATOR_CONTROLS`) and Betaflight (`144` B FDM/servo UDP + MSP v1/v2) |
 | `sim-pack` | `crates/` | Binds verified system packages to the simulator: device blocks, camera mounts, JSBSim resolvers, and the built-in vehicles |
 | `sim-input` | `crates/` | Gamepad, joystick, and yoke mapping to pilot controls |
 | `sim-scenery` | `crates/` | Elevation, imagery, radiometry, and photogrammetry sources: Web Mercator Terrarium and orthoimagery catalogs, a synthetic corridor, the procedural Apollo 11 site (photogrammetry is a deferred stub) |
-| `sim-render` | `crates/` | wgpu renderer: camera-relative terrain on any body, ortho draping, offscreen visible, starfield, and thermal sensor apertures, reversed-Z depth |
-| `sim-scenario` | `crates/` | The six deterministic scenarios, their terrain, and the bridge from camera captures to rendered frames |
+| `sim-render` | `crates/` | wgpu renderer: camera-relative terrain on any body, ortho draping, offscreen visible, starfield, and thermal sensor apertures, zero-copy viewport textures, reversed-Z depth |
+| `sim-scenario` | `crates/` | The six deterministic scenarios, their terrain, `SimSupervisor` truth-to-belief radio projection, NOTAM-gated `Flightbag` spawn, and the bridge from camera captures to rendered frames |
 | `light-trainer` | `vehicles/` | Data-only vehicle package: a JSBSim light trainer with no Rust code of its own |
 | `c172` | `vehicles/` | Data-only vehicle package: a piston C172-class aeroplane, exported from its `ace-rs` design |
 | `sim-apollo` | `vehicles/apollo-11/` | Apollo 11: the Eagle and Columbia packages under `packages/`, gimballed IMU with gimbal lock, abort sensors, radars, optics, entry monitor, source-monitored cockpit panel |
-| `sim-indicate` | `adapters/` | Indicate: aircraft state and tagged frames from flight state, dual-source attitude monitoring, deterministic PFD and HSI framebuffers |
+| `sim-indicate` | `adapters/` | Indicate: aircraft state and tagged frames from flight state, dual-source attitude monitoring, deterministic PFD/HSI framebuffers, and 3D volumetric instrument scenes |
+| `sim-maplibre` | `adapters/` | Shared-GPU `maplibre-rs` adapter: strict Dual-World `TruthSceneMap` (OTW + `30 Hz` optical sensor) vs. `BeliefAvionicsMap` (procedural-relief SVS, dirty-gated `15 Hz` chart, 3D volumetric patch export, and companion gesture streaming) |
 | `sim-navigate` | `adapters/` | Navigate: master-clock to monotonic-time bridge, visual fix admission through a real visual session, lever-arm removal, acquisition-ordered navigation filter loop, solution scoring against truth |
-| `sim-aviate` | `adapters/` | Aviate: SIL/HIL flight-controller bridge over the shared-state contract |
-| `sim-pilotage` | `adapters/` | Pilotage: `VehicleAdapter` over kinematic and JSBSim vehicles, verified camera calibration from a package camera, aircraft profile and loading bridges |
+| `sim-aviate` | `adapters/` | Aviate: Tier 0 in-process `DirectXilBoard` runner (`0` syscalls, `0` allocs/step) and Tier 1 shared-memory `SharedStateV2` seqlock endpoint |
+| `sim-pilotage` | `adapters/` | Pilotage: `VehicleAdapter` over kinematic and JSBSim vehicles, verified camera calibration from a package camera, aircraft profile/loading bridges, and `pilotage.bridge.v1` synthetic camera sidecar |
+| `ironbird` | `apps/` | Headless multi-tier XIL bench runner across Tier 0 (`aviate-xil-direct`), Tier 1 (`SharedStateV2`), and Tier 2 (`mavlink_hil` / `betaflight`) |
 | `simulate-app` | `apps/` | Desktop and browser executable |
 
 A vehicle package is a `syspack`: a folder holding a `syspack.json` manifest and
@@ -52,8 +55,8 @@ A JSBSim vehicle takes its ignition, mixture, flaps, and brakes as
 C172 cannot hold 8,000 ft full rich.
 
 These repositories must be checked out next to this one, because the workspace
-depends on them by path: `jsbsim-rs`, `mbd`, `Indicate`, `Navigate`, `Aviate`,
-and `Pilotage`.
+depends on them by path: `jsbsim-rs`, `mbd`, `world`, `Flightbag`, `Indicate`,
+`Navigate`, `Aviate`, `Pilotage`, and `maplibre-rs-experimental`.
 
 ## Run
 
