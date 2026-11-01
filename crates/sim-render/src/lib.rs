@@ -11,6 +11,7 @@
 
 mod aperture;
 mod camera;
+mod compositor;
 mod error;
 mod frame;
 mod globe;
@@ -27,6 +28,10 @@ pub use aperture::{
     padded_bytes_per_row, reversed_z_range_m,
 };
 pub use camera::{Camera, CameraPose};
+pub use compositor::{
+    ColorTransfer, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS, OverlayQuad, QuadFilter,
+    RgbaPanelTexture, ViewportRect,
+};
 pub use error::{FrameOutcome, RenderError};
 pub use globe::{GlobeMesh, GlobeVertex, MAX_PATCHES, TerrainRegion, TerrainSources};
 pub use gpu::HeadlessGpu;

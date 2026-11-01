@@ -177,6 +177,37 @@ impl TruthSceneMap {
         self.map.set_atmosphere(enabled);
     }
 
+    /// Physical `[width, height]` pixel dimensions of the primary OTW slot.
+    #[must_use]
+    pub const fn otw_size(&self) -> [u32; 2] {
+        self.otw_size
+    }
+
+    /// Physical `[width, height]` pixel dimensions of the offscreen sensor slot.
+    #[must_use]
+    pub const fn sensor_size(&self) -> [u32; 2] {
+        self.sensor_size
+    }
+
+    /// Resizes the primary OTW slot (and stereo companion slot when enabled); zero dimensions
+    /// are ignored and matching dimensions are a no-op.
+    pub fn resize_otw(&mut self, width: u32, height: u32) -> Result<(), MapAdapterError> {
+        if width == 0 || height == 0 || self.otw_size == [width, height] {
+            return Ok(());
+        }
+        let phys = validate_size(width, height)?;
+        self.map
+            .resize_view_slot(self.otw_slot, phys)
+            .map_err(|source| MapAdapterError::MultiView { source })?;
+        if let Some(right_slot) = self.otw_right_slot {
+            self.map
+                .resize_view_slot(right_slot, phys)
+                .map_err(|source| MapAdapterError::MultiView { source })?;
+        }
+        self.otw_size = [width, height];
+        Ok(())
+    }
+
     /// Renders active truth viewports in one [`MultiViewFrame`].
     pub fn render_frame(&mut self, frame: TruthSceneFrame<'_>) -> Result<(), MapAdapterError> {
         self.apply_slot_overlay(self.otw_slot, self.otw_size, &frame.otw_stamp, &frame, true)?;

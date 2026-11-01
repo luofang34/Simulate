@@ -1,5 +1,6 @@
 use glam::DVec3;
 
+use crate::compositor::{CompositorPass, CompositorTarget, OverlayQuad};
 use crate::frame::FrameParams;
 use crate::gpu::SurfaceGpu;
 use crate::pipeline::{GlobeLayouts, globe_pipeline};
@@ -19,11 +20,12 @@ pub struct SceneLighting {
     pub sun_direction_ecef: DVec3,
 }
 
-/// Owns the GPU, the globe geometry, and the per-frame uniform block.
+/// Owns the GPU, the globe geometry, the split-viewport compositor, and the per-frame uniform block.
 pub struct Renderer {
     gpu: SurfaceGpu,
     layouts: GlobeLayouts,
     pipeline: wgpu::RenderPipeline,
+    compositor: CompositorPass,
     scene: GlobeScene,
 }
 
@@ -50,10 +52,12 @@ impl Renderer {
         if let Some(err) = scope.pop().await {
             return Err(RenderError::PipelineValidation(err));
         }
+        let compositor = CompositorPass::new(device, gpu.view_format).await?;
         Ok(Self {
             gpu,
             layouts,
             pipeline,
+            compositor,
             scene,
         })
     }
@@ -74,14 +78,46 @@ impl Renderer {
         Ok(())
     }
 
-    /// The device, for sharing with a [`crate::SensorAperturePass`].
+    /// Underlying `wgpu::Instance`, for sharing a `HostGpu` with `sim-maplibre`.
+    #[must_use]
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self.gpu.instance
+    }
+
+    /// Selected `wgpu::Adapter`, for sharing a `HostGpu` with `sim-maplibre`.
+    #[must_use]
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.gpu.adapter
+    }
+
+    /// Selected graphics backend (`Metal`, `Vulkan`, `Dx12`, `BrowserWebGpu`, or `Gl`).
+    #[must_use]
+    pub const fn backend(&self) -> wgpu::Backend {
+        self.gpu.backend
+    }
+
+    /// The device, for sharing with [`crate::SensorAperturePass`] or `sim-maplibre`.
+    #[must_use]
     pub fn device(&self) -> &wgpu::Device {
         &self.gpu.device
     }
 
-    /// The queue, for sharing with a [`crate::SensorAperturePass`].
+    /// The queue, for sharing with [`crate::SensorAperturePass`] or `sim-maplibre`.
+    #[must_use]
     pub fn queue(&self) -> &wgpu::Queue {
         &self.gpu.queue
+    }
+
+    /// Current swap-chain dimensions `[width, height]` in physical pixels.
+    #[must_use]
+    pub const fn surface_size(&self) -> [u32; 2] {
+        [self.gpu.config.width, self.gpu.config.height]
+    }
+
+    /// Target sRGB texture format used when presenting to the window surface.
+    #[must_use]
+    pub const fn view_format(&self) -> wgpu::TextureFormat {
+        self.gpu.view_format
     }
 
     /// Resizes the swap chain and depth buffer; zero sizes are ignored.
@@ -89,11 +125,23 @@ impl Renderer {
         self.gpu.resize(width, height);
     }
 
-    /// Draws and presents one frame.
+    /// Draws and presents one globe frame with no overlay quads.
     pub fn render(
         &mut self,
         camera: &Camera,
         lighting: &SceneLighting,
+    ) -> Result<FrameOutcome, RenderError> {
+        self.render_composite(Some((camera, lighting)), &[])
+    }
+
+    /// Draws an optional 3D [`GlobeScene`] pass followed by zero-copy [`OverlayQuad`] viewports/panels.
+    ///
+    /// Passing `globe = None` skips the `GlobeScene` pass completely when a full-window `maplibre`
+    /// `OTW`, `SensorAperture`, or `ChartMap` quad covers the presentation surface.
+    pub fn render_composite(
+        &mut self,
+        globe: Option<(&Camera, &SceneLighting)>,
+        quads: &[OverlayQuad<'_>],
     ) -> Result<FrameOutcome, RenderError> {
         if let Some(message) = self.gpu.take_device_error() {
             return Err(RenderError::Device { message });
@@ -110,13 +158,6 @@ impl Renderer {
             }
             wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
         };
-        let params = FrameParams {
-            view_proj: camera.view_projection(self.gpu.aspect()),
-            sun_direction: lighting.sun_direction_ecef,
-            thermal: [0.0; 4],
-        };
-        self.scene
-            .write_frame(&self.gpu.queue, &params, camera.pose.position_ecef);
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
@@ -129,7 +170,35 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        self.encode_globe_pass(&mut encoder, &view);
+        let clear_compositor = if let Some((camera, lighting)) = globe {
+            let params = FrameParams {
+                view_proj: camera.view_projection(self.gpu.aspect()),
+                sun_direction: lighting.sun_direction_ecef,
+                thermal: [0.0; 4],
+            };
+            self.scene
+                .write_frame(&self.gpu.queue, &params, camera.pose.position_ecef);
+            self.encode_globe_pass(&mut encoder, &view);
+            None
+        } else {
+            Some(wgpu::Color {
+                r: 0.01,
+                g: 0.01,
+                b: 0.03,
+                a: 1.0,
+            })
+        };
+        self.compositor.encode(
+            &self.gpu.device,
+            &self.gpu.queue,
+            &mut encoder,
+            CompositorTarget {
+                view: &view,
+                clear: clear_compositor,
+                size_px: self.surface_size(),
+            },
+            quads,
+        );
         self.gpu.queue.submit([encoder.finish()]);
         self.gpu.queue.present(surface_texture);
         Ok(FrameOutcome::Presented)

@@ -166,6 +166,24 @@ pub fn external_view_from_pose(
     Ok((anchor, view))
 }
 
+/// Builds a [`ConformalFrameStamp`] directly from a world [`CameraPoseEcef`].
+pub fn conformal_stamp_from_pose(
+    instant: SimInstant,
+    pose: &CameraPoseEcef,
+    frustum: EyeFrustum,
+    geoid_undulation_m: f64,
+) -> Result<ConformalFrameStamp, MapAdapterError> {
+    let (anchor, external_view) = external_view_from_pose(pose, frustum, geoid_undulation_m)?;
+    let projection_fingerprint = fingerprint_external_view(&external_view);
+    Ok(ConformalFrameStamp {
+        instant,
+        anchor,
+        external_view,
+        geoid_undulation_m,
+        projection_fingerprint,
+    })
+}
+
 /// Builds a [`ConformalFrameStamp`] from [`VehicleState`] and a [`CameraMount`].
 pub fn conformal_stamp_from_vehicle(
     instant: SimInstant,
@@ -176,15 +194,7 @@ pub fn conformal_stamp_from_vehicle(
     geoid_undulation_m: f64,
 ) -> Result<ConformalFrameStamp, MapAdapterError> {
     let pose = mount.pose(vehicle, cg_body_m);
-    let (anchor, external_view) = external_view_from_pose(&pose, frustum, geoid_undulation_m)?;
-    let projection_fingerprint = fingerprint_external_view(&external_view);
-    Ok(ConformalFrameStamp {
-        instant,
-        anchor,
-        external_view,
-        geoid_undulation_m,
-        projection_fingerprint,
-    })
+    conformal_stamp_from_pose(instant, &pose, frustum, geoid_undulation_m)
 }
 
 /// Projects a geodetic world point `(lat, lon, h_msl)` onto target pixel coordinates

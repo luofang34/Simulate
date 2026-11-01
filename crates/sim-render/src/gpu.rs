@@ -11,7 +11,7 @@ pub(crate) type DeviceErrorSlot = Arc<Mutex<Option<String>>>;
 /// supported by both WebGPU and WebGL2.
 pub(crate) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// A device held to WebGL2 limits, with uncaptured errors recorded.
+/// A device configured for the selected backend, with uncaptured errors recorded.
 struct LimitedDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -20,10 +20,15 @@ struct LimitedDevice {
 
 impl LimitedDevice {
     async fn request(adapter: &wgpu::Adapter, adapter_name: &str) -> Result<Self, RenderError> {
-        // WebGL2 limits everywhere keep native from silently depending on
-        // something the browser fallback cannot provide.
-        let required_limits =
-            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        // Use WebGL2 downlevel limits on OpenGL ES / WebGL2 backends, and standard
+        // WebGPU limits adapted to the hardware resolution on primary / WebGPU
+        // backends so shared HostGpu engines (such as maplibre-rs) can run zero-copy.
+        let base_limits = if adapter.get_info().backend == wgpu::Backend::Gl {
+            wgpu::Limits::downlevel_webgl2_defaults()
+        } else {
+            wgpu::Limits::default()
+        };
+        let required_limits = base_limits.using_resolution(adapter.limits());
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("simulate device"),
@@ -58,6 +63,12 @@ fn take_error(slot: &DeviceErrorSlot) -> Option<String> {
 
 /// A device with no window, for rendering sensor frames in batch runs and CI.
 pub struct HeadlessGpu {
+    /// wgpu instance backing `adapter` and `device`.
+    pub instance: wgpu::Instance,
+    /// Selected hardware or software adapter.
+    pub adapter: wgpu::Adapter,
+    /// Selected graphics backend (`Metal`, `Vulkan`, `Dx12`, `BrowserWebGpu`, or `Gl`).
+    pub backend: wgpu::Backend,
     /// The device.
     pub device: wgpu::Device,
     /// Its queue.
@@ -66,8 +77,7 @@ pub struct HeadlessGpu {
 }
 
 impl HeadlessGpu {
-    /// Requests an adapter that needs no surface, under the same WebGL2
-    /// limits as the windowed renderer.
+    /// Requests an adapter and device that need no window surface.
     pub async fn new() -> Result<Self, RenderError> {
         let instance = wgpu::util::new_instance_with_webgpu_detection(wgpu::InstanceDescriptor {
             backends: platform_backends(),
@@ -84,7 +94,8 @@ impl HeadlessGpu {
             .await
             .map_err(RenderError::RequestAdapter)?;
         let info = adapter.get_info();
-        let adapter_name = format!("{} ({:?})", info.name, info.backend);
+        let backend = info.backend;
+        let adapter_name = format!("{} ({:?})", info.name, backend);
         tracing::info!(adapter = %adapter_name, "selected headless GPU adapter");
         let LimitedDevice {
             device,
@@ -92,6 +103,9 @@ impl HeadlessGpu {
             device_error,
         } = LimitedDevice::request(&adapter, &adapter_name).await?;
         Ok(Self {
+            instance,
+            adapter,
+            backend,
             device,
             queue,
             device_error,
@@ -109,6 +123,9 @@ impl HeadlessGpu {
 
 /// The device, queue, and the surface they present to.
 pub(crate) struct SurfaceGpu {
+    pub(crate) instance: wgpu::Instance,
+    pub(crate) adapter: wgpu::Adapter,
+    pub(crate) backend: wgpu::Backend,
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
@@ -146,7 +163,8 @@ impl SurfaceGpu {
             .await
             .map_err(RenderError::RequestAdapter)?;
         let info = adapter.get_info();
-        let adapter_name = format!("{} ({:?})", info.name, info.backend);
+        let backend = info.backend;
+        let adapter_name = format!("{} ({:?})", info.name, backend);
         tracing::info!(adapter = %adapter_name, "selected GPU adapter");
 
         let LimitedDevice {
@@ -173,6 +191,9 @@ impl SurfaceGpu {
         surface.configure(&device, &config);
         let depth_view = create_depth_view(&device, &config);
         Ok(Self {
+            instance,
+            adapter,
+            backend,
             surface,
             device,
             queue,

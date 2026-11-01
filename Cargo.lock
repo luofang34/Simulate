@@ -4997,24 +4997,37 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 name = "simulate-app"
 version = "0.1.0"
 dependencies = [
+ "aviate-core",
+ "aviate-hal-io",
  "console_error_panic_hook",
+ "flightbag",
  "gilrs",
  "glam 0.33.12",
+ "mbd-core",
  "pollster",
  "sim-apollo",
  "sim-atmosphere",
+ "sim-aviate",
  "sim-core",
  "sim-geo",
+ "sim-indicate",
  "sim-input",
+ "sim-maplibre",
+ "sim-pack",
  "sim-render",
  "sim-scenario",
+ "sim-scenery",
+ "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
  "tracing-wasm",
  "wasm-bindgen-futures",
  "web-sys",
  "web-time",
+ "wgpu",
  "winit",
+ "world",
+ "world-core",
 ]
 
 [[package]]

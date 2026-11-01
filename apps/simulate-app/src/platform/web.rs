@@ -26,7 +26,13 @@ pub fn run() {
             return;
         }
     };
-    let app = FlightApp::new(event_loop.create_proxy());
+    let app = match FlightApp::new(event_loop.create_proxy()) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(%err, "starting the flight simulation failed");
+            return;
+        }
+    };
     event_loop.spawn_app(app);
 }
 

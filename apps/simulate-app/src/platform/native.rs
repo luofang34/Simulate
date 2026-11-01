@@ -24,7 +24,13 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut app = FlightApp::new(event_loop.create_proxy());
+    let mut app = match FlightApp::new(event_loop.create_proxy()) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(%err, "starting the flight simulation failed");
+            return ExitCode::FAILURE;
+        }
+    };
     match event_loop.run_app(&mut app) {
         Ok(()) if app.failed() => ExitCode::FAILURE,
         Ok(()) => ExitCode::SUCCESS,

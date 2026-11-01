@@ -77,6 +77,14 @@ pub enum RenderError {
         /// Largest supported edge.
         max: u32,
     },
+    /// Uploaded RGBA8 byte slice did not match the panel texture's tight dimensions.
+    #[error("RGBA upload supplied {actual} bytes; expected {expected}")]
+    InvalidUploadBytes {
+        /// Expected byte length (`width * height * 4`).
+        expected: usize,
+        /// Provided slice length.
+        actual: usize,
+    },
     /// The camera's optics cannot form an image.
     #[error("unusable camera: {detail}")]
     InvalidCamera {

@@ -39,8 +39,8 @@ pub use maplibre::{
 };
 pub use pose::{
     ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, GeodeticAnchor,
-    conformal_stamp_from_vehicle, external_view_from_pose, frustum_from_intrinsics,
-    project_geodetic_to_screen, symmetric_frustum,
+    conformal_stamp_from_pose, conformal_stamp_from_vehicle, external_view_from_pose,
+    frustum_from_intrinsics, project_geodetic_to_screen, symmetric_frustum,
 };
 pub use runtime::{
     BeliefAvionicsConfig, BeliefAvionicsMap, ChartCameraSpec, ChartFrameOutcome, SharedMapRuntime,

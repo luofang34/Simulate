@@ -26,6 +26,9 @@ pub use clock::{age_ms, instant_ms};
 pub use error::{FeedError, PanelError};
 pub use feed::{AltitudeSource, FeedConfig, FlightSample, StateFeed, decode_frame, encode_frame};
 pub use frames::{DisplayAxes, LocalLevel};
+pub use indicate_instrument_panels::{BackgroundMode, PfdConfig, SvsViewport, VSpeeds};
+pub use indicate_instrument_raster::{FrameId, FramebufferDims};
+pub use indicate_interaction::{SpatialEvent, ViewPose3D};
 pub use monitor::{AGS_SOURCE, LOCAL_NED_FRAME, MonitoredFrame, PGNS_SOURCE, SourceMonitor};
 pub use panel::{
     PANEL_HEIGHT_PX, PANEL_RGBA_BYTES, PANEL_SCENE_BYTES, PANEL_WIDTH_PX, PanelBuffers,

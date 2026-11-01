@@ -1,7 +1,9 @@
 use sim_apollo::{CockpitInstrumentSnapshot, GuidanceSource, InstrumentChange};
 use sim_core::SourceValidity;
-use sim_scenario::ScenarioProfile;
+use sim_scenario::{OperatorViewportMode, SimTimeScale};
 use tracing::info;
+
+use crate::flight::Flight;
 
 /// Reports what changed on the panel since `previous`.
 pub fn log_changes(previous: &CockpitInstrumentSnapshot, current: &CockpitInstrumentSnapshot) {
@@ -33,17 +35,57 @@ pub fn log_changes(previous: &CockpitInstrumentSnapshot, current: &CockpitInstru
     }
 }
 
-/// A short reading of the panel for the window title.
-pub fn title(profile: Option<ScenarioProfile>, cockpit: &CockpitInstrumentSnapshot) -> String {
-    let name = profile.map_or("Free Flight", ScenarioProfile::title);
+/// Formats a concise cockpit status line for the desktop window or browser tab title.
+pub fn title(
+    flight: &Flight,
+    viewport_mode: OperatorViewportMode,
+    time_scale: SimTimeScale,
+    cockpit: &CockpitInstrumentSnapshot,
+) -> String {
+    let name = match flight.profile() {
+        Some(profile) => profile.title(),
+        None => flight.free_vehicle().map_or("Free Flight", |v| v.title()),
+    };
+    let view_label = match viewport_mode {
+        OperatorViewportMode::Cockpit => "OTW",
+        OperatorViewportMode::Chase => "Chase",
+        OperatorViewportMode::SensorAperture => "Sensor",
+        OperatorViewportMode::ChartMap => "Chart",
+        OperatorViewportMode::VolumetricScene => "Volume",
+    };
     let mut line = format!(
-        "Simulate | {name} | {:.0} m | {:.0} m/s",
+        "Simulate | {name} | {view_label} | {:.0} m | {:.0} m/s",
         cockpit.height_m.value, cockpit.speed_m_s.value
     );
     let mut add = |text: String| {
         line.push_str(" | ");
         line.push_str(&text);
     };
+    match time_scale {
+        SimTimeScale::Paused => add("PAUSED".to_owned()),
+        SimTimeScale::RealTime => {}
+        SimTimeScale::Warp(w) => add(format!("{w:.0}x")),
+    }
+    if let Some(engine) = flight.engine_status() {
+        if engine.running {
+            add(format!("{:.0} RPM", engine.propeller_rpm));
+        } else {
+            add("ENG OFF".to_owned());
+        }
+    }
+    if let Some(sys) = flight.system_controls()
+        && sys.flaps_norm > 0.01
+    {
+        add(format!("Flaps {:.0}%", sys.flaps_norm * 100.0));
+    }
+    if let Some(armed) = flight.aviate_armed() {
+        add(if armed { "FC ARMED" } else { "FC DISARMED" }.to_owned());
+    }
+    append_apollo_status(cockpit, &mut add);
+    line
+}
+
+fn append_apollo_status(cockpit: &CockpitInstrumentSnapshot, add: &mut impl FnMut(String)) {
     match cockpit.guidance_source {
         Some(GuidanceSource::Pgns) => add("PGNS".to_owned()),
         Some(GuidanceSource::Ags) => add("AGS".to_owned()),
@@ -66,5 +108,4 @@ pub fn title(profile: Option<ScenarioProfile>, cockpit: &CockpitInstrumentSnapsh
     if cockpit.contact_light {
         add("CONTACT LIGHT".to_owned());
     }
-    line
 }

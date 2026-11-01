@@ -2,6 +2,7 @@ use naga::back::glsl;
 
 const GLOBE: &str = include_str!("../shaders/globe.wgsl");
 const APERTURE: &str = include_str!("../shaders/aperture.wgsl");
+const COMPOSITOR: &str = include_str!("../shaders/compositor.wgsl");
 
 fn parse(source: &str) -> (naga::Module, naga::valid::ModuleInfo) {
     let module = naga::front::wgsl::parse_str(source)
@@ -77,6 +78,22 @@ fn aperture_shader_has_a_webgl2_form() {
             (naga::ShaderStage::Vertex, "vs_full_frame"),
             (naga::ShaderStage::Fragment, "fs_stars"),
             (naga::ShaderStage::Fragment, "fs_overlay"),
+        ],
+    );
+}
+
+#[test]
+fn compositor_shader_parses_and_validates() {
+    parse(COMPOSITOR);
+}
+
+#[test]
+fn compositor_shader_has_a_webgl2_form() {
+    writes_webgl2_glsl(
+        COMPOSITOR,
+        &[
+            (naga::ShaderStage::Vertex, "vs_quad"),
+            (naga::ShaderStage::Fragment, "fs_quad"),
         ],
     );
 }

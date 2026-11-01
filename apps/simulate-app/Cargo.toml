@@ -9,18 +9,31 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-sim-apollo = { workspace = true }
-sim-atmosphere = { workspace = true }
-sim-geo = { workspace = true }
-sim-input = { workspace = true }
-sim-render = { workspace = true }
-sim-scenario = { workspace = true }
-sim-core = { workspace = true }
+aviate-core = { workspace = true }
+aviate-hal-io = { workspace = true }
+flightbag = { workspace = true }
 gilrs = { workspace = true }
 glam = { workspace = true }
+mbd-core = { workspace = true }
+sim-apollo = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-aviate = { workspace = true }
+sim-core = { workspace = true }
+sim-geo = { workspace = true }
+sim-indicate = { workspace = true }
+sim-input = { workspace = true }
+sim-maplibre = { workspace = true }
+sim-pack = { workspace = true }
+sim-render = { workspace = true }
+sim-scenario = { workspace = true }
+sim-scenery = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 web-time = { workspace = true }
+wgpu = { workspace = true }
 winit = { workspace = true }
+world = { workspace = true }
+world-core = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pollster = { workspace = true }
