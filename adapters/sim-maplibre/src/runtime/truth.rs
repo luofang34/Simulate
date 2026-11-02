@@ -1,6 +1,5 @@
-//! Simulator-only `TruthSceneMap`: OTW cockpit camera, optional stereo companion,
-//! 30 Hz optical/EVS sensor slot, and N dynamically registered virtual camera slots over
-//! a single `HeadlessMap` world.
+//! Simulator-only `TruthSceneMap`: OTW cockpit camera, optional stereo companion, 30 Hz
+//! optical/EVS sensor slot, and N dynamically registered virtual camera slots.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -157,8 +156,7 @@ impl TruthSceneMap {
         })
     }
 
-    /// Registers an additional virtual camera [`ViewSlotId`] (`TowerPtz`, `ThresholdFinal`,
-    /// chase/wing camera, or multi-sensor rig channel) sharing the `TruthScene` tile world.
+    /// Registers an additional virtual camera [`ViewSlotId`] sharing the `TruthScene` tile world.
     pub fn register_virtual_camera(
         &mut self,
         width: u32,
@@ -248,8 +246,7 @@ impl TruthSceneMap {
         self.sensor_size
     }
 
-    /// Resizes the primary OTW slot (and stereo companion slot when enabled); zero dimensions
-    /// are ignored and matching dimensions are a no-op.
+    /// Resizes the primary OTW slot (and stereo companion slot when enabled).
     pub fn resize_otw(&mut self, width: u32, height: u32) -> Result<(), MapAdapterError> {
         if width == 0 || height == 0 || self.otw_size == [width, height] {
             return Ok(());
@@ -393,8 +390,7 @@ impl TruthSceneMap {
         self.map.view_slot_has_readback_buffer(slot)
     }
 
-    /// Lazily copies `slot`'s rendered color attachment into tight RGBA8 bytes (`width * height * 4`)
-    /// without keeping a persistent `MAP_READ` buffer on the slot.
+    /// Lazily copies `slot`'s color attachment into tight RGBA8 bytes (`width * height * 4`).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn read_slot_rgba(&self, slot: ViewSlotId) -> Result<Vec<u8>, MapAdapterError> {
         let texture =
@@ -471,6 +467,12 @@ impl TruthSceneMap {
     #[must_use]
     pub const fn last_sensor_stamp(&self) -> Option<ConformalFrameStamp> {
         self.last_sensor_stamp
+    }
+
+    /// Whether background tile workers have delivered new arrivals or animated layers require redraw.
+    #[must_use]
+    pub fn needs_redraw(&self) -> bool {
+        self.map.needs_redraw()
     }
 
     /// Takes the latest completed [`ProbeResults`] for any registered `slot`, if ready.

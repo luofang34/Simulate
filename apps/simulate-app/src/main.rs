@@ -9,6 +9,8 @@ mod camera_view;
 mod cockpit_rig;
 mod error;
 mod flight;
+#[cfg(not(target_arch = "wasm32"))]
+mod gallery;
 mod gamepad;
 mod keyboard;
 mod map_rig;

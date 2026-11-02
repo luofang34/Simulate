@@ -97,6 +97,10 @@ impl FlightApp {
         info!(scenario = name, "selected");
         if let Err(err) = self.flight.select(profile) {
             self.fail(event_loop, "the scenario could not start", &err);
+            return;
+        }
+        if let Some(rig) = self.cockpit_rig.as_mut() {
+            rig.invalidate_chart();
         }
     }
 
@@ -105,6 +109,7 @@ impl FlightApp {
             CockpitAction::CycleViewport => {
                 if let Some(rig) = self.cockpit_rig.as_mut() {
                     let mode = rig.supervisor_mut().cycle_viewport_mode();
+                    rig.invalidate_chart();
                     info!(?mode, "switched operator viewport mode");
                 }
             }
@@ -119,6 +124,7 @@ impl FlightApp {
             CockpitAction::CycleAirport => {
                 if let Some(rig) = self.cockpit_rig.as_mut() {
                     let id = rig.supervisor_mut().cycle_aerodrome();
+                    rig.invalidate_chart();
                     if let Some(diag) = rig.supervisor().diagram(id).cloned() {
                         self.mapper.set(Control::Throttle, INITIAL_CRUISE_THROTTLE);
                         if let Err(err) = self.flight.respawn_at_diagram(&diag) {

@@ -7,8 +7,10 @@
 use std::time::Duration;
 
 use flightbag::RunwayEndSpec;
+use glam::DVec3;
 use maplibre::{
     background::BackgroundPlugin,
+    celestial::EcefDirection,
     coords::{LatLon, WorldTileCoords, Zoom},
     headless::{
         CoveringPolicy, MultiViewFrame, SlotView, TerrainDrapeMode, TerrainPatchSnapshot,
@@ -211,6 +213,14 @@ impl BeliefAvionicsMap {
         Ok(count)
     }
 
+    /// Updates the deterministic ephemeris solar direction illuminating `ConformalSvs3D` relief.
+    pub fn set_sun_direction_ecef(&mut self, sun_ecef: DVec3) -> Result<(), MapAdapterError> {
+        let dir = EcefDirection::new(sun_ecef.x, sun_ecef.y, sun_ecef.z)
+            .map_err(|source| MapAdapterError::Celestial { source })?;
+        self.svs_map.set_sun_direction(Some(dir));
+        Ok(())
+    }
+
     /// Renders one PFD `ConformalSvs3D` procedural DEM frame (`0` drape passes, `0` symbol collision)
     /// from operational belief kinematics and updates the TAWS reference altitude.
     pub fn render_svs_frame(
@@ -264,10 +274,12 @@ impl BeliefAvionicsMap {
         spec: ChartCameraSpec,
     ) -> Result<ChartFrameOutcome, MapAdapterError> {
         let key = ChartDirtyKey::from_spec(spec);
-        if self.last_chart_key == Some(key) {
+        let chart_pending = self.chart_map.needs_redraw();
+        if self.last_chart_key == Some(key) && !chart_pending {
             return Ok(ChartFrameOutcome::ReusedCachedTexture);
         }
         if let Some(prev_ts) = self.last_chart_timestamp
+            && timestamp >= prev_ts
             && timestamp.saturating_sub(prev_ts) < self.chart_min_interval
         {
             return Ok(ChartFrameOutcome::ReusedCachedTexture);
@@ -361,5 +373,11 @@ impl BeliefAvionicsMap {
     #[must_use]
     pub const fn chart_render_count(&self) -> u64 {
         self.chart_render_count
+    }
+
+    /// Whether either the SVS or MFD chart world has pending async tile arrivals or redraw signals.
+    #[must_use]
+    pub fn needs_redraw(&self) -> bool {
+        self.svs_map.needs_redraw() || self.chart_map.needs_redraw()
     }
 }

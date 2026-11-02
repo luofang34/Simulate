@@ -1,21 +1,21 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use glam::DVec3;
-use sim_core::{SimInstant, TICKS_PER_SECOND, VehicleState};
+use glam::{DMat3, DQuat, DVec3};
+use sim_core::{SimInstant, TICKS_PER_SECOND, VehicleState, VirtualCameraPlacement};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_indicate::{PANEL_HEIGHT_PX, PANEL_WIDTH_PX};
 use sim_maplibre::{
     BeliefAvionicsConfig, BeliefAvionicsMap, CatalogTileLoader, ChartCameraSpec, CockpitDeviceTier,
-    ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, HostGpu, SharedMapRuntime,
-    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, ViewSlotId,
-    ViewSlotMask, belief_chart_style_with_aerodromes, belief_svs_relief_style,
+    ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, DynamicEntity3D, HostGpu,
+    SharedMapRuntime, TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap,
+    ViewSlotId, ViewSlotMask, belief_chart_style_with_aerodromes, belief_svs_relief_style,
     conformal_stamp_from_pose, conformal_stamp_from_vehicle, frustum_from_intrinsics,
     symmetric_frustum, tile_id_to_world_coords, truth_otw_style_with_aerodromes,
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
-use sim_scenery::{CatalogScenery, OsmAerodromeDiagram, TileId};
+use sim_scenery::{AerodromeId, CatalogScenery, OsmAerodromeDiagram, TileId};
 
 use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_nose_mount};
 use crate::error::AppSimError;
@@ -102,7 +102,7 @@ impl DualWorldMapRig {
             belief_chart_style_with_aerodromes(max_dem_z, max_ortho_z, aerodrome_geojson)?,
             BeliefAvionicsConfig {
                 svs_size: [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
-                chart_size: [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
+                chart_size: [w.max(PANEL_WIDTH_PX), h.max(PANEL_HEIGHT_PX)],
                 chart_min_interval: Duration::from_millis(66),
                 initial_reference_altitude_m: Some(450.0),
             },
@@ -130,6 +130,18 @@ impl DualWorldMapRig {
         &self.belief
     }
 
+    /// Invalidates the MFD `Map2D` chart dirty cache so the next frame redraws immediately.
+    pub fn invalidate_chart(&mut self) {
+        self.belief.invalidate_chart();
+    }
+
+    /// Whether either the `TruthSceneMap` or `BeliefAvionicsMap` has pending async tile arrivals.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
+    pub fn needs_redraw(&self) -> bool {
+        self.truth.needs_redraw() || self.belief.needs_redraw()
+    }
+
     /// Secondary registered virtual camera [`ViewSlotId`] ready for multi-camera sensor feeds.
     #[cfg(test)]
     #[must_use]
@@ -153,6 +165,8 @@ impl DualWorldMapRig {
         self.truth.resize_otw(w, h)?;
         self.truth
             .set_sun_direction_ecef(input.sun_direction_ecef)?;
+        self.belief
+            .set_sun_direction_ecef(input.sun_direction_ecef)?;
 
         let sim_dur = Duration::from_secs_f64(
             input
@@ -173,8 +187,8 @@ impl DualWorldMapRig {
     ) -> Result<(), AppSimError> {
         let mode = input.supervisor.viewport_mode();
         let otw_stamp = build_camera_stamp(input.timestamp, &input.otw_camera, otw_size)?;
+        let cam_spec = input.supervisor.active_virtual_camera(input.profile);
         let sensor_stamp = if self.should_step_sensor(input.timestamp, mode) {
-            let cam_spec = input.supervisor.active_virtual_camera(input.profile);
             let (pose, intrinsics) = cam_spec
                 .pose_and_intrinsics(&input.vehicle, DVec3::ZERO)
                 .map_err(sim_scenario::ScenarioError::from)?;
@@ -190,7 +204,14 @@ impl DualWorldMapRig {
             None
         };
         if mode != OperatorViewportMode::ChartMap || sensor_stamp.is_some() {
-            let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
+            let mut truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
+            truth_entities.push(ownship_exterior_entity(
+                &input.vehicle,
+                mode,
+                cam_spec.placement,
+                self.truth.otw_slot(),
+                self.truth.sensor_slot(),
+            ));
             self.truth.render_frame(TruthSceneFrame {
                 timestamp: sim_dur,
                 otw_stamp,
@@ -234,23 +255,9 @@ impl DualWorldMapRig {
             input.supervisor.active_runway(input.profile),
             &belief_entities,
         )?;
-        let chart_zoom = if mode == OperatorViewportMode::ChartMap {
-            13.6
-        } else {
-            12.6
-        };
-        let _chart_redrawn = self.belief.render_chart_if_dirty(
-            sim_dur,
-            ChartCameraSpec {
-                center_lat_deg: own_geo.lat_rad.to_degrees(),
-                center_lon_deg: own_geo.lon_rad.to_degrees(),
-                zoom: chart_zoom,
-                bearing_deg: heading_deg(&input.vehicle),
-                pitch_deg: 0.0,
-                surveillance_revision: input.supervisor.belief_surveillance_revision(),
-                notices_revision: 0,
-            },
-        )?;
+        let chart_spec =
+            build_chart_camera_spec(mode, &input.vehicle, input.profile, input.supervisor);
+        let _chart_redrawn = self.belief.render_chart_if_dirty(sim_dur, chart_spec)?;
         Ok(())
     }
 
@@ -313,4 +320,63 @@ fn heading_deg(vehicle: &VehicleState) -> f64 {
     let north = nose_ecef.dot(local.north());
     let east = nose_ecef.dot(local.east());
     east.atan2(north).to_degrees().rem_euclid(360.0)
+}
+
+fn ownship_exterior_entity(
+    vehicle: &VehicleState,
+    mode: OperatorViewportMode,
+    sensor_placement: VirtualCameraPlacement,
+    otw_slot: ViewSlotId,
+    sensor_slot: ViewSlotId,
+) -> DynamicEntity3D {
+    let geo = ecef_to_geodetic(vehicle.position_ecef);
+    let ecef_to_ned = LocalFrame::at(&geo).ned_to_ecef().transpose();
+    let ned_from_body =
+        DQuat::from_mat3(&(ecef_to_ned * DMat3::from_quat(vehicle.attitude))).normalize();
+    let mut entity = DynamicEntity3D::ownship_exterior(1, &geo, ned_from_body, 0.0, otw_slot, 11.0);
+    let mut mask = ViewSlotMask::ALL;
+    if mode != OperatorViewportMode::Chase {
+        mask = mask.without(otw_slot);
+    }
+    if matches!(sensor_placement, VirtualCameraPlacement::BodyMounted(_)) {
+        mask = mask.without(sensor_slot);
+    }
+    entity.placement.view_mask = mask;
+    entity
+}
+
+fn build_chart_camera_spec(
+    mode: OperatorViewportMode,
+    vehicle: &VehicleState,
+    profile: Option<ScenarioProfile>,
+    supervisor: &SupervisorRig,
+) -> ChartCameraSpec {
+    let own_geo = ecef_to_geodetic(vehicle.position_ecef);
+    let aero_id = supervisor.effective_aerodrome(profile);
+    if mode == OperatorViewportMode::ChartMap
+        && let Some(diag) = supervisor.diagram(aero_id)
+    {
+        let zoom = match aero_id {
+            AerodromeId::CentralJersey47N => 15.1,
+            AerodromeId::NewarkKewr | AerodromeId::DoverKdov => 13.8,
+        };
+        return ChartCameraSpec {
+            center_lat_deg: diag.surface_graph.reference_point.latitude_deg,
+            center_lon_deg: diag.surface_graph.reference_point.longitude_deg,
+            zoom,
+            bearing_deg: 0.0,
+            pitch_deg: 0.0,
+            surveillance_revision: supervisor.belief_surveillance_revision(),
+            notices_revision: 0,
+        };
+    }
+    ChartCameraSpec {
+        center_lat_deg: own_geo.lat_rad.to_degrees(),
+        center_lon_deg: own_geo.lon_rad.to_degrees(),
+        zoom: 13.6,
+        bearing_deg: heading_deg(vehicle),
+        pitch_deg: 0.0,
+        surveillance_revision: supervisor.belief_surveillance_revision(),
+        notices_revision: 0,
+    }
 }

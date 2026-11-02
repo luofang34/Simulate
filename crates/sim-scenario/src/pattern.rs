@@ -339,10 +339,11 @@ impl AirportPatternRun {
         self.panel.snapshot()
     }
 
-    /// Pilot eye pose in the C172 cabin.
+    /// Pilot eye pose in the C172 cabin (angled `-4.5°` over the cowling glareshield).
     #[must_use]
     pub fn eye_pose(&self) -> CameraPoseEcef {
-        CameraMount::forward_nose(COCKPIT_EYE_BODY_M).pose(&self.plant.output(), DVec3::ZERO)
+        CameraMount::oblique(COCKPIT_EYE_BODY_M, 0.0, -4.5_f64.to_radians(), 0.0)
+            .pose(&self.plant.output(), DVec3::ZERO)
     }
 
     /// Whether the requested circuit count (or safety duration limit) has finished.

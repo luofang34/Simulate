@@ -35,4 +35,11 @@ pub enum AppSimError {
     /// Window or offscreen GPU renderer failed.
     #[error("GPU renderer failed")]
     Render(#[from] RenderError),
+    /// Writing or reading a screenshot image on desktop failed.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error("screenshot export failed: {detail}")]
+    Screenshot {
+        /// Diagnostic description.
+        detail: String,
+    },
 }

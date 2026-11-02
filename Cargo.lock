@@ -5005,6 +5005,7 @@ dependencies = [
  "flightbag",
  "gilrs",
  "glam 0.33.12",
+ "image",
  "mbd-core",
  "pollster",
  "sim-apollo",

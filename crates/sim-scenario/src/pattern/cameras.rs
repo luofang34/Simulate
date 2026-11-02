@@ -46,8 +46,8 @@ pub fn pattern_virtual_cameras(diagram: &OsmAerodromeDiagram) -> Vec<VirtualCame
             title: "Left Pattern Window",
             placement: VirtualCameraPlacement::BodyMounted(CameraMount::oblique(
                 DVec3::new(0.35, -0.45, -0.25),
-                -82.0_f64.to_radians(),
-                -14.0_f64.to_radians(),
+                -86.0_f64.to_radians(),
+                -18.5_f64.to_radians(),
                 0.0,
             )),
             base_intrinsics: base_58,
@@ -60,8 +60,8 @@ pub fn pattern_virtual_cameras(diagram: &OsmAerodromeDiagram) -> Vec<VirtualCame
             placement: VirtualCameraPlacement::WorldAutoTrack {
                 position: diagram.tower_viewpoint,
                 lead_time_s: 0.20,
-                auto_zoom_span_m: Some(32.0),
-                min_fov_y_rad: 2.5_f64.to_radians(),
+                auto_zoom_span_m: Some(220.0),
+                min_fov_y_rad: 10.0_f64.to_radians(),
                 max_fov_y_rad: 48.0_f64.to_radians(),
             },
             base_intrinsics: base_53,

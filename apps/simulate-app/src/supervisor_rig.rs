@@ -82,7 +82,7 @@ impl SupervisorRig {
     }
 
     /// Sets the active [`OperatorViewportMode`].
-    #[cfg(test)]
+    #[cfg(any(test, not(target_arch = "wasm32")))]
     pub fn set_viewport_mode(&mut self, mode: OperatorViewportMode) {
         self.supervisor.set_viewport_mode(mode);
     }
@@ -98,6 +98,18 @@ impl SupervisorRig {
         };
         self.supervisor.set_viewport_mode(next);
         next
+    }
+
+    /// Selects a specific free-flight [`AerodromeId`].
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_free_aerodrome(&mut self, id: AerodromeId) {
+        self.free_aerodrome = id;
+    }
+
+    /// Selects a specific virtual camera channel index (`0..5`).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_virtual_camera_index(&mut self, index: usize) {
+        self.virtual_camera_index = index % 5;
     }
 
     /// Cycles the active free-flight airport (`KDOV` → `47N` → `KEWR`).

@@ -17,28 +17,29 @@ const CHASE_UP_M: f64 = 6.5;
 const VOLUMETRIC_BACK_M: f64 = 140.0;
 const VOLUMETRIC_UP_M: f64 = 85.0;
 
-/// Pilot eye mount slightly forward and above the aircraft CG in FRD body axes.
+/// Pilot eye mount slightly forward and above the aircraft CG in FRD body axes (`-4.5°` over cowling).
 pub fn pilot_eye_mount() -> CameraMount {
-    CameraMount {
-        offset_body_m: DVec3::new(0.65, 0.0, -0.25),
-        body_to_camera: DQuat::IDENTITY,
-    }
+    CameraMount::oblique(
+        DVec3::new(0.65, 0.0, -0.25),
+        0.0,
+        -4.5_f64.to_radians(),
+        0.0,
+    )
 }
 
 /// Belly optical/EVS sensor mount pitched downward by `22°` in FRD body axes.
 pub fn belly_sensor_mount() -> CameraMount {
-    CameraMount {
-        offset_body_m: DVec3::new(1.10, 0.0, 0.45),
-        body_to_camera: DQuat::from_rotation_y(-22.0_f64.to_radians()),
-    }
+    CameraMount::oblique(
+        DVec3::new(1.10, 0.0, 0.45),
+        0.0,
+        -22.0_f64.to_radians(),
+        0.0,
+    )
 }
 
-/// PFD `ConformalSvs3D` virtual camera mount aligned with the nose reference.
+/// PFD `ConformalSvs3D` virtual camera mount aligned with the aircraft nose reference.
 pub fn svs_nose_mount() -> CameraMount {
-    CameraMount {
-        offset_body_m: DVec3::ZERO,
-        body_to_camera: DQuat::IDENTITY,
-    }
+    CameraMount::forward_nose(DVec3::ZERO)
 }
 
 /// The eye a scenario gives a person aboard.

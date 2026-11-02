@@ -134,10 +134,38 @@ impl CockpitRig {
         self.show_instruments
     }
 
+    /// Explicitly shows or hides the bottom glass-cockpit PFD/MFD/HSI dock.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_show_instruments(&mut self, visible: bool) {
+        self.show_instruments = visible;
+    }
+
     /// Toggles the center conformal HUD overlay in `OperatorViewportMode::Cockpit`.
     pub fn toggle_conformal_hud(&mut self) -> bool {
         self.show_conformal_hud = !self.show_conformal_hud;
         self.show_conformal_hud
+    }
+
+    /// Explicitly shows or hides the center conformal HUD overlay.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_show_conformal_hud(&mut self, visible: bool) {
+        self.show_conformal_hud = visible;
+    }
+
+    /// Marks the MFD `Map2D` chart dirty for an immediate redraw on scenario/airport switch.
+    pub fn invalidate_chart(&mut self) {
+        if let Some(maps) = self.maps.as_mut() {
+            maps.invalidate_chart();
+        }
+    }
+
+    /// Whether background `maplibre` tile workers have new arrivals waiting to be drawn.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
+    pub fn maps_need_redraw(&self) -> bool {
+        self.maps
+            .as_ref()
+            .is_some_and(DualWorldMapRig::needs_redraw)
     }
 
     /// Steps supervisor radio belief, renders Earth `TruthSceneMap` + `BeliefAvionicsMap` viewports

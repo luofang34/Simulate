@@ -195,11 +195,17 @@ pub fn build_conformal_overlay(
         {
             let color = match entity.kind {
                 DynamicEntityKind::GroundVehicle => [0.85, 0.65, 0.15, 0.90],
-                DynamicEntityKind::OwnshipExterior => [0.20, 0.85, 0.95, 0.90],
+                DynamicEntityKind::OwnshipExterior => [0.98, 0.72, 0.18, 0.96],
                 DynamicEntityKind::FixedWing | DynamicEntityKind::Rotorcraft => {
                     [0.0, 0.92, 0.92, 0.92]
                 }
             };
+            if matches!(
+                entity.kind,
+                DynamicEntityKind::OwnshipExterior | DynamicEntityKind::FixedWing
+            ) {
+                append_airframe_wireframe(&mut mesh, stamp, viewport_px, entity, &point, color);
+            }
             push_diamond(&mut mesh, px, depth, 6.0, color);
             if probes.len() < MAX_PROBES {
                 probes.push(DepthProbe {
@@ -212,6 +218,59 @@ pub fn build_conformal_overlay(
     (mesh, probes)
 }
 
+fn append_airframe_wireframe(
+    mesh: &mut OverlayMesh,
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
+    entity: &DynamicEntity3D,
+    center_geo: &Geodetic,
+    color: [f32; 4],
+) {
+    let [qx, qy, qz, qw] = entity.placement.orientation.enu_from_body;
+    let q_enu = DQuat::from_xyzw(qx, qy, qz, qw).normalize();
+    if !q_enu.is_finite() {
+        return;
+    }
+    let span = entity.characteristic_span_m.max(2.0);
+    let center_ecef = BodyEllipsoid::WGS84.geodetic_to_fixed(center_geo);
+    let local = LocalFrame::at(center_geo);
+    let project_body = |body_m: DVec3| -> Option<([f32; 2], f32)> {
+        let enu = q_enu * body_m;
+        let offset_ecef = local.east() * enu.x + local.north() * enu.y + local.up() * enu.z;
+        let geo = BodyEllipsoid::WGS84.fixed_to_geodetic(center_ecef + offset_ecef);
+        project_geodetic_to_screen(stamp, &geo, stamp.geoid_undulation_m, viewport_px)
+    };
+    let (Some(wing_l), Some(wing_r)) = (
+        project_body(DVec3::new(-0.50 * span, 0.05 * span, 0.06 * span)),
+        project_body(DVec3::new(0.50 * span, 0.05 * span, 0.06 * span)),
+    ) else {
+        return;
+    };
+    if (wing_r.0[0] - wing_l.0[0]).hypot(wing_r.0[1] - wing_l.0[1]) < 8.0 {
+        return;
+    }
+    push_segment(mesh, wing_l.0, wing_l.1, wing_r.0, wing_r.1, 2.6, color);
+    let segments = [
+        (
+            DVec3::new(0.0, 0.38 * span, 0.0),
+            DVec3::new(0.0, -0.38 * span, 0.0),
+        ),
+        (
+            DVec3::new(-0.17 * span, -0.35 * span, 0.02 * span),
+            DVec3::new(0.17 * span, -0.35 * span, 0.02 * span),
+        ),
+        (
+            DVec3::new(0.0, -0.35 * span, 0.0),
+            DVec3::new(0.0, -0.39 * span, 0.14 * span),
+        ),
+    ];
+    for (a_body, b_body) in segments {
+        if let (Some(a), Some(b)) = (project_body(a_body), project_body(b_body)) {
+            push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
+        }
+    }
+}
+
 fn append_runway_outline(
     mesh: &mut OverlayMesh,
     probes: &mut Vec<DepthProbe>,
@@ -222,7 +281,7 @@ fn append_runway_outline(
     let thr = Geodetic {
         lat_rad: rwy.threshold.latitude_deg.to_radians(),
         lon_rad: rwy.threshold.longitude_deg.to_radians(),
-        height_m: rwy.threshold.ellipsoidal_height_m,
+        height_m: rwy.threshold.ellipsoidal_height_m + 0.35,
     };
     let thr_ecef = BodyEllipsoid::WGS84.geodetic_to_fixed(&thr);
     let ned_to_ecef = LocalFrame::at(&thr).ned_to_ecef();
@@ -231,28 +290,34 @@ fn append_runway_outline(
     let right_ned = DVec3::new(-sin_b, cos_b, 0.0);
     let half_w = (rwy.width_m * 0.5).max(5.0);
     let len = rwy.length_m.max(100.0);
-
-    let corners_ned = [
-        -right_ned * half_w,
-        right_ned * half_w,
-        fwd_ned * len + right_ned * half_w,
-        fwd_ned * len - right_ned * half_w,
-    ];
-    let mut projected = [([0.0_f32; 2], 0.0_f32); 4];
-    for (dst, offset_ned) in projected.iter_mut().zip(corners_ned) {
-        let corner_geo =
-            BodyEllipsoid::WGS84.fixed_to_geodetic(thr_ecef + ned_to_ecef * offset_ned);
-        let Some(p) =
-            project_geodetic_to_screen(stamp, &corner_geo, stamp.geoid_undulation_m, viewport_px)
-        else {
-            return;
-        };
-        *dst = p;
-    }
-    let [c0, c1, c2, c3] = projected;
     let color = [0.15, 0.95, 0.45, 0.92];
-    for (a, b) in [(c0, c1), (c1, c2), (c2, c3), (c3, c0)] {
-        push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
+    let project_ned = |offset_ned: DVec3| -> Option<([f32; 2], f32)> {
+        let geo = BodyEllipsoid::WGS84.fixed_to_geodetic(thr_ecef + ned_to_ecef * offset_ned);
+        project_geodetic_to_screen(stamp, &geo, stamp.geoid_undulation_m, viewport_px)
+    };
+
+    const RAIL_STEPS: usize = 8;
+    for i in 0..RAIL_STEPS {
+        let s0 = len * (i as f64 / RAIL_STEPS as f64);
+        let s1 = len * ((i + 1) as f64 / RAIL_STEPS as f64);
+        for side in [-1.0, 1.0] {
+            let lat = right_ned * (side * half_w);
+            if let (Some(a), Some(b)) = (
+                project_ned(fwd_ned * s0 + lat),
+                project_ned(fwd_ned * s1 + lat),
+            ) {
+                push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
+            }
+        }
+    }
+    for s in [0.0, len] {
+        let along = fwd_ned * s;
+        if let (Some(a), Some(b)) = (
+            project_ned(along - right_ned * half_w),
+            project_ned(along + right_ned * half_w),
+        ) {
+            push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
+        }
     }
     if probes.len() < MAX_PROBES
         && let Some((px, depth)) =

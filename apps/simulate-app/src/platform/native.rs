@@ -1,14 +1,16 @@
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use sim_render::Renderer;
-use tracing::error;
+use tracing::{error, info};
 use winit::event_loop::{EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowAttributes};
 
 use crate::app::{AppEvent, FlightApp};
+use crate::gallery;
 
-/// Runs the app until its window closes.
+/// Runs the app until its window closes (or renders a headless gallery when `--render-gallery <dir>` is passed).
 pub fn run() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -17,6 +19,18 @@ pub fn run() -> ExitCode {
             }),
         )
         .init();
+    if let Some(dir) = parse_gallery_arg() {
+        return match gallery::render_gallery(&dir) {
+            Ok(count) => {
+                info!(count, dir = %dir.display(), "rendered headless screenshot gallery");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                error!(error = %err, source = ?std::error::Error::source(&err), "gallery render failed");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let event_loop = match EventLoop::<AppEvent>::with_user_event().build() {
         Ok(event_loop) => event_loop,
         Err(err) => {
@@ -60,4 +74,14 @@ pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     if proxy.send_event(AppEvent::RendererReady(renderer)).is_err() {
         error!("event loop closed before the renderer was ready");
     }
+}
+
+fn parse_gallery_arg() -> Option<PathBuf> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--render-gallery" {
+            return args.next().map(PathBuf::from);
+        }
+    }
+    None
 }

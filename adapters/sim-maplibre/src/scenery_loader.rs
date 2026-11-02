@@ -215,7 +215,7 @@ pub fn belief_svs_relief_style(max_dem_zoom: u8) -> Result<Style, MapAdapterErro
             {
                 "id": "svs-bg",
                 "type": "background",
-                "paint": { "background-color": "#08121e" }
+                "paint": { "background-color": "#1c4f8a" }
             }
         ]
     });
