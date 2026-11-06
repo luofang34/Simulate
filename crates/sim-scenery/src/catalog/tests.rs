@@ -142,3 +142,45 @@ fn an_uncovered_edge_holds_rather_than_blending_toward_zero() {
     let edge = catalog.ground_height_m(&point_in(TILE, 1.0 - 1e-9, 0.5));
     assert_eq!(edge.unwrap().map(f64::round), Some(100.0));
 }
+
+#[test]
+fn every_change_bumps_the_version_and_the_datum_only_relabels() {
+    let mut catalog = CatalogScenery::new();
+    let mut seen = vec![catalog.version()];
+    catalog.insert_elevation(TILE, flat(40.0)).unwrap();
+    seen.push(catalog.version());
+    catalog
+        .insert_imagery(TILE, ImageryRaster::new(1, 1, vec![0; 4]).unwrap())
+        .unwrap();
+    seen.push(catalog.version());
+    let centre = point_in(TILE, 0.5, 0.5);
+    let msl = catalog
+        .ellipsoidal_ground_height_m(&centre)
+        .unwrap()
+        .unwrap();
+    catalog.set_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
+    seen.push(catalog.version());
+    assert!(
+        seen.windows(2)
+            .all(|pair| pair[1] == pair[0].wrapping_add(1)),
+        "{seen:?}"
+    );
+
+    assert_eq!(catalog.ground_height_m(&centre), Ok(Some(40.0)));
+    let ellipsoidal = catalog
+        .ellipsoidal_ground_height_m(&centre)
+        .unwrap()
+        .unwrap();
+    assert_eq!(ellipsoidal.0, 40.0);
+    let undulation = sim_geo::egm96_undulation_m(centre.lat_rad, centre.lon_rad);
+    assert!((msl.0 - ellipsoidal.0 - undulation).abs() < 1e-12);
+}
+
+#[test]
+fn synthetic_catalogs_are_ellipsoidal() {
+    let catalog = CatalogScenery::synthetic_aerodrome(crate::AerodromeId::DoverKdov).unwrap();
+    assert_eq!(
+        catalog.vertical_datum(),
+        CatalogVerticalDatum::EllipsoidWgs84
+    );
+}

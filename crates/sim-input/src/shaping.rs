@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 #[cfg(test)]
 mod tests;
 
 /// Range a physical axis reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InputRange {
     /// −1..1 (sticks, yoke axes, most lever axes).
     Bipolar,
@@ -11,7 +13,7 @@ pub enum InputRange {
 }
 
 /// What the axis controls physically.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputRange {
     /// A self-centring control producing −1..1, with a deadzone at centre.
     Centered,
@@ -21,7 +23,7 @@ pub enum OutputRange {
 }
 
 /// How a raw axis value becomes a control value.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AxisShape {
     /// Reverse the axis direction.
     pub invert: bool,
@@ -63,7 +65,13 @@ impl AxisShape {
 
     /// Shapes a raw device value; NaN reads as rest.
     pub fn apply(&self, raw: f32) -> f64 {
-        let raw = if raw.is_nan() { 0.0 } else { f64::from(raw) };
+        self.apply_f64(f64::from(raw))
+    }
+
+    /// [`Self::apply`] on a value already widened to `f64`, such as the
+    /// difference of a trigger pair; NaN reads as rest.
+    pub fn apply_f64(&self, raw: f64) -> f64 {
+        let raw = if raw.is_nan() { 0.0 } else { raw };
         let unit = match self.input {
             InputRange::Bipolar => raw.clamp(-1.0, 1.0),
             InputRange::Unipolar => raw.clamp(0.0, 1.0) * 2.0 - 1.0,

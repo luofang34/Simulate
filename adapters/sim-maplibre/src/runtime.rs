@@ -1,12 +1,12 @@
-//! Shared GPU + worker runtime and isolated `TruthScene` / `BeliefAvionics` maps.
+//! Shared GPU + worker runtime, the simulator's physical scene, and instrument maps.
 //!
 //! [`SharedMapRuntime`] owns one [`HostGpu`], one [`SharedMapAssets`] cache
 //! (`128 MiB` decoded `Arc<DemTile>` / raster / glyph cache + [`SharedPipelines`]),
-//! and (on native targets) one bounded 2-thread Tokio tile worker pool.
+//! and (on native targets) one bounded Tokio tile worker pool sized to the host's cores.
 //!
-//! [`TruthSceneMap`] and [`BeliefAvionicsMap`] share immutable static tiles and
-//! compiled pipelines through [`SharedMapRuntime`] while keeping their ECS `World`s,
-//! dynamic overlays, and track sets strictly isolated.
+//! [`TruthSceneMap`] and every [`InstrumentMapSurface`] of an [`AvionicsMapSet`] share
+//! immutable static tiles and compiled pipelines through [`SharedMapRuntime`] while
+//! keeping their ECS `World`s, overlays, and track sets strictly isolated.
 
 use std::rc::Rc;
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,25 +20,38 @@ use maplibre::{
     io::resource_loader::SharedLoader,
     kernel::Kernel,
     plugin::Plugin,
-    render::{
-        Renderer, graph::RenderGraph, host_gpu::HostGpu, resource::SharedPipelines,
-        settings::RendererSettings,
-    },
+    render::{Renderer, host_gpu::HostGpu, resource::SharedPipelines, settings::RendererSettings},
     schedule::Schedule,
     tcs::world::World,
-    terrain::DrapeBudget,
+    terrain::{DrapeBudget, PolarPoleElevations, TerrainCoverageIndex},
     window::PhysicalSize,
 };
 
 use crate::{CockpitDeviceTier, MapAdapterError};
 
-mod belief;
+mod instrument_map;
+mod map_set;
+mod pacing;
+mod pixel_ratio;
 #[cfg(not(target_arch = "wasm32"))]
 mod readback;
+mod svs_dem;
+mod tile_json;
 mod truth;
 
-pub use belief::{BeliefAvionicsConfig, BeliefAvionicsMap, ChartCameraSpec, ChartFrameOutcome};
-pub use truth::{TruthSceneConfig, TruthSceneFrame, TruthSceneMap};
+pub use instrument_map::{
+    ChartCameraSpec, ChartFrameOutcome, ConformalMapFrame, InstrumentMapMode, InstrumentMapSpec,
+    InstrumentMapSurface,
+};
+pub use map_set::AvionicsMapSet;
+pub(crate) use pixel_ratio::pixel_ratio_update;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use readback::read_texture_rgba_blocking;
+pub(crate) use tile_json::resolve_or_strip_tile_json;
+pub use truth::{
+    AircraftInstance, CelestialDisc, CelestialEarthShadow, CelestialSkyInput, CelestialStar,
+    CelestialTwilight, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
+};
 
 /// Shared GPU, pipeline, decoded-asset, and async tile-worker context for all
 /// `maplibre` scenes in a process.
@@ -68,7 +81,7 @@ impl SharedMapRuntime {
         #[cfg(not(target_arch = "wasm32"))]
         let tokio_runtime = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
+                .worker_threads(tile_worker_threads())
                 .thread_name("sim-map-tiles")
                 .enable_all()
                 .build()
@@ -132,6 +145,12 @@ impl SharedMapRuntime {
         })
     }
 
+    /// Runs `future` to completion on the tile worker pool.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn block_on<F: std::future::Future>(&self, future: F) -> F::Output {
+        self.tokio_runtime.block_on(future)
+    }
+
     pub(crate) fn with_runtime_context<R>(&self, f: impl FnOnce() -> R) -> R {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -145,6 +164,13 @@ impl SharedMapRuntime {
     }
 }
 
+/// Decode workers for DEM and imagery tiles: enough that a burst of arrivals while
+/// taxiing does not queue behind two threads, few enough to leave cores for the frame.
+#[cfg(not(target_arch = "wasm32"))]
+fn tile_worker_threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| n.get().clamp(4, 8))
+}
+
 pub(crate) struct DrapeBudgetPlugin(pub(crate) DrapeBudget);
 
 impl Plugin<HeadlessEnvironment> for DrapeBudgetPlugin {
@@ -153,12 +179,71 @@ impl Plugin<HeadlessEnvironment> for DrapeBudgetPlugin {
         _schedule: &mut Schedule,
         _kernel: Rc<Kernel<HeadlessEnvironment>>,
         world: &mut World,
-        _graph: &mut RenderGraph,
-    ) {
+        _renderer: &mut maplibre::render::Renderer,
+    ) -> Result<(), maplibre::plugin::PluginError> {
         world.resources.insert(self.0);
+        Ok(())
+    }
+}
+
+/// Arctic sea-level (`0 m`) and Amundsen-Scott South Pole plateau (`2,835 m` MSL)
+/// datum elevations for Web Mercator's `±85.0511°..±90°` terrain polar caps.
+pub(crate) const EARTH_POLAR_ELEVATIONS: PolarPoleElevations = PolarPoleElevations {
+    north_meters: 0.0,
+    south_meters: 2_835.0,
+};
+
+pub(crate) struct PolarElevationsPlugin(pub(crate) PolarPoleElevations);
+
+impl Plugin<HeadlessEnvironment> for PolarElevationsPlugin {
+    fn build(
+        &self,
+        _schedule: &mut Schedule,
+        _kernel: Rc<Kernel<HeadlessEnvironment>>,
+        world: &mut World,
+        _renderer: &mut maplibre::render::Renderer,
+    ) -> Result<(), maplibre::plugin::PluginError> {
+        world.resources.insert(self.0);
+        world
+            .resources
+            .insert(TerrainCoverageIndex::default().with_poles(self.0));
+        Ok(())
     }
 }
 
 pub(crate) fn validate_size(width: u32, height: u32) -> Result<PhysicalSize, MapAdapterError> {
     PhysicalSize::new(width, height).ok_or(MapAdapterError::InvalidViewportSize { width, height })
+}
+
+pub(super) fn instrument_plugins_for(
+    mode: InstrumentMapMode,
+) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
+    use maplibre::{
+        background::BackgroundPlugin,
+        hillshade::HillshadePlugin,
+        overlay::OverlayPlugin,
+        raster::{DefaultRasterTransferables, RasterPlugin},
+        render::RenderPlugin,
+        terrain::{TerrainPlugin, transferables::DefaultDemTransferables},
+        vector::{DefaultVectorTransferables, VectorPlugin},
+    };
+    match mode {
+        InstrumentMapMode::Conformal3d { .. } => vec![
+            Box::new(RenderPlugin),
+            Box::new(BackgroundPlugin),
+            Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+            Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
+            Box::new(OverlayPlugin),
+        ],
+        InstrumentMapMode::Chart2d { .. } => vec![
+            Box::new(RenderPlugin),
+            Box::new(BackgroundPlugin),
+            Box::new(RasterPlugin::<DefaultRasterTransferables>::default()),
+            Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
+            Box::new(HillshadePlugin),
+            Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+            Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
+            Box::new(OverlayPlugin),
+        ],
+    }
 }

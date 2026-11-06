@@ -1,18 +1,22 @@
 use flightbag::{AirportSurfaceGraph, FacilityCode, RunwayDesignator, RunwayEndSpec};
-use glam::DVec3;
-use sim_core::{SimInstant, VirtualCameraSpec};
+use sim_core::VirtualCameraSpec;
 use sim_geo::{Geodetic, UtcTime};
-use sim_maplibre::{DynamicEntity3D, ViewSlotMask, entities_from_surveillance_belief};
 use sim_scenario::{
     OperatorViewportMode, RadioBeliefPolicy, ScenarioProfile, SimSupervisor, SimTimeScale,
-    pattern_virtual_cameras,
 };
-use sim_scenery::{AerodromeId, OsmAerodromeDiagram};
-use world::surveillance::{
-    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-    TrackKey, TrackObservation,
+use sim_scenery::{
+    AerodromeId, AirportIdx, CatalogVerticalDatum, LandingRunwayGeometry, OsmAerodromeDiagram,
 };
-use world::{GeodeticPosition, LocalTangentPlane, Ned};
+use world::GeodeticPosition;
+
+use airport::{AirportGraphs, featured_idx};
+use cameras::CAMERA_COUNT;
+
+mod airport;
+mod cameras;
+#[cfg(test)]
+mod tests;
+mod traffic;
 
 /// Reference Delaware (`KDOV`) threshold latitude, degrees, inside `SyntheticCorridorSpec::delaware()`.
 pub const DELAWARE_RUNWAY_LAT_DEG: f64 = 39.1220;
@@ -26,13 +30,20 @@ pub const DELAWARE_RUNWAY_BEARING_RAD: f64 = 85.0 * std::f64::consts::PI / 180.0
 const EPOCH_UNIX_S: f64 = 1_782_864_000.0;
 
 /// Owns [`SimSupervisor`], OpenStreetMap airport surface diagrams (`KDOV`, `47N`, `KEWR`),
-/// active virtual camera channel selection, and truth-to-belief radio traffic filtering.
+/// the free-flight airport from the global airport database, active virtual camera
+/// channel selection, and truth-to-belief radio traffic filtering.
 pub struct SupervisorRig {
     supervisor: SimSupervisor,
     delaware_fallback: Option<AirportSurfaceGraph>,
     diagrams: Vec<OsmAerodromeDiagram>,
     free_aerodrome: AerodromeId,
+    free_airport: Option<AirportIdx>,
+    selected_runway_end: usize,
+    datum: CatalogVerticalDatum,
+    graphs: AirportGraphs,
     virtual_camera_index: usize,
+    /// The profile whose camera suite [`Self::cycle_virtual_camera`] last stepped through.
+    camera_suite: Option<ScenarioProfile>,
     start_utc: UtcTime,
 }
 
@@ -58,12 +69,19 @@ impl SupervisorRig {
             .into_iter()
             .filter_map(|id| OsmAerodromeDiagram::builtin(id).ok())
             .collect();
+        let datum = CatalogVerticalDatum::OrthometricMslEgm96;
+        let free_airport = featured_idx(AerodromeId::DoverKdov);
         Self {
             supervisor,
             delaware_fallback: build_delaware_airport(),
             diagrams,
             free_aerodrome: AerodromeId::DoverKdov,
+            free_airport,
+            selected_runway_end: 0,
+            datum,
+            graphs: AirportGraphs::build(datum, free_airport),
             virtual_camera_index: 0,
+            camera_suite: None,
             start_utc: UtcTime::from_unix_seconds(EPOCH_UNIX_S),
         }
     }
@@ -100,35 +118,66 @@ impl SupervisorRig {
         next
     }
 
-    /// Selects a specific free-flight [`AerodromeId`].
-    #[cfg(not(target_arch = "wasm32"))]
+    /// Selects a specific free-flight [`AerodromeId`], its database airport, and its first
+    /// runway end.
     pub fn set_free_aerodrome(&mut self, id: AerodromeId) {
         self.free_aerodrome = id;
+        self.sync_free_airport();
+    }
+
+    /// Points the free-flight database airport at [`Self::free_aerodrome`]'s.
+    fn sync_free_airport(&mut self) {
+        self.free_airport = featured_idx(self.free_aerodrome);
+        self.selected_runway_end = 0;
+        self.refresh_graphs();
     }
 
     /// Selects a specific virtual camera channel index (`0..5`).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_virtual_camera_index(&mut self, index: usize) {
-        self.virtual_camera_index = index % 5;
+        self.virtual_camera_index = index % CAMERA_COUNT;
     }
 
     /// Cycles the active free-flight airport (`KDOV` → `47N` → `KEWR`).
+    #[cfg(test)]
     pub fn cycle_aerodrome(&mut self) -> AerodromeId {
-        self.free_aerodrome = match self.free_aerodrome {
-            AerodromeId::DoverKdov => AerodromeId::CentralJersey47N,
-            AerodromeId::CentralJersey47N => AerodromeId::NewarkKewr,
-            AerodromeId::NewarkKewr => AerodromeId::DoverKdov,
+        self.step_aerodrome(true)
+    }
+
+    /// Steps the active free-flight airport forwards (`KDOV` → `47N` → `KEWR`) or backwards.
+    pub fn step_aerodrome(&mut self, forward: bool) -> AerodromeId {
+        self.free_aerodrome = match (self.free_aerodrome, forward) {
+            (AerodromeId::DoverKdov, true) | (AerodromeId::NewarkKewr, false) => {
+                AerodromeId::CentralJersey47N
+            }
+            (AerodromeId::CentralJersey47N, true) | (AerodromeId::DoverKdov, false) => {
+                AerodromeId::NewarkKewr
+            }
+            (AerodromeId::NewarkKewr, true) | (AerodromeId::CentralJersey47N, false) => {
+                AerodromeId::DoverKdov
+            }
         };
+        self.sync_free_airport();
         self.free_aerodrome
     }
 
-    /// Active airport ID for `profile` (`47N` / `KEWR` for pattern scenarios, otherwise free-flight airport).
+    /// Active airport ID for `profile` (`47N` / `KEWR` for pattern scenarios, `KDOV` for
+    /// corridor scenarios, otherwise free-flight airport).
     #[must_use]
     pub const fn effective_aerodrome(&self, profile: Option<ScenarioProfile>) -> AerodromeId {
         match profile {
             Some(ScenarioProfile::Airport47NUncontrolledPattern) => AerodromeId::CentralJersey47N,
             Some(ScenarioProfile::AirportKewrToweredPattern) => AerodromeId::NewarkKewr,
-            _ => self.free_aerodrome,
+            Some(
+                ScenarioProfile::CorridorNominalCruise
+                | ScenarioProfile::CorridorOffSeedAcquisition
+                | ScenarioProfile::CorridorAggressiveBank
+                | ScenarioProfile::CorridorSameCellLoiter,
+            ) => AerodromeId::DoverKdov,
+            Some(
+                ScenarioProfile::Apollo11LunarLanding | ScenarioProfile::Apollo11CapsuleReentry,
+            )
+            | None => self.free_aerodrome,
         }
     }
 
@@ -138,57 +187,79 @@ impl SupervisorRig {
         self.diagrams.iter().find(|d| d.id == id)
     }
 
-    /// Active [`RunwayEndSpec`] for conformal OTW and SVS runway outlines.
+    /// Active [`RunwayEndSpec`] for conformal OTW and SVS runway outlines, its threshold at
+    /// its true ellipsoidal height in [`Self::vertical_datum`]: the scenario's pattern
+    /// runway, or the selected runway end of the free-flight airport. None off Earth.
     #[must_use]
     pub fn active_runway(&self, profile: Option<ScenarioProfile>) -> Option<&RunwayEndSpec> {
-        let id = self.effective_aerodrome(profile);
-        self.diagram(id)
-            .and_then(OsmAerodromeDiagram::primary_runway_end)
-            .or_else(|| {
-                self.delaware_fallback
-                    .as_ref()
-                    .and_then(|airport| airport.runway_ends.first())
-            })
+        if matches!(
+            profile,
+            Some(ScenarioProfile::Apollo11LunarLanding | ScenarioProfile::Apollo11CapsuleReentry)
+        ) {
+            return None;
+        }
+        self.cached_runway(profile).or_else(|| {
+            self.delaware_fallback
+                .as_ref()
+                .and_then(|airport| airport.runway_ends.first())
+        })
     }
 
-    /// Cycles the active virtual camera channel (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`,
-    /// `Tower PTZ Auto-Track`, `Threshold Final Cam`) and enters `SensorAperture` view.
+    /// Surveyed 3D landing geometry for the active runway (including published displaced
+    /// landing threshold, longitudinal runway slope, and glidepath angle) in
+    /// [`Self::vertical_datum`], free of any live simulator DEM query. None off Earth.
+    #[must_use]
+    pub fn active_landing_runway(
+        &self,
+        profile: Option<ScenarioProfile>,
+    ) -> Option<LandingRunwayGeometry> {
+        let rwy = self.active_runway(profile)?;
+        if let Some(record) = self.active_airport_record(profile)
+            && let Some(landing) = record.landing_runway(rwy.designator.as_str(), self.datum)
+        {
+            return Some(landing);
+        }
+        Some(LandingRunwayGeometry::from_runway_end_spec(rwy))
+    }
+
+    /// Steps the virtual camera channel (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`,
+    /// `Tower PTZ Auto-Track`, `Threshold Final Cam`) in `SensorAperture` view.
+    ///
+    /// From any other view, or with another profile's suite showing, it starts at the first
+    /// camera; past the last camera it returns to the `Cockpit` view (and its HUD).
     pub fn cycle_virtual_camera(&mut self, profile: Option<ScenarioProfile>) -> VirtualCameraSpec {
-        if self.supervisor.viewport_mode() == OperatorViewportMode::SensorAperture {
-            self.virtual_camera_index = self.virtual_camera_index.wrapping_add(1) % 5;
-        } else {
+        let in_aperture = self.supervisor.viewport_mode() == OperatorViewportMode::SensorAperture;
+        if !in_aperture || self.camera_suite != profile {
+            self.virtual_camera_index = 0;
             self.supervisor
                 .set_viewport_mode(OperatorViewportMode::SensorAperture);
+        } else if self.virtual_camera_index.wrapping_add(1) < CAMERA_COUNT {
+            self.virtual_camera_index = self.virtual_camera_index.wrapping_add(1);
+        } else {
+            self.virtual_camera_index = 0;
+            self.supervisor
+                .set_viewport_mode(OperatorViewportMode::Cockpit);
         }
+        self.camera_suite = profile;
         self.active_virtual_camera(profile)
     }
 
-    /// Currently selected [`VirtualCameraSpec`] for `profile`'s active airport.
+    /// Currently selected [`VirtualCameraSpec`] for `profile`'s active airport (see
+    /// [`Self::active_virtual_camera_on_body`]).
     #[must_use]
     pub fn active_virtual_camera(&self, profile: Option<ScenarioProfile>) -> VirtualCameraSpec {
-        let id = self.effective_aerodrome(profile);
-        if let Some(diag) = self.diagram(id) {
-            let specs = pattern_virtual_cameras(diag);
-            if let Some(spec) = specs.get(self.virtual_camera_index % specs.len().max(1)) {
-                return *spec;
-            }
-        }
-        VirtualCameraSpec {
-            id: "nose_nav",
-            title: "Nose Nav Camera",
-            placement: sim_core::VirtualCameraPlacement::BodyMounted(
-                sim_core::CameraMount::forward_nose(DVec3::new(1.25, 0.0, -0.15)),
-            ),
-            base_intrinsics: VirtualCameraSpec::pinhole_800x600(53.0_f64.to_radians()),
-            period: sim_core::CAMERA_DEFAULT_PERIOD,
-            depth_readout: true,
-        }
+        self.active_virtual_camera_on_body(profile).1
     }
 
     /// Active [`SimTimeScale`].
     #[must_use]
     pub const fn time_scale(&self) -> SimTimeScale {
         self.supervisor.time_scale()
+    }
+
+    /// Sets the simulation rate.
+    pub fn set_time_scale(&mut self, scale: SimTimeScale) {
+        self.supervisor.set_time_scale(scale);
     }
 
     /// Toggles between [`SimTimeScale::Paused`] and [`SimTimeScale::RealTime`].
@@ -215,122 +286,6 @@ impl SupervisorRig {
         };
         self.supervisor.set_time_scale(next);
         next
-    }
-
-    /// Updates omniscient truth traffic kinematics at `now` and projects radio-visible tracks
-    /// into [`SimSupervisor::operator_view`]'s `belief_world`.
-    pub fn sync(&mut self, ownship_ecef: DVec3, now: SimInstant, profile: Option<ScenarioProfile>) {
-        let t_s = now.duration_since(SimInstant::START).as_seconds().max(0.0);
-        let now_us = (t_s * 1_000_000.0) as u64;
-        let id = self.effective_aerodrome(profile);
-        let anchor = self.diagram(id).map_or_else(
-            || {
-                GeodeticPosition::wgs84(
-                    DELAWARE_RUNWAY_LAT_DEG,
-                    DELAWARE_RUNWAY_LON_DEG,
-                    DELAWARE_RUNWAY_HEIGHT_M,
-                )
-            },
-            |d| d.surface_graph.reference_point,
-        );
-        self.ingest_truth_traffic(anchor, t_s, now_us);
-        self.supervisor
-            .sync_belief(ownship_ecef, now, self.start_utc);
-    }
-
-    /// Current revision of the operator's `belief_world` surveillance store.
-    #[must_use]
-    pub fn belief_surveillance_revision(&self) -> u64 {
-        self.supervisor
-            .operator_view()
-            .belief_world
-            .surveillance
-            .revision()
-    }
-
-    /// Avionics-belief 3D traffic entities derived strictly from `OperatorBeliefView::belief_world`.
-    #[must_use]
-    pub fn belief_entities(&self, visibility: ViewSlotMask) -> Vec<DynamicEntity3D> {
-        let store = &self.supervisor.operator_view().belief_world.surveillance;
-        let mut entities = entities_from_surveillance_belief(store, 0.0);
-        for entity in &mut entities {
-            entity.placement.view_mask = visibility;
-        }
-        entities
-    }
-
-    /// Omniscient physical-truth 3D traffic entities (rendered only in `TruthSceneMap`).
-    #[must_use]
-    pub fn truth_entities(&self, visibility: ViewSlotMask) -> Vec<DynamicEntity3D> {
-        let mut entities =
-            entities_from_surveillance_belief(&self.supervisor.truth_world().surveillance, 0.0);
-        for entity in &mut entities {
-            entity.placement.view_mask = visibility;
-        }
-        entities
-    }
-
-    fn ingest_truth_traffic(&mut self, anchor: GeodeticPosition, t_s: f64, now_us: u64) {
-        let Ok(plane) = LocalTangentPlane::new(anchor) else {
-            return;
-        };
-        let near_pos = plane.to_geodetic(Ned {
-            north_m: 850.0 + 12.0 * (t_s * 0.25).sin() * 20.0,
-            east_m: 2_800.0 + 46.0 * t_s,
-            down_m: -420.0,
-        });
-        let _near_outcome = self.supervisor.truth_world_mut().surveillance.ingest(
-            TrackObservation {
-                key: TrackKey {
-                    namespace: AddressNamespace::Icao24,
-                    address: 0xA1_B2_C3,
-                },
-                source: ObservationSource::Adsb1090,
-                delivery: DeliveryPath::Simulator,
-                observed_at_us: now_us,
-                position: near_pos,
-                velocity_ned_m_s: Ned {
-                    north_m: 3.0,
-                    east_m: 46.0,
-                    down_m: 0.0,
-                },
-                heading_rad: Some(DELAWARE_RUNWAY_BEARING_RAD),
-                callsign: Callsign::parse("N172SP"),
-                category: EmitterCategory::Light,
-                on_ground: false,
-                quality: IntegrityQuality::default(),
-            },
-            now_us,
-        );
-
-        let far_pos = plane.to_geodetic(Ned {
-            north_m: 1_200.0,
-            east_m: 45_000.0,
-            down_m: -120.0,
-        });
-        let _far_outcome = self.supervisor.truth_world_mut().surveillance.ingest(
-            TrackObservation {
-                key: TrackKey {
-                    namespace: AddressNamespace::RemoteId,
-                    address: 0xD0_00_99,
-                },
-                source: ObservationSource::RemoteId,
-                delivery: DeliveryPath::Simulator,
-                observed_at_us: now_us,
-                position: far_pos,
-                velocity_ned_m_s: Ned {
-                    north_m: 0.0,
-                    east_m: 8.0,
-                    down_m: 0.0,
-                },
-                heading_rad: Some(1.57),
-                callsign: Callsign::parse("UAS99"),
-                category: EmitterCategory::Uav,
-                on_ground: false,
-                quality: IntegrityQuality::default(),
-            },
-            now_us,
-        );
     }
 }
 

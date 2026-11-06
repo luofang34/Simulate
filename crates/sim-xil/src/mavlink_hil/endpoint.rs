@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::{Duration, Instant};
@@ -6,16 +7,16 @@ use sim_core::{
     EndpointError, ExternalEndpoint, SimInstant, StampedResponse, TICKS_PER_SECOND, TickSpan,
 };
 
-use crate::mavlink_hil::messages::{
-    HIL_SENSOR_FIELDS_ALL, HilActuatorControls, HilGpsSample, HilSensorSample,
-    HilStateQuaternionSample, SIM_COMPONENT_ID, SIM_SYSTEM_ID, encode_heartbeat, encode_hil_gps,
-    encode_hil_sensor, encode_hil_state_quaternion,
-};
-use crate::mavlink_hil::reader::{MavlinkHilFrame, MavlinkHilReader};
+use crate::mavlink_hil::clock_sync::{DEFAULT_CLOCK_RESYNC_THRESHOLD, HilLinkStats};
+use crate::mavlink_hil::messages::{HilActuatorControls, SIM_COMPONENT_ID, SIM_SYSTEM_ID};
+use crate::mavlink_hil::reader::MavlinkHilReader;
 use crate::{XilError, XilStimulus};
 
-const TICKS_PER_MICROSECOND: u64 = TICKS_PER_SECOND / 1_000_000;
-const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(1_000_000));
+mod peer_link;
+mod sequencer;
+
+use peer_link::PeerLink;
+use sequencer::OutboundSequencer;
 
 /// Emission schedule and timeout configuration for MAVLink v2 HIL endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +33,16 @@ pub struct MavlinkHilConfig {
     pub send_state_quaternion: bool,
     /// Maximum wall-clock wait during [`ExternalEndpoint::exchange_blocking`].
     pub blocking_timeout: Duration,
+    /// Peer `time_usec` jump (either direction) treated as a peer reboot or
+    /// pause and re-anchored; see
+    /// [`PeerClockSynchronizer`](crate::mavlink_hil::PeerClockSynchronizer).
+    pub clock_resync_threshold: TickSpan,
+    /// When set, `HIL_ACTUATOR_CONTROLS` lagging the newest `HIL_SENSOR` sent
+    /// by more than this are dropped rather than replacing fresher controls
+    /// ([`DEFAULT_MAX_REPLY_AGE`](crate::mavlink_hil::DEFAULT_MAX_REPLY_AGE)
+    /// suits a 100 ms loop budget). Off by default, since a free-running peer
+    /// that stamps replies with a frozen clock would otherwise be cut off.
+    pub max_reply_age: Option<TickSpan>,
 }
 
 impl Default for MavlinkHilConfig {
@@ -43,111 +54,44 @@ impl Default for MavlinkHilConfig {
             heartbeat_period: TickSpan::from_ticks(TICKS_PER_SECOND),
             send_state_quaternion: false,
             blocking_timeout: Duration::from_secs(2),
+            clock_resync_threshold: DEFAULT_CLOCK_RESYNC_THRESHOLD,
+            max_reply_age: None,
         }
     }
 }
 
-#[derive(Debug)]
-struct OutboundSequencer {
-    config: MavlinkHilConfig,
-    seq: u8,
-    last_gps_at: Option<SimInstant>,
-    last_heartbeat_at: Option<SimInstant>,
-    scratch: Vec<u8>,
-}
+/// Outbound bytes held for a peer that is not reading; beyond this `post`
+/// fails rather than block the simulation or grow without bound.
+const TCP_TX_CAPACITY: usize = 65_536;
 
-impl OutboundSequencer {
-    fn new(config: MavlinkHilConfig) -> Self {
-        Self {
-            config,
-            seq: 0,
-            last_gps_at: None,
-            last_heartbeat_at: None,
-            scratch: Vec::with_capacity(256),
-        }
-    }
-
-    fn build_burst(&mut self, at: SimInstant, stimulus: &XilStimulus) -> Result<&[u8], XilError> {
-        self.scratch.clear();
-        let time_usec = (at.ticks_u128() / u128::from(TICKS_PER_MICROSECOND)) as u64;
-        let mut frame = [0_u8; 280];
-
-        if should_emit(at, self.last_heartbeat_at, self.config.heartbeat_period) {
-            let n = encode_heartbeat(
-                self.next_seq(),
-                self.config.system_id,
-                self.config.component_id,
-                false,
-                &mut frame,
-            )?;
-            append_prefix(&mut self.scratch, &frame, n);
-            self.last_heartbeat_at = Some(at);
-        }
-
-        let sensor = HilSensorSample::from_stimulus(time_usec, stimulus, HIL_SENSOR_FIELDS_ALL)?;
-        let n = encode_hil_sensor(
-            self.next_seq(),
-            self.config.system_id,
-            self.config.component_id,
-            &sensor,
-            &mut frame,
-        )?;
-        append_prefix(&mut self.scratch, &frame, n);
-
-        if should_emit(at, self.last_gps_at, self.config.gps_period) {
-            let gps = HilGpsSample::from_stimulus(time_usec, stimulus)?;
-            let n = encode_hil_gps(
-                self.next_seq(),
-                self.config.system_id,
-                self.config.component_id,
-                &gps,
-                &mut frame,
-            )?;
-            append_prefix(&mut self.scratch, &frame, n);
-            self.last_gps_at = Some(at);
-        }
-
-        if self.config.send_state_quaternion {
-            let truth = HilStateQuaternionSample::from_stimulus(time_usec, stimulus)?;
-            let n = encode_hil_state_quaternion(
-                self.next_seq(),
-                self.config.system_id,
-                self.config.component_id,
-                &truth,
-                &mut frame,
-            )?;
-            append_prefix(&mut self.scratch, &frame, n);
-        }
-
-        Ok(&self.scratch)
-    }
-
-    const fn next_seq(&mut self) -> u8 {
-        let current = self.seq;
-        self.seq = self.seq.wrapping_add(1);
-        current
-    }
-}
+/// How long lockstep waits between attempts to flush to a full socket.
+const TX_RETRY_INTERVAL: Duration = Duration::from_micros(100);
 
 /// MAVLink v2 HIL endpoint over a TCP stream (for PX4 lockstep TCP port `4560`,
 /// `mavlink-router`, or `socat` serial bridges).
+///
+/// The stream stays non-blocking: outbound bursts queue in a bounded buffer
+/// that drains as the peer accepts bytes, so [`ExternalEndpoint::post`] never
+/// stalls a real-time run on a slow peer.
 #[derive(Debug)]
 pub struct MavlinkHilTcpEndpoint {
     stream: TcpStream,
     sequencer: OutboundSequencer,
-    reader: MavlinkHilReader,
-    peer_armed: bool,
+    link: PeerLink,
+    tx_buf: VecDeque<u8>,
 }
 
 impl MavlinkHilTcpEndpoint {
-    /// Wraps an already-connected [`TcpStream`], enabling `TCP_NODELAY`.
+    /// Wraps an already-connected [`TcpStream`], enabling `TCP_NODELAY` and
+    /// non-blocking I/O.
     pub fn from_stream(stream: TcpStream, config: MavlinkHilConfig) -> Result<Self, XilError> {
         stream.set_nodelay(true)?;
+        stream.set_nonblocking(true)?;
         Ok(Self {
             stream,
             sequencer: OutboundSequencer::new(config),
-            reader: MavlinkHilReader::new(),
-            peer_armed: false,
+            link: PeerLink::new(&config),
+            tx_buf: VecDeque::with_capacity(TCP_TX_CAPACITY),
         })
     }
 
@@ -165,31 +109,116 @@ impl MavlinkHilTcpEndpoint {
         Self::from_stream(stream, config)
     }
 
-    /// Whether the most recent heartbeat or actuator message reported armed.
+    /// Whether the most recent heartbeat or accepted actuator message
+    /// reported armed.
     #[must_use]
     pub const fn peer_armed(&self) -> bool {
-        self.peer_armed
+        self.link.peer_armed
     }
 
     /// Streaming parser diagnostics.
     #[must_use]
     pub const fn reader(&self) -> &MavlinkHilReader {
-        &self.reader
+        &self.link.reader
     }
 
-    fn drain_ready_controls(&mut self) -> Option<HilActuatorControls> {
-        while let Some(frame) = self.reader.pop_frame() {
-            match frame {
-                MavlinkHilFrame::Heartbeat { armed, .. } => {
-                    self.peer_armed = armed;
-                }
-                MavlinkHilFrame::ActuatorControls { controls, .. } => {
-                    self.peer_armed = controls.is_armed();
-                    return Some(controls);
-                }
+    /// Clock-mapping, correlation, and staleness counters.
+    #[must_use]
+    pub const fn link_stats(&self) -> HilLinkStats {
+        self.link.stats()
+    }
+
+    /// Outbound bytes queued but not yet accepted by the socket (at most
+    /// 65,536).
+    #[must_use]
+    pub fn pending_tx_bytes(&self) -> usize {
+        self.tx_buf.len()
+    }
+
+    /// Writes as much queued outbound data as the socket accepts without
+    /// blocking.
+    pub fn flush_tx(&mut self) -> Result<(), XilError> {
+        loop {
+            let (front, _) = self.tx_buf.as_slices();
+            if front.is_empty() {
+                return Ok(());
+            }
+            match self.stream.write(front) {
+                Ok(0) => return Err(std::io::Error::from(ErrorKind::WriteZero).into()),
+                Ok(n) => drop(self.tx_buf.drain(..n.min(front.len()))),
+                Err(err) if err.kind() == ErrorKind::WouldBlock => return Ok(()),
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => return Err(err.into()),
             }
         }
-        None
+    }
+
+    fn enqueue_burst(
+        &mut self,
+        at: SimInstant,
+        stimulus: &XilStimulus,
+    ) -> Result<(), EndpointError> {
+        self.flush_tx()?;
+        let bytes = self.sequencer.build_burst(at, stimulus)?;
+        let queued = self.tx_buf.len();
+        if queued.saturating_add(bytes.len()) > TCP_TX_CAPACITY {
+            return Err(EndpointError {
+                detail: format!(
+                    "MAVLink HIL TCP outbound buffer full (peer not draining): \
+                     {queued} queued + {} new bytes exceeds {TCP_TX_CAPACITY}",
+                    bytes.len()
+                ),
+            });
+        }
+        self.tx_buf.extend(bytes.iter().copied());
+        self.link.note_sensor_sent(at);
+        self.flush_tx()?;
+        Ok(())
+    }
+
+    fn flush_all_until(&mut self, deadline: Instant) -> Result<(), EndpointError> {
+        loop {
+            self.flush_tx()?;
+            if self.tx_buf.is_empty() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(EndpointError {
+                    detail: format!(
+                        "timed out flushing {} HIL bytes to MAVLink TCP peer",
+                        self.tx_buf.len()
+                    ),
+                });
+            }
+            std::thread::sleep(TX_RETRY_INTERVAL);
+        }
+    }
+
+    /// One read that waits at most until `deadline`, leaving the stream
+    /// non-blocking afterwards. `Ok(None)` means nothing arrived in time.
+    fn read_until(&mut self, deadline: Instant, buf: &mut [u8]) -> Result<Option<usize>, XilError> {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(None);
+        }
+        self.stream.set_nonblocking(false)?;
+        let read = self
+            .stream
+            .set_read_timeout(Some(remaining))
+            .and_then(|()| self.stream.read(buf));
+        self.stream.set_nonblocking(true)?;
+        match read {
+            Ok(n) => Ok(Some(n)),
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -202,60 +231,57 @@ impl ExternalEndpoint for MavlinkHilTcpEndpoint {
         at: SimInstant,
         stimulus: &Self::Stimulus,
     ) -> Result<Self::Response, EndpointError> {
-        let timeout = self.sequencer.config.blocking_timeout;
-        let bytes = self.sequencer.build_burst(at, stimulus)?;
-        self.stream.set_nonblocking(false).map_err(XilError::from)?;
-        self.stream
-            .set_read_timeout(Some(timeout))
-            .map_err(XilError::from)?;
-        self.stream.write_all(bytes).map_err(XilError::from)?;
+        let deadline = Instant::now() + self.sequencer.config.blocking_timeout;
+        self.enqueue_burst(at, stimulus)?;
+        self.flush_all_until(deadline)?;
 
-        let deadline = Instant::now() + timeout;
         let mut buf = [0_u8; 512];
         loop {
-            if let Some(controls) = self.drain_ready_controls() {
-                return Ok(controls);
+            if let Some(stamped) = self.link.next_fresh_controls() {
+                return Ok(stamped.response);
             }
-            if Instant::now() >= deadline {
-                return Err(EndpointError {
-                    detail: "timed out waiting for HIL_ACTUATOR_CONTROLS over TCP".to_owned(),
-                });
-            }
-            let n = self.stream.read(&mut buf).map_err(XilError::from)?;
-            if n == 0 {
-                return Err(EndpointError {
-                    detail: "MAVLink HIL TCP peer closed connection".to_owned(),
-                });
-            }
-            if let Some(chunk) = buf.get(..n) {
-                self.reader.push_bytes(chunk);
+            match self.read_until(deadline, &mut buf)? {
+                None if Instant::now() >= deadline => {
+                    return Err(EndpointError {
+                        detail: "timed out waiting for HIL_ACTUATOR_CONTROLS over TCP".to_owned(),
+                    });
+                }
+                None => {}
+                Some(0) => {
+                    return Err(EndpointError {
+                        detail: "MAVLink HIL TCP peer closed connection".to_owned(),
+                    });
+                }
+                Some(n) => {
+                    if let Some(chunk) = buf.get(..n) {
+                        self.link.reader.push_bytes(chunk);
+                    }
+                }
             }
         }
     }
 
     fn post(&mut self, at: SimInstant, stimulus: &Self::Stimulus) -> Result<(), EndpointError> {
-        let bytes = self.sequencer.build_burst(at, stimulus)?;
-        self.stream.set_nonblocking(false).map_err(XilError::from)?;
-        self.stream.write_all(bytes).map_err(XilError::from)?;
-        Ok(())
+        self.enqueue_burst(at, stimulus)
     }
 
     fn try_receive(&mut self) -> Result<Option<StampedResponse<Self::Response>>, EndpointError> {
-        self.stream.set_nonblocking(true).map_err(XilError::from)?;
+        self.flush_tx()?;
         let mut buf = [0_u8; 512];
         loop {
             match self.stream.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
                     if let Some(chunk) = buf.get(..n) {
-                        self.reader.push_bytes(chunk);
+                        self.link.reader.push_bytes(chunk);
                     }
                 }
                 Err(err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => return Err(XilError::from(err).into()),
             }
         }
-        Ok(self.drain_ready_controls().map(stamp_controls))
+        Ok(self.link.next_fresh_controls())
     }
 }
 
@@ -265,8 +291,7 @@ pub struct MavlinkHilUdpEndpoint {
     socket: UdpSocket,
     peer: SocketAddr,
     sequencer: OutboundSequencer,
-    reader: MavlinkHilReader,
-    peer_armed: bool,
+    link: PeerLink,
 }
 
 impl MavlinkHilUdpEndpoint {
@@ -281,8 +306,7 @@ impl MavlinkHilUdpEndpoint {
             socket,
             peer: peer_addr,
             sequencer: OutboundSequencer::new(config),
-            reader: MavlinkHilReader::new(),
-            peer_armed: false,
+            link: PeerLink::new(&config),
         })
     }
 
@@ -291,19 +315,17 @@ impl MavlinkHilUdpEndpoint {
         Ok(self.socket.local_addr()?)
     }
 
-    fn drain_ready_controls(&mut self) -> Option<HilActuatorControls> {
-        while let Some(frame) = self.reader.pop_frame() {
-            match frame {
-                MavlinkHilFrame::Heartbeat { armed, .. } => {
-                    self.peer_armed = armed;
-                }
-                MavlinkHilFrame::ActuatorControls { controls, .. } => {
-                    self.peer_armed = controls.is_armed();
-                    return Some(controls);
-                }
-            }
-        }
-        None
+    /// Whether the most recent heartbeat or accepted actuator message
+    /// reported armed.
+    #[must_use]
+    pub const fn peer_armed(&self) -> bool {
+        self.link.peer_armed
+    }
+
+    /// Clock-mapping, correlation, and staleness counters.
+    #[must_use]
+    pub const fn link_stats(&self) -> HilLinkStats {
+        self.link.stats()
     }
 }
 
@@ -325,12 +347,13 @@ impl ExternalEndpoint for MavlinkHilUdpEndpoint {
         self.socket
             .send_to(bytes, self.peer)
             .map_err(XilError::from)?;
+        self.link.note_sensor_sent(at);
 
         let deadline = Instant::now() + timeout;
         let mut buf = [0_u8; 512];
         loop {
-            if let Some(controls) = self.drain_ready_controls() {
-                return Ok(controls);
+            if let Some(stamped) = self.link.next_fresh_controls() {
+                return Ok(stamped.response);
             }
             if Instant::now() >= deadline {
                 return Err(EndpointError {
@@ -339,7 +362,7 @@ impl ExternalEndpoint for MavlinkHilUdpEndpoint {
             }
             let (n, _) = self.socket.recv_from(&mut buf).map_err(XilError::from)?;
             if let Some(chunk) = buf.get(..n) {
-                self.reader.push_bytes(chunk);
+                self.link.reader.push_bytes(chunk);
             }
         }
     }
@@ -349,6 +372,7 @@ impl ExternalEndpoint for MavlinkHilUdpEndpoint {
         self.socket
             .send_to(bytes, self.peer)
             .map_err(XilError::from)?;
+        self.link.note_sensor_sent(at);
         Ok(())
     }
 
@@ -359,34 +383,13 @@ impl ExternalEndpoint for MavlinkHilUdpEndpoint {
             match self.socket.recv_from(&mut buf) {
                 Ok((n, _)) => {
                     if let Some(chunk) = buf.get(..n) {
-                        self.reader.push_bytes(chunk);
+                        self.link.reader.push_bytes(chunk);
                     }
                 }
                 Err(err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(err) => return Err(XilError::from(err).into()),
             }
         }
-        Ok(self.drain_ready_controls().map(stamp_controls))
-    }
-}
-
-fn should_emit(now: SimInstant, last: Option<SimInstant>, period: TickSpan) -> bool {
-    match last {
-        None => true,
-        Some(prev) => now.duration_since(prev) >= period,
-    }
-}
-
-fn append_prefix(dst: &mut Vec<u8>, src: &[u8], len: usize) {
-    if let Some(prefix) = src.get(..len) {
-        dst.extend_from_slice(prefix);
-    }
-}
-
-fn stamp_controls(controls: HilActuatorControls) -> StampedResponse<HilActuatorControls> {
-    let ticks = controls.time_usec.saturating_mul(TICKS_PER_MICROSECOND);
-    StampedResponse {
-        deliver_at: SimInstant::START.advanced(TickSpan::from_ticks(ticks)),
-        response: controls,
+        Ok(self.link.next_fresh_controls())
     }
 }

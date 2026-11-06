@@ -1,13 +1,16 @@
 use glam::{DQuat, DVec3};
 use jsbsim::{Fdm, LoadOptions, NodeId, Resolver, Snapshot, TrimMode};
-use sim_geo::Geodetic;
+use sim_geo::{Geodetic, OrthometricHeightM, msl_egm96_to_ellipsoidal};
 
 use crate::{
     Block, BlockError, ControlInputs, KinematicInput, TICKS_PER_SECOND, TickSpan, VehicleState,
 };
 
+mod articulation;
 mod system;
 
+use articulation::ArticulationNodes;
+pub use articulation::{AirframeArticulation, PropellerVisualState};
 use system::SystemNodes;
 pub use system::{EngineStartMode, EngineStatus, MagnetoSwitch, SystemControls};
 
@@ -58,7 +61,9 @@ struct Nodes {
     throttle: NodeId,
     velocity_body: [NodeId; 3],
     rate_body: [NodeId; 3],
+    terrain_elevation_asl_ft: NodeId,
     system: SystemNodes,
+    articulation: ArticulationNodes,
 }
 
 impl Nodes {
@@ -87,7 +92,9 @@ impl Nodes {
                 node("velocities/q-rad_sec")?,
                 node("velocities/r-rad_sec")?,
             ],
+            terrain_elevation_asl_ft: node("position/terrain-elevation-asl-ft")?,
             system: SystemNodes::resolve(fdm)?,
+            articulation: ArticulationNodes::resolve(fdm)?,
         })
     }
 }
@@ -98,6 +105,7 @@ pub struct JsbsimFdmSnapshot {
     fdm: Snapshot,
     output: VehicleState,
     engine: EngineStatus,
+    articulation: AirframeArticulation,
     system: SystemControls,
 }
 
@@ -121,6 +129,7 @@ pub struct JsbsimFdmBlock {
     nodes: Nodes,
     period: TickSpan,
     latest: JsbsimFdmSnapshot,
+    last_ground_sync_m: Option<f64>,
 }
 
 fn fdm_error(source: jsbsim::Error) -> BlockError {
@@ -145,7 +154,40 @@ impl JsbsimFdmBlock {
     /// and applies the initial conditions with the engine as
     /// [`JsbsimFdmConfig::engine_start`] says. Fails on a zero period, a failed
     /// load, or an aircraft without the standard flight controls.
+    ///
+    /// The ground starts at the ellipsoid. An aircraft that starts on or near
+    /// real terrain belongs in [`Self::new_on_terrain`]: moving the ground
+    /// afterwards cannot undo the gear forces the initial conditions saw.
     pub fn new(config: &JsbsimFdmConfig<'_>) -> Result<Self, BlockError> {
+        Self::build(config, None)
+    }
+
+    /// [`Self::new`] with the ground at `terrain_elevation_m` above the WGS84
+    /// ellipsoid before the initial conditions run.
+    ///
+    /// JSBSim seeds its integrator history from the forces at the initial
+    /// conditions, so an aircraft parked below the default ground would start
+    /// with its gear crushed far into it and every history slot full of that
+    /// spring force, and one parked above it would start in free fall. Setting
+    /// the ground first lets a parked aircraft start at rest on its gear.
+    pub fn new_on_terrain(
+        config: &JsbsimFdmConfig<'_>,
+        terrain_elevation_m: f64,
+    ) -> Result<Self, BlockError> {
+        if !terrain_elevation_m.is_finite() {
+            return Err(BlockError::InputOutOfRange {
+                block: BLOCK,
+                input: "terrain_elevation_m",
+                detail: format!("{terrain_elevation_m} is not finite"),
+            });
+        }
+        Self::build(config, Some(terrain_elevation_m))
+    }
+
+    fn build(
+        config: &JsbsimFdmConfig<'_>,
+        terrain_elevation_m: Option<f64>,
+    ) -> Result<Self, BlockError> {
         if config.period == TickSpan::ZERO {
             return Err(BlockError::InputOutOfRange {
                 block: BLOCK,
@@ -167,6 +209,12 @@ impl JsbsimFdmBlock {
         ];
         for (path, value) in ic {
             fdm.set_property(path, value).map_err(fdm_error)?;
+        }
+        if let Some(height_m) = terrain_elevation_m {
+            // Sea-level altitude was set last, so the aircraft keeps its
+            // height rather than its height above the moved ground.
+            fdm.set_property("ic/terrain-elevation-ft", height_m / METRES_PER_FOOT)
+                .map_err(fdm_error)?;
         }
         let nodes = Nodes::resolve(&fdm)?;
         let system = match config.engine_start {
@@ -194,10 +242,12 @@ impl JsbsimFdmBlock {
                     running: false,
                     propeller_rpm: 0.0,
                 },
+                articulation: AirframeArticulation::default(),
                 system,
             },
+            last_ground_sync_m: terrain_elevation_m,
         };
-        block.capture()?;
+        block.capture(0.0)?;
         Ok(block)
     }
 
@@ -211,28 +261,71 @@ impl JsbsimFdmBlock {
         self.latest.system = controls.clamped();
     }
 
-    /// Updates the uniform WGS84 ground elevation (`m` MSL) used by JSBSim's
-    /// default gear-contact callback (`position/terrain-elevation-asl-ft`).
+    /// Sets the uniform ground height used by JSBSim's default gear-contact
+    /// callback and re-captures the output at this instant.
+    ///
+    /// Despite its `asl` name, `position/terrain-elevation-asl-ft` is height
+    /// above JSBSim's WGS84 ellipsoid, the same surface as
+    /// [`Geodetic::height_m`], so `height_m` is ellipsoidal.
     pub fn set_terrain_elevation_m(&mut self, height_m: f64) -> Result<(), BlockError> {
-        if !height_m.is_finite() {
+        self.sync_ground_elevation_m(height_m)?;
+        self.capture(0.0)
+    }
+
+    /// Moves the ground under the aircraft to `ellipsoidal_height_m` (WGS84)
+    /// for the next step, for a caller tracking real terrain every step.
+    ///
+    /// Only the terrain property is written, through a node resolved at load,
+    /// so the call does no path lookup and leaves the latest output and
+    /// snapshot as the last step produced them.
+    pub fn sync_ground_elevation_m(&mut self, ellipsoidal_height_m: f64) -> Result<(), BlockError> {
+        if !ellipsoidal_height_m.is_finite() {
             return Err(BlockError::InputOutOfRange {
                 block: BLOCK,
                 input: "terrain_elevation_m",
-                detail: format!("{height_m} is not finite"),
+                detail: format!("{ellipsoidal_height_m} is not finite"),
             });
         }
         self.fdm
-            .set_property(
-                "position/terrain-elevation-asl-ft",
-                height_m / METRES_PER_FOOT,
+            .write_node(
+                self.nodes.terrain_elevation_asl_ft,
+                ellipsoidal_height_m / METRES_PER_FOOT,
             )
             .map_err(fdm_error)?;
-        self.capture()
+        self.last_ground_sync_m = Some(ellipsoidal_height_m);
+        Ok(())
+    }
+
+    /// The ground height above the WGS84 ellipsoid this block was last given,
+    /// at construction or since; `None` while the ground is still JSBSim's
+    /// default at the ellipsoid.
+    #[must_use]
+    pub fn last_ground_sync_m(&self) -> Option<f64> {
+        self.last_ground_sync_m
+    }
+
+    /// [`Self::sync_ground_elevation_m`] for ground charted `msl_m` above
+    /// EGM96 mean sea level at a latitude and longitude, raised onto the
+    /// ellipsoid by the local geoid undulation.
+    pub fn sync_ground_msl_egm96_m(
+        &mut self,
+        lat_rad: f64,
+        lon_rad: f64,
+        msl_m: f64,
+    ) -> Result<(), BlockError> {
+        let ellipsoidal = msl_egm96_to_ellipsoidal(lat_rad, lon_rad, OrthometricHeightM(msl_m));
+        self.sync_ground_elevation_m(ellipsoidal.0)
     }
 
     /// The engine as of the latest step.
     pub fn engine_status(&self) -> EngineStatus {
         self.latest.engine
+    }
+
+    /// Full powerplant, propeller, control-surface, and landing-gear articulation as of the latest step.
+    #[must_use]
+    pub fn articulation(&self) -> AirframeArticulation {
+        self.latest.articulation
     }
 
     /// Trims the aircraft for steady level flight at its initial conditions
@@ -243,7 +336,7 @@ impl JsbsimFdmBlock {
     pub fn trim_level_flight(&mut self) -> Result<ControlInputs, BlockError> {
         self.nodes.system.write(&mut self.fdm, self.latest.system)?;
         let trimmed = self.fdm.do_trim(TrimMode::Full).map(|_| ());
-        self.capture()?;
+        self.capture(0.0)?;
         trimmed.map_err(fdm_error)?;
         Ok(ControlInputs {
             roll: self.fdm.read_node(self.nodes.aileron).map_err(fdm_error)?,
@@ -284,7 +377,7 @@ impl JsbsimFdmBlock {
     }
 
     /// Reads the output and takes the snapshot of this instant.
-    fn capture(&mut self) -> Result<(), BlockError> {
+    fn capture(&mut self, dt_s: f64) -> Result<(), BlockError> {
         let position_ft = self.fdm.location().ecef();
         let attitude = body_to_ecef(self.fdm.quaternion_ecef().to_array());
         let velocity_body_ft_s = self.read_vector(self.nodes.velocity_body)?;
@@ -310,6 +403,10 @@ impl JsbsimFdmBlock {
             .map_err(fdm_error)?;
         self.latest.output = output;
         self.latest.engine = self.nodes.system.engine_status(&mut self.fdm)?;
+        self.latest.articulation =
+            self.nodes
+                .articulation
+                .sample(&mut self.fdm, &self.latest.articulation, dt_s)?;
         Ok(())
     }
 
@@ -318,7 +415,7 @@ impl JsbsimFdmBlock {
         if !self.fdm.run().map_err(fdm_error)? {
             return Err(BlockError::FdmTerminated { block: BLOCK });
         }
-        self.capture()
+        self.capture(self.period.as_seconds())
     }
 }
 

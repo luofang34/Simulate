@@ -2,15 +2,19 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::RenderError;
 
+mod panel_texture;
 #[cfg(test)]
 mod tests;
 
+pub use panel_texture::RgbaPanelTexture;
+
 /// Maximum number of textured viewport/instrument quads composited in one pass.
-pub const MAX_COMPOSITE_QUADS: usize = 8;
+pub const MAX_COMPOSITE_QUADS: usize = 12;
 
 const FLAG_SRGB_UNORM: u32 = 1;
 const FLAG_BEZEL: u32 = 2;
 const FLAG_OPAQUE: u32 = 4;
+const FLAG_PREMULTIPLIED: u32 = 8;
 
 /// Normalized top-left rectangle `[0.0, 1.0]` within the target viewport.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,6 +74,9 @@ pub struct OverlayQuad<'a> {
     pub bezel: bool,
     /// Overall alpha multiplier in `[0.0, 1.0]`.
     pub opacity: f32,
+    /// Source texels already carry colour multiplied by alpha (GPU-rendered
+    /// vector overlays); straight-alpha texels are premultiplied in the shader.
+    pub premultiplied: bool,
 }
 
 impl<'a> OverlayQuad<'a> {
@@ -84,6 +91,7 @@ impl<'a> OverlayQuad<'a> {
             opaque: true,
             bezel: false,
             opacity: 1.0,
+            premultiplied: false,
         }
     }
 
@@ -98,6 +106,7 @@ impl<'a> OverlayQuad<'a> {
             opaque: true,
             bezel,
             opacity: 1.0,
+            premultiplied: false,
         }
     }
 
@@ -117,6 +126,25 @@ impl<'a> OverlayQuad<'a> {
             opaque,
             bezel,
             opacity: 1.0,
+            premultiplied: false,
+        }
+    }
+}
+
+impl<'a> OverlayQuad<'a> {
+    /// Full-alpha quad for a premultiplied `Rgba8UnormSrgb` vector overlay
+    /// such as a [`VectorTarget`](crate::VectorTarget) resolve view.
+    #[must_use]
+    pub const fn vector_overlay(rect: ViewportRect, view: &'a wgpu::TextureView) -> Self {
+        Self {
+            rect,
+            view,
+            transfer: ColorTransfer::HardwareLinear,
+            filter: QuadFilter::Linear,
+            opaque: false,
+            bezel: false,
+            opacity: 1.0,
+            premultiplied: true,
         }
     }
 }
@@ -130,108 +158,6 @@ pub struct CompositorTarget<'a> {
     pub clear: Option<wgpu::Color>,
     /// Physical attachment dimensions `[width_px, height_px]`.
     pub size_px: [u32; 2],
-}
-
-/// Persistent `Rgba8UnormSrgb` GPU texture receiving CPU-rasterized `Indicate` RGBA8 frames.
-pub struct RgbaPanelTexture {
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    width: u32,
-    height: u32,
-}
-
-impl RgbaPanelTexture {
-    /// Allocates a `width × height` `Rgba8UnormSrgb` texture on `device`.
-    pub fn new(
-        device: &wgpu::Device,
-        label: &'static str,
-        width: u32,
-        height: u32,
-    ) -> Result<Self, RenderError> {
-        let width = width.max(1);
-        let height = height.max(1);
-        let max = device.limits().max_texture_dimension_2d;
-        if width > max || height > max {
-            return Err(RenderError::TextureTooLarge {
-                what: label,
-                width,
-                height,
-                max,
-            });
-        }
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        Ok(Self {
-            texture,
-            view,
-            width,
-            height,
-        })
-    }
-
-    /// Uploads a tightly packed `width * height * 4` sRGB RGBA8 buffer into the GPU texture.
-    pub fn upload(&self, queue: &wgpu::Queue, rgba: &[u8]) -> Result<(), RenderError> {
-        let expected = (self.width as usize)
-            .saturating_mul(self.height as usize)
-            .saturating_mul(4);
-        if rgba.len() != expected {
-            return Err(RenderError::InvalidUploadBytes {
-                expected,
-                actual: rgba.len(),
-            });
-        }
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(self.width.saturating_mul(4)),
-                rows_per_image: Some(self.height),
-            },
-            wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        Ok(())
-    }
-
-    /// GPU texture view ready to pass in an [`OverlayQuad`].
-    #[must_use]
-    pub const fn view(&self) -> &wgpu::TextureView {
-        &self.view
-    }
-
-    /// Texture width in pixels.
-    #[must_use]
-    pub const fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Texture height in pixels.
-    #[must_use]
-    pub const fn height(&self) -> u32 {
-        self.height
-    }
 }
 
 #[repr(C)]
@@ -365,6 +291,9 @@ fn build_quad_uniform(quad: &OverlayQuad<'_>, target_w: u32, target_h: u32) -> Q
     if quad.opaque {
         flags |= FLAG_OPAQUE;
     }
+    if quad.premultiplied {
+        flags |= FLAG_PREMULTIPLIED;
+    }
     let width_px = (quad.rect.width * (target_w.max(1) as f32)).max(1.0);
     let height_px = (quad.rect.height * (target_h.max(1) as f32)).max(1.0);
     QuadUniform {
@@ -452,7 +381,7 @@ fn create_quad_pipeline(
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),

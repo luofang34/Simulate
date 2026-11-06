@@ -6,6 +6,8 @@ use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use super::{VirtualCameraPlacement, VirtualCameraRigBlock, VirtualCameraSpec};
 use crate::{Block, CAMERA_DEFAULT_PERIOD, CameraMount, EnuAnchor, VehicleState};
 
+mod tracking;
+
 #[test]
 fn tower_auto_track_points_optical_axis_at_aircraft_with_level_horizon_and_zoom() {
     let tower_geo = Geodetic::from_degrees(40.692_574, -74.182_761, 64.5);
@@ -106,6 +108,7 @@ fn unreachable_rig(anchor: EnuAnchor) -> VirtualCameraRigBlock {
     VirtualCameraRigBlock {
         specs: Vec::new(),
         anchor,
+        body: BodyEllipsoid::WGS84,
         period: CAMERA_DEFAULT_PERIOD,
         snapshot: super::VirtualCameraRigSnapshot {
             next_capture: crate::SimInstant::START,

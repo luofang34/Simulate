@@ -65,9 +65,13 @@ pub enum SceneryError {
 /// Terrain height, queried by physics (ground contact, radar altimeters) and
 /// by the renderer (displacement, camera clearance).
 pub trait ElevationSource {
-    /// Height of the ground above the body's reference ellipsoid at
-    /// `position`, metres. `Ok(None)` means the data is not resident; callers
-    /// must treat that as unknown, never as sea level.
+    /// Height of the ground at `position`, metres, in the source's native
+    /// vertical datum: the body's reference ellipsoid unless the source says
+    /// otherwise, as a [`crate::CatalogScenery`] does through its
+    /// [`crate::CatalogVerticalDatum`]. Callers that need ellipsoidal heights
+    /// from any catalog use [`crate::CatalogScenery::ellipsoidal_ground_height_m`]
+    /// or [`crate::WorldSurfaceQuery`]. `Ok(None)` means the data is not
+    /// resident; callers must treat that as unknown, never as sea level.
     fn ground_height_m(&self, position: &Geodetic) -> Result<Option<f64>, SceneryError>;
 }
 
@@ -117,6 +121,23 @@ impl ImageryRaster {
             height: self.height,
             expected: expected.unwrap_or(usize::MAX),
             actual: self.rgba8.len(),
+        })
+    }
+}
+
+impl ImageryRaster {
+    /// Bilinear Rec. 601 luma, `0..=255`, at the tile fraction `(u, v)`.
+    /// Beyond the outermost pixel centres the edge pixels hold their value.
+    pub fn luma_bilinear(&self, u: f64, v: f64) -> Option<f64> {
+        if self.width == 0 || self.height == 0 {
+            return None;
+        }
+        crate::terrarium::bilinear(self.width, self.height, u, v, |x, y| {
+            let clamped_x = x.clamp(0, i64::from(self.width) - 1) as usize;
+            let clamped_y = y.clamp(0, i64::from(self.height) - 1) as usize;
+            let start = (clamped_y * self.width as usize + clamped_x) * 4;
+            let [r, g, b] = self.rgba8.get(start..start + 3)?.first_chunk::<3>()?;
+            Some(0.299 * f64::from(*r) + 0.587 * f64::from(*g) + 0.114 * f64::from(*b))
         })
     }
 }

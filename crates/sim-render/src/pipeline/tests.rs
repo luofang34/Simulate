@@ -3,6 +3,7 @@ use naga::back::glsl;
 const GLOBE: &str = include_str!("../shaders/globe.wgsl");
 const APERTURE: &str = include_str!("../shaders/aperture.wgsl");
 const COMPOSITOR: &str = include_str!("../shaders/compositor.wgsl");
+const VECTOR_SCENE: &str = include_str!("../shaders/vector_scene.wgsl");
 
 fn parse(source: &str) -> (naga::Module, naga::valid::ModuleInfo) {
     let module = naga::front::wgsl::parse_str(source)
@@ -94,6 +95,22 @@ fn compositor_shader_has_a_webgl2_form() {
         &[
             (naga::ShaderStage::Vertex, "vs_quad"),
             (naga::ShaderStage::Fragment, "fs_quad"),
+        ],
+    );
+}
+
+#[test]
+fn vector_scene_shader_parses_and_validates() {
+    parse(VECTOR_SCENE);
+}
+
+#[test]
+fn vector_scene_shader_has_a_webgl2_form() {
+    writes_webgl2_glsl(
+        VECTOR_SCENE,
+        &[
+            (naga::ShaderStage::Vertex, "vs_vector"),
+            (naga::ShaderStage::Fragment, "fs_vector"),
         ],
     );
 }

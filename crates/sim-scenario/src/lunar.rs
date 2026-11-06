@@ -21,6 +21,7 @@ use crate::ScenarioError;
 
 mod guidance;
 mod sensing;
+pub(crate) mod snapshot;
 
 use guidance::{
     ApproachTarget, approach_acceleration, attitude_moment_nm, roughness_m, thrust_attitude,

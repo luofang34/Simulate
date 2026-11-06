@@ -1,9 +1,11 @@
 //! Simulator-only `TruthSceneMap`: OTW cockpit camera, optional stereo companion, 30 Hz
 //! optical/EVS sensor slot, and N dynamically registered virtual camera slots.
+//!
+//! Every slot shows only the physical scene: imagery on terrain and OpenUSD aircraft.
+//! Symbology belongs to instrument maps, never to what a camera sees.
 
-use std::{collections::BTreeMap, time::Duration};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc, time::Duration};
 
-use flightbag::RunwayEndSpec;
 use glam::DVec3;
 use maplibre::{
     background::BackgroundPlugin,
@@ -12,7 +14,7 @@ use maplibre::{
         CoveringPolicy, MultiViewFrame, SlotView, ViewSlotConfig, ViewSlotEntry, ViewSlotId,
         environment::HeadlessEnvironment, map::HeadlessMap,
     },
-    overlay::{OverlayPlugin, ProbeResults},
+    overlay::OverlayPlugin,
     plugin::Plugin,
     raster::{DefaultRasterTransferables, RasterPlugin},
     render::RenderPlugin,
@@ -23,11 +25,31 @@ use maplibre::{
 };
 use sim_scenery::CatalogScenery;
 
-use super::{DrapeBudgetPlugin, SharedMapRuntime, validate_size};
-use crate::{
-    ConformalFrameStamp, DynamicEntity3D, MapAdapterError, build_conformal_overlay,
-    supply_catalog_dem_synchronously,
+use super::{
+    DrapeBudgetPlugin, EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin, SharedMapRuntime,
+    pixel_ratio::pixel_ratio_update, validate_size,
 };
+pub use crate::usd_pass::AircraftInstance;
+use crate::{
+    ConformalFrameStamp, DynamicEntity3D, MapAdapterError, SlotCameraRole, UsdAircraftAsset,
+    entity_depth_probes, supply_catalog_dem_synchronously,
+    usd_pass::{
+        AircraftLibrary, AircraftSlotView, PolarSkiwayKey, SharedAircraftLibrary, SlotDraws,
+        UsdScene3dPlugin, pack_slot_draws, sun_in_anchor_enu,
+    },
+};
+
+mod celestial;
+mod ownship;
+mod slots;
+#[cfg(test)]
+mod tests;
+mod views;
+
+pub use celestial::{
+    CelestialDisc, CelestialEarthShadow, CelestialSkyInput, CelestialStar, CelestialTwilight,
+};
+pub use slots::TruthSlotMask;
 
 /// Viewport and overscan settings for [`TruthSceneMap`].
 #[derive(Clone, Copy, Debug)]
@@ -51,7 +73,7 @@ impl Default for TruthSceneConfig {
             stereo_otw: false,
             otw_depth_readout: false,
             sensor_size: [800, 600],
-            request_overscan: 1.15,
+            request_overscan: 1.05,
         }
     }
 }
@@ -61,8 +83,8 @@ impl Default for TruthSceneConfig {
 pub struct TruthSceneFrame<'a> {
     /// Simulation frame timestamp for tile motion prefetch and animated paint properties.
     pub timestamp: Duration,
-    /// Primary cockpit OTW camera stamp.
-    pub otw_stamp: ConformalFrameStamp,
+    /// Primary cockpit OTW camera stamp; when `None`, the OTW and stereo slots are skipped.
+    pub otw_stamp: Option<ConformalFrameStamp>,
     /// Optional right-eye stereo OTW camera stamp (when `stereo_otw` is enabled).
     pub stereo_right_stamp: Option<ConformalFrameStamp>,
     /// Optional 30 Hz optical / EVS sensor camera stamp; when `None`, the sensor slot is
@@ -72,10 +94,14 @@ pub struct TruthSceneFrame<'a> {
     /// array) active on this frame. Registered virtual camera slots omitted here incur `0.0 ms`
     /// GPU cost without evicting resident tiles.
     pub extra_camera_slots: &'a [(ViewSlotId, ConformalFrameStamp)],
-    /// Optional runway outline drawn into depth-tested overlays.
-    pub runway: Option<&'a RunwayEndSpec>,
-    /// Truth-world dynamic 3D entities (per-slot visibility controlled by `ViewSlotMask`).
+    /// Truth-world dynamic entities, answered by line-of-sight depth probes only.
     pub entities: &'a [DynamicEntity3D],
+    /// OpenUSD aircraft drawn in 3D (ownship and traffic).
+    pub aircraft: &'a [AircraftInstance],
+    /// Which ownship parts each slot sees; slots not listed see the whole airframe.
+    pub ownship_camera_roles: &'a [(ViewSlotId, SlotCameraRole)],
+    /// Optional polar runway (`|lat| > 85.05°`) rendered as a 3D groomed snow skiway.
+    pub polar_runway: Option<&'a flightbag::RunwayEndSpec>,
 }
 
 /// Simulator-only `HeadlessMap` world serving OTW, synthetic optical sensors, and virtual cameras.
@@ -91,14 +117,21 @@ pub struct TruthSceneMap {
     request_overscan: f64,
     last_otw_stamp: Option<ConformalFrameStamp>,
     last_sensor_stamp: Option<ConformalFrameStamp>,
+    aircraft_library: SharedAircraftLibrary,
+    aircraft_draws: SlotDraws,
+    sun_ecef: DVec3,
+    pixel_ratio: Option<f64>,
 }
 
 impl TruthSceneMap {
     /// Assembles a `TruthSceneMap` sharing `runtime`'s GPU, pipelines, and static tile cache.
+    /// `aircraft_asset` draws every traffic aircraft and ownship while
+    /// [`Self::ownship_visual`] is [`crate::OwnshipVisualKind::C172`].
     pub fn new(
         runtime: &SharedMapRuntime,
         style: Style,
         config: TruthSceneConfig,
+        aircraft_asset: Arc<UsdAircraftAsset>,
     ) -> Result<Self, MapAdapterError> {
         let [otw_w, otw_h] = config.otw_size;
         let [sen_w, sen_h] = config.sensor_size;
@@ -110,6 +143,8 @@ impl TruthSceneMap {
             .truth_scene_settings(runtime.color_format());
         // Minimal 16x16 default head; actual rendering targets the registered ViewSlots.
         let (kernel, renderer) = runtime.create_renderer(16, 16, settings)?;
+        let aircraft_draws: SlotDraws = Rc::new(RefCell::new(BTreeMap::new()));
+        let aircraft_library = Rc::new(RefCell::new(AircraftLibrary::new(aircraft_asset)));
         let plugins: Vec<Box<dyn Plugin<HeadlessEnvironment>>> = vec![
             Box::new(RenderPlugin),
             Box::new(StarfieldPlugin),
@@ -117,8 +152,13 @@ impl TruthSceneMap {
             Box::new(RasterPlugin::<DefaultRasterTransferables>::default()),
             Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
             Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+            Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
             Box::new(DrapeBudgetPlugin(runtime.device_tier().otw_drape_budget())),
             Box::new(OverlayPlugin),
+            Box::new(UsdScene3dPlugin {
+                library: Rc::clone(&aircraft_library),
+                draws: Rc::clone(&aircraft_draws),
+            }),
         ];
         let mut map = runtime
             .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins))
@@ -153,6 +193,10 @@ impl TruthSceneMap {
             request_overscan: config.request_overscan.max(1.0),
             last_otw_stamp: None,
             last_sensor_stamp: None,
+            aircraft_library,
+            aircraft_draws,
+            sun_ecef: DVec3::Z,
+            pixel_ratio: None,
         })
     }
 
@@ -221,12 +265,23 @@ impl TruthSceneMap {
         let dir = EcefDirection::new(sun_ecef.x, sun_ecef.y, sun_ecef.z)
             .map_err(|source| MapAdapterError::Celestial { source })?;
         self.map.set_sun_direction(Some(dir));
+        self.sun_ecef = sun_ecef;
         Ok(())
     }
 
     /// Updates the solar twilight elevation band and night-side floor brightness.
     pub fn set_twilight_band(&mut self, band: TwilightBand) {
         self.map.set_twilight_band(band);
+    }
+
+    /// Draws every slot at `ratio` physical pixels per logical pixel (Retina `2.0`).
+    /// Non-finite ratios are ignored, others clamped to `0.5..=4.0`, and unchanged ratios
+    /// not reapplied.
+    pub fn set_pixel_ratio(&mut self, ratio: f64) {
+        if let Some(applied) = pixel_ratio_update(self.pixel_ratio, ratio) {
+            self.map.set_pixel_ratio(applied);
+            self.pixel_ratio = Some(applied);
+        }
     }
 
     /// Enables or disables atmospheric limb scattering behind the globe.
@@ -264,53 +319,41 @@ impl TruthSceneMap {
         Ok(())
     }
 
-    /// Renders active truth viewports in one [`MultiViewFrame`].
+    /// Renders every active truth viewport ([`TruthSlotMask::BOTH`]) in one [`MultiViewFrame`].
     pub fn render_frame(&mut self, frame: TruthSceneFrame<'_>) -> Result<(), MapAdapterError> {
-        self.apply_slot_overlay(self.otw_slot, self.otw_size, &frame.otw_stamp, &frame, true)?;
+        self.render_frame_slots(frame, TruthSlotMask::BOTH)
+    }
 
-        let mut slots = Vec::with_capacity(3_usize.saturating_add(frame.extra_camera_slots.len()));
-        slots.push(ViewSlotEntry {
-            slot: self.otw_slot,
-            view: SlotView::External(frame.otw_stamp.external_view),
-            policy: CoveringPolicy::Independent,
-        });
-        if let (Some(right_slot), Some(right_stamp)) =
-            (self.otw_right_slot, frame.stereo_right_stamp)
-        {
-            self.apply_slot_overlay(right_slot, self.otw_size, &right_stamp, &frame, false)?;
-            slots.push(ViewSlotEntry {
-                slot: right_slot,
-                view: SlotView::External(right_stamp.external_view),
-                policy: CoveringPolicy::StereoReuse(self.otw_slot),
-            });
+    /// Renders the built-in slots `mask` allows (and every listed extra camera slot) in one
+    /// [`MultiViewFrame`]. Masked-out slots are not stepped, so their tiles stay resident.
+    pub fn render_frame_slots(
+        &mut self,
+        frame: TruthSceneFrame<'_>,
+        mask: TruthSlotMask,
+    ) -> Result<(), MapAdapterError> {
+        let plan = slots::plan_slots(
+            mask,
+            frame.otw_stamp.is_some(),
+            self.otw_right_slot.is_some() && frame.stereo_right_stamp.is_some(),
+            frame.sensor_stamp.is_some(),
+        );
+        let views = self.planned_views(&frame, plan);
+        if views.is_empty() {
+            return Ok(());
         }
-        if let Some(sensor_stamp) = frame.sensor_stamp {
-            self.apply_slot_overlay(
-                self.sensor_slot,
-                self.sensor_size,
-                &sensor_stamp,
-                &frame,
-                true,
-            )?;
-            slots.push(ViewSlotEntry {
-                slot: self.sensor_slot,
-                view: SlotView::External(sensor_stamp.external_view),
-                policy: CoveringPolicy::Independent,
-            });
-            self.last_sensor_stamp = Some(sensor_stamp);
-        }
-        for &(slot, ref stamp) in frame.extra_camera_slots {
-            let viewport = self
-                .extra_slots
-                .get(&slot)
-                .copied()
-                .unwrap_or(self.sensor_size);
-            self.apply_slot_overlay(slot, viewport, stamp, &frame, true)?;
+        let mut slots = Vec::with_capacity(views.len());
+        let mut draws = BTreeMap::new();
+        for (slot, size, stamp, policy) in views {
+            self.submit_probes(slot, size, &stamp, &frame)?;
+            draws.insert(slot, self.slot_aircraft_draws(slot, &stamp, &frame));
             slots.push(ViewSlotEntry {
                 slot,
                 view: SlotView::External(stamp.external_view),
-                policy: CoveringPolicy::Independent,
+                policy,
             });
+        }
+        if let Ok(mut shared) = self.aircraft_draws.try_borrow_mut() {
+            *shared = draws;
         }
 
         let mv = MultiViewFrame {
@@ -322,176 +365,110 @@ impl TruthSceneMap {
         self.runtime
             .with_runtime_context(|| self.map.run_multi_view_frame(mv))
             .map_err(|source| MapAdapterError::MultiView { source })?;
-        self.last_otw_stamp = Some(frame.otw_stamp);
+        if plan.otw {
+            self.last_otw_stamp = frame.otw_stamp;
+        }
+        if plan.sensor {
+            self.last_sensor_stamp = frame.sensor_stamp;
+        }
         Ok(())
     }
 
-    fn apply_slot_overlay(
+    fn planned_views(
+        &self,
+        frame: &TruthSceneFrame<'_>,
+        plan: slots::SlotPlan,
+    ) -> Vec<(ViewSlotId, [u32; 2], ConformalFrameStamp, CoveringPolicy)> {
+        let mut views = Vec::with_capacity(3_usize.saturating_add(frame.extra_camera_slots.len()));
+        if let Some(otw_stamp) = frame.otw_stamp.filter(|_| plan.otw) {
+            views.push((
+                self.otw_slot,
+                self.otw_size,
+                otw_stamp,
+                CoveringPolicy::Independent,
+            ));
+        }
+        if let (Some(right_slot), Some(right_stamp), true) =
+            (self.otw_right_slot, frame.stereo_right_stamp, plan.stereo)
+        {
+            views.push((
+                right_slot,
+                self.otw_size,
+                right_stamp,
+                CoveringPolicy::StereoReuse(self.otw_slot),
+            ));
+        }
+        if let Some(sensor_stamp) = frame.sensor_stamp.filter(|_| plan.sensor) {
+            views.push((
+                self.sensor_slot,
+                self.sensor_size,
+                sensor_stamp,
+                CoveringPolicy::Independent,
+            ));
+        }
+        for &(slot, stamp) in frame.extra_camera_slots {
+            let size = self
+                .extra_slots
+                .get(&slot)
+                .copied()
+                .unwrap_or(self.sensor_size);
+            views.push((slot, size, stamp, CoveringPolicy::Independent));
+        }
+        views
+    }
+
+    fn slot_aircraft_draws(
+        &self,
+        slot: ViewSlotId,
+        stamp: &ConformalFrameStamp,
+        frame: &TruthSceneFrame<'_>,
+    ) -> Vec<crate::usd_pass::PackedDraw> {
+        let ownship_role = frame
+            .ownship_camera_roles
+            .iter()
+            .find(|(role_slot, _)| *role_slot == slot)
+            .map_or(SlotCameraRole::External, |(_, role)| *role);
+        let (sun_enu, daylight) = sun_in_anchor_enu(stamp, self.sun_ecef);
+        let Ok(mut library) = self.aircraft_library.try_borrow_mut() else {
+            return Vec::new();
+        };
+        let polar_skiway = frame
+            .polar_runway
+            .filter(|r| r.threshold.latitude_deg.abs() > 85.05)
+            .map(|r| {
+                (
+                    library.ensure_polar_skiway(PolarSkiwayKey::from_runway(r)),
+                    r,
+                )
+            });
+        pack_slot_draws(
+            &library,
+            frame.aircraft,
+            polar_skiway,
+            &AircraftSlotView {
+                stamp,
+                sun_enu,
+                daylight,
+                ownship_role,
+                slot,
+            },
+        )
+    }
+
+    fn submit_probes(
         &mut self,
         slot: ViewSlotId,
         viewport_px: [u32; 2],
         stamp: &ConformalFrameStamp,
         frame: &TruthSceneFrame<'_>,
-        submit_probes: bool,
     ) -> Result<(), MapAdapterError> {
-        let (mesh, probes) =
-            build_conformal_overlay(stamp, viewport_px, frame.runway, frame.entities, Some(slot));
-        self.map
-            .set_view_slot_overlay(slot, mesh)
-            .map_err(|source| MapAdapterError::MultiView { source })?;
-        if submit_probes && !probes.is_empty() {
-            let _ = self
+        let probes = entity_depth_probes(stamp, viewport_px, frame.entities, Some(slot));
+        if !probes.is_empty() {
+            let _request = self
                 .map
                 .set_view_slot_depth_probes(slot, probes)
                 .map_err(|source| MapAdapterError::MultiView { source })?;
         }
         Ok(())
-    }
-
-    /// Primary cockpit OTW [`ViewSlotId`].
-    #[must_use]
-    pub const fn otw_slot(&self) -> ViewSlotId {
-        self.otw_slot
-    }
-
-    /// Optical / EVS sensor [`ViewSlotId`].
-    #[must_use]
-    pub const fn sensor_slot(&self) -> ViewSlotId {
-        self.sensor_slot
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of any registered slot's color attachment.
-    #[must_use]
-    pub fn slot_color_view(&self, slot: ViewSlotId) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_color_view(slot)
-    }
-
-    /// Zero-copy [`wgpu::Texture`] of any registered slot's color attachment.
-    #[must_use]
-    pub fn slot_color_texture(&self, slot: ViewSlotId) -> Option<&wgpu::Texture> {
-        self.map.view_slot_color_texture(slot)
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of any registered slot's `Depth32Float` attachment.
-    #[must_use]
-    pub fn slot_depth_view(&self, slot: ViewSlotId) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_depth_view(slot)
-    }
-
-    /// Zero-copy [`wgpu::Texture`] of any registered slot's `Depth32Float` attachment.
-    #[must_use]
-    pub fn slot_depth_texture(&self, slot: ViewSlotId) -> Option<&wgpu::Texture> {
-        self.map.view_slot_depth_texture(slot)
-    }
-
-    /// Whether `slot` has allocated a persistent CPU `MAP_READ` staging buffer.
-    #[must_use]
-    pub fn slot_has_readback_buffer(&self, slot: ViewSlotId) -> Option<bool> {
-        self.map.view_slot_has_readback_buffer(slot)
-    }
-
-    /// Lazily copies `slot`'s color attachment into tight RGBA8 bytes (`width * height * 4`).
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn read_slot_rgba(&self, slot: ViewSlotId) -> Result<Vec<u8>, MapAdapterError> {
-        let texture =
-            self.map
-                .view_slot_color_texture(slot)
-                .ok_or_else(|| MapAdapterError::Readback {
-                    detail: format!("slot {slot:?} has no color attachment"),
-                })?;
-        let gpu = self.runtime.host_gpu();
-        super::readback::read_texture_rgba_blocking(&gpu.device, &gpu.queue, texture)
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of the cockpit OTW color attachment.
-    #[must_use]
-    pub fn otw_color_view(&self) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_color_view(self.otw_slot)
-    }
-
-    /// Zero-copy [`wgpu::Texture`] of the cockpit OTW color attachment.
-    #[must_use]
-    pub fn otw_color_texture(&self) -> Option<&wgpu::Texture> {
-        self.map.view_slot_color_texture(self.otw_slot)
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of the cockpit OTW reversed-Z `Depth32Float` attachment.
-    #[must_use]
-    pub fn otw_depth_view(&self) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_depth_view(self.otw_slot)
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of the optical sensor color attachment.
-    #[must_use]
-    pub fn sensor_color_view(&self) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_color_view(self.sensor_slot)
-    }
-
-    /// Zero-copy [`wgpu::Texture`] of the optical sensor color attachment.
-    #[must_use]
-    pub fn sensor_color_texture(&self) -> Option<&wgpu::Texture> {
-        self.map.view_slot_color_texture(self.sensor_slot)
-    }
-
-    /// Zero-copy [`wgpu::TextureView`] of the sensor reversed-Z `Depth32Float` attachment.
-    #[must_use]
-    pub fn sensor_depth_view(&self) -> Option<&wgpu::TextureView> {
-        self.map.view_slot_depth_view(self.sensor_slot)
-    }
-
-    /// Zero-copy [`wgpu::Texture`] of the sensor reversed-Z `Depth32Float` attachment.
-    #[must_use]
-    pub fn sensor_depth_texture(&self) -> Option<&wgpu::Texture> {
-        self.map.view_slot_depth_texture(self.sensor_slot)
-    }
-
-    /// Whether the OTW slot has allocated a CPU `MAP_READ` staging buffer (`false` in zero-copy operation).
-    #[must_use]
-    pub fn otw_has_readback_buffer(&self) -> Option<bool> {
-        self.map.view_slot_has_readback_buffer(self.otw_slot)
-    }
-
-    /// Whether the sensor slot has allocated a CPU `MAP_READ` staging buffer (`false` unless CPU readback is requested).
-    #[must_use]
-    pub fn sensor_has_readback_buffer(&self) -> Option<bool> {
-        self.map.view_slot_has_readback_buffer(self.sensor_slot)
-    }
-
-    /// Latest [`ConformalFrameStamp`] rendered on the OTW slot.
-    #[must_use]
-    pub const fn last_otw_stamp(&self) -> Option<ConformalFrameStamp> {
-        self.last_otw_stamp
-    }
-
-    /// Latest [`ConformalFrameStamp`] rendered on the sensor slot.
-    #[must_use]
-    pub const fn last_sensor_stamp(&self) -> Option<ConformalFrameStamp> {
-        self.last_sensor_stamp
-    }
-
-    /// Whether background tile workers have delivered new arrivals or animated layers require redraw.
-    #[must_use]
-    pub fn needs_redraw(&self) -> bool {
-        self.map.needs_redraw()
-    }
-
-    /// Takes the latest completed [`ProbeResults`] for any registered `slot`, if ready.
-    pub fn take_slot_probe_results(
-        &mut self,
-        slot: ViewSlotId,
-    ) -> Result<Option<ProbeResults>, MapAdapterError> {
-        self.map
-            .take_view_slot_depth_probe_results(slot)
-            .map_err(|source| MapAdapterError::MultiView { source })
-    }
-
-    /// Takes the latest completed [`ProbeResults`] for the OTW slot, if ready.
-    pub fn take_otw_probe_results(&mut self) -> Result<Option<ProbeResults>, MapAdapterError> {
-        self.take_slot_probe_results(self.otw_slot)
-    }
-
-    /// Takes the latest completed [`ProbeResults`] for the sensor slot, if ready.
-    pub fn take_sensor_probe_results(&mut self) -> Result<Option<ProbeResults>, MapAdapterError> {
-        self.take_slot_probe_results(self.sensor_slot)
     }
 }

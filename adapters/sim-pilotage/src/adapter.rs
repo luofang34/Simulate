@@ -17,13 +17,15 @@ use sim_pack::LoadedSyspack;
 use crate::PilotageBridgeError;
 
 mod capability;
+mod checkpoint;
 mod control;
 mod telemetry;
 
 pub use capability::vehicle_class;
 use capability::{motion_scope_descriptor, supported_link_loss};
+pub use checkpoint::AdapterCheckpoint;
 use control::ControlLaw;
-use telemetry::{AvionicsModel, SourceIdentity};
+use telemetry::{AvionicsModel, SourceIdentity, body_to_ned};
 
 #[cfg(test)]
 mod tests;
@@ -79,6 +81,7 @@ pub struct SimulateVehicleAdapter<B: Block> {
     avionics: AvionicsModel,
     latest: TelemetrySample,
     fault: Option<BlockError>,
+    surface_elevation_m: Option<f64>,
 }
 
 impl SimulateVehicleAdapter<JsbsimFdmBlock> {
@@ -122,7 +125,7 @@ impl<B: Block<Input = KinematicInput, Output = VehicleState>> SimulateVehicleAda
         let identity = SourceIdentity::new(config.vehicle, config.seed);
         let mut avionics = AvionicsModel::new(config.seed, state.position_ecef, origin, identity);
         let tick = SimTick::new(0);
-        let latest = avionics.sample(config.vehicle, tick, SimInstant::START, &state, true);
+        let latest = avionics.sample(config.vehicle, tick, SimInstant::START, &state, true, None);
         Self {
             config,
             class: VehicleClass::FixedWing,
@@ -136,6 +139,7 @@ impl<B: Block<Input = KinematicInput, Output = VehicleState>> SimulateVehicleAda
             avionics,
             latest,
             fault: None,
+            surface_elevation_m: None,
         }
     }
 
@@ -152,6 +156,15 @@ impl<B: Block<Input = KinematicInput, Output = VehicleState>> SimulateVehicleAda
     /// Why stepping stopped, once it has.
     pub const fn fault(&self) -> Option<&BlockError> {
         self.fault.as_ref()
+    }
+
+    /// Sets the WGS84 ellipsoidal height, metres, of the terrain or runway
+    /// under the vehicle, which its downward ranging and landed detector
+    /// measure against; `None` reports neither. The caller owns the terrain
+    /// model and updates this as the vehicle moves; it reaches telemetry from
+    /// the next measurement on.
+    pub fn set_surface_elevation_m(&mut self, elevation_m: Option<f64>) {
+        self.surface_elevation_m = elevation_m;
     }
 
     fn refuse(&self, reason: RejectReason) -> ApplyOutcome {
@@ -190,16 +203,27 @@ impl<B: Block<Input = KinematicInput, Output = VehicleState>> SimulateVehicleAda
 
     fn publish(&mut self) {
         let state = self.block.output();
-        self.latest =
-            self.avionics
-                .sample(self.config.vehicle, self.tick, self.now, &state, self.armed);
+        self.latest = self.avionics.sample(
+            self.config.vehicle,
+            self.tick,
+            self.now,
+            &state,
+            self.armed,
+            self.surface_elevation_m,
+        );
     }
 
     fn step_once(&mut self, period: TickSpan) -> Result<(), BlockError> {
         let state = self.block.output();
-        let controls = self
-            .law
-            .controls(state.angular_rate_body, period.as_seconds(), self.armed);
+        // The origin's NED is the frame telemetry reports attitude in, so an
+        // attitude command means what the host read back.
+        let attitude_ned = body_to_ned(self.avionics.origin(), state.attitude);
+        let controls = self.law.controls(
+            state.angular_rate_body,
+            attitude_ned,
+            period.as_seconds(),
+            self.armed,
+        );
         self.block.step(&KinematicInput { controls })?;
         self.tick = self.tick.next();
         self.now = self.now.advanced(period);

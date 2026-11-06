@@ -1,5 +1,7 @@
+use indicate_instrument_scene::SceneError;
 use sim_atmosphere::AtmosphereError;
 use sim_aviate::AviateBridgeError;
+use sim_core::SessionError;
 use sim_indicate::{FeedError, PanelError};
 use sim_maplibre::MapAdapterError;
 use sim_render::RenderError;
@@ -35,6 +37,29 @@ pub enum AppSimError {
     /// Window or offscreen GPU renderer failed.
     #[error("GPU renderer failed")]
     Render(#[from] RenderError),
+    /// The `Esc` menu scene did not fit its encoder.
+    #[error("menu scene encoding failed: {cause:?}")]
+    MenuScene {
+        /// The encoder's refusal.
+        cause: SceneError,
+    },
+    /// The free-flight simulation session refused an input, a sensor, or a step.
+    #[error("free-flight simulation session failed")]
+    Session(#[source] Box<SessionError>),
+    /// Manual control cannot take over the active scenario.
+    #[error("manual control is unavailable in {scenario}: {detail}")]
+    ManualControlUnavailable {
+        /// Scenario title.
+        scenario: &'static str,
+        /// Why the takeover was refused.
+        detail: &'static str,
+    },
+    /// The simulation has no checkpoint to rewind to.
+    #[error("no rewind checkpoint covers the requested {requested_s} s")]
+    NoCheckpoint {
+        /// Requested rewind span, seconds.
+        requested_s: f64,
+    },
     /// Writing or reading a screenshot image on desktop failed.
     #[cfg(not(target_arch = "wasm32"))]
     #[error("screenshot export failed: {detail}")]
@@ -42,4 +67,16 @@ pub enum AppSimError {
         /// Diagnostic description.
         detail: String,
     },
+}
+
+impl From<SessionError> for AppSimError {
+    fn from(error: SessionError) -> Self {
+        Self::Session(Box::new(error))
+    }
+}
+
+impl From<SceneError> for AppSimError {
+    fn from(cause: SceneError) -> Self {
+        Self::MenuScene { cause }
+    }
 }

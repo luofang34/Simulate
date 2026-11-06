@@ -73,7 +73,7 @@ pub struct XvsSvsInput {
 /// Deterministic conformal stamp and contract state emitted by [`XvsSvsMbdBlock`].
 #[derive(Clone, Copy, Debug)]
 pub struct XvsSvsOutput {
-    /// Exact conformal camera stamp for `BeliefAvionicsMap::render_svs_frame` (`None` before step 1).
+    /// Exact conformal camera stamp for `InstrumentMapSurface::render_conformal` (`None` before step 1).
     pub stamp: Option<ConformalFrameStamp>,
     /// Ownship orthometric MSL altitude (metres) driving TAWS procedural DEM shading.
     pub taws_reference_altitude_m: f32,

@@ -103,6 +103,7 @@ fn compositor_composites_unorm_map_and_srgb_panel_without_gpu_errors() {
             false,
             true,
         ),
+        OverlayQuad::vector_overlay(ViewportRect::FULL, panel.view()),
     ];
 
     let mut encoder = gpu

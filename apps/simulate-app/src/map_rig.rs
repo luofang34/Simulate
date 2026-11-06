@@ -1,32 +1,49 @@
+//! `maplibre-rs` maps of the composite cockpit: the physical scene every camera sees and
+//! the zero or more instrument maps of the selected avionics preset, all on one
+//! [`SharedMapRuntime`].
+
 use std::sync::Arc;
 use std::time::Duration;
 
-use glam::{DMat3, DQuat, DVec3};
-use sim_core::{SimInstant, TICKS_PER_SECOND, VehicleState, VirtualCameraPlacement};
-use sim_geo::{LocalFrame, ecef_to_geodetic};
-use sim_indicate::{PANEL_HEIGHT_PX, PANEL_WIDTH_PX};
+use serde_json::Value;
+use sim_core::{AirframeArticulation, SensorExposureEvent, SimInstant, VehicleState};
+use sim_geo::ecef_to_geodetic;
 use sim_maplibre::{
-    BeliefAvionicsConfig, BeliefAvionicsMap, CatalogTileLoader, ChartCameraSpec, CockpitDeviceTier,
-    ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, DynamicEntity3D, HostGpu,
+    AvionicsMapSet, ChartAssetStore, ChartSymbologyInput, CockpitDeviceTier, ConformalFrameStamp,
+    ConformalMapFrame, HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints,
     SharedMapRuntime, TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap,
-    ViewSlotId, ViewSlotMask, belief_chart_style_with_aerodromes, belief_svs_relief_style,
-    conformal_stamp_from_pose, conformal_stamp_from_vehicle, frustum_from_intrinsics,
-    symmetric_frustum, tile_id_to_world_coords, truth_otw_style_with_aerodromes,
+    TruthSlotMask, UsdAircraftAsset, ViewSlotId, ViewSlotMask, build_chart_symbology_scaled,
+    tile_id_to_world_coords, truth_real_world_style,
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
-use sim_scenery::{AerodromeId, CatalogScenery, OsmAerodromeDiagram, TileId};
+use sim_scenery::{CatalogScenery, LiveDemBridge, OsmAerodromeDiagram, TileId};
 
-use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_nose_mount};
 use crate::error::AppSimError;
+use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
+use crate::vehicles::FreeFlightVehicle;
+use crate::world_surface::WorldSurfaceHandle;
+
+mod aircraft;
+mod charts;
+mod efb;
+mod globe;
+mod preset;
+mod scenery;
+mod stamps;
+#[cfg(test)]
+mod tests;
+
+pub use efb::{EfbAirport, EfbCommand, EfbStatus};
+pub use globe::GlobeSelection;
+pub use preset::{AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, PFD_SVS_MAP};
+pub use scenery::ScenerySource;
 
 const SENSOR_WIDTH_PX: u32 = 800;
 const SENSOR_HEIGHT_PX: u32 = 600;
-const SENSOR_RATE_HZ: u64 = 30;
-const SENSOR_INTERVAL_TICKS: u64 = TICKS_PER_SECOND / SENSOR_RATE_HZ;
 
-/// Inputs driving one dual-world `TruthSceneMap` + `BeliefAvionicsMap` frame.
+/// Inputs driving one frame of every map.
 pub struct MapFrameInput<'a> {
     /// Window swapchain `[width, height]` in physical pixels.
     pub surface_size: [u32; 2],
@@ -34,140 +51,252 @@ pub struct MapFrameInput<'a> {
     pub timestamp: SimInstant,
     /// Active scripted scenario profile (`None` in free flight).
     pub profile: Option<ScenarioProfile>,
-    /// True vehicle state (`TruthSceneMap` + virtual camera rig).
+    /// Free-flight plant flying now (`None` in a scripted scenario).
+    pub active_vehicle: Option<FreeFlightVehicle>,
+    /// Display-interpolated truth: the physical scene's ownship.
     pub vehicle: VehicleState,
-    /// Active camera in `sim-render` convention (for `Cockpit` / `Chase` / `VolumetricScene` OTW).
+    /// Display-interpolated navigation solution: the instrument maps' ownship.
+    pub estimated_vehicle: VehicleState,
+    /// `30 Hz` optical sensor exposures since the previous frame, oldest first; the sensor
+    /// slot renders the newest at its exact instant and truth state, whatever the window
+    /// shows.
+    pub sensor_exposures: &'a [SensorExposureEvent],
+    /// Ownship control surfaces, propeller, gear, and lights.
+    pub articulation: AirframeArticulation,
+    /// Active window camera in `sim-render` convention.
     pub otw_camera: Camera,
-    /// Solar illumination direction in ECEF.
-    pub sun_direction_ecef: DVec3,
+    /// Sun, Moon, stars, and twilight for the scene and relief lighting.
+    pub sky: &'a SkyFrame<'a>,
     /// Supervisor holding OSM airport diagrams, virtual camera presets, and surveillance belief.
     pub supervisor: &'a SupervisorRig,
 }
 
-/// Dual-World `maplibre-rs` rig sharing a single [`HostGpu`], compiled pipeline cache, and
-/// `CatalogScenery` static tile cache between [`TruthSceneMap`] and [`BeliefAvionicsMap`].
-pub struct DualWorldMapRig {
+/// The physical scene and the selected preset's instrument maps on one shared runtime.
+pub struct MapLibreRig {
+    runtime: SharedMapRuntime,
+    endpoints: SceneryEndpoints,
+    aerodrome_geojson: Value,
+    catalog: Option<CatalogScenery>,
+    live_dem: Option<LiveDemBridge>,
     truth: TruthSceneMap,
-    belief: BeliefAvionicsMap,
+    avionics: AvionicsMapSet,
+    preset: AvionicsPreset,
+    window_px: [u32; 2],
     aux_virtual_camera_slot: ViewSlotId,
-    primary_dem_tile: Option<TileId>,
-    last_sensor_tick: Option<u64>,
+    last_ownship_tile: Option<TileId>,
+    truth_shown: bool,
+    pixel_ratio: f64,
+    sensor_frames: u64,
+    last_sensor_stamp: Option<ConformalFrameStamp>,
+    surface: WorldSurfaceHandle,
+    ownship_visual: OwnshipVisualKind,
+    charts: ChartAssetStore,
+    efb: Option<efb::EfbRig>,
+    efb_airport: Option<EfbAirport>,
+    globe: Option<globe::GlobeRig>,
 }
 
-impl DualWorldMapRig {
-    /// Initializes `TruthSceneMap` and `BeliefAvionicsMap` over `gpu` using the regional
-    /// multi-airport `CatalogScenery` (`Delaware`, `KDOV`, `47N`, `KEWR`) and conflated
-    /// OpenStreetMap `aeroway=*` airport diagrams.
-    pub fn new(gpu: HostGpu, initial_size: [u32; 2]) -> Result<Self, AppSimError> {
-        let scenery = CatalogScenery::synthetic_regional_network()
-            .map_err(sim_scenario::ScenarioError::from)?;
+impl MapLibreRig {
+    /// Builds the physical scene and `preset`'s maps over `gpu`, with tiles from `source`,
+    /// configuring `surface` to the same source and feeding it every streamed DEM tile.
+    pub fn new(
+        gpu: HostGpu,
+        initial_size: [u32; 2],
+        source: &ScenerySource,
+        preset: AvionicsPreset,
+        surface: WorldSurfaceHandle,
+    ) -> Result<Self, AppSimError> {
         let aerodrome_geojson = OsmAerodromeDiagram::builtin_all_merged_geojson()
             .map_err(sim_scenario::ScenarioError::from)?;
-        let primary_dem_tile = scenery.elevation_tiles().next();
-        let max_dem_z = scenery
-            .elevation_tiles()
-            .map(|t| t.zoom)
-            .max()
-            .unwrap_or(14);
-        let max_ortho_z = scenery.imagery_tiles().map(|t| t.zoom).max().unwrap_or(15);
-
-        let loader = CatalogTileLoader::new(Arc::new(scenery.clone()));
+        let charts = ChartAssetStore::new();
+        let scenery::SceneryLoader {
+            loader,
+            endpoints,
+            catalog,
+            live_dem,
+        } = source.loader(charts.clone())?;
         let runtime = SharedMapRuntime::new(
             gpu,
             default_device_tier(),
             wgpu::TextureFormat::Rgba8Unorm,
-            Some(loader.into_shared_loader()),
+            Some(loader),
         )?;
-
-        let [w_in, h_in] = initial_size;
-        let [w, h] = [w_in.max(16), h_in.max(16)];
+        let window_px = clamp_window(initial_size);
+        let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
         let mut truth = TruthSceneMap::new(
             &runtime,
-            truth_otw_style_with_aerodromes(max_dem_z, max_ortho_z, aerodrome_geojson.clone())?,
+            truth_real_world_style(&endpoints)?,
             TruthSceneConfig {
-                otw_size: [w, h],
+                otw_size: window_px,
                 stereo_otw: false,
                 otw_depth_readout: false,
                 sensor_size: [SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX],
-                request_overscan: 1.15,
+                request_overscan: 1.05,
             },
+            asset,
         )?;
         let aux_virtual_camera_slot =
             truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true)?;
-        let _supplied_truth = truth.supply_dem_synchronously(&scenery)?;
-
-        let mut belief = BeliefAvionicsMap::new(
-            &runtime,
-            belief_svs_relief_style(max_dem_z)?,
-            belief_chart_style_with_aerodromes(max_dem_z, max_ortho_z, aerodrome_geojson)?,
-            BeliefAvionicsConfig {
-                svs_size: [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
-                chart_size: [w.max(PANEL_WIDTH_PX), h.max(PANEL_HEIGHT_PX)],
-                chart_min_interval: Duration::from_millis(66),
-                initial_reference_altitude_m: Some(450.0),
-            },
-        )?;
-        let _supplied_belief = belief.supply_dem_synchronously(&scenery)?;
-
-        Ok(Self {
+        if let Some(scenery) = &catalog {
+            let _supplied = truth.supply_dem_synchronously(scenery)?;
+        }
+        let mut rig = Self {
+            avionics: AvionicsMapSet::default(),
+            runtime,
+            endpoints,
+            aerodrome_geojson,
+            catalog,
+            live_dem,
             truth,
-            belief,
+            preset,
+            window_px,
             aux_virtual_camera_slot,
-            primary_dem_tile,
-            last_sensor_tick: None,
-        })
+            last_ownship_tile: None,
+            truth_shown: true,
+            pixel_ratio: 1.0,
+            sensor_frames: 0,
+            last_sensor_stamp: None,
+            surface,
+            ownship_visual: OwnshipVisualKind::default(),
+            charts,
+            efb: None,
+            efb_airport: None,
+            globe: None,
+        };
+        rig.set_preset(preset)?;
+        rig.surface
+            .configure(source)
+            .map_err(sim_scenario::ScenarioError::from)?;
+        Ok(rig)
     }
 
-    /// Simulator-only [`TruthSceneMap`].
+    /// Replaces the instrument maps with `preset`'s.
+    pub fn set_preset(&mut self, preset: AvionicsPreset) -> Result<(), AppSimError> {
+        let specs = preset.map_specs(&self.endpoints, &self.aerodrome_geojson, self.window_px)?;
+        let mut avionics = AvionicsMapSet::new(&self.runtime, specs)?;
+        if let Some(scenery) = &self.catalog {
+            let _supplied = avionics.supply_dem_synchronously(scenery)?;
+        }
+        avionics.set_pixel_ratio(self.pixel_ratio);
+        self.avionics = avionics;
+        self.preset = preset;
+        self.ensure_efb();
+        Ok(())
+    }
+
+    /// Draws every map at `ratio` physical pixels per logical pixel (the window's scale
+    /// factor, `2.0` on Retina), including maps a later preset switch builds.
+    pub fn set_pixel_ratio(&mut self, ratio: f64) {
+        if !(ratio.is_finite() && ratio > 0.0) {
+            return;
+        }
+        self.pixel_ratio = ratio;
+        self.truth.set_pixel_ratio(ratio);
+        self.avionics.set_pixel_ratio(ratio);
+        if let Some(efb) = self.efb.as_mut() {
+            efb.set_pixel_ratio(ratio);
+        }
+    }
+
+    /// Selected avionics preset.
+    #[must_use]
+    pub const fn preset(&self) -> AvionicsPreset {
+        self.preset
+    }
+
+    /// The simulator's physical scene.
     #[must_use]
     pub const fn truth(&self) -> &TruthSceneMap {
         &self.truth
     }
 
-    /// Operational-belief [`BeliefAvionicsMap`].
+    /// The preset's instrument maps.
+    #[cfg(test)]
     #[must_use]
-    pub const fn belief(&self) -> &BeliefAvionicsMap {
-        &self.belief
+    pub const fn avionics(&self) -> &AvionicsMapSet {
+        &self.avionics
     }
 
-    /// Invalidates the MFD `Map2D` chart dirty cache so the next frame redraws immediately.
-    pub fn invalidate_chart(&mut self) {
-        self.belief.invalidate_chart();
+    /// Colour view of the instrument map `id`, when the preset has it.
+    #[must_use]
+    pub fn instrument_view(&self, id: &str) -> Option<&wgpu::TextureView> {
+        self.avionics
+            .get(id)
+            .and_then(InstrumentMapSurface::color_view)
     }
 
-    /// Whether either the `TruthSceneMap` or `BeliefAvionicsMap` has pending async tile arrivals.
+    /// Marks every chart dirty so the next frame redraws immediately.
+    pub fn invalidate_charts(&mut self) {
+        self.avionics.invalidate_charts();
+    }
+
+    /// Whether any shown map has tile arrivals or camera animations waiting to be drawn; the
+    /// physical scene is left out while the window shows a chart, since nothing would draw its
+    /// arrivals.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub fn needs_redraw(&self) -> bool {
-        self.truth.needs_redraw() || self.belief.needs_redraw()
+        (self.truth_shown && self.truth.needs_redraw())
+            || self.avionics.needs_redraw()
+            || self.efb_needs_redraw()
+            || self.globe_needs_redraw()
     }
 
-    /// Secondary registered virtual camera [`ViewSlotId`] ready for multi-camera sensor feeds.
+    /// Sensor-slot frames rendered, one per frame that carried at least one exposure.
+    #[must_use]
+    pub const fn sensor_frame_count(&self) -> u64 {
+        self.sensor_frames
+    }
+
+    /// Stamp of the latest sensor-slot frame: the newest exposure's exact instant and
+    /// truth-state camera pose.
+    #[must_use]
+    pub const fn last_sensor_stamp(&self) -> Option<ConformalFrameStamp> {
+        self.last_sensor_stamp
+    }
+
+    /// Secondary registered virtual camera slot, ready for multi-camera sensor feeds.
     #[cfg(test)]
     #[must_use]
     pub const fn aux_virtual_camera_slot(&self) -> ViewSlotId {
         self.aux_virtual_camera_slot
     }
 
-    /// Exports a stitched `129×129` resident DEM patch from `BeliefAvionicsMap` for `terrain-volume`.
+    /// Stitched `129×129` resident DEM patch under ownship from the first conformal map.
     #[must_use]
-    pub fn sample_belief_terrain_patch(&self) -> Option<TerrainPatchSnapshot> {
-        let tile = self.primary_dem_tile?;
+    pub fn sample_terrain_patch(&self) -> Option<TerrainPatchSnapshot> {
+        let tile = self
+            .catalog
+            .as_ref()
+            .and_then(|c| c.elevation_tiles().next())
+            .or(self.last_ownship_tile)?;
         let coords = tile_id_to_world_coords(tile)?;
-        self.belief.resident_terrain_patch(coords)
+        self.avionics
+            .iter()
+            .filter(|s| s.is_conformal())
+            .find_map(|s| s.resident_terrain_patch(coords))
     }
 
-    /// Steps `TruthSceneMap` (OTW + 30 Hz virtual camera) and `BeliefAvionicsMap` (SVS + 15 Hz Chart).
+    /// Steps the physical scene (window + 30 Hz sensor) and every instrument map.
     pub fn render_earth_frame(&mut self, input: &MapFrameInput<'_>) -> Result<(), AppSimError> {
         let _ = self.aux_virtual_camera_slot;
-        let [w_in, h_in] = input.surface_size;
-        let [w, h] = [w_in.max(16), h_in.max(16)];
+        if let Some(bridge) = &self.live_dem {
+            let _resident = self.surface.drain(bridge);
+        }
+        self.window_px = clamp_window(input.surface_size);
+        let [w, h] = self.window_px;
         self.truth.resize_otw(w, h)?;
-        self.truth
-            .set_sun_direction_ecef(input.sun_direction_ecef)?;
-        self.belief
-            .set_sun_direction_ecef(input.sun_direction_ecef)?;
-
+        if let Some(surface) = self.avionics.get_mut(AIRPORT_SURFACE_MAP) {
+            surface.resize(w, h)?;
+        }
+        match &input.sky.celestial {
+            Some(sky) => self.truth.set_celestial(sky),
+            None => self
+                .truth
+                .set_sun_direction_ecef(input.sky.sun_direction_ecef)?,
+        }
+        self.avionics
+            .set_sun_direction_ecef(input.sky.sun_direction_ecef)?;
         let sim_dur = Duration::from_secs_f64(
             input
                 .timestamp
@@ -175,105 +304,170 @@ impl DualWorldMapRig {
                 .as_seconds()
                 .max(0.0),
         );
-        self.step_truth_world(input, sim_dur, [w, h])?;
-        self.step_belief_world(input, sim_dur)
+        self.step_truth_world(input, sim_dur)?;
+        self.step_instrument_maps(input, sim_dur)?;
+        self.step_efb(input, sim_dur)
+    }
+
+    /// Geoid undulation at `position_ecef` in the datum of this rig's scenery.
+    fn undulation_at(&self, position_ecef: glam::DVec3) -> f64 {
+        let geo = ecef_to_geodetic(position_ecef);
+        stamps::geoid_undulation_m(
+            self.catalog.as_ref().map(CatalogScenery::vertical_datum),
+            geo.lat_rad,
+            geo.lon_rad,
+        )
+    }
+
+    /// Shows the ownship airframe that matches what is flying.
+    fn sync_ownship_visual(&mut self, input: &MapFrameInput<'_>) -> Result<(), AppSimError> {
+        let kind = aircraft::ownship_visual(input.profile, input.active_vehicle);
+        if kind != self.ownship_visual {
+            self.truth.set_ownship_visual(kind)?;
+            self.ownship_visual = kind;
+        }
+        Ok(())
     }
 
     fn step_truth_world(
         &mut self,
         input: &MapFrameInput<'_>,
         sim_dur: Duration,
-        otw_size: [u32; 2],
     ) -> Result<(), AppSimError> {
+        // Every window view (cockpit, chase, volumetric, and the sensor aperture's virtual
+        // camera) draws on the OTW slot at window resolution. The sensor slot steps only on
+        // frames that carry an exposure; maplibre's slot residency floor keeps whichever
+        // slot sits a frame out from losing its tiles and drapes.
         let mode = input.supervisor.viewport_mode();
-        let otw_stamp = build_camera_stamp(input.timestamp, &input.otw_camera, otw_size)?;
-        let cam_spec = input.supervisor.active_virtual_camera(input.profile);
-        let sensor_stamp = if self.should_step_sensor(input.timestamp, mode) {
-            let (pose, intrinsics) = cam_spec
-                .pose_and_intrinsics(&input.vehicle, DVec3::ZERO)
-                .map_err(sim_scenario::ScenarioError::from)?;
-            let frustum =
-                frustum_from_intrinsics(&intrinsics, DEFAULT_NEAR_CLIP_M, DEFAULT_FAR_CLIP_M)?;
-            Some(conformal_stamp_from_pose(
-                input.timestamp,
-                &pose,
-                frustum,
-                0.0,
-            )?)
-        } else {
-            None
+        let exposure = input.sensor_exposures.last();
+        let mask = TruthSlotMask {
+            otw: mode != OperatorViewportMode::ChartMap,
+            sensor: exposure.is_some(),
         };
-        if mode != OperatorViewportMode::ChartMap || sensor_stamp.is_some() {
-            let mut truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
-            truth_entities.push(ownship_exterior_entity(
-                &input.vehicle,
-                mode,
-                cam_spec.placement,
-                self.truth.otw_slot(),
-                self.truth.sensor_slot(),
-            ));
-            self.truth.render_frame(TruthSceneFrame {
+        self.truth_shown = mask.otw;
+        if !mask.otw && !mask.sensor {
+            return Ok(());
+        }
+        self.sync_ownship_visual(input)?;
+        let undulation_m = self.undulation_at(input.vehicle.position_ecef);
+        let (cam_body, cam_spec) = input
+            .supervisor
+            .active_virtual_camera_on_body(input.profile);
+        let otw_stamp = mask
+            .otw
+            .then(|| {
+                stamps::build_camera_stamp(
+                    input.timestamp,
+                    &input.otw_camera,
+                    self.window_px,
+                    undulation_m,
+                )
+            })
+            .transpose()?;
+        let sensor_stamp = exposure
+            .map(|exp| stamps::sensor_exposure_stamp(cam_body, &cam_spec, exp, undulation_m))
+            .transpose()?;
+        let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
+        let mut aircraft = aircraft::traffic_aircraft(&truth_entities, sim_dur.as_secs_f64());
+        aircraft.push(aircraft::ownship_aircraft(
+            &input.vehicle,
+            input.articulation,
+            undulation_m,
+        ));
+        let sensor_role = aircraft::virtual_camera_role(&cam_spec);
+        let window_role = if mode == OperatorViewportMode::SensorAperture {
+            sensor_role
+        } else {
+            aircraft::window_camera_role(mode)
+        };
+        self.truth.render_frame_slots(
+            TruthSceneFrame {
                 timestamp: sim_dur,
                 otw_stamp,
                 stereo_right_stamp: None,
                 sensor_stamp,
                 extra_camera_slots: &[],
-                runway: input.supervisor.active_runway(input.profile),
                 entities: &truth_entities,
-            })?;
+                aircraft: &aircraft,
+                ownship_camera_roles: &[
+                    (self.truth.otw_slot(), window_role),
+                    (self.truth.sensor_slot(), sensor_role),
+                ],
+                polar_runway: input.supervisor.active_runway(input.profile),
+            },
+            mask,
+        )?;
+        if sensor_stamp.is_some() {
+            self.sensor_frames = self.sensor_frames.wrapping_add(1);
+            self.last_sensor_stamp = sensor_stamp;
         }
         Ok(())
     }
 
-    fn step_belief_world(
+    fn step_instrument_maps(
         &mut self,
         input: &MapFrameInput<'_>,
         sim_dur: Duration,
     ) -> Result<(), AppSimError> {
         let mode = input.supervisor.viewport_mode();
-        let svs_frustum = symmetric_frustum(
-            SVS_FOV_Y_DEG.to_radians(),
-            PANEL_WIDTH_PX,
-            PANEL_HEIGHT_PX,
-            DEFAULT_NEAR_CLIP_M,
-            DEFAULT_FAR_CLIP_M,
-        )?;
-        let svs_stamp = conformal_stamp_from_vehicle(
-            input.timestamp,
-            &input.vehicle,
-            &svs_nose_mount(),
-            DVec3::ZERO,
-            svs_frustum,
-            0.0,
-        )?;
-        let own_geo = ecef_to_geodetic(input.vehicle.position_ecef);
+        let own_geo = ecef_to_geodetic(input.estimated_vehicle.position_ecef);
+        let undulation_m = self.undulation_at(input.estimated_vehicle.position_ecef);
+        self.last_ownship_tile = Some(scenery::tile_at(&own_geo, 11));
         let belief_entities = input.supervisor.belief_entities(ViewSlotMask::ALL);
-        self.belief.render_svs_frame(
-            sim_dur,
-            svs_stamp,
-            own_geo.height_m as f32,
-            input.supervisor.active_runway(input.profile),
-            &belief_entities,
-        )?;
-        let chart_spec =
-            build_chart_camera_spec(mode, &input.vehicle, input.profile, input.supervisor);
-        let _chart_redrawn = self.belief.render_chart_if_dirty(sim_dur, chart_spec)?;
+        let landing_runway = self.active_onboard_landing_runway(input);
+        let own = charts::chart_ownship(&input.estimated_vehicle);
+        // The EFB replaces the dock's moving map; the map still draws as the full-window
+        // chart of a preset without an airport-surface map.
+        let chart_fallback = mode == OperatorViewportMode::ChartMap
+            && self.avionics.get(AIRPORT_SURFACE_MAP).is_none();
+        let skip_dock_chart = self.efb_shown() && !chart_fallback;
+        for surface in self.avionics.iter_mut() {
+            if !surface.is_due(sim_dur) || (skip_dock_chart && surface.id() == MFD_CHART_MAP) {
+                continue;
+            }
+            if surface.is_conformal() {
+                let stamp = stamps::svs_stamp(
+                    input.timestamp,
+                    &input.estimated_vehicle,
+                    surface.size(),
+                    undulation_m,
+                )?;
+                surface.render_conformal(ConformalMapFrame {
+                    timestamp: sim_dur,
+                    stamp,
+                    ownship_msl_m: (own_geo.height_m - undulation_m) as f32,
+                    runway: landing_runway.as_ref(),
+                    entities: &belief_entities,
+                })?;
+                continue;
+            }
+            let full_window = surface.id() == AIRPORT_SURFACE_MAP;
+            if full_window && mode != OperatorViewportMode::ChartMap {
+                continue;
+            }
+            let camera = if full_window {
+                charts::airport_surface_camera(&own, input.profile, input.supervisor)
+            } else {
+                charts::moving_map_camera(&own, input.supervisor)
+            };
+            let symbology = build_chart_symbology_scaled(
+                &ChartSymbologyInput {
+                    camera,
+                    viewport_px: surface.size(),
+                    ownship: Some(own),
+                    runway: landing_runway.as_ref(),
+                    traffic: &belief_entities,
+                },
+                surface.pixel_ratio(),
+            );
+            let _outcome = surface.render_chart_if_dirty(sim_dur, camera, Some(symbology))?;
+        }
         Ok(())
     }
+}
 
-    fn should_step_sensor(&mut self, timestamp: SimInstant, mode: OperatorViewportMode) -> bool {
-        if mode == OperatorViewportMode::SensorAperture {
-            return true;
-        }
-        let ticks = u64::try_from(timestamp.ticks_u128()).unwrap_or(u64::MAX);
-        let due = self
-            .last_sensor_tick
-            .is_none_or(|prev| ticks.saturating_sub(prev) >= SENSOR_INTERVAL_TICKS);
-        if due {
-            self.last_sensor_tick = Some(ticks);
-        }
-        due
-    }
+fn clamp_window([w, h]: [u32; 2]) -> [u32; 2] {
+    [w.max(16), h.max(16)]
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -284,99 +478,4 @@ const fn default_device_tier() -> CockpitDeviceTier {
 #[cfg(not(target_arch = "wasm32"))]
 const fn default_device_tier() -> CockpitDeviceTier {
     CockpitDeviceTier::Desktop
-}
-
-fn build_camera_stamp(
-    timestamp: SimInstant,
-    camera: &Camera,
-    size_px: [u32; 2],
-) -> Result<ConformalFrameStamp, AppSimError> {
-    let [w_px, h_px] = size_px;
-    let fov_y = if camera.fov_y_rad.is_finite() && camera.fov_y_rad > 0.01 {
-        camera.fov_y_rad
-    } else {
-        COCKPIT_FOV_Y_DEG.to_radians()
-    };
-    let pose_ecef = sim_core::CameraPoseEcef {
-        position_ecef: camera.pose.position_ecef,
-        orientation: camera.pose.orientation,
-    };
-    let frustum = symmetric_frustum(
-        fov_y,
-        w_px.max(1),
-        h_px.max(1),
-        DEFAULT_NEAR_CLIP_M,
-        DEFAULT_FAR_CLIP_M,
-    )?;
-    Ok(conformal_stamp_from_pose(
-        timestamp, &pose_ecef, frustum, 0.0,
-    )?)
-}
-
-fn heading_deg(vehicle: &VehicleState) -> f64 {
-    let geo = ecef_to_geodetic(vehicle.position_ecef);
-    let local = LocalFrame::at(&geo);
-    let nose_ecef = vehicle.attitude * DVec3::X;
-    let north = nose_ecef.dot(local.north());
-    let east = nose_ecef.dot(local.east());
-    east.atan2(north).to_degrees().rem_euclid(360.0)
-}
-
-fn ownship_exterior_entity(
-    vehicle: &VehicleState,
-    mode: OperatorViewportMode,
-    sensor_placement: VirtualCameraPlacement,
-    otw_slot: ViewSlotId,
-    sensor_slot: ViewSlotId,
-) -> DynamicEntity3D {
-    let geo = ecef_to_geodetic(vehicle.position_ecef);
-    let ecef_to_ned = LocalFrame::at(&geo).ned_to_ecef().transpose();
-    let ned_from_body =
-        DQuat::from_mat3(&(ecef_to_ned * DMat3::from_quat(vehicle.attitude))).normalize();
-    let mut entity = DynamicEntity3D::ownship_exterior(1, &geo, ned_from_body, 0.0, otw_slot, 11.0);
-    let mut mask = ViewSlotMask::ALL;
-    if mode != OperatorViewportMode::Chase {
-        mask = mask.without(otw_slot);
-    }
-    if matches!(sensor_placement, VirtualCameraPlacement::BodyMounted(_)) {
-        mask = mask.without(sensor_slot);
-    }
-    entity.placement.view_mask = mask;
-    entity
-}
-
-fn build_chart_camera_spec(
-    mode: OperatorViewportMode,
-    vehicle: &VehicleState,
-    profile: Option<ScenarioProfile>,
-    supervisor: &SupervisorRig,
-) -> ChartCameraSpec {
-    let own_geo = ecef_to_geodetic(vehicle.position_ecef);
-    let aero_id = supervisor.effective_aerodrome(profile);
-    if mode == OperatorViewportMode::ChartMap
-        && let Some(diag) = supervisor.diagram(aero_id)
-    {
-        let zoom = match aero_id {
-            AerodromeId::CentralJersey47N => 15.1,
-            AerodromeId::NewarkKewr | AerodromeId::DoverKdov => 13.8,
-        };
-        return ChartCameraSpec {
-            center_lat_deg: diag.surface_graph.reference_point.latitude_deg,
-            center_lon_deg: diag.surface_graph.reference_point.longitude_deg,
-            zoom,
-            bearing_deg: 0.0,
-            pitch_deg: 0.0,
-            surveillance_revision: supervisor.belief_surveillance_revision(),
-            notices_revision: 0,
-        };
-    }
-    ChartCameraSpec {
-        center_lat_deg: own_geo.lat_rad.to_degrees(),
-        center_lon_deg: own_geo.lon_rad.to_degrees(),
-        zoom: 13.6,
-        bearing_deg: heading_deg(vehicle),
-        pitch_deg: 0.0,
-        surveillance_revision: supervisor.belief_surveillance_revision(),
-        notices_revision: 0,
-    }
 }

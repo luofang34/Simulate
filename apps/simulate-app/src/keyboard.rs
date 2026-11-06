@@ -4,10 +4,9 @@ use sim_scenario::ScenarioProfile;
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
+use crate::controls::{KeyAction, KeyBindings, THROTTLE_RATE_PER_S};
 use crate::flight::Flight;
 
-/// Throttle travel per second while W or S is held.
-const THROTTLE_RATE_PER_S: f64 = 0.5;
 const FLAP_STEP: f64 = 1.0 / 3.0;
 const MIXTURE_STEP: f64 = 0.10;
 
@@ -24,22 +23,31 @@ pub enum CockpitAction {
     CycleVehicle,
     /// `H`: toggle glass-cockpit PFD/MFD/HSI dock visibility.
     ToggleInstruments,
-    /// `U`: toggle center conformal HUD symbology in `Cockpit` mode.
+    /// `U`: toggle the full-window conformal HUD in `Cockpit` mode.
     ToggleHud,
+    /// `P`: cycle the avionics preset (gauges, single moving map, glass cockpit).
+    CycleAvionicsPreset,
     /// `Space`: toggle `SimSupervisor` `Paused` / `RealTime`.
     TogglePause,
     /// `]`: cycle `SimSupervisor` time warp (`1x` → `2x` → `4x` → `1x`).
     CycleWarp,
+    /// `L`: cycle the sky ephemeris time (`Auto` → `Live UTC` → `Dawn` → `Noon` → `Dusk` → `Night`).
+    CycleSkyTime,
     /// `F`: extend flaps by one notch on JSBSim aircraft.
     FlapsDown,
     /// `G`: retract flaps by one notch on JSBSim aircraft.
     FlapsUp,
-    /// `M`: cycle piston ignition magnetos (`Both` → `Left` → `Right` → `Off` → `Both`).
+    /// `M`: take manual control of a scripted scenario; in free flight, cycle piston
+    /// ignition magnetos (`Both` → `Left` → `Right` → `Off` → `Both`).
     CycleMagnetos,
     /// `R`: enrich fuel mixture (`+10%`).
     MixtureRich,
     /// `T`: lean fuel mixture (`-10%`).
     MixtureLean,
+    /// `N`: cycle onboard sensor realism (`Realistic` → `Degraded navigation` → `Ideal`).
+    CycleSensorRealism,
+    /// `J`: expand the top-right EFB moving map into the EFB tablet, or minimize it again.
+    ToggleEfb,
 }
 
 /// What a number key picks: a scripted scenario (`1`–`8`), or `None` (`0`) for free flight.
@@ -80,13 +88,17 @@ pub fn cockpit_action(event: &KeyEvent) -> Option<CockpitAction> {
         KeyCode::KeyV => Some(CockpitAction::CycleVehicle),
         KeyCode::KeyH => Some(CockpitAction::ToggleInstruments),
         KeyCode::KeyU => Some(CockpitAction::ToggleHud),
+        KeyCode::KeyP => Some(CockpitAction::CycleAvionicsPreset),
         KeyCode::Space => Some(CockpitAction::TogglePause),
         KeyCode::BracketRight => Some(CockpitAction::CycleWarp),
+        KeyCode::KeyL => Some(CockpitAction::CycleSkyTime),
         KeyCode::KeyF => Some(CockpitAction::FlapsDown),
         KeyCode::KeyG => Some(CockpitAction::FlapsUp),
         KeyCode::KeyM => Some(CockpitAction::CycleMagnetos),
         KeyCode::KeyR => Some(CockpitAction::MixtureRich),
         KeyCode::KeyT => Some(CockpitAction::MixtureLean),
+        KeyCode::KeyN => Some(CockpitAction::CycleSensorRealism),
+        KeyCode::KeyJ => Some(CockpitAction::ToggleEfb),
         _ => None,
     }
 }
@@ -131,15 +143,19 @@ pub fn apply_aircraft_system_action(action: CockpitAction, flight: &mut Flight) 
         | CockpitAction::CycleVehicle
         | CockpitAction::ToggleInstruments
         | CockpitAction::ToggleHud
+        | CockpitAction::CycleAvionicsPreset
         | CockpitAction::TogglePause
-        | CockpitAction::CycleWarp => {}
+        | CockpitAction::CycleWarp
+        | CockpitAction::CycleSkyTime
+        | CockpitAction::CycleSensorRealism
+        | CockpitAction::ToggleEfb => {}
     }
 }
 
-/// Arrow keys fly (Down is stick back), A/D are rudder, W/S move the throttle,
-/// B holds wheel brakes, and E holds the engine starter.
-/// The keyboard writes a stick axis only when one of its keys changes, so it
-/// never zeroes a gamepad or yoke that is also connected.
+/// Flight keys (rebindable through [`KeyBindings`]; by default the arrows fly with Down as
+/// stick back, A/D are rudder, W/S move the throttle, B holds wheel brakes, and E holds the
+/// engine starter). The keyboard writes a stick axis only when one of its keys changes, so
+/// it never zeroes a gamepad or yoke that is also connected.
 #[derive(Debug, Default)]
 pub struct Keyboard {
     left: bool,
@@ -155,57 +171,107 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    /// Records a key change and updates the stick axes or momentary aircraft switches it affects.
-    pub fn handle(&mut self, event: &KeyEvent, mapper: &mut InputMapper, flight: &mut Flight) {
+    /// Records a key change and updates the stick axes or momentary aircraft switches it
+    /// affects; returns whether `event` was a flight key.
+    pub fn handle(
+        &mut self,
+        event: &KeyEvent,
+        keys: &KeyBindings,
+        mapper: &mut InputMapper,
+        flight: &mut Flight,
+    ) -> bool {
         let PhysicalKey::Code(code) = event.physical_key else {
-            return;
+            return false;
+        };
+        let Some(action) = keys.action_for(code) else {
+            return false;
         };
         let pressed = event.state == ElementState::Pressed;
-        match code {
-            KeyCode::KeyB => {
+        match action {
+            KeyAction::Brakes => {
                 if self.brakes_held != pressed {
                     self.brakes_held = pressed;
                     flight.update_system_controls(|sys| {
                         sys.wheel_brake_norm = if pressed { 1.0 } else { 0.0 };
                     });
                 }
-                return;
+                return true;
             }
-            KeyCode::KeyE => {
+            KeyAction::Starter => {
                 if self.starter_held != pressed {
                     self.starter_held = pressed;
-                    flight.update_system_controls(|sys| {
-                        sys.starter = pressed;
-                    });
+                    flight.update_system_controls(|sys| sys.starter = pressed);
                 }
-                return;
+                return true;
             }
             _ => {}
         }
-
-        let (flag, control) = match code {
-            KeyCode::ArrowLeft => (&mut self.left, Some(Control::Roll)),
-            KeyCode::ArrowRight => (&mut self.right, Some(Control::Roll)),
-            KeyCode::ArrowUp => (&mut self.up, Some(Control::Pitch)),
-            KeyCode::ArrowDown => (&mut self.down, Some(Control::Pitch)),
-            KeyCode::KeyA => (&mut self.rudder_left, Some(Control::Yaw)),
-            KeyCode::KeyD => (&mut self.rudder_right, Some(Control::Yaw)),
-            KeyCode::KeyW => (&mut self.throttle_up, None),
-            KeyCode::KeyS => (&mut self.throttle_down, None),
-            _ => return,
+        let (flag, control) = match action {
+            KeyAction::RollLeft => (&mut self.left, Some(Control::Roll)),
+            KeyAction::RollRight => (&mut self.right, Some(Control::Roll)),
+            KeyAction::PitchDown => (&mut self.up, Some(Control::Pitch)),
+            KeyAction::PitchUp => (&mut self.down, Some(Control::Pitch)),
+            KeyAction::YawLeft => (&mut self.rudder_left, Some(Control::Yaw)),
+            KeyAction::YawRight => (&mut self.rudder_right, Some(Control::Yaw)),
+            KeyAction::ThrottleUp => (&mut self.throttle_up, None),
+            KeyAction::ThrottleDown | KeyAction::Brakes | KeyAction::Starter => {
+                (&mut self.throttle_down, None)
+            }
         };
         if *flag == pressed {
-            return;
+            return true;
         }
         *flag = pressed;
         match control {
             Some(Control::Roll) => mapper.set(Control::Roll, axis(self.right, self.left)),
             Some(Control::Pitch) => mapper.set(Control::Pitch, axis(self.down, self.up)),
             Some(Control::Yaw) => {
-                mapper.set(Control::Yaw, axis(self.rudder_right, self.rudder_left))
+                mapper.set(Control::Yaw, axis(self.rudder_right, self.rudder_left));
             }
             Some(Control::Throttle) | None => {}
         }
+        true
+    }
+
+    /// Whether any flight key is held.
+    #[must_use]
+    pub const fn any_held(&self) -> bool {
+        self.left
+            || self.right
+            || self.up
+            || self.down
+            || self.rudder_left
+            || self.rudder_right
+            || self.throttle_up
+            || self.throttle_down
+    }
+
+    /// Lets go of every held key, centring the stick axes the keyboard was holding off-centre
+    /// and releasing brakes and starter, so nothing stays held while the `Esc` menu has the
+    /// keyboard.
+    pub fn release_all(&mut self, mapper: &mut InputMapper, flight: &mut Flight) {
+        if self.left || self.right {
+            mapper.set(Control::Roll, 0.0);
+        }
+        if self.up || self.down {
+            mapper.set(Control::Pitch, 0.0);
+        }
+        if self.rudder_left || self.rudder_right {
+            mapper.set(Control::Yaw, 0.0);
+        }
+        if self.brakes_held || self.starter_held {
+            let brakes = self.brakes_held;
+            let starter = self.starter_held;
+            flight.update_system_controls(|sys| {
+                if brakes {
+                    sys.wheel_brake_norm = 0.0;
+                }
+                if starter {
+                    sys.starter = false;
+                }
+            });
+        }
+        *self = Self::default();
     }
 
     /// Moves the throttle while its keys are held.

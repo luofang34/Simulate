@@ -39,15 +39,21 @@ fn sphere_poles_and_axis_points_are_well_defined() {
 
 #[test]
 fn oblate_axis_points_use_this_bodys_semi_minor_axis() {
-    let flattened = BodyEllipsoid {
-        semi_major_m: 3_396_190.0,
-        flattening: 1.0 / 169.89,
-        mu_m3_s2: 4.282_837e13,
-        omega_rad_s: 7.088_218e-5,
-    };
-    let pole = flattened.fixed_to_geodetic(DVec3::new(0.0, 0.0, flattened.semi_minor_m() + 50.0));
+    let mars = BodyEllipsoid::MARS_IAU;
+    assert!((mars.semi_minor_m() - 3_376_200.0).abs() < 1e-6);
+    assert!((mars.mean_radius_m() - 3_389_526.666_666_666_5).abs() < 1e-6);
+    let (m_eq, n_eq) = mars.radii_of_curvature_m(0.0);
+    assert!((n_eq / m_eq - 1.0 / (1.0 - mars.eccentricity_squared())).abs() < 1e-12);
+
+    let pole = mars.fixed_to_geodetic(DVec3::new(0.0, 0.0, mars.semi_minor_m() + 50.0));
     assert!((pole.height_m - 50.0).abs() < 1e-9);
-    assert_round_trip(&flattened, Geodetic::from_degrees(-14.6, 175.5, 2_500.0));
+    for height in [-8_200.0, 0.0, 2_500.0, 21_287.0] {
+        assert_round_trip(&mars, Geodetic::from_degrees(-14.6, 175.5, height));
+        assert_round_trip(&mars, Geodetic::from_degrees(18.4446, 77.4509, height));
+    }
+    let jezero = mars.geodetic_to_fixed(&Geodetic::from_degrees(18.4446, 77.4509, 0.0));
+    let g_mars = mars.gravity_fixed_j2(jezero, crate::MARS_IAU_J2).length();
+    assert!((g_mars - 3.72).abs() < 0.03, "{g_mars}");
 }
 
 #[test]

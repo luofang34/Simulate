@@ -4,8 +4,8 @@ use sim_geo::Geodetic;
 
 use crate::noise::{lattice_unit, value_noise};
 use crate::{
-    CatalogScenery, ImageryRaster, SceneryError, TerrariumTile, TileId, encode_terrarium,
-    project_to_tile, tile_point_to_geodetic,
+    CatalogScenery, CatalogVerticalDatum, ImageryRaster, SceneryError, TerrariumTile, TileId,
+    encode_terrarium, project_to_tile, tile_point_to_geodetic,
 };
 
 #[cfg(test)]
@@ -106,7 +106,8 @@ struct AerodromePlateau {
 impl CatalogScenery {
     /// A fully resident block of synthetic tiles: rolling ridge relief and
     /// non-repeating high-contrast imagery, the same on every run. Heights go
-    /// through Terrarium encoding, as a downloaded tile's would.
+    /// through Terrarium encoding, as a downloaded tile's would. Synthetic
+    /// heights, here and in the airport catalogs, are ellipsoidal.
     pub fn synthetic_corridor(spec: &SyntheticCorridorSpec) -> Result<Self, SceneryError> {
         let invalid = |detail: &str| SceneryError::InvalidCatalog {
             detail: detail.to_owned(),
@@ -117,7 +118,7 @@ impl CatalogScenery {
         if spec.tile_px == 0 || spec.tiles_east == 0 || spec.tiles_north == 0 {
             return Err(invalid("corridor has no pixels"));
         }
-        let mut catalog = Self::new();
+        let mut catalog = Self::new().with_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
         for north in 0..spec.tiles_north {
             let y = origin
                 .y
@@ -144,24 +145,24 @@ impl CatalogScenery {
         let plateaus = [
             AerodromePlateau {
                 centre: Geodetic::from_degrees(39.129_5, -75.466_0, 0.0),
-                elevation_m: 8.5,
+                elevation_m: crate::AerodromeId::DoverKdov.field_elevation_msl_m(),
                 flat_radius_m: 2_600.0,
                 blend_collar_m: 1_800.0,
             },
             AerodromePlateau {
                 centre: Geodetic::from_degrees(40.524_5, -74.598_4, 0.0),
-                elevation_m: 26.0,
+                elevation_m: crate::AerodromeId::CentralJersey47N.field_elevation_msl_m(),
                 flat_radius_m: 1_500.0,
                 blend_collar_m: 1_500.0,
             },
             AerodromePlateau {
                 centre: Geodetic::from_degrees(40.692_5, -74.168_7, 0.0),
-                elevation_m: 4.5,
+                elevation_m: crate::AerodromeId::NewarkKewr.field_elevation_msl_m(),
                 flat_radius_m: 3_400.0,
                 blend_collar_m: 2_000.0,
             },
         ];
-        let mut catalog = Self::new();
+        let mut catalog = Self::new().with_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
         for spec in [
             SyntheticCorridorSpec::delaware(),
             SyntheticCorridorSpec::dover_kdov(),
@@ -180,7 +181,7 @@ impl CatalogScenery {
                 SyntheticCorridorSpec::dover_kdov(),
                 AerodromePlateau {
                     centre: Geodetic::from_degrees(39.129_5, -75.466_0, 0.0),
-                    elevation_m: 8.5,
+                    elevation_m: crate::AerodromeId::DoverKdov.field_elevation_msl_m(),
                     flat_radius_m: 2_600.0,
                     blend_collar_m: 1_800.0,
                 },
@@ -189,7 +190,7 @@ impl CatalogScenery {
                 SyntheticCorridorSpec::central_jersey_47n(),
                 AerodromePlateau {
                     centre: Geodetic::from_degrees(40.524_5, -74.598_4, 0.0),
-                    elevation_m: 26.0,
+                    elevation_m: crate::AerodromeId::CentralJersey47N.field_elevation_msl_m(),
                     flat_radius_m: 1_500.0,
                     blend_collar_m: 1_500.0,
                 },
@@ -198,13 +199,13 @@ impl CatalogScenery {
                 SyntheticCorridorSpec::newark_kewr(),
                 AerodromePlateau {
                     centre: Geodetic::from_degrees(40.692_5, -74.168_7, 0.0),
-                    elevation_m: 4.5,
+                    elevation_m: crate::AerodromeId::NewarkKewr.field_elevation_msl_m(),
                     flat_radius_m: 3_400.0,
                     blend_collar_m: 2_000.0,
                 },
             ),
         };
-        let mut catalog = Self::new();
+        let mut catalog = Self::new().with_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
         append_corridor_into(&mut catalog, &spec, &[plateau])?;
         Ok(catalog)
     }

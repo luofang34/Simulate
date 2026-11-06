@@ -1,9 +1,10 @@
 use glam::{DQuat, DVec3};
+use indicate_instrument_feeder::nav_guidance::NavGuidanceTracker;
 use indicate_instrument_state::abi::v8::{DecodeReport, decode_state, encode_state};
 use indicate_instrument_state::{
     AirData, AircraftState, AltitudeClass, AltitudeDeclaration, Attitude, DynSample,
-    EstimateQuality, HeadingReference, HeadingSample, Kinematics, OriginId, SnapshotCoherence,
-    Stamped, TurnBasis, TurnSample, ValidFlags,
+    EstimateQuality, Kinematics, OriginId, SnapshotCoherence, Stamped, TurnBasis, TurnSample,
+    ValidFlags,
 };
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{SimInstant, SourceValidity, StampedReading, VehicleState};
@@ -16,8 +17,14 @@ use crate::{
     pressure_altitude_m,
 };
 
+mod guidance;
 #[cfg(test)]
 mod tests;
+
+pub use guidance::{
+    AutopilotModeSummary, HeadingMode, HostFlightGuidance, HostNavGuidance, PilotSelections,
+    RunwayNavGuidance,
+};
 
 /// Largest spread between the stamps of one frame's groups that still reads as
 /// one instant, milliseconds. A 25 Hz barometer beside a 120 Hz flight model
@@ -50,6 +57,8 @@ pub struct FeedConfig {
     pub origin_id: u32,
     /// Where the displayed altitude comes from.
     pub altitude: AltitudeSource,
+    /// North reference convention stamped on primary headings.
+    pub heading_mode: HeadingMode,
 }
 
 /// One instant of flight, as the panels should be told it.
@@ -70,6 +79,8 @@ pub struct FlightSample {
     pub air_data: Option<AirDataReading>,
     /// Specific force in vehicle axes at the turn coordinator, m/s².
     pub specific_force_body_m_s2: Option<DVec3>,
+    /// What the flight-guidance host reports, when a guidance panel is fitted.
+    pub guidance: Option<HostFlightGuidance>,
 }
 
 impl FlightSample {
@@ -82,6 +93,7 @@ impl FlightSample {
             central_body: None,
             air_data: None,
             specific_force_body_m_s2: None,
+            guidance: None,
         }
     }
 
@@ -173,14 +185,16 @@ struct AttitudeGroup {
     rates_usable: bool,
 }
 
-/// Turns [`FlightSample`]s into Indicate's input state. The only thing it
-/// carries between frames is the snapshot generation.
-#[derive(Debug, Clone, PartialEq)]
+/// Turns [`FlightSample`]s into Indicate's input state. Between frames it
+/// carries the snapshot generation and the admission state of the host's
+/// guidance lane.
+#[derive(Debug)]
 pub struct StateFeed {
     config: FeedConfig,
     origin_fixed_m: DVec3,
     origin_frame: LocalFrame,
     generation: u32,
+    nav_tracker: NavGuidanceTracker,
 }
 
 impl StateFeed {
@@ -191,7 +205,16 @@ impl StateFeed {
             origin_frame: LocalFrame::at(&config.origin),
             config,
             generation: 0,
+            nav_tracker: NavGuidanceTracker::new(),
         }
+    }
+
+    /// Forgets the guidance lane's admission state, so the next sample is
+    /// accepted against a fresh clock. Call it when the host's guidance clock
+    /// goes back, as across a rewind; the tracker refuses a clock that runs
+    /// backwards and shows no guidance until it does.
+    pub fn reset_guidance_clock(&mut self) {
+        self.nav_tracker = NavGuidanceTracker::new();
     }
 
     /// The configuration.
@@ -216,6 +239,12 @@ impl StateFeed {
         let stamps = group_stamps(sample, &attitude, &air);
         let display_to_ned = attitude.display_to_ned;
         let heading = display_to_ned.and_then(true_heading_rad);
+        let (heading_sample, variation) = guidance::heading_and_variation(
+            self.config.heading_mode,
+            &self.config.body,
+            local.geodetic(),
+            heading,
+        );
         let turn = display_to_ned
             .zip(attitude.rate_display)
             .and_then(|(attitude, rate)| heading_rate_rad_s(attitude, rate));
@@ -223,6 +252,20 @@ impl StateFeed {
             .specific_force_body_m_s2
             .map(|force| self.config.axes.vector_in_display(force).y as f32);
         self.generation = self.generation.wrapping_add(1);
+        let altitude = self.altitude_declaration(sample);
+        let air_setting = air.data.and_then(|air| air.baro_setting_hpa);
+        let selections = sample
+            .guidance
+            .map(|host| guidance::indicate_selections(&host.selections, &altitude, air_setting))
+            .unwrap_or_default();
+        let nav = sample.guidance.map_or_else(Stamped::default, |host| {
+            guidance::host_nav(
+                &mut self.nav_tracker,
+                &host.nav,
+                &self.config.body,
+                sample.vehicle.position_ecef,
+            )
+        });
         Ok(AircraftState {
             attitude: attitude.stamped,
             kinematics: fresh(self.kinematics(sample, &local)),
@@ -238,16 +281,17 @@ impl StateFeed {
                 position: true,
                 velocity_horizontal: true,
                 velocity_vertical: true,
-                heading: heading.is_some() && attitude.usable,
+                heading: heading_sample.is_some() && attitude.usable,
+                variation: variation.is_some(),
                 turn: turn.is_some() && attitude.rates_usable,
                 slip: lateral.is_some(),
                 ..ValidFlags::default()
             },
-            altitude: self.altitude_declaration(sample),
-            heading: stamped_if(heading.map(|heading| HeadingSample {
-                heading_rad: heading as f32,
-                reference: HeadingReference::SimLocalTrue,
-            })),
+            altitude,
+            selections,
+            nav,
+            heading: stamped_if(heading_sample),
+            variation: stamped_if(variation),
             dynamics: dynamics_group(turn, lateral),
             snapshot: indicate_instrument_state::SnapshotMeta {
                 generation: self.generation,

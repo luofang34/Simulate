@@ -185,3 +185,48 @@ fn a_missing_catalog_directory_names_the_path() {
         "{err}"
     );
 }
+
+#[test]
+fn a_manifest_without_a_datum_is_mean_sea_level_and_one_can_name_the_ellipsoid() {
+    let (mut manifest, files) = fixture();
+    let catalog = load(&manifest, &files).unwrap();
+    assert_eq!(
+        catalog.vertical_datum(),
+        CatalogVerticalDatum::OrthometricMslEgm96
+    );
+    let centre = tile_point_to_geodetic(
+        TileId {
+            zoom: 14,
+            x: 8192,
+            y: 8192,
+        },
+        0.5,
+        0.5,
+    )
+    .unwrap();
+    let undulation = sim_geo::egm96_undulation_m(centre.lat_rad, centre.lon_rad);
+    let ellipsoidal = catalog
+        .ellipsoidal_ground_height_m(&centre)
+        .unwrap()
+        .unwrap();
+    assert!((ellipsoidal.0 - (1.5 + undulation)).abs() < 1e-12);
+
+    manifest["vertical_datum"] = serde_json::json!("ellipsoid_wgs84");
+    let catalog = load(&manifest, &files).unwrap();
+    assert_eq!(
+        catalog.vertical_datum(),
+        CatalogVerticalDatum::EllipsoidWgs84
+    );
+    assert_eq!(catalog.ground_height_m(&centre), Ok(Some(1.5)));
+    let msl = catalog
+        .orthometric_ground_height_m(&centre)
+        .unwrap()
+        .unwrap();
+    assert!((msl.0 - (1.5 - undulation)).abs() < 1e-12);
+
+    manifest["vertical_datum"] = serde_json::json!("navd88");
+    assert!(matches!(
+        load(&manifest, &files),
+        Err(SceneryError::InvalidCatalog { .. })
+    ));
+}

@@ -18,6 +18,7 @@ mbd-core = { workspace = true }
 sim-core = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }
+web-time = { workspace = true }
 world-core = { workspace = true }
 
 [dev-dependencies]

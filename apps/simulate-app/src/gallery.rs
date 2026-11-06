@@ -2,25 +2,43 @@
 //! stages, cockpit instruments, 2D OSM airport diagrams, and 3D virtual cameras.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use image::RgbaImage;
 use sim_core::ControlInputs;
 use sim_geo::ecef_to_geodetic;
 use sim_maplibre::HostGpu;
-use sim_render::{CompositorPass, CompositorTarget, HeadlessGpu};
+use sim_render::{CompositorPass, CompositorTarget, HeadlessGpu, VectorScenePass};
 use sim_scenario::{OperatorViewportMode, PatternLeg, ScenarioProfile, SimTimeScale};
 use sim_scenery::AerodromeId;
 use tracing::info;
 
-use crate::camera_view::camera_from_virtual_spec;
+use crate::camera_view::camera_from_virtual_spec_on;
 use crate::cockpit_rig::CockpitRig;
 use crate::error::AppSimError;
 use crate::flight::Flight;
+use crate::map_rig::ScenerySource;
+use crate::sky_rig::SkyFrame;
+
+#[cfg(test)]
+mod tests;
+mod usd_export;
 
 const GALLERY_WIDTH_PX: u32 = 1280;
 const GALLERY_HEIGHT_PX: u32 = 720;
 const BYTES_PER_PIXEL: u32 = 4;
+/// Most settle frames per shot.
+const SETTLE_MAX_PASSES: u32 = 400;
+/// Fewest settle frames per shot, so first tile requests go out and come back.
+const SETTLE_MIN_PASSES: u32 = 40;
+/// Consecutive frames without tile arrivals that count as settled.
+const SETTLE_QUIET_PASSES: u32 = 55;
+/// Wall-clock cap on settling one shot.
+const SETTLE_MAX_WALL: Duration = Duration::from_secs(45);
+const SETTLE_SLEEP: Duration = Duration::from_millis(12);
+/// Shot whose live scene is also exported as an OpenUSD stage.
+const USD_EXPORT_SHOT: &str = "06_kewr_base_to_final_chase.png";
+const USD_EXPORT_FILE: &str = "06_kewr_base_to_final_scene.usda";
 
 enum StageTarget {
     Pattern {
@@ -59,7 +77,10 @@ pub fn render_gallery(out_dir: &Path) -> Result<usize, AppSimError> {
     };
     let size = [GALLERY_WIDTH_PX, GALLERY_HEIGHT_PX];
     let enable_maps = gpu.backend != wgpu::Backend::Gl;
-    let mut rig = CockpitRig::new_with_gpu(host_gpu, size, enable_maps)?;
+    let scenery = enable_maps.then(ScenerySource::from_environment);
+    let hud_pass = pollster::block_on(VectorScenePass::new(&gpu.device))?;
+    let surface = crate::world_surface::WorldSurfaceHandle::new();
+    let mut rig = CockpitRig::new_with_gpu(host_gpu, size, scenery, hud_pass, surface.clone())?;
     let compositor = pollster::block_on(CompositorPass::new(
         &gpu.device,
         wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -70,7 +91,7 @@ pub fn render_gallery(out_dir: &Path) -> Result<usize, AppSimError> {
     let shots = gallery_shots();
     let mut written = 0_usize;
     for shot in &shots {
-        let mut flight = Flight::new()?;
+        let mut flight = Flight::with_surface(surface.clone())?;
         advance_to_stage(&mut flight, &mut rig, &shot.stage)?;
         rig.supervisor_mut().set_viewport_mode(shot.viewport);
         rig.supervisor_mut()
@@ -79,9 +100,20 @@ pub fn render_gallery(out_dir: &Path) -> Result<usize, AppSimError> {
         rig.set_show_conformal_hud(shot.show_hud);
         rig.invalidate_chart();
 
-        settle_and_composite(&gpu, &compositor, &target_view, &mut rig, &flight, size)?;
+        let camera =
+            settle_and_composite(&gpu, &compositor, &target_view, &mut rig, &flight, size)?;
         let rgba = readback_target_rgba(&gpu.device, &gpu.queue, &target)?;
         save_png(&out_dir.join(shot.filename), size, rgba)?;
+        if shot.filename == USD_EXPORT_SHOT {
+            usd_export::write_scene_usda(
+                &out_dir.join(USD_EXPORT_FILE),
+                "kewr_22l_base_to_final",
+                &rig,
+                &flight,
+                &camera,
+                f64::from(GALLERY_WIDTH_PX) / f64::from(GALLERY_HEIGHT_PX),
+            )?;
+        }
         log_shot_summary(shot, &flight);
         written = written.wrapping_add(1);
     }
@@ -116,7 +148,7 @@ fn gallery_shots_47n() -> Vec<GalleryShot> {
             stage: StageTarget::Pattern {
                 profile: ScenarioProfile::Airport47NUncontrolledPattern,
                 leg: PatternLeg::Downwind,
-                extra_s: 16.0,
+                extra_s: 7.5,
             },
             viewport: OperatorViewportMode::SensorAperture,
             virtual_camera_index: 2,
@@ -173,7 +205,7 @@ fn gallery_shots_kewr_and_kdov() -> Vec<GalleryShot> {
             stage: StageTarget::Pattern {
                 profile: ScenarioProfile::AirportKewrToweredPattern,
                 leg: PatternLeg::Final,
-                extra_s: 31.0,
+                extra_s: 29.5,
             },
             viewport: OperatorViewportMode::SensorAperture,
             virtual_camera_index: 3,
@@ -273,34 +305,20 @@ fn settle_and_composite(
     rig: &mut CockpitRig,
     flight: &Flight,
     size: [u32; 2],
-) -> Result<(), AppSimError> {
+) -> Result<sim_render::Camera, AppSimError> {
     let mode = rig.supervisor().viewport_mode();
-    let mut camera = flight.camera(mode)?;
+    let mut camera = flight.display_camera(mode)?;
+    let (body, spec) = rig
+        .supervisor()
+        .active_virtual_camera_on_body(flight.profile());
     if mode == OperatorViewportMode::SensorAperture
-        && let Some(vcam) = camera_from_virtual_spec(
-            &rig.supervisor().active_virtual_camera(flight.profile()),
-            &flight.vehicle_state(),
-        )
+        && let Some(vcam) =
+            camera_from_virtual_spec_on(body, &spec, &flight.display_vehicle_state())
     {
         camera = vcam;
     }
     let world = flight.world();
-    let sun = world.sun_direction_ecef();
-
-    for pass in 0..36_u32 {
-        rig.invalidate_chart();
-        let _need_globe = rig.prepare_frame(&gpu.queue, size, flight, &camera, sun)?;
-        gpu.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .map_err(|err| AppSimError::Screenshot {
-                detail: err.to_string(),
-            })?;
-        if pass < 10 || rig.maps_need_redraw() {
-            std::thread::sleep(Duration::from_millis(18));
-        } else if pass >= 12 {
-            break;
-        }
-    }
+    settle_tiles(gpu, rig, flight, &camera, size)?;
 
     let quads = rig.overlay_quads(world);
     let mut encoder = gpu
@@ -325,10 +343,45 @@ fn settle_and_composite(
         .map_err(|err| AppSimError::Screenshot {
             detail: err.to_string(),
         })?;
+    Ok(camera)
+}
+
+/// Redraws until downloaded tiles stop arriving, so real imagery, DEM, and vector tiles
+/// are on the GPU before the frame is captured.
+fn settle_tiles(
+    gpu: &HeadlessGpu,
+    rig: &mut CockpitRig,
+    flight: &Flight,
+    camera: &sim_render::Camera,
+    size: [u32; 2],
+) -> Result<(), AppSimError> {
+    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let started = Instant::now();
+    let mut quiet = 0_u32;
+    for pass in 0..SETTLE_MAX_PASSES {
+        rig.invalidate_chart();
+        let _need_globe = rig.prepare_frame(&gpu.queue, size, flight, camera, &sky, &[])?;
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|err| AppSimError::Screenshot {
+                detail: err.to_string(),
+            })?;
+        quiet = if rig.maps_need_redraw() {
+            0
+        } else {
+            quiet.saturating_add(1)
+        };
+        if (pass >= SETTLE_MIN_PASSES && quiet >= SETTLE_QUIET_PASSES)
+            || started.elapsed() > SETTLE_MAX_WALL
+        {
+            break;
+        }
+        std::thread::sleep(SETTLE_SLEEP);
+    }
     Ok(())
 }
 
-fn create_target_texture(device: &wgpu::Device, size: [u32; 2]) -> wgpu::Texture {
+pub(crate) fn create_target_texture(device: &wgpu::Device, size: [u32; 2]) -> wgpu::Texture {
     let [width, height] = size;
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("gallery srgb target"),
@@ -346,7 +399,7 @@ fn create_target_texture(device: &wgpu::Device, size: [u32; 2]) -> wgpu::Texture
     })
 }
 
-fn readback_target_rgba(
+pub(crate) fn readback_target_rgba(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     texture: &wgpu::Texture,
@@ -420,7 +473,7 @@ fn map_buffer_blocking(
     Ok(bytes)
 }
 
-fn save_png(path: &Path, size: [u32; 2], rgba: Vec<u8>) -> Result<(), AppSimError> {
+pub(crate) fn save_png(path: &Path, size: [u32; 2], rgba: Vec<u8>) -> Result<(), AppSimError> {
     let [width, height] = size;
     let img = RgbaImage::from_raw(width, height, rgba).ok_or_else(|| AppSimError::Screenshot {
         detail: format!("invalid RGBA buffer size for {}", path.display()),

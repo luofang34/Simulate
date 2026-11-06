@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use aviate_core::control::VehicleController;
 use aviate_core::kernel::DefaultAviateKernel;
 use aviate_core::mixer::Mixer;
+use aviate_core::state::{EstimateQuality, StateEstimate};
 use aviate_hal_io::SystemCommand;
 use aviate_xil_direct::{
     DirectActuatorCmd, DirectBoardConfig, DirectMeasuredKinematics, DirectNoiseTier,
@@ -104,6 +105,29 @@ impl NedWorld {
         })
     }
 
+    /// The vehicle state an onboard NED estimate describes, in ECEF.
+    #[must_use]
+    pub fn vehicle_from_estimate(&self, estimate: &StateEstimate) -> VehicleState {
+        let [n, e, d] = estimate.position_ned.map(|m| f64::from(m.0));
+        let [vn, ve, vd] = estimate.velocity_ned.map(|v| f64::from(v.0));
+        let [p, q, r] = estimate.angular_velocity.map(|w| f64::from(w.0));
+        let a = estimate.attitude;
+        let body_to_ned = DQuat::from_xyzw(
+            f64::from(a.x),
+            f64::from(a.y),
+            f64::from(a.z),
+            f64::from(a.w),
+        )
+        .normalize();
+        let ned_to_ecef = self.frame.ned_to_ecef();
+        VehicleState {
+            position_ecef: self.origin_ecef + ned_to_ecef * DVec3::new(n, e, d),
+            velocity_ecef: ned_to_ecef * DVec3::new(vn, ve, vd),
+            attitude: (self.ned_from_ecef.inverse() * body_to_ned).normalize(),
+            angular_rate_body: DVec3::new(p, q, r),
+        }
+    }
+
     /// Projects a component-mounted [`AviateStimulus`] into a [`DirectTruthSample`].
     pub fn truth_from_site(
         &self,
@@ -196,6 +220,16 @@ impl AviateDirectConfig {
             noise_seed: 1,
             sys_id: 1,
             comp_id: 1,
+        }
+    }
+
+    /// [`Self::ideal`] with industrial MEMS sensor noise (ICM-42688-P / BMI088 class) on
+    /// the IMU, magnetometer, barometer, and GNSS the onboard EKF fuses.
+    #[must_use]
+    pub const fn industrial(origin: Geodetic) -> Self {
+        Self {
+            noise: DirectNoiseTier::Industrial,
+            ..Self::ideal(origin)
         }
     }
 }
@@ -298,6 +332,15 @@ where
     /// Mutably borrows the underlying [`DirectXilBoard`].
     pub fn board_mut(&mut self) -> &mut DirectXilBoard<C, M> {
         &mut self.board
+    }
+
+    /// The onboard EKF's navigation solution in ECEF, or `None` while the estimator
+    /// grades it unusable.
+    #[must_use]
+    pub fn estimated_state(&self) -> Option<VehicleState> {
+        let estimate = self.board.kernel().state.estimator.get_estimate();
+        (estimate.quality != EstimateQuality::Unusable)
+            .then(|| self.world.vehicle_from_estimate(&estimate))
     }
 
     /// Whether the EKF and pre-arm gates report ready.

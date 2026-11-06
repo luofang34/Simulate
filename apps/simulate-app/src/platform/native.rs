@@ -2,12 +2,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use sim_render::Renderer;
 use tracing::{error, info};
 use winit::event_loop::{EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowAttributes};
 
-use crate::app::{AppEvent, FlightApp};
+use crate::app::{AppEvent, FlightApp, GpuReady};
 use crate::gallery;
 
 /// Runs the app until its window closes (or renders a headless gallery when `--render-gallery <dir>` is passed).
@@ -70,8 +69,11 @@ pub fn window_attributes() -> WindowAttributes {
 /// Creates the renderer for `window` and posts it back to the event loop.
 pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     let size = window.inner_size();
-    let renderer = pollster::block_on(Renderer::new(window, size.width, size.height));
-    if proxy.send_event(AppEvent::RendererReady(renderer)).is_err() {
+    let gpu = pollster::block_on(GpuReady::new(window, size.width, size.height));
+    if proxy
+        .send_event(AppEvent::RendererReady(Box::new(gpu)))
+        .is_err()
+    {
         error!("event loop closed before the renderer was ready");
     }
 }

@@ -9,6 +9,9 @@
 //!   exchange matching Gazebo's XIL contract.
 //! - **Tier 2 (`sim-xil`)**: controller-blind MAVLink v2 `HIL_*` (TCP/UDP) and
 //!   Betaflight SITL UDP endpoints for PX4, ArduPilot, Betaflight, or UART HITL.
+//!
+//! Every rig steps its plant through a [`sim_core::SimSession`] with a 30 Hz
+//! optical sensor channel, so runs report the same exposures at any pacing.
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
@@ -17,9 +20,12 @@ mod plant;
 mod rigs;
 
 pub use error::IronbirdError;
-pub use plant::{FixedWingVehicle, JsbsimPlant, X500RigidPlant};
+pub use plant::{
+    FixedWingVehicle, JsbsimPlant, JsbsimPlantSnapshot, X500PlantSnapshot, X500RigidPlant,
+};
 pub use rigs::{
-    RigSummary, run_tier0_fixed_wing_cruise, run_tier0_x500_hover_climb, run_tier1_shm_x500,
+    OPTICAL_CHANNEL, OPTICAL_PERIOD, RigSummary, run_tier0_fixed_wing_cruise,
+    run_tier0_x500_hover_climb, run_tier1_shm_x500,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use rigs::{run_tier2_betaflight_x500, run_tier2_mavlink_fixed_wing};

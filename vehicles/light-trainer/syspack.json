@@ -6,8 +6,8 @@
   "kind": "FixedWing",
   "assets": {
     "fdm/trainer.xml": {
-      "sha256": "04d70992444edaaa1fc3d7249d946f5916e23cfd392d7f6dc98f0f4dc3b7d227",
-      "size_bytes": 6665
+      "sha256": "4e26a056752be05683e924c9496cf0f661095f041d12373b4de365238a70a461",
+      "size_bytes": 8480
     }
   },
   "components": [

@@ -1,11 +1,8 @@
-use std::f64::consts::FRAC_PI_2;
-
 use flightbag::RunwayEndSpec;
 use serde_json::{Value, json};
+use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
-use super::{RawOsmSnapshot, RawOsmWay, segment_bearing_and_length_m};
-
-const METRES_PER_RAD_LAT: f64 = 6_378_137.0;
+use super::{RawOsmSnapshot, RawOsmWay};
 
 pub(super) fn build_portrayal_geojson(
     raw: &RawOsmSnapshot,
@@ -106,16 +103,15 @@ fn append_way_features(
     }
 }
 
-fn threshold_bar_feature(end: &RunwayEndSpec) -> Value {
+pub(crate) fn threshold_bar_feature(end: &RunwayEndSpec) -> Value {
     let origin = [end.threshold.longitude_deg, end.threshold.latitude_deg];
     let fwd = end.true_bearing_rad;
-    let right = fwd + FRAC_PI_2;
     let half_w = (end.width_m * 0.42).max(4.0);
     let depth_m = 8.0;
-    let p0 = offset_lonlat(offset_lonlat(origin, fwd, 2.0), right, -half_w);
-    let p1 = offset_lonlat(offset_lonlat(origin, fwd, 2.0), right, half_w);
-    let p2 = offset_lonlat(offset_lonlat(origin, fwd, 2.0 + depth_m), right, half_w);
-    let p3 = offset_lonlat(offset_lonlat(origin, fwd, 2.0 + depth_m), right, -half_w);
+    let p0 = offset_along_across_lonlat(origin, fwd, 2.0, -half_w);
+    let p1 = offset_along_across_lonlat(origin, fwd, 2.0, half_w);
+    let p2 = offset_along_across_lonlat(origin, fwd, 2.0 + depth_m, half_w);
+    let p3 = offset_along_across_lonlat(origin, fwd, 2.0 + depth_m, -half_w);
     let ring = vec![p0, p1, p2, p3, p0];
     polygon_feature("threshold_bar", &ring, Some(end.designator.as_str()))
 }
@@ -127,39 +123,57 @@ fn hold_short_marker(coord: [f64; 2], runway_ends: &[RunwayEndSpec]) -> Value {
     linestring_feature("hold_short_bar", &[a, b], None)
 }
 
-fn buffer_polyline(coords: &[[f64; 2]], half_width_m: f64) -> Vec<Vec<[f64; 2]>> {
+pub(crate) fn buffer_polyline(coords: &[[f64; 2]], half_width_m: f64) -> Vec<Vec<[f64; 2]>> {
     let mut quads = Vec::new();
     for pair in coords.windows(2) {
-        let (Some(&a), Some(&b)) = (pair.first(), pair.last()) else {
+        let (Some(&[lon_a, lat_a]), Some(&[lon_b, lat_b])) = (pair.first(), pair.last()) else {
             continue;
         };
-        let (bearing, len_m) = segment_bearing_and_length_m(a, b);
+        let a_ecef = geodetic_to_ecef(&Geodetic::from_degrees(lat_a, lon_a, 0.0));
+        let b_ecef = geodetic_to_ecef(&Geodetic::from_degrees(lat_b, lon_b, 0.0));
+        let chord = b_ecef - a_ecef;
+        let len_m = chord.length();
         if len_m < 0.25 {
             continue;
         }
-        let right = bearing + FRAC_PI_2;
-        let a_ext = offset_lonlat(a, bearing, -half_width_m * 0.35);
-        let b_ext = offset_lonlat(b, bearing, half_width_m * 0.35);
-        let p0 = offset_lonlat(a_ext, right, -half_width_m);
-        let p1 = offset_lonlat(a_ext, right, half_width_m);
-        let p2 = offset_lonlat(b_ext, right, half_width_m);
-        let p3 = offset_lonlat(b_ext, right, -half_width_m);
+        let fwd = chord / len_m;
+        let mid = ecef_to_geodetic(0.5 * (a_ecef + b_ecef));
+        let right = fwd.cross(LocalFrame::at(&mid).up()).normalize_or_zero();
+        let a_ext = a_ecef - fwd * (half_width_m * 0.35);
+        let b_ext = b_ecef + fwd * (half_width_m * 0.35);
+        let to_lonlat = |ecef| {
+            let g = ecef_to_geodetic(ecef);
+            [g.lon_deg(), g.lat_deg()]
+        };
+        let p0 = to_lonlat(a_ext - right * half_width_m);
+        let p1 = to_lonlat(a_ext + right * half_width_m);
+        let p2 = to_lonlat(b_ext + right * half_width_m);
+        let p3 = to_lonlat(b_ext - right * half_width_m);
         quads.push(vec![p0, p1, p2, p3, p0]);
     }
     quads
 }
 
-fn offset_lonlat(origin: [f64; 2], bearing_rad: f64, dist_m: f64) -> [f64; 2] {
-    let (sin_b, cos_b) = bearing_rad.sin_cos();
-    let d_north_m = dist_m * cos_b;
-    let d_east_m = dist_m * sin_b;
-    let lat_rad = origin[1].to_radians();
-    let d_lat_deg = (d_north_m / METRES_PER_RAD_LAT).to_degrees();
-    let d_lon_deg = (d_east_m / (METRES_PER_RAD_LAT * lat_rad.cos().max(1e-6))).to_degrees();
-    [origin[0] + d_lon_deg, origin[1] + d_lat_deg]
+pub(crate) fn offset_lonlat(origin: [f64; 2], bearing_rad: f64, dist_m: f64) -> [f64; 2] {
+    offset_along_across_lonlat(origin, bearing_rad, dist_m, 0.0)
 }
 
-fn polygon_feature(kind: &str, ring: &[[f64; 2]], label: Option<&str>) -> Value {
+fn offset_along_across_lonlat(
+    [lon_deg, lat_deg]: [f64; 2],
+    fwd_rad: f64,
+    along_m: f64,
+    right_m: f64,
+) -> [f64; 2] {
+    let origin = Geodetic::from_degrees(lat_deg, lon_deg, 0.0);
+    let local = LocalFrame::at(&origin);
+    let (sin_f, cos_f) = fwd_rad.sin_cos();
+    let fwd = local.north() * cos_f + local.east() * sin_f;
+    let right = local.east() * cos_f - local.north() * sin_f;
+    let moved = ecef_to_geodetic(geodetic_to_ecef(&origin) + fwd * along_m + right * right_m);
+    [moved.lon_deg(), moved.lat_deg()]
+}
+
+pub(crate) fn polygon_feature(kind: &str, ring: &[[f64; 2]], label: Option<&str>) -> Value {
     json!({
         "type": "Feature",
         "properties": {
@@ -173,7 +187,7 @@ fn polygon_feature(kind: &str, ring: &[[f64; 2]], label: Option<&str>) -> Value 
     })
 }
 
-fn linestring_feature(kind: &str, coords: &[[f64; 2]], label: Option<&str>) -> Value {
+pub(crate) fn linestring_feature(kind: &str, coords: &[[f64; 2]], label: Option<&str>) -> Value {
     json!({
         "type": "Feature",
         "properties": {

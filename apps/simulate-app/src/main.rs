@@ -1,23 +1,30 @@
 //! Simulate: composite split-viewport cockpit for desktop (`Metal/Vulkan/DX12`)
-//! and the browser (`WebGPU`, falling back to `WebGL2`), integrating Dual-World
-//! `maplibre-rs` (`TruthSceneMap` + `BeliefAvionicsMap`), `Indicate` PFD/HSI/HUD
-//! and 3D volumetric scenes, `SimSupervisor`, JSBSim aircraft, and Tier-0 `Aviate`.
+//! and the browser (`WebGPU`, falling back to `WebGL2`), integrating `maplibre-rs`
+//! (`TruthSceneMap` + avionics-preset instrument maps), `Indicate` PFD/HSI/HUD and 3D
+//! volumetric scenes, `SimSupervisor`, JSBSim aircraft, and Tier-0 `Aviate`.
 
 mod app;
 mod avionics;
 mod camera_view;
 mod cockpit_rig;
+mod controls;
 mod error;
+mod esc_menu;
 mod flight;
 #[cfg(not(target_arch = "wasm32"))]
 mod gallery;
 mod gamepad;
+mod hangar;
+mod host_guidance;
 mod keyboard;
 mod map_rig;
 mod platform;
+mod sensor_bus;
+mod sky_rig;
 mod supervisor_rig;
 mod telemetry;
 mod vehicles;
+mod world_surface;
 
 #[cfg(test)]
 mod tests;

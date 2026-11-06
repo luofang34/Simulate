@@ -161,6 +161,7 @@ pub fn execute_cli(args: &CliArgs) -> Result<RigSummary, IronbirdError> {
         final_alt_m = summary.final_geodetic.height_m,
         delivered = summary.bridge_stats.delivered,
         dropped = summary.bridge_stats.dropped,
+        optical_exposures = summary.optical_exposures,
         "ironbird run completed"
     );
     Ok(summary)

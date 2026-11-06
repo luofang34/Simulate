@@ -52,6 +52,7 @@ impl Lander {
                 origin: site_of_landing(),
                 origin_id: 11,
                 altitude: AltitudeSource::OriginRelative,
+                heading_mode: crate::HeadingMode::default(),
             }),
             monitor: SourceMonitor::new(),
             yaw_rad: 0.0,
@@ -91,6 +92,7 @@ impl Lander {
             ))),
             air_data: None,
             specific_force_body_m_s2: None,
+            guidance: None,
         }
     }
 
@@ -307,6 +309,7 @@ fn a_vehicle_with_one_source_resolves_without_a_comparison() {
         origin: Geodetic::from_degrees(39.1, -75.6, 0.0),
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
+        heading_mode: crate::HeadingMode::default(),
     });
     let snapshot = lander
         .panel

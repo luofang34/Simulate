@@ -8,6 +8,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["render"]
+# The GPU half: turning captures into offscreen frames and worlds into meshes.
+# Without it the crate is pure CPU, for headless batch rollouts.
+render = ["dep:sim-render", "dep:wgpu"]
+
 [dependencies]
 flightbag = { workspace = true }
 sim-apollo = { workspace = true }
@@ -16,13 +22,13 @@ sim-devices = { workspace = true }
 sim-geo = { workspace = true }
 mbd-core = { workspace = true }
 sim-pack = { workspace = true }
-sim-render = { workspace = true }
+sim-render = { workspace = true, optional = true }
 sim-scenery = { workspace = true }
 sim-core = { workspace = true }
 world = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }
-wgpu = { workspace = true }
+wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]
 pollster = { workspace = true }

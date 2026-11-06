@@ -1,6 +1,7 @@
 use mbd_core::MbdError;
 use sim_core::{BlockError, VisualHarnessError};
 use sim_pack::PackError;
+#[cfg(feature = "render")]
 use sim_render::RenderError;
 use sim_scenery::SceneryError;
 
@@ -24,8 +25,22 @@ pub enum ScenarioError {
     #[error("the scenario scenery failed")]
     Scenery(#[from] SceneryError),
     /// Terrain or a camera frame could not be rendered.
+    #[cfg(feature = "render")]
     #[error("the scenario could not render")]
     Render(#[source] Box<RenderError>),
+    /// A rewind snapshot was taken from a different scenario or flight
+    /// dynamics source than the run it was offered to.
+    #[error("the snapshot does not fit this scenario run: {detail}")]
+    SnapshotMismatch {
+        /// What did not match.
+        detail: &'static str,
+    },
+    /// The request does not apply to this scenario or its state.
+    #[error("unsupported: {detail}")]
+    Unsupported {
+        /// What was asked and why it cannot be done.
+        detail: &'static str,
+    },
     /// The scenery has no ground under a point the scenario depends on.
     #[error("no terrain at {lat_deg:.5}°, {lon_deg:.5}°")]
     NoTerrain {
@@ -54,6 +69,7 @@ impl From<VisualHarnessError> for ScenarioError {
     }
 }
 
+#[cfg(feature = "render")]
 impl From<RenderError> for ScenarioError {
     fn from(error: RenderError) -> Self {
         Self::Render(Box::new(error))

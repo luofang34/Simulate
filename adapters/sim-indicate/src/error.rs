@@ -79,6 +79,21 @@ pub enum PanelError {
         #[source]
         source: RasterError,
     },
+    /// The head-up display frame lies outside the sizes the HUD lays out.
+    #[error("{width}x{height} is outside the HUD's 390..=2560 by 390..=1600 frame bounds")]
+    HudFrameOutOfRange {
+        /// Framebuffer width, pixels.
+        width: u32,
+        /// Framebuffer height, pixels.
+        height: u32,
+    },
+    /// The head-up display refused to draw or overflowed its scene buffer.
+    #[error("HUD draw failed: {source}")]
+    HudDraw {
+        /// Indicate's reason.
+        #[source]
+        source: InstrumentDrawError,
+    },
     /// A 3D volumetric instrument refused to draw or overflowed its buffer.
     #[error("{instrument} volume draw failed: {source}")]
     VolumeDraw {
@@ -102,5 +117,12 @@ pub enum PanelError {
         /// Indicate's interaction error.
         #[source]
         source: InteractionError,
+    },
+    /// A scene could not be tessellated into anti-aliased vector geometry.
+    #[error("vector tessellation failed: {source}")]
+    VectorScene {
+        /// The tessellator's reason.
+        #[source]
+        source: crate::VectorSceneError,
     },
 }

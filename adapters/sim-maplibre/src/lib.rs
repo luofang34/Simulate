@@ -1,62 +1,93 @@
-//! Shared-GPU `maplibre-rs` adapter for `Simulate` and `Indicate`.
-//!
-//! Enforces strict physical/operational isolation between Simulator `TruthScene`
-//! (`OTW` + `30 Hz` optical/EVS sensors via [`TruthSceneMap`]) and `BeliefAvionics`
-//! (`ConformalSvs3D` procedural DEM relief + dirty-gated `Map2D` charts via
-//! [`BeliefAvionicsMap`]), while sharing one `wgpu::Device`, one compiled shader
-//! pipeline cache, and one decoded tile cache through [`SharedMapRuntime`].
-//!
-//! Also provides deterministic `mbd-core` / `sim_core::Block` conformal framing
-//! ([`XvsSvsMbdBlock`]), 3D volumetric terrain patch extraction
-//! ([`encode_terrain_patch_aux`], [`extract_volumetric_mesh_patch`]), and
-//! fail-closed companion display streaming ([`CompanionStreamSession`]).
+//! Shared-GPU `maplibre-rs` adapter for `Simulate` and `Indicate`: [`TruthSceneMap`],
+//! [`AvionicsMapSet`], [`EfbMapSurface`], [`GlobePickerSurface`], and [`XvsSvsMbdBlock`].
 
-mod aerodrome_style;
 mod budget;
+mod chart_assets;
+mod chart_layers;
+mod chart_symbology;
+mod efb_map;
 mod entities;
 mod error;
+mod geodesy;
+mod globe_picker;
+mod hangar_preview;
+mod hybrid_loader;
 mod pose;
+mod real_styles;
 mod runtime;
 mod scenery_loader;
 mod streaming;
+mod usd_aircraft;
+mod usd_pass;
 mod volume_patch;
 mod xvs_block;
 
 #[cfg(test)]
 mod tests;
 
-pub use aerodrome_style::{belief_chart_style_with_aerodromes, truth_otw_style_with_aerodromes};
 pub use budget::{CockpitDeviceTier, HANDHELD_AVAILABLE_MEMORY_BYTES};
+pub use chart_assets::{CHART_URL_PREFIX, ChartAssetStore, chart_url};
+pub use chart_symbology::{
+    ChartOwnship, ChartSymbologyInput, build_chart_symbology, build_chart_symbology_scaled,
+};
+pub use efb_map::{
+    ApproachPlateOverlay, DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE,
+    EfbDisplayMode, EfbFollowMode, EfbLayerFlags, EfbMapConfig, EfbMapSurface, ProceduralPlateSpec,
+    generate_procedural_approach_plate,
+};
 pub use entities::{
     DynamicEntity3D, DynamicEntityKind, build_conformal_overlay, entities_from_surveillance_belief,
-    orientation_from_ned_body_quat,
+    entity_depth_probes, orientation_from_ned_body_quat,
 };
 pub use error::MapAdapterError;
+pub use globe_picker::{GlobeAirportMarker, GlobePickerSurface, GlobeRunwayEndOverlay};
+pub use hangar_preview::{
+    HANGAR_AUTO_ROTATE_RAD_PER_S, HANGAR_DEFAULT_SIZE, HangarOrbit, HangarPreviewPass,
+};
+pub use hybrid_loader::HybridTileLoader;
 pub use maplibre::{
+    coords::LatLon,
     headless::{
         AltitudeReference, Orientation3d, Placement3d, TerrainDrapeMode, TerrainPatchSnapshot,
         ViewSlotId, ViewSlotMask,
     },
+    io::resource_loader::SharedLoader,
+    overlay::OverlayMesh,
+    projection::body::Body as RenderBody,
     render::host_gpu::HostGpu,
 };
 pub use pose::{
     ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, GeodeticAnchor,
-    conformal_stamp_from_pose, conformal_stamp_from_vehicle, external_view_from_pose,
-    frustum_from_intrinsics, project_geodetic_to_screen, symmetric_frustum,
+    LUNAR_RENDER_BODY, MARS_RENDER_BODY, anchor_enu_from_local_enu, clip_from_anchor_enu,
+    conformal_stamp_from_pose, conformal_stamp_from_pose_on, conformal_stamp_from_vehicle,
+    conformal_stamp_from_vehicle_on, default_render_body, external_view_from_pose,
+    external_view_from_pose_on, frustum_from_intrinsics, globe_ned_between_geodetic,
+    local_enu_from_geodetic, project_geodetic_to_screen, symmetric_frustum,
+};
+pub use real_styles::{
+    AWS_TERRARIUM_DEM_URL_TEMPLATE, ESRI_WORLD_IMAGERY_URL_TEMPLATE,
+    OPENFREEMAP_PLANET_TILEJSON_URL, SceneryEndpoints, belief_aviation_chart_style,
+    belief_real_svs_style, truth_real_world_style,
 };
 pub use runtime::{
-    BeliefAvionicsConfig, BeliefAvionicsMap, ChartCameraSpec, ChartFrameOutcome, SharedMapRuntime,
-    TruthSceneConfig, TruthSceneFrame, TruthSceneMap,
+    AircraftInstance, AvionicsMapSet, CelestialDisc, CelestialEarthShadow, CelestialSkyInput,
+    CelestialStar, CelestialTwilight, ChartCameraSpec, ChartFrameOutcome, ConformalMapFrame,
+    InstrumentMapMode, InstrumentMapSpec, InstrumentMapSurface, SharedMapRuntime, TruthSceneConfig,
+    TruthSceneFrame, TruthSceneMap, TruthSlotMask,
 };
 pub use scenery_loader::{
-    CATALOG_DEM_URL_TEMPLATE, CATALOG_ORTHO_URL_TEMPLATE, CatalogTileLoader, belief_chart_style,
-    belief_svs_relief_style, supply_catalog_dem_synchronously, terrarium_tile_to_rgba_image,
-    tile_id_to_world_coords, truth_otw_style,
+    CATALOG_DEM_URL_TEMPLATE, CATALOG_ORTHO_URL_TEMPLATE, CatalogTileLoader,
+    supply_catalog_dem_synchronously, terrarium_tile_to_rgba_image, tile_id_to_world_coords,
 };
 pub use streaming::{
     CompanionStreamSession, InboundInteractionResult, OutboundDisplayPacket, STREAM_HEADER_BYTES,
     decode_outbound_packet, encode_inbound_interaction_bytes,
 };
+pub use usd_aircraft::{
+    PartRole, PbrMaterial, SlotCameraRole, UsdAircraftAsset, UsdCameraSample, UsdMeshPart,
+    UsdMeshVertex, UsdPartDraw, UsdRunwaySample, UsdSceneExportInput, export_scene_usda,
+};
+pub use usd_pass::{OwnshipVisualKind, USD_AIRCRAFT_PASS};
 pub use volume_patch::{
     TerrainVolumeRequest, VolumetricMeshPatch, emit_terrain_volume_with_patch,
     encode_terrain_patch_aux, extract_volumetric_mesh_patch,

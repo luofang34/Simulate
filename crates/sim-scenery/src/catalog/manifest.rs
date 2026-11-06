@@ -5,7 +5,9 @@ use image::ImageReader;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::{CatalogScenery, ImageryRaster, SceneryError, TerrariumTile, TileId};
+use crate::{
+    CatalogScenery, CatalogVerticalDatum, ImageryRaster, SceneryError, TerrariumTile, TileId,
+};
 
 #[cfg(test)]
 mod tests;
@@ -22,6 +24,8 @@ struct Manifest {
     format: String,
     version: u32,
     complete: bool,
+    #[serde(default)]
+    vertical_datum: CatalogVerticalDatum,
     tiles: Vec<ManifestTile>,
 }
 
@@ -38,7 +42,8 @@ impl CatalogScenery {
     /// Loads a `Navigate` reference catalog from its manifest text.
     /// `read_tile` fetches a tile's file by its manifest path, so a browser
     /// can supply bytes from anywhere; every tile must match the size and
-    /// SHA-256 digest the manifest records.
+    /// SHA-256 digest the manifest records. Elevation is read in the
+    /// manifest's `vertical_datum`, mean sea level when it names none.
     pub fn from_manifest(
         manifest_json: &str,
         read_tile: &mut dyn FnMut(&str) -> Result<Vec<u8>, SceneryError>,
@@ -57,7 +62,7 @@ impl CatalogScenery {
         if manifest.tiles.is_empty() || manifest.tiles.len() > MAX_TILES {
             return Err(invalid(format!("{} tiles", manifest.tiles.len())));
         }
-        let mut catalog = Self::new();
+        let mut catalog = Self::new().with_vertical_datum(manifest.vertical_datum);
         let mut seen = BTreeSet::new();
         for entry in &manifest.tiles {
             let tile = entry.address()?;

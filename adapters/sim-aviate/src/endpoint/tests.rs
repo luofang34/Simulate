@@ -245,3 +245,69 @@ fn a_failed_exchange_reaches_the_bridge_with_its_reason() {
             .is_err()
     );
 }
+
+#[test]
+fn the_shared_memory_endpoint_declares_an_in_process_synchronous_boundary() {
+    let endpoint = attach(well_behaved);
+    assert_eq!(
+        endpoint.execution_boundary(),
+        AviateExecutionBoundary::InProcessSynchronous
+    );
+    assert_eq!(endpoint.metrics(), Tier1StepMetrics::default());
+}
+
+#[test]
+fn metrics_correlate_each_command_with_the_step_it_acknowledges() {
+    let mut endpoint = attach(well_behaved);
+    let first = endpoint.round_trip(after_seconds(0), &stimulus()).unwrap();
+    let second = endpoint.round_trip(after_seconds(1), &stimulus()).unwrap();
+    let metrics = endpoint.metrics();
+    assert_eq!(metrics.step_calls, 2);
+    assert_eq!(metrics.causal_steps, 2);
+    assert_eq!(metrics.acausal_steps, 0);
+    assert_eq!(metrics.last_published_step, second.sim_step);
+    assert_eq!(metrics.last_acknowledged_step, second.sim_step);
+    assert_eq!(second.sim_step, first.sim_step + 1);
+    assert_eq!(metrics.budget_overruns, 0);
+    assert_eq!(metrics.max_peer_wall, Duration::ZERO);
+}
+
+#[test]
+fn a_lagging_acknowledgement_counts_as_acausal_with_lockstep_off_and_on() {
+    let mut shared = new_shared_state(1);
+    shared.control.lockstep_enabled = 0;
+    let peer = |shared: &mut SharedStateV2| answer(shared, 0, 1);
+    let mut endpoint = AviateSharedMemoryEndpoint::attach(shared, world(), peer).unwrap();
+    endpoint.round_trip(SimInstant::START, &stimulus()).unwrap();
+    assert_eq!(endpoint.metrics().acausal_steps, 1);
+    assert_eq!(endpoint.metrics().last_acknowledged_step, 0);
+
+    let mut strict = attach(|shared: &mut SharedStateV2| answer(shared, 0, 1));
+    assert!(strict.round_trip(SimInstant::START, &stimulus()).is_err());
+    assert_eq!(strict.metrics().step_calls, 1);
+    assert_eq!(strict.metrics().acausal_steps, 1);
+}
+
+#[test]
+fn a_peer_slower_than_its_budget_counts_overruns_without_changing_results() {
+    let slow = |shared: &mut SharedStateV2| {
+        std::thread::sleep(Duration::from_millis(3));
+        well_behaved(shared);
+    };
+    let mut timed = attach(slow).with_step_budget(Duration::from_millis(1));
+    let mut untimed = attach(slow);
+    for k in 0..3 {
+        assert_eq!(
+            timed.round_trip(after_seconds(k), &stimulus()).unwrap(),
+            untimed.round_trip(after_seconds(k), &stimulus()).unwrap()
+        );
+    }
+    let metrics = timed.metrics();
+    assert_eq!(metrics.budget_overruns, 3);
+    assert!(metrics.max_peer_wall >= Duration::from_millis(3));
+    assert_eq!(untimed.metrics().budget_overruns, 0);
+
+    let mut generous = attach(well_behaved).with_step_budget(Duration::from_secs(5));
+    generous.round_trip(after_seconds(0), &stimulus()).unwrap();
+    assert_eq!(generous.metrics().budget_overruns, 0);
+}

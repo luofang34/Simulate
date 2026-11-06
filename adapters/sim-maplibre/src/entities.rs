@@ -6,7 +6,6 @@
 //! contracts need to change.
 
 use cgmath::Matrix4;
-use flightbag::RunwayEndSpec;
 use glam::{DMat3, DQuat, DVec3};
 use maplibre::{
     coords::LatLon,
@@ -15,9 +14,12 @@ use maplibre::{
     projection::body::Body,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
+use sim_scenery::LandingRunwayGeometry;
 use world::surveillance::{EmitterCategory, SurveillanceStore, TrackPhase};
 
 use crate::pose::{ConformalFrameStamp, project_geodetic_to_screen};
+
+mod runway;
 
 /// Semantic class of a dynamic 3D entity for symbology and future 3D model selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -165,24 +167,73 @@ pub fn entities_from_surveillance_belief(
     out
 }
 
-/// Builds a terrain-depth-tested conformal [`OverlayMesh`] (runway outline + visible
-/// entity target diamonds) and line-of-sight [`DepthProbe`]s for `slot`.
+/// Line-of-sight [`DepthProbe`]s at each entity visible in `slot`, with no drawing, for
+/// views that must show only the physical scene.
+#[must_use]
+pub fn entity_depth_probes(
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
+    entities: &[DynamicEntity3D],
+    slot: Option<ViewSlotId>,
+) -> Vec<DepthProbe> {
+    entities
+        .iter()
+        .filter(|entity| entity.placement.view_mask.matches_current(slot))
+        .filter_map(|entity| {
+            let point = Geodetic {
+                lat_rad: entity.placement.position.latitude.to_radians(),
+                lon_rad: entity.placement.position.longitude.to_radians(),
+                height_m: entity.placement.altitude_meters + stamp.geoid_undulation_m,
+            };
+            project_geodetic_to_screen(stamp, &point, stamp.geoid_undulation_m, viewport_px)
+        })
+        .take(MAX_PROBES)
+        .map(|(position, depth)| DepthProbe { position, depth })
+        .collect()
+}
+
+/// Builds a terrain-depth-tested conformal [`OverlayMesh`] (runway outline + traffic
+/// target marks) and line-of-sight [`DepthProbe`]s for `slot`. Ownship is never marked:
+/// a conformal view is drawn from ownship.
 #[must_use]
 pub fn build_conformal_overlay(
     stamp: &ConformalFrameStamp,
     viewport_px: [u32; 2],
-    runway: Option<&RunwayEndSpec>,
+    runway: Option<&LandingRunwayGeometry>,
     entities: &[DynamicEntity3D],
     slot: Option<ViewSlotId>,
+) -> (OverlayMesh, Vec<DepthProbe>) {
+    build_conformal_overlay_with_dem(stamp, viewport_px, runway, entities, slot, &mut |_, _| None)
+}
+
+/// Builds a terrain-depth-tested conformal [`OverlayMesh`] conforming `runway`'s vertical
+/// rail profile and grazing-angle depth clearance to `sample_dem_msl` (`(bilinear_msl, cell_max_msl)`).
+#[must_use]
+pub(crate) fn build_conformal_overlay_with_dem(
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
+    runway: Option<&LandingRunwayGeometry>,
+    entities: &[DynamicEntity3D],
+    slot: Option<ViewSlotId>,
+    sample_dem_msl: &mut dyn FnMut(f64, f64) -> Option<(f64, f64)>,
 ) -> (OverlayMesh, Vec<DepthProbe>) {
     let mut mesh = OverlayMesh::default();
     let mut probes = Vec::new();
 
     if let Some(rwy) = runway {
-        append_runway_outline(&mut mesh, &mut probes, stamp, viewport_px, rwy);
+        runway::append_runway_outline(
+            &mut mesh,
+            &mut probes,
+            stamp,
+            viewport_px,
+            rwy,
+            sample_dem_msl,
+        );
     }
     for entity in entities {
-        if !entity.placement.view_mask.matches_current(slot) {
+        if entity.kind == DynamicEntityKind::OwnshipExterior
+            || !entity.placement.view_mask.matches_current(slot)
+        {
             continue;
         }
         let point = Geodetic {
@@ -195,15 +246,11 @@ pub fn build_conformal_overlay(
         {
             let color = match entity.kind {
                 DynamicEntityKind::GroundVehicle => [0.85, 0.65, 0.15, 0.90],
-                DynamicEntityKind::OwnshipExterior => [0.98, 0.72, 0.18, 0.96],
-                DynamicEntityKind::FixedWing | DynamicEntityKind::Rotorcraft => {
-                    [0.0, 0.92, 0.92, 0.92]
-                }
+                DynamicEntityKind::FixedWing
+                | DynamicEntityKind::Rotorcraft
+                | DynamicEntityKind::OwnshipExterior => [0.0, 0.92, 0.92, 0.92],
             };
-            if matches!(
-                entity.kind,
-                DynamicEntityKind::OwnshipExterior | DynamicEntityKind::FixedWing
-            ) {
+            if entity.kind == DynamicEntityKind::FixedWing {
                 append_airframe_wireframe(&mut mesh, stamp, viewport_px, entity, &point, color);
             }
             push_diamond(&mut mesh, px, depth, 6.0, color);
@@ -271,65 +318,6 @@ fn append_airframe_wireframe(
     }
 }
 
-fn append_runway_outline(
-    mesh: &mut OverlayMesh,
-    probes: &mut Vec<DepthProbe>,
-    stamp: &ConformalFrameStamp,
-    viewport_px: [u32; 2],
-    rwy: &RunwayEndSpec,
-) {
-    let thr = Geodetic {
-        lat_rad: rwy.threshold.latitude_deg.to_radians(),
-        lon_rad: rwy.threshold.longitude_deg.to_radians(),
-        height_m: rwy.threshold.ellipsoidal_height_m + 0.35,
-    };
-    let thr_ecef = BodyEllipsoid::WGS84.geodetic_to_fixed(&thr);
-    let ned_to_ecef = LocalFrame::at(&thr).ned_to_ecef();
-    let (sin_b, cos_b) = rwy.true_bearing_rad.sin_cos();
-    let fwd_ned = DVec3::new(cos_b, sin_b, 0.0);
-    let right_ned = DVec3::new(-sin_b, cos_b, 0.0);
-    let half_w = (rwy.width_m * 0.5).max(5.0);
-    let len = rwy.length_m.max(100.0);
-    let color = [0.15, 0.95, 0.45, 0.92];
-    let project_ned = |offset_ned: DVec3| -> Option<([f32; 2], f32)> {
-        let geo = BodyEllipsoid::WGS84.fixed_to_geodetic(thr_ecef + ned_to_ecef * offset_ned);
-        project_geodetic_to_screen(stamp, &geo, stamp.geoid_undulation_m, viewport_px)
-    };
-
-    const RAIL_STEPS: usize = 8;
-    for i in 0..RAIL_STEPS {
-        let s0 = len * (i as f64 / RAIL_STEPS as f64);
-        let s1 = len * ((i + 1) as f64 / RAIL_STEPS as f64);
-        for side in [-1.0, 1.0] {
-            let lat = right_ned * (side * half_w);
-            if let (Some(a), Some(b)) = (
-                project_ned(fwd_ned * s0 + lat),
-                project_ned(fwd_ned * s1 + lat),
-            ) {
-                push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
-            }
-        }
-    }
-    for s in [0.0, len] {
-        let along = fwd_ned * s;
-        if let (Some(a), Some(b)) = (
-            project_ned(along - right_ned * half_w),
-            project_ned(along + right_ned * half_w),
-        ) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, 2.2, color);
-        }
-    }
-    if probes.len() < MAX_PROBES
-        && let Some((px, depth)) =
-            project_geodetic_to_screen(stamp, &thr, stamp.geoid_undulation_m, viewport_px)
-    {
-        probes.push(DepthProbe {
-            position: px,
-            depth,
-        });
-    }
-}
-
 fn push_diamond(
     mesh: &mut OverlayMesh,
     center: [f32; 2],
@@ -347,7 +335,7 @@ fn push_diamond(
     }
 }
 
-fn push_segment(
+pub(super) fn push_segment(
     mesh: &mut OverlayMesh,
     a: [f32; 2],
     depth_a: f32,
@@ -391,6 +379,45 @@ fn push_segment(
         OverlayVertex {
             position: [bx + nx, by + ny],
             depth: depth_b,
+            color: premul,
+        },
+    ]);
+    mesh.indices
+        .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+pub(super) fn push_quad(
+    mesh: &mut OverlayMesh,
+    a_left: ([f32; 2], f32),
+    a_right: ([f32; 2], f32),
+    b_right: ([f32; 2], f32),
+    b_left: ([f32; 2], f32),
+    color: [f32; 4],
+) {
+    let [r, g, bl, al] = color;
+    let premul = [r * al, g * al, bl * al, al];
+    let Ok(base) = u32::try_from(mesh.vertices.len()) else {
+        return;
+    };
+    mesh.vertices.extend_from_slice(&[
+        OverlayVertex {
+            position: a_left.0,
+            depth: a_left.1,
+            color: premul,
+        },
+        OverlayVertex {
+            position: a_right.0,
+            depth: a_right.1,
+            color: premul,
+        },
+        OverlayVertex {
+            position: b_right.0,
+            depth: b_right.1,
+            color: premul,
+        },
+        OverlayVertex {
+            position: b_left.0,
+            depth: b_left.1,
             color: premul,
         },
     ]);

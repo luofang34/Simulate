@@ -3,6 +3,9 @@ use sim_geo::{Geodetic, UtcTime};
 
 use crate::{geometric_to_geopotential_m, isa_at_geopotential};
 
+#[cfg(test)]
+mod tests;
+
 /// Why an atmosphere sample is unavailable.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum AtmosphereError {
@@ -66,6 +69,50 @@ impl AtmosphereField for StandardAtmosphere {
             density_kg_m3: state.density_kg_m3,
             speed_of_sound_m_s: state.speed_of_sound_m_s,
             wind_ned_m_s: DVec3::ZERO,
+        })
+    }
+}
+
+/// The ICAO standard atmosphere entered at mean sea level rather than the
+/// ellipsoid, with an optional uniform wind.
+///
+/// Positions carry WGS84 ellipsoidal heights; the EGM96 geoid converts them to
+/// orthometric heights first, so a field at `H = 0` reads exactly sea-level
+/// ISA wherever the geoid lies.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct GeoidStandardAtmosphere {
+    wind_ned_m_s: DVec3,
+}
+
+impl GeoidStandardAtmosphere {
+    /// Still air.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The same air moving at `wind_ned_m_s` (toward, north-east-down) at
+    /// every point.
+    #[must_use]
+    pub fn with_wind(wind_ned_m_s: DVec3) -> Self {
+        Self { wind_ned_m_s }
+    }
+}
+
+impl AtmosphereField for GeoidStandardAtmosphere {
+    fn sample(
+        &self,
+        position: &Geodetic,
+        _utc: UtcTime,
+    ) -> Result<AtmosphereSample, AtmosphereError> {
+        let msl_m = sim_geo::ellipsoidal_to_msl_egm96(position).0;
+        let state = isa_at_geopotential(geometric_to_geopotential_m(msl_m))?;
+        Ok(AtmosphereSample {
+            temperature_k: state.temperature_k,
+            pressure_pa: state.pressure_pa,
+            density_kg_m3: state.density_kg_m3,
+            speed_of_sound_m_s: state.speed_of_sound_m_s,
+            wind_ned_m_s: self.wind_ned_m_s,
         })
     }
 }

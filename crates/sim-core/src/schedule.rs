@@ -72,6 +72,15 @@ impl RateAdapter {
             .saturating_mul(self.num)
             .saturating_add(total / self.den)
     }
+
+    /// Fractional progress in `[0.0, 1.0)` toward the next block execution.
+    #[must_use]
+    pub fn phase(&self) -> f64 {
+        if self.den == 0 {
+            return 0.0;
+        }
+        (self.carry as f64) / (self.den as f64)
+    }
 }
 
 /// Converts wall-clock frame durations into master-clock ticks for real-time

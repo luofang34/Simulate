@@ -1,7 +1,7 @@
 use mbd_core::MbdError;
 use sim_atmosphere::AtmosphereError;
 use sim_aviate::AviateBridgeError;
-use sim_core::{BlockError, BridgeError};
+use sim_core::{BlockError, BridgeError, SessionError};
 use sim_pack::PackError;
 use sim_xil::XilError;
 
@@ -23,6 +23,9 @@ pub enum IronbirdError {
     /// Tier-0 or Tier-1 Aviate bridge failed.
     #[error("Aviate XIL bridge failed: {0}")]
     Aviate(#[from] AviateBridgeError),
+    /// The simulation session refused a sensor registration or failed a step.
+    #[error("simulation session failed: {0}")]
+    Session(#[source] Box<SessionError>),
     /// External node bridge failed.
     #[error("external XIL bridge failed: {0}")]
     Bridge(#[from] BridgeError),
@@ -41,4 +44,10 @@ pub enum IronbirdError {
         /// Diagnostic message and usage hint.
         detail: String,
     },
+}
+
+impl From<SessionError> for IronbirdError {
+    fn from(error: SessionError) -> Self {
+        Self::Session(Box::new(error))
+    }
 }

@@ -89,8 +89,39 @@ pub fn title(
     if let Some(armed) = flight.aviate_armed() {
         add(if armed { "FC ARMED" } else { "FC DISARMED" }.to_owned());
     }
+    if flight.world().body() == sim_geo::BodyEllipsoid::WGS84 {
+        let nav_mode = match flight.sensor_realism() {
+            crate::sensor_bus::SensorRealism::Realistic => "WAAS [N]",
+            crate::sensor_bus::SensorRealism::DegradedNavigation => "DEGRADED [N]",
+            crate::sensor_bus::SensorRealism::Ideal => "IDEAL [N]",
+        };
+        add(nav_mode.to_owned());
+    }
     append_apollo_status(cockpit, &mut add);
+    add(pacing_label(flight));
     line
+}
+
+/// Rolling real-time pacing, e.g. `RT 1.00x · 60 FPS`.
+pub fn pacing_label(flight: &Flight) -> String {
+    let stats = flight.pacing_stats();
+    format!("RT {:.2}x · {:.0} FPS", stats.real_time_ratio, stats.fps)
+}
+
+/// Logs the session's pacing when the app exits.
+pub fn log_pacing_summary(flight: &Flight) {
+    let session = flight.pacing_session();
+    let rolling = flight.pacing_stats();
+    info!(
+        frames = session.frames,
+        wall_s = session.wall_s,
+        sim_s = session.sim_s,
+        session_real_time_ratio = session.real_time_ratio(),
+        last_real_time_ratio = rolling.real_time_ratio,
+        last_fps = rolling.fps,
+        last_max_frame_ms = rolling.max_frame_ms,
+        "real-time pacing summary"
+    );
 }
 
 fn append_apollo_status(cockpit: &CockpitInstrumentSnapshot, add: &mut impl FnMut(String)) {

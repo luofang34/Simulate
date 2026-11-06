@@ -83,6 +83,10 @@ pub struct BridgeStats {
     pub dropped: u64,
     /// Largest staleness of any delivered response.
     pub max_staleness: TickSpan,
+    /// Responses discarded because they belong to a timeline abandoned by
+    /// [`ExternalNodeBridge::advance_epoch`]: queued in the mailbox at the
+    /// change, or still in flight from a stimulus posted before it.
+    pub stale_epoch_discards: u64,
 }
 
 /// Why a bridge operation failed.
@@ -99,18 +103,38 @@ pub enum BridgeError {
     },
 }
 
-/// Everything a bridge carries between steps. The endpoint itself lies outside
-/// the simulation and is not part of it.
+/// Everything a bridge carries between steps, including its timeline epoch.
+/// The endpoint itself lies outside the simulation and is not part of it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BridgeSnapshot<R> {
     mailbox: BTreeMap<(SimInstant, u64), R>,
     next_sequence: u64,
     newest_delivered: Option<SimInstant>,
     stats: BridgeStats,
+    timeline_epoch: u32,
+    outstanding_posts: u64,
+    stale_in_flight: u64,
+}
+
+impl<R> BridgeSnapshot<R> {
+    /// The bridge's timeline epoch when captured.
+    #[must_use]
+    pub fn timeline_epoch(&self) -> u32 {
+        self.timeline_epoch
+    }
 }
 
 /// Connects a simulation to an [`ExternalEndpoint`] in place of an internal
 /// subsystem, without the rest of the vehicle knowing which it is talking to.
+///
+/// The endpoint does not rewind with the simulation, so the bridge numbers
+/// timelines: [`Self::advance_epoch`] marks a discontinuity (a rewind or reset
+/// that is not an exact restore), after which anything answering the
+/// abandoned timeline is discarded rather than handed to the new one.
+/// Responses carry no correlation id, so in-flight replies are recognised by
+/// count: each [`HitlSyncMode::RealTimeStamped`] stimulus is assumed to draw
+/// exactly one response, and as many arrivals as were outstanding at the
+/// change are discarded.
 pub struct ExternalNodeBridge<E: ExternalEndpoint> {
     endpoint: E,
     mode: HitlSyncMode,
@@ -118,6 +142,9 @@ pub struct ExternalNodeBridge<E: ExternalEndpoint> {
     next_sequence: u64,
     newest_delivered: Option<SimInstant>,
     stats: BridgeStats,
+    timeline_epoch: u32,
+    outstanding_posts: u64,
+    stale_in_flight: u64,
 }
 
 impl<E: ExternalEndpoint> ExternalNodeBridge<E> {
@@ -130,7 +157,31 @@ impl<E: ExternalEndpoint> ExternalNodeBridge<E> {
             next_sequence: 0,
             newest_delivered: None,
             stats: BridgeStats::default(),
+            timeline_epoch: 0,
+            outstanding_posts: 0,
+            stale_in_flight: 0,
         }
+    }
+
+    /// The current timeline epoch, advanced only by [`Self::advance_epoch`].
+    pub fn timeline_epoch(&self) -> u32 {
+        self.timeline_epoch
+    }
+
+    /// Starts a new timeline after a rewind or reset of the simulation that
+    /// is not an exact restore. Responses waiting in the mailbox and the ones
+    /// still in flight from earlier stimuli are discarded as they surface,
+    /// each counted in [`BridgeStats::stale_epoch_discards`], and delivery
+    /// may restart from an earlier instant than the abandoned timeline
+    /// reached.
+    pub fn advance_epoch(&mut self) {
+        let queued = self.mailbox.len() as u64;
+        self.mailbox.clear();
+        self.stats.stale_epoch_discards = self.stats.stale_epoch_discards.wrapping_add(queued);
+        self.stale_in_flight = self.stale_in_flight.wrapping_add(self.outstanding_posts);
+        self.outstanding_posts = 0;
+        self.newest_delivered = None;
+        self.timeline_epoch = self.timeline_epoch.wrapping_add(1);
     }
 
     /// Health counters.
@@ -157,6 +208,7 @@ impl<E: ExternalEndpoint> ExternalNodeBridge<E> {
             }
             HitlSyncMode::RealTimeStamped => {
                 self.endpoint.post(at, stimulus).map_err(endpoint_error)?;
+                self.outstanding_posts = self.outstanding_posts.wrapping_add(1);
             }
         }
         Ok(())
@@ -170,6 +222,12 @@ impl<E: ExternalEndpoint> ExternalNodeBridge<E> {
     ) -> Result<Vec<DeliveredResponse<E::Response>>, BridgeError> {
         let source_error = |source| BridgeError::Endpoint { at: now, source };
         while let Some(stamped) = self.endpoint.try_receive().map_err(source_error)? {
+            if self.stale_in_flight > 0 {
+                self.stale_in_flight = self.stale_in_flight.saturating_sub(1);
+                self.stats.stale_epoch_discards = self.stats.stale_epoch_discards.wrapping_add(1);
+                continue;
+            }
+            self.outstanding_posts = self.outstanding_posts.saturating_sub(1);
             self.file(stamped.deliver_at, stamped.response);
         }
         let mut due = self.take_due(now);
@@ -240,14 +298,23 @@ where
             next_sequence: self.next_sequence,
             newest_delivered: self.newest_delivered,
             stats: self.stats,
+            timeline_epoch: self.timeline_epoch,
+            outstanding_posts: self.outstanding_posts,
+            stale_in_flight: self.stale_in_flight,
         }
     }
 
-    /// Restores state captured by [`ExternalNodeBridge::snapshot`].
+    /// Restores state captured by [`ExternalNodeBridge::snapshot`]. An exact
+    /// restore is not a discontinuity, so the snapshot's epoch comes back
+    /// with it; a real-time peer that has already answered stimuli posted
+    /// after the snapshot was taken needs [`Self::advance_epoch`] instead.
     pub fn restore(&mut self, snapshot: &BridgeSnapshot<E::Response>) {
         self.mailbox.clone_from(&snapshot.mailbox);
         self.next_sequence = snapshot.next_sequence;
         self.newest_delivered = snapshot.newest_delivered;
         self.stats = snapshot.stats;
+        self.timeline_epoch = snapshot.timeline_epoch;
+        self.outstanding_posts = snapshot.outstanding_posts;
+        self.stale_in_flight = snapshot.stale_in_flight;
     }
 }

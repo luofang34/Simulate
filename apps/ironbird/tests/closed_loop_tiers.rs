@@ -199,3 +199,212 @@ fn tier2_betaflight_udp_flies_x500_plant_closed_loop() {
     assert_eq!(summary.steps_executed, 200);
     assert!(summary.final_geodetic.height_m > origin.height_m);
 }
+
+#[cfg(test)]
+fn hover_peer(shared: &mut sim_aviate::SharedStateV2) {
+    use aviate_xil_contract::{FcState, pack_fc_status, seqlock_write};
+    use core::sync::atomic::AtomicU32;
+
+    let step = shared.state.sim_step;
+    let generation = shared.header.reset_generation;
+    shared.control.fc_status = pack_fc_status(generation, FcState::Ready);
+    let cmd = &mut shared.command;
+    seqlock_write(AtomicU32::from_mut(&mut cmd.seq), || {
+        cmd.fc_step_ack = step;
+        cmd.num_motors = 4;
+        for slot in cmd.motor_vel_bits.iter_mut().take(4) {
+            *slot = 790.0_f64.to_bits();
+        }
+    });
+}
+
+#[test]
+fn tier1_realtime_paces_to_wall_clock_while_lockstep_runs_faster() {
+    let origin = Geodetic::from_degrees(39.1582, -75.5244, 20.0);
+    let realtime =
+        run_tier1_shm_x500(origin, 0.10, HitlSyncMode::RealTimeStamped, hover_peer).unwrap();
+    assert_eq!(realtime.steps_executed, 40);
+    assert!(realtime.wall_seconds >= 0.085, "{}", realtime.wall_seconds);
+    assert_eq!(realtime.pacer_stats.steps, 40);
+    assert!(realtime.pacer_stats.total_sleep_us > 0);
+
+    let lockstep = HitlSyncMode::LockstepBarrier {
+        processing_delay: TickSpan::from_ticks(TICKS_PER_SECOND / 400),
+    };
+    let fast = run_tier1_shm_x500(origin, 0.10, lockstep, hover_peer).unwrap();
+    assert_eq!(fast.steps_executed, 40);
+    assert!(fast.realtime_speedup > 1.0, "{}", fast.realtime_speedup);
+    assert_eq!(fast.pacer_stats, sim_xil::PacerStats::default());
+}
+
+#[test]
+fn tier1_realtime_slow_peer_records_overruns() {
+    let origin = Geodetic::from_degrees(39.1582, -75.5244, 20.0);
+    let slow_peer = |shared: &mut sim_aviate::SharedStateV2| {
+        std::thread::sleep(std::time::Duration::from_millis(6));
+        hover_peer(shared);
+    };
+    let summary =
+        run_tier1_shm_x500(origin, 0.05, HitlSyncMode::RealTimeStamped, slow_peer).unwrap();
+    assert_eq!(summary.steps_executed, 20);
+    assert!(
+        summary.pacer_stats.overrun_count > 0,
+        "{:?}",
+        summary.pacer_stats
+    );
+    assert!(
+        summary.pacer_stats.max_overrun_us > 2_000,
+        "{:?}",
+        summary.pacer_stats
+    );
+}
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+fn sample_stimulus() -> sim_xil::XilStimulus {
+    use sim_atmosphere::{AtmosphereField, StandardAtmosphere};
+    use sim_geo::UtcTime;
+
+    let geo = Geodetic::from_degrees(39.158, -75.524, 300.0);
+    let vehicle = sim_core::VehicleState::level_flight(&geo, 0.0, 55.0);
+    let atm = StandardAtmosphere
+        .sample(&geo, UtcTime::from_unix_seconds(0.0))
+        .unwrap();
+    sim_xil::XilStimulus::from_state_and_atmosphere(
+        vehicle,
+        glam::DVec3::new(0.0, 0.0, -sim_xil::STANDARD_GRAVITY_M_S2),
+        &atm,
+    )
+    .unwrap()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn mavlink_tcp_post_never_blocks_reports_full_buffer_and_drains_intact() {
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use sim_core::{ExternalEndpoint, SimInstant};
+    use sim_xil::mavlink_hil::{MavlinkHilConfig, MavlinkHilReader, MavlinkHilTcpEndpoint};
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (start_reading, reading_gate) = mpsc::channel::<()>();
+    let stalled_peer = thread::spawn(move || {
+        let (mut sock, _) = listener.accept().unwrap();
+        reading_gate.recv().unwrap();
+        let mut reader = MavlinkHilReader::new();
+        let mut buf = [0_u8; 4096];
+        loop {
+            let n = sock.read(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            reader.push_bytes(&buf[..n]);
+        }
+        (
+            reader.decoded_frames() + reader.unknown_frames(),
+            reader.crc_errors(),
+        )
+    });
+
+    let mut ep = MavlinkHilTcpEndpoint::connect(addr, MavlinkHilConfig::default()).unwrap();
+    let stimulus = sample_stimulus();
+    let mut at = SimInstant::START;
+    let mut accepted = 0_u64;
+    let full = loop {
+        assert!(accepted < 5_000_000, "socket never filled");
+        match ep.post(at, &stimulus) {
+            Ok(()) => accepted += 1,
+            Err(err) => break err,
+        }
+        at = at.advanced(TickSpan::from_ticks(1));
+    };
+    assert!(
+        full.detail
+            .contains("outbound buffer full (peer not draining)"),
+        "{full}"
+    );
+    assert!(ep.pending_tx_bytes() > 0 && ep.pending_tx_bytes() <= 65_536);
+
+    start_reading.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ep.pending_tx_bytes() > 0 {
+        assert!(
+            Instant::now() < deadline,
+            "{} bytes never drained",
+            ep.pending_tx_bytes()
+        );
+        assert!(ep.try_receive().unwrap().is_none());
+        thread::yield_now();
+    }
+    drop(ep);
+
+    let (frames, crc_errors) = stalled_peer.join().unwrap();
+    assert_eq!(crc_errors, 0);
+    // The first burst also carries one HEARTBEAT and one HIL_GPS.
+    assert_eq!(frames, accepted + 2);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn tier2_mavlink_tcp_realtime_paces_without_blocking_on_peer() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use ironbird::run_tier2_mavlink_fixed_wing;
+    use sim_xil::mavlink_hil::{
+        HilActuatorControls, HilControlMapping, MAV_MODE_FLAG_SAFETY_ARMED, MavlinkHilConfig,
+        MavlinkHilTcpEndpoint, encode_hil_actuator_controls,
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let fc_peer = thread::spawn(move || {
+        let (mut sock, _) = listener.accept().unwrap();
+        let mut rx = [0_u8; 1024];
+        let mut seq = 0_u8;
+        let mut controls = [0.0_f32; 16];
+        controls[3] = 0.7;
+        let reply = HilActuatorControls {
+            time_usec: 0,
+            controls,
+            mode: MAV_MODE_FLAG_SAFETY_ARMED,
+            flags: 0,
+        };
+        while sock.read(&mut rx).unwrap_or(0) > 0 {
+            let mut tx = [0_u8; 128];
+            let n = encode_hil_actuator_controls(seq, 1, 1, &reply, &mut tx).unwrap();
+            seq = seq.wrapping_add(1);
+            if sock.write_all(&tx[..n]).is_err() {
+                break;
+            }
+        }
+    });
+
+    let ep = MavlinkHilTcpEndpoint::connect(addr, MavlinkHilConfig::default()).unwrap();
+    let origin = Geodetic::from_degrees(39.1582, -75.5244, 500.0);
+    let summary = run_tier2_mavlink_fixed_wing(
+        FixedWingVehicle::C172,
+        origin,
+        0.10,
+        HitlSyncMode::RealTimeStamped,
+        HilControlMapping::default(),
+        ep,
+    )
+    .unwrap();
+    fc_peer.join().unwrap();
+
+    assert_eq!(summary.steps_executed, 12);
+    assert!(summary.wall_seconds >= 0.085, "{}", summary.wall_seconds);
+    assert_eq!(summary.pacer_stats.steps, 12);
+    assert!(
+        summary.bridge_stats.delivered >= 1,
+        "{:?}",
+        summary.bridge_stats
+    );
+}

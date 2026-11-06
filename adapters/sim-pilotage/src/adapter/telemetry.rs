@@ -1,14 +1,15 @@
 use glam::{DMat3, DQuat, DVec3};
 use pilotage_adapter_api::{
     AvionicsAttitudeSample, AvionicsBaroSample, AvionicsKinematicsSample, AvionicsSample,
-    FcStateSample, GeodeticFixSample, MeasurementClock, MeasurementStamp, Pose2d, SimTruthSample,
-    SourceIncarnation, SourceIntegrity, SourceRole, TelemetrySample,
+    FcStateSample, GeodeticFixSample, LandedStateSample, LandingApproachSample, MeasurementClock,
+    MeasurementStamp, Pose2d, SimTruthSample, SourceIncarnation, SourceIntegrity, SourceRole,
+    TelemetrySample,
 };
 use pilotage_geo::{
     BaroSettingId, DatumRealizationId, GeodeticPosition, GeoidModelId, HorizontalDatum,
     LocalOriginId, PositionQuality, TerrainRefId, VerticalDatum, VerticalPosition,
 };
-use pilotage_protocol::VehicleId;
+use pilotage_protocol::{LandedState, VehicleId};
 use pilotage_timing::SimTick;
 use sim_atmosphere::geometric_to_geopotential_m;
 use sim_core::{SimInstant, VehicleState};
@@ -33,6 +34,14 @@ const ARMED: u32 = 2;
 const ESTIMATOR_SOURCE: u64 = 1;
 const TRUTH_SOURCE: u64 = 2;
 const FC_STATE_SOURCE: u64 = 3;
+const RANGING_SOURCE: u64 = 4;
+const LANDED_SOURCE: u64 = 5;
+/// Height over the surface, m, above which the vehicle counts as flying
+/// whatever its speed: clear of gear compression on a level surface.
+const FLYING_HEIGHT_M: f32 = 0.35;
+/// Ground speed, m/s, above which the vehicle counts as flying whatever its
+/// height, so a rollout or a touch-and-go is never reported landed.
+const FLYING_SPEED_M_S: f64 = 3.0;
 
 /// Who produced this adapter's measurements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,7 +77,7 @@ pub(super) struct AvionicsModel {
 }
 
 /// Body-to-NED rotation at `frame` from body-to-ECEF.
-fn body_to_ned(frame: &LocalFrame, attitude: DQuat) -> DQuat {
+pub(super) fn body_to_ned(frame: &LocalFrame, attitude: DQuat) -> DQuat {
     DQuat::from_mat3(&(frame.ned_to_ecef().transpose() * DMat3::from_quat(attitude))).normalize()
 }
 
@@ -130,6 +139,11 @@ impl AvionicsModel {
             epoch: 0,
             sequence: 0,
         }
+    }
+
+    /// The local frame telemetry reports in.
+    pub(super) const fn origin(&self) -> &LocalFrame {
+        &self.origin
     }
 
     /// A source restart: the noise stream begins again and the epoch moves on,
@@ -223,8 +237,39 @@ impl AvionicsModel {
         (sample, pose, velocity.length())
     }
 
+    /// Ranging to the surface at `surface_elevation_m` and the landed verdict
+    /// it implies, both from one measurement so they never disagree.
+    fn approach(
+        &self,
+        state: &VehicleState,
+        surface_elevation_m: f64,
+        at: SimInstant,
+    ) -> (LandingApproachSample, LandedStateSample) {
+        let height_m = ecef_to_geodetic(state.position_ecef).height_m;
+        let surface_distance_m = (height_m - surface_elevation_m).max(0.0) as f32;
+        let velocity_ned = self.origin.ecef_to_ned_vector(state.velocity_ecef);
+        let is_flying =
+            surface_distance_m > FLYING_HEIGHT_M || state.velocity_ecef.length() > FLYING_SPEED_M_S;
+        let approach = LandingApproachSample {
+            surface_distance_m,
+            vertical_speed_down_mps: velocity_ned.z as f32,
+            is_flying,
+            stamp: self.stamp(SourceRole::FcState, RANGING_SOURCE, at),
+        };
+        let landed = LandedStateSample {
+            state: if is_flying {
+                LandedState::InAir
+            } else {
+                LandedState::OnGround
+            },
+            stamp: self.stamp(SourceRole::FcState, LANDED_SOURCE, at),
+        };
+        (approach, landed)
+    }
+
     /// One new measurement of every group. Sequence numbers advance here and
     /// nowhere else, so re-reading a sample never claims a new measurement.
+    /// Ranging and the landed detector report only over a known surface.
     pub(super) fn sample(
         &mut self,
         vehicle: VehicleId,
@@ -232,9 +277,11 @@ impl AvionicsModel {
         at: SimInstant,
         state: &VehicleState,
         armed: bool,
+        surface_elevation_m: Option<f64>,
     ) -> TelemetrySample {
         self.sequence = self.sequence.wrapping_add(1);
         let (avionics, pose, speed) = self.estimate(state, at);
+        let approach = surface_elevation_m.map(|elevation_m| self.approach(state, elevation_m, at));
         TelemetrySample {
             flight_procedure: None,
             payload: None,
@@ -247,9 +294,9 @@ impl AvionicsModel {
             fc_state: Some(FcStateSample {
                 arm_state: if armed { ARMED } else { DISARMED },
                 last_command: None,
-                landed_state: None,
+                landed_state: approach.map(|(_, landed)| landed),
                 motor_state: None,
-                landing_approach: None,
+                landing_approach: approach.map(|(ranging, _)| ranging),
                 stamp: Some(self.stamp(SourceRole::FcState, FC_STATE_SOURCE, at)),
             }),
             gimbal: None,

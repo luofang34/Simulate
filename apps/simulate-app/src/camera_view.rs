@@ -1,30 +1,69 @@
 use glam::{DMat3, DQuat, DVec3};
 use sim_core::{CameraMount, CameraPoseEcef, VehicleState, VirtualCameraSpec};
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_geo::{BodyEllipsoid, LocalFrame};
 use sim_render::{Camera, CameraPose};
-use sim_scenario::OperatorViewportMode;
+use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 
-/// Vertical field of view of the primary OTW and chase cameras, degrees.
-pub const COCKPIT_FOV_Y_DEG: f64 = 60.0;
+use crate::vehicles::FreeFlightVehicle;
+
+/// Vertical field of view of the primary cockpit OTW camera, degrees (`~72.7°` horizontal on `16:9`).
+pub const COCKPIT_FOV_Y_DEG: f64 = 45.0;
+/// Vertical field of view of external chase, volumetric, and chart cameras, degrees.
+pub const EXTERNAL_FOV_Y_DEG: f64 = 55.0;
 /// Vertical field of view of the optical sensor gimbal aperture, degrees.
 pub const SENSOR_FOV_Y_DEG: f64 = 45.0;
 /// Vertical field of view of the PFD `ConformalSvs3D` underlay, degrees.
 pub const SVS_FOV_Y_DEG: f64 = 50.0;
+
+/// Look-offset limits and full-deflection rate: wide enough to see over a
+/// shoulder, short of flipping the view upside down.
+const LOOK_YAW_LIMIT_DEG: f64 = 150.0;
+const LOOK_PITCH_LIMIT_DEG: f64 = 75.0;
+const LOOK_RATE_DEG_S: f64 = 120.0;
+const COCKPIT_STICK_YAW_DEG: f64 = 100.0;
+const COCKPIT_STICK_PITCH_DEG: f64 = 55.0;
+const COCKPIT_STICK_SLEW_PER_S: f64 = 12.0;
+
+#[cfg(test)]
+mod tests;
 
 const COCKPIT_NEAR_M: f64 = 0.05;
 const CHASE_BACK_M: f64 = 22.0;
 const CHASE_UP_M: f64 = 6.5;
 const VOLUMETRIC_BACK_M: f64 = 140.0;
 const VOLUMETRIC_UP_M: f64 = 85.0;
+/// How far the reference axis may lean toward the vertical before the external cameras
+/// take their bearing from the vehicle's other forward axis (`|cos|` of the angle to up).
+const NEAR_VERTICAL_COS: f64 = 0.7;
 
-/// Pilot eye mount slightly forward and above the aircraft CG in FRD body axes (`-4.5°` over cowling).
+/// Left-seat pilot eye in FRD body axes at the C172 structural eyepoint (`1.36 m` AGL on gear,
+/// `-3.0°` over the cowling).
 pub fn pilot_eye_mount() -> CameraMount {
     CameraMount::oblique(
-        DVec3::new(0.65, 0.0, -0.25),
+        DVec3::new(0.10, -0.26, -0.12),
         0.0,
-        -4.5_f64.to_radians(),
+        -3.0_f64.to_radians(),
         0.0,
     )
+}
+
+/// Seated cockpit or nose FPV camera mount matched to `vehicle`'s airframe geometry.
+#[must_use]
+pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
+    match vehicle {
+        FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
+        FreeFlightVehicle::JsbsimLightTrainer | FreeFlightVehicle::AviateFixedWingDirect => {
+            CameraMount::oblique(
+                DVec3::new(0.50, 0.0, -0.28),
+                0.0,
+                -3.0_f64.to_radians(),
+                0.0,
+            )
+        }
+        FreeFlightVehicle::AviateX500Direct => {
+            CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
+        }
+    }
 }
 
 /// Belly optical/EVS sensor mount pitched downward by `22°` in FRD body axes.
@@ -54,9 +93,16 @@ pub fn scenario_camera(pose: CameraPoseEcef) -> Camera {
     }
 }
 
-/// Converts a [`VirtualCameraSpec`] evaluated against `state` into a `sim_render` [`Camera`].
-pub fn camera_from_virtual_spec(spec: &VirtualCameraSpec, state: &VehicleState) -> Option<Camera> {
-    let (pose, intrinsics) = spec.pose_and_intrinsics(state, DVec3::ZERO).ok()?;
+/// Converts a [`VirtualCameraSpec`] evaluated against `state` over `body` into a
+/// `sim_render` [`Camera`].
+pub fn camera_from_virtual_spec_on(
+    body: BodyEllipsoid,
+    spec: &VirtualCameraSpec,
+    state: &VehicleState,
+) -> Option<Camera> {
+    let (pose, intrinsics) = spec
+        .pose_and_intrinsics_on(&body, state, DVec3::ZERO)
+        .ok()?;
     Some(Camera {
         pose: CameraPose {
             position_ecef: pose.position_ecef,
@@ -67,12 +113,26 @@ pub fn camera_from_virtual_spec(spec: &VirtualCameraSpec, state: &VehicleState) 
     })
 }
 
-/// Camera placed according to `mode` around `state` (with `aboard` used for `Cockpit`).
+/// Camera placed according to `mode` around `state` (with `aboard` used for `Cockpit`) over
+/// Earth.
+#[cfg(test)]
 pub fn viewport_camera(
     mode: OperatorViewportMode,
     state: &VehicleState,
     aboard: CameraPoseEcef,
 ) -> Camera {
+    viewport_camera_for(mode, None, state, aboard)
+}
+
+/// Camera placed according to `mode` around `state` flying `profile` (with `aboard` used
+/// for `Cockpit`), the external views levelled on the body `profile` flies over.
+pub fn viewport_camera_for(
+    mode: OperatorViewportMode,
+    profile: Option<ScenarioProfile>,
+    state: &VehicleState,
+    aboard: CameraPoseEcef,
+) -> Camera {
+    let frame = ExternalFrame::new(profile, state);
     match mode {
         OperatorViewportMode::Cockpit => scenario_camera(aboard),
         OperatorViewportMode::SensorAperture => {
@@ -86,54 +146,190 @@ pub fn viewport_camera(
                 near_m: COCKPIT_NEAR_M,
             }
         }
-        OperatorViewportMode::Chase => external_offset_camera(state, CHASE_BACK_M, CHASE_UP_M),
+        OperatorViewportMode::Chase => frame.offset_camera(state, CHASE_BACK_M, CHASE_UP_M),
         OperatorViewportMode::VolumetricScene => {
-            external_offset_camera(state, VOLUMETRIC_BACK_M, VOLUMETRIC_UP_M)
+            frame.offset_camera(state, VOLUMETRIC_BACK_M, VOLUMETRIC_UP_M)
         }
-        OperatorViewportMode::ChartMap => nadir_chart_fallback_camera(state),
+        OperatorViewportMode::ChartMap => frame.nadir_chart_camera(state),
     }
 }
 
-fn external_offset_camera(state: &VehicleState, back_m: f64, up_m: f64) -> Camera {
-    let geo = ecef_to_geodetic(state.position_ecef);
-    let local = LocalFrame::at(&geo);
-    let up = local.up();
-    let body_fwd = (state.attitude * DVec3::X).normalize_or_zero();
-    let horiz = body_fwd - up * body_fwd.dot(up);
-    let forward = if horiz.length_squared() > 1.0e-6 {
-        horiz.normalize()
-    } else {
-        local.north()
-    };
-    let eye = state.position_ecef - forward * back_m + up * up_m;
-    let look_dir = (state.position_ecef - eye).normalize_or(forward);
-    let right = look_dir.cross(up).normalize_or(local.east());
-    let cam_up = right.cross(look_dir).normalize_or(up);
-    let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -look_dir)).normalize();
-    Camera {
-        pose: CameraPose {
-            position_ecef: eye,
-            orientation,
-        },
-        fov_y_rad: COCKPIT_FOV_Y_DEG.to_radians(),
-        near_m: 0.5,
+/// The local level frame the external cameras stand in, and the horizontal direction
+/// they treat as the vehicle's forward.
+struct ExternalFrame {
+    local: LocalFrame,
+    forward: DVec3,
+}
+
+impl ExternalFrame {
+    fn new(profile: Option<ScenarioProfile>, state: &VehicleState) -> Self {
+        let body = profile.map_or(BodyEllipsoid::WGS84, |p| p.world().body());
+        let local = LocalFrame::at(&body.fixed_to_geodetic(state.position_ecef));
+        let up = local.up();
+        let horizontal = |axis: DVec3| {
+            let along = (state.attitude * axis).normalize_or_zero();
+            along - up * along.dot(up)
+        };
+        let nose = (state.attitude * DVec3::X).normalize_or_zero();
+        // The Lunar Module thrusts along body +X, vertical through the descent, while its
+        // crew windows face body +Z: that is the way it faces.
+        let reference = if profile == Some(ScenarioProfile::Apollo11LunarLanding)
+            && nose.dot(up).abs() > NEAR_VERTICAL_COS
+        {
+            horizontal(DVec3::Z)
+        } else {
+            horizontal(DVec3::X)
+        };
+        let forward = if reference.length_squared() > 1.0e-6 {
+            reference.normalize()
+        } else {
+            local.north()
+        };
+        Self { local, forward }
+    }
+
+    fn offset_camera(&self, state: &VehicleState, back_m: f64, up_m: f64) -> Camera {
+        let up = self.local.up();
+        let forward = self.forward;
+        let eye = state.position_ecef - forward * back_m + up * up_m;
+        let look_dir = (state.position_ecef - eye).normalize_or(forward);
+        let right = look_dir.cross(up).normalize_or(self.local.east());
+        let cam_up = right.cross(look_dir).normalize_or(up);
+        let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -look_dir)).normalize();
+        Camera {
+            pose: CameraPose {
+                position_ecef: eye,
+                orientation,
+            },
+            fov_y_rad: EXTERNAL_FOV_Y_DEG.to_radians(),
+            near_m: 0.5,
+        }
+    }
+
+    fn nadir_chart_camera(&self, state: &VehicleState) -> Camera {
+        let local = &self.local;
+        let eye = state.position_ecef + local.up() * 4_500.0;
+        let orientation =
+            DQuat::from_mat3(&DMat3::from_cols(local.east(), local.north(), local.up()))
+                .normalize();
+        Camera {
+            pose: CameraPose {
+                position_ecef: eye,
+                orientation,
+            },
+            fov_y_rad: EXTERNAL_FOV_Y_DEG.to_radians(),
+            near_m: 1.0,
+        }
     }
 }
 
-fn nadir_chart_fallback_camera(state: &VehicleState) -> Camera {
-    let geo = ecef_to_geodetic(state.position_ecef);
-    let local = LocalFrame::at(&geo);
-    let eye = state.position_ecef + local.up() * 4_500.0;
-    let right = local.east();
-    let cam_up = local.north();
-    let back = local.up();
-    let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, back)).normalize();
-    Camera {
-        pose: CameraPose {
-            position_ecef: eye,
-            orientation,
-        },
-        fov_y_rad: COCKPIT_FOV_Y_DEG.to_radians(),
-        near_m: 1.0,
+/// Pilot camera look away from the default view, steered by the right stick.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct LookOffset {
+    /// Pan right of the default view, radians.
+    pub yaw_rad: f64,
+    /// Tilt up from the default view, radians.
+    pub pitch_rad: f64,
+}
+
+impl LookOffset {
+    /// Moves the look by `axes` (`[pan right, tilt up]`, `-1..=1`) held for `dt_s`.
+    pub fn integrate(&mut self, axes: [f64; 2], dt_s: f64) {
+        if !(dt_s.is_finite() && dt_s > 0.0) {
+            return;
+        }
+        let [pan, tilt] = axes.map(|a| {
+            if a.is_finite() {
+                a.clamp(-1.0, 1.0)
+            } else {
+                0.0
+            }
+        });
+        let step = LOOK_RATE_DEG_S.to_radians() * dt_s;
+        let yaw_max = LOOK_YAW_LIMIT_DEG.to_radians();
+        let pitch_max = LOOK_PITCH_LIMIT_DEG.to_radians();
+        self.yaw_rad = (self.yaw_rad + pan * step).clamp(-yaw_max, yaw_max);
+        self.pitch_rad = (self.pitch_rad + tilt * step).clamp(-pitch_max, pitch_max);
+    }
+
+    /// Spring-centred cockpit head look: slews smoothly toward `axes` (`[pan right, tilt up]`,
+    /// `-1..=1`) and returns smoothly to dead-ahead `(0, 0)` when the stick is released.
+    pub fn follow_stick(&mut self, axes: [f64; 2], dt_s: f64) {
+        if !(dt_s.is_finite() && dt_s > 0.0) {
+            return;
+        }
+        let [pan, tilt] = axes.map(|a| {
+            if a.is_finite() {
+                a.clamp(-1.0, 1.0)
+            } else {
+                0.0
+            }
+        });
+        let target_yaw = pan * COCKPIT_STICK_YAW_DEG.to_radians();
+        let target_pitch = tilt * COCKPIT_STICK_PITCH_DEG.to_radians();
+        let blend = 1.0 - (-COCKPIT_STICK_SLEW_PER_S * dt_s).exp();
+        self.yaw_rad += (target_yaw - self.yaw_rad) * blend;
+        self.pitch_rad += (target_pitch - self.pitch_rad) * blend;
+        if pan == 0.0 && self.yaw_rad.abs() < 1e-4 {
+            self.yaw_rad = 0.0;
+        }
+        if tilt == 0.0 && self.pitch_rad.abs() < 1e-4 {
+            self.pitch_rad = 0.0;
+        }
+    }
+
+    /// Back to the default view.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    /// `camera` turned by the look over Earth: the cockpit eye turns in place, the chase
+    /// camera orbits `state`; other views ignore it.
+    #[cfg(test)]
+    #[must_use]
+    pub fn apply(self, mode: OperatorViewportMode, camera: Camera, state: &VehicleState) -> Camera {
+        self.apply_on(BodyEllipsoid::WGS84, mode, camera, state)
+    }
+
+    /// `camera` turned by the look over `body` (whose local vertical the chase camera
+    /// orbits about): the cockpit eye turns in place, the chase camera orbits `state`;
+    /// other views ignore it.
+    #[must_use]
+    pub fn apply_on(
+        self,
+        body: BodyEllipsoid,
+        mode: OperatorViewportMode,
+        camera: Camera,
+        state: &VehicleState,
+    ) -> Camera {
+        if self == Self::default() {
+            return camera;
+        }
+        let pose = camera.pose;
+        let turned = match mode {
+            OperatorViewportMode::Cockpit => CameraPose {
+                orientation: (pose.orientation
+                    * DQuat::from_rotation_y(-self.yaw_rad)
+                    * DQuat::from_rotation_x(self.pitch_rad))
+                .normalize(),
+                ..pose
+            },
+            OperatorViewportMode::Chase => {
+                let up = LocalFrame::at(&body.fixed_to_geodetic(state.position_ecef)).up();
+                let right = pose.orientation * DVec3::X;
+                let orbit = DQuat::from_axis_angle(up, -self.yaw_rad)
+                    * DQuat::from_axis_angle(right, self.pitch_rad);
+                CameraPose {
+                    position_ecef: state.position_ecef
+                        + orbit * (pose.position_ecef - state.position_ecef),
+                    orientation: (orbit * pose.orientation).normalize(),
+                }
+            }
+            _ => return camera,
+        };
+        Camera {
+            pose: turned,
+            ..camera
+        }
     }
 }

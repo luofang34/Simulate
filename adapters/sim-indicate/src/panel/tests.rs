@@ -59,6 +59,7 @@ fn panel(pitch_rad: f64, heading_rad: f64) -> PanelData {
         origin,
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
+        heading_mode: crate::HeadingMode::default(),
     });
     let sample = FlightSample::truth(SimInstant::START, vehicle);
     resolve(&feed.state(&sample).unwrap(), &FreshnessPolicy::default())
@@ -72,6 +73,7 @@ fn failed_panel() -> PanelData {
         origin,
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
+        heading_mode: crate::HeadingMode::default(),
     });
     let sample = FlightSample::truth(
         SimInstant::START,
@@ -269,4 +271,86 @@ fn a_larger_framebuffer_keeps_the_panels_scale() {
     .unwrap();
     let row = PANEL_WIDTH_PX as usize * 4;
     assert_eq!(pixels[..row], exact.pixels[..row]);
+}
+
+#[test]
+fn the_hsi_stamps_a_yellow_ownship_at_the_rose_centre() {
+    let mut target = Target::new();
+    render_hsi(
+        &panel(0.0, 1.0),
+        None,
+        FrameId::default(),
+        &mut target.buffers(),
+    )
+    .unwrap();
+    let [r, g, b, _] = target.pixel(240, 186);
+    assert!(r > 200 && g > 160 && b < 80, "{r} {g} {b}");
+    // The wing tips sit either side of the centre on the same row.
+    let [lr, lg, ..] = target.pixel(231, 189);
+    let [rr, rg, ..] = target.pixel(249, 189);
+    assert!(lr > 200 && lg > 160 && rr > 200 && rg > 160);
+
+    let mut failed = Target::new();
+    render_hsi(
+        &failed_panel(),
+        None,
+        FrameId::default(),
+        &mut failed.buffers(),
+    )
+    .unwrap();
+    let [r, g, ..] = failed.pixel(240, 186);
+    assert!(!(r > 200 && g > 160 && failed.pixel(240, 186)[2] < 80));
+}
+
+#[test]
+fn the_hud_draws_over_a_wide_frame_and_refuses_one_it_cannot_lay_out() {
+    use indicate_instrument_hud::{HudProfile, HudProjection, WorldSource};
+    use indicate_instrument_state::{Quat, Sig};
+
+    let context = HudContext {
+        profile: HudProfile::Screen,
+        projection: Sig::valid(HudProjection {
+            vertical_fov_rad: 1.0,
+            body_from_view: Quat::IDENTITY,
+            source: WorldSource::Synthetic,
+        }),
+        ..HudContext::default()
+    };
+    let (width, height) = (1280_u32, 720_u32);
+    let mut scene = vec![0; PANEL_SCENE_BYTES];
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    let render = render_hud(
+        &panel(0.05, 1.0),
+        &context,
+        None,
+        FrameId::default(),
+        &mut PanelBuffers {
+            scene: &mut scene,
+            pixels: &mut pixels,
+            dims: FramebufferDims::tight(width, height),
+        },
+    )
+    .unwrap();
+    assert!(render.scene_bytes > 0);
+    assert!(pixels.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
+
+    let mut small = vec![0; 300 * 300 * 4];
+    let refused = render_hud(
+        &panel(0.05, 1.0),
+        &context,
+        None,
+        FrameId::default(),
+        &mut PanelBuffers {
+            scene: &mut scene,
+            pixels: &mut small,
+            dims: FramebufferDims::tight(300, 300),
+        },
+    );
+    assert!(matches!(
+        refused,
+        Err(PanelError::HudFrameOutOfRange {
+            width: 300,
+            height: 300
+        })
+    ));
 }

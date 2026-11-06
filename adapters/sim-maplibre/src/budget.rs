@@ -1,6 +1,6 @@
 //! GPU pool, drape, and memory budgets tailored per device tier and scene role.
 //!
-//! `TruthScene` (OTW + optical sensors) and `BeliefAvionics` (`ConformalSvs3D`
+//! `TruthScene` (OTW + optical sensors) and instrument maps (`ConformalSvs3D`
 //! + `Map2D`) never use `maplibre`'s `1.0–1.66 GiB` GIS defaults:
 //! - OTW and SVS disable `SymbolBufferPool` (`BufferPoolSizes::EMPTY`) so zero
 //!   VRAM is spent on road/city SDF text pools and `CollisionSystem` costs `0 ms`.
@@ -45,11 +45,18 @@ const OTW_COMPACT_VECTORS: BufferPoolSizes = BufferPoolSizes {
     layer_metadata: 4 * 1024,
 };
 
-const AVIONICS_MAP_VECTORS: BufferPoolSizes = BufferPoolSizes {
-    vertices: 500_000,
-    indices: 1_500_000,
-    feature_metadata: 500_000,
-    layer_metadata: 2 * 1024,
+const AVIONICS_DESKTOP_VECTORS: BufferPoolSizes = BufferPoolSizes {
+    vertices: 2_500_000,
+    indices: 7_500_000,
+    feature_metadata: 2_500_000,
+    layer_metadata: 8 * 1024,
+};
+
+const AVIONICS_COMPACT_VECTORS: BufferPoolSizes = BufferPoolSizes {
+    vertices: 1_200_000,
+    indices: 3_600_000,
+    feature_metadata: 1_200_000,
+    layer_metadata: 4 * 1024,
 };
 
 const AVIONICS_MAP_SYMBOLS: BufferPoolSizes = BufferPoolSizes {
@@ -94,14 +101,28 @@ impl CockpitDeviceTier {
     /// Frame-time-bounded drape bake budget for 60–120 Hz OTW flight.
     #[must_use]
     pub const fn otw_drape_budget(self) -> DrapeBudget {
-        let limit = match self {
-            Self::Desktop => 4,
-            Self::Browser | Self::Handheld => 2,
-        };
-        DrapeBudget {
-            per_frame: limit,
-            per_eye_frame: limit,
-            moving_time: Duration::from_micros(1_500),
+        match self {
+            Self::Desktop => DrapeBudget {
+                per_frame: 4,
+                per_eye_frame: 3,
+                moving_time: Duration::from_micros(2_000),
+            },
+            Self::Browser | Self::Handheld => DrapeBudget {
+                per_frame: 2,
+                per_eye_frame: 2,
+                moving_time: Duration::from_micros(1_500),
+            },
+        }
+    }
+
+    /// Shortest interval between conformal synthetic-vision redraws (30 Hz). Relief behind
+    /// a PFD changes slowly, so drawing it every display frame costs GPU time the OTW needs.
+    /// The interval sits just under 1/30 s so 60/120 Hz frame timestamps converted through
+    /// `f64` seconds still land on every second/fourth frame.
+    #[must_use]
+    pub const fn conformal_min_interval(self) -> Duration {
+        match self {
+            Self::Desktop | Self::Browser | Self::Handheld => Duration::from_micros(33_000),
         }
     }
 
@@ -134,16 +155,16 @@ impl CockpitDeviceTier {
         }
     }
 
-    /// Renderer settings for the `BeliefAvionics` `Map2D` / `CombinedXvs` chart world.
+    /// Renderer settings for a 2D instrument chart map.
     #[must_use]
     pub fn belief_chart_settings(self, format: wgpu::TextureFormat) -> RendererSettings {
-        let (edge_px, msaa) = match self {
-            Self::Desktop => (512, Msaa { samples: 4 }),
-            Self::Browser | Self::Handheld => (512, Msaa { samples: 1 }),
+        let (buffer_pools, edge_px, msaa) = match self {
+            Self::Desktop => (AVIONICS_DESKTOP_VECTORS, 512, Msaa { samples: 4 }),
+            Self::Browser | Self::Handheld => (AVIONICS_COMPACT_VECTORS, 512, Msaa { samples: 1 }),
         };
         RendererSettings {
             msaa,
-            buffer_pools: AVIONICS_MAP_VECTORS,
+            buffer_pools,
             symbol_pools: AVIONICS_MAP_SYMBOLS,
             texture_format: Some(format),
             terrain_drape_size: edge_px,
@@ -152,3 +173,6 @@ impl CockpitDeviceTier {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

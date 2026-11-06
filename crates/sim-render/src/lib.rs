@@ -8,6 +8,8 @@
 //!
 //! [`Renderer`] presents to a window; [`SensorAperturePass`] renders the same
 //! terrain offscreen into an [`OffscreenAperture`] for simulated cameras.
+//! [`VectorScenePass`] draws anti-aliased 2D symbology into a [`VectorTarget`]
+//! that [`CompositorPass`] layers over the world as a premultiplied overlay.
 
 mod aperture;
 mod camera;
@@ -20,6 +22,7 @@ mod ortho;
 mod pipeline;
 mod renderer;
 mod scene;
+mod vector_pass;
 
 pub use aperture::{
     APERTURE_COLOUR_FORMAT, APERTURE_DEPTH_FORMAT, ApertureFrame, ApertureImage, ApertureWaveband,
@@ -37,3 +40,6 @@ pub use globe::{GlobeMesh, GlobeVertex, MAX_PATCHES, TerrainRegion, TerrainSourc
 pub use gpu::HeadlessGpu;
 pub use ortho::{OrthoAtlas, OrthoFootprint};
 pub use renderer::{Renderer, SceneLighting};
+pub use vector_pass::{
+    VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorScenePass, VectorTarget, VectorVertex,
+};

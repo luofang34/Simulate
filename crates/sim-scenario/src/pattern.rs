@@ -7,22 +7,25 @@ use std::collections::BTreeSet;
 use glam::DVec3;
 use sim_apollo::{CockpitInstrumentPanel, CockpitInstrumentSnapshot, EarthVehicleSources};
 use sim_core::{
-    Block, CameraFrameCapture, CameraMount, CameraPoseEcef, EngineStartMode, EnuAnchor,
-    JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock, JsbsimFdmConfig, KinematicInput, KinematicModel,
-    RateAdapter, SimInstant, TickSpan, VehicleState, VirtualCameraRigBlock, VirtualCameraSpec,
+    AirframeArticulation, Block, CameraFrameCapture, CameraMount, CameraPoseEcef, ControlInputs,
+    EngineStartMode, EnuAnchor, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock, JsbsimFdmConfig,
+    KinematicInput, KinematicModel, RateAdapter, SimInstant, TickSpan, VehicleState,
+    VirtualCameraRigBlock, VirtualCameraSpec,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use sim_pack::builtin_c172_package;
-use sim_scenery::{AerodromeId, OsmAerodromeDiagram};
+use sim_scenery::{AerodromeId, AuthoritativeWorldSurface, OsmAerodromeDiagram, WorldSurfaceQuery};
 
 use crate::{FlightDynamics, ScenarioError};
 
 mod cameras;
 mod guidance;
+pub(crate) mod snapshot;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use cameras::pattern_cameras_on_datum;
 pub use cameras::pattern_virtual_cameras;
 use guidance::{
     PatternAutopilot, RunwayReading, advance_leg, command_for_leg, initial_upwind_geodetic,
@@ -32,7 +35,8 @@ const PERIOD: TickSpan = JSBSIM_DEFAULT_PERIOD;
 const C172_START_SPEED_M_S: f64 = 39.5;
 const C172_START_ALPHA_RAD: f64 = 0.055;
 const SEA_LEVEL_MIXTURE_NORM: f64 = 0.88;
-const COCKPIT_EYE_BODY_M: DVec3 = DVec3::new(0.35, -0.24, -0.32);
+/// Left-seat eye in FRD body axes at the C172 structural eyepoint (`1.36 m` AGL on gear).
+const COCKPIT_EYE_BODY_M: DVec3 = DVec3::new(0.10, -0.26, -0.12);
 const MAX_SINGLE_CIRCUIT_DURATION_S: f64 = 420.0;
 
 /// Standard rectangular airport pattern turn direction.
@@ -130,18 +134,20 @@ impl PatternPlant {
                 let pkg = builtin_c172_package()?;
                 let files = pkg.build_jsbsim_resolver()?;
                 let (aircraft_path, model) = pkg.jsbsim_model()?;
-                let mut fdm = JsbsimFdmBlock::new(&JsbsimFdmConfig {
-                    resolver: &files,
-                    aircraft_path,
-                    model,
-                    period: PERIOD,
-                    initial,
-                    heading_rad,
-                    speed_m_s: C172_START_SPEED_M_S,
-                    alpha_rad: C172_START_ALPHA_RAD,
-                    engine_start: EngineStartMode::Running,
-                })?;
-                fdm.set_terrain_elevation_m(field_elevation_m)?;
+                let mut fdm = JsbsimFdmBlock::new_on_terrain(
+                    &JsbsimFdmConfig {
+                        resolver: &files,
+                        aircraft_path,
+                        model,
+                        period: PERIOD,
+                        initial,
+                        heading_rad,
+                        speed_m_s: C172_START_SPEED_M_S,
+                        alpha_rad: C172_START_ALPHA_RAD,
+                        engine_start: EngineStartMode::Running,
+                    },
+                    field_elevation_m,
+                )?;
                 let mut sys = fdm.system_controls();
                 sys.mixture_norm = SEA_LEVEL_MIXTURE_NORM;
                 sys.flaps_norm = 0.0;
@@ -159,6 +165,21 @@ impl PatternPlant {
         }
     }
 
+    fn sync_ground_at(
+        &mut self,
+        position_ecef: DVec3,
+        fallback_m: f64,
+    ) -> Result<(), ScenarioError> {
+        if let Self::C172Jsbsim(fdm) = self {
+            let geo = ecef_to_geodetic(position_ecef);
+            let ground_m = AuthoritativeWorldSurface::regional_earth_shared()?
+                .sample_surface(&geo)?
+                .map_or(fallback_m, |sample| sample.ellipsoidal_height_m.0);
+            fdm.sync_ground_elevation_m(ground_m)?;
+        }
+        Ok(())
+    }
+
     fn step(&mut self, input: &KinematicInput) -> Result<(), ScenarioError> {
         match self {
             Self::Kinematic(m) => m.step(input)?,
@@ -173,6 +194,22 @@ impl PatternPlant {
             Self::C172Jsbsim(m) => m.output(),
         }
     }
+
+    fn articulation(&self, elapsed_s: f64) -> AirframeArticulation {
+        match self {
+            Self::Kinematic(m) => AirframeArticulation::from_kinematic(
+                &m.output(),
+                ControlInputs {
+                    roll: 0.0,
+                    pitch: 0.0,
+                    yaw: 0.0,
+                    throttle: 0.65,
+                },
+                elapsed_s,
+            ),
+            Self::C172Jsbsim(m) => m.articulation(),
+        }
+    }
 }
 
 /// Deterministic C172 closed-loop airport traffic-pattern simulation run.
@@ -185,6 +222,7 @@ pub struct AirportPatternRun {
     threshold_frame: LocalFrame,
     plant: PatternPlant,
     autopilot: PatternAutopilot,
+    last_controls: ControlInputs,
     leg: PatternLeg,
     camera_rig: VirtualCameraRigBlock,
     camera_steps: RateAdapter,
@@ -261,6 +299,7 @@ impl AirportPatternRun {
             threshold_frame,
             plant,
             autopilot: PatternAutopilot::default(),
+            last_controls: ControlInputs::default(),
             leg: PatternLeg::Upwind,
             camera_rig,
             camera_steps,
@@ -333,16 +372,30 @@ impl AirportPatternRun {
         self.plant.output()
     }
 
+    /// Current engine, propeller, control-surface, and landing-gear articulation.
+    #[must_use]
+    pub fn articulation(&self) -> AirframeArticulation {
+        let elapsed_s = self.now.duration_since(SimInstant::START).as_seconds();
+        self.plant.articulation(elapsed_s)
+    }
+
+    /// The controls the autopilot last commanded; neutral before the first
+    /// step.
+    #[must_use]
+    pub fn last_controls(&self) -> ControlInputs {
+        self.last_controls
+    }
+
     /// Cockpit instrument snapshot at [`Self::now`].
     #[must_use]
     pub fn cockpit(&self) -> CockpitInstrumentSnapshot {
         self.panel.snapshot()
     }
 
-    /// Pilot eye pose in the C172 cabin (angled `-4.5°` over the cowling glareshield).
+    /// Pilot eye pose in the C172 cabin (`1.36 m` AGL on gear, angled `-3.0°` over the cowling).
     #[must_use]
     pub fn eye_pose(&self) -> CameraPoseEcef {
-        CameraMount::oblique(COCKPIT_EYE_BODY_M, 0.0, -4.5_f64.to_radians(), 0.0)
+        CameraMount::oblique(COCKPIT_EYE_BODY_M, 0.0, -3.0_f64.to_radians(), 0.0)
             .pose(&self.plant.output(), DVec3::ZERO)
     }
 
@@ -394,7 +447,10 @@ impl AirportPatternRun {
         self.report.max_flap_norm = self.report.max_flap_norm.max(cmd.flaps_norm);
         self.report.peak_bank_rad = self.report.peak_bank_rad.max(reading.bank_rad.abs());
         self.plant.set_flaps(cmd.flaps_norm);
+        self.plant
+            .sync_ground_at(state.position_ecef, self.diagram.field_elevation_m)?;
         let controls = self.autopilot.step(&cmd, &reading, PERIOD.as_seconds());
+        self.last_controls = controls;
         self.plant.step(&KinematicInput { controls })?;
         self.now = self.now.advanced(PERIOD);
 

@@ -6,9 +6,9 @@ use mbd_core::{
 use sim_atmosphere::{AtmosphereField, AtmosphereSample, StandardAtmosphere};
 use sim_aviate::RotorLayout;
 use sim_core::{
-    Block, ControlInputs, EngineStartMode, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock, JsbsimFdmConfig,
-    KinematicInput, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, TICKS_PER_SECOND,
-    ThrusterWrench, TickSpan, VehicleState,
+    Block, BlockError, ControlInputs, EngineStartMode, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock,
+    JsbsimFdmConfig, JsbsimFdmSnapshot, KinematicInput, RigidBody6DofBlock, RigidBodyConfig,
+    RigidBodyInput, RigidBodySnapshot, TICKS_PER_SECOND, ThrusterWrench, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
 use sim_pack::{builtin_c172_package, builtin_light_trainer_package};
@@ -98,16 +98,8 @@ impl JsbsimPlant {
 
     /// Advances JSBSim by one step under `controls` and updates body specific force.
     pub fn step(&mut self, controls: ControlInputs) -> Result<VehicleState, IronbirdError> {
-        let prev = self.fdm.output();
-        self.fdm.step(&KinematicInput { controls })?;
-        let next = self.fdm.output();
-        let dt_s = self.period.as_seconds();
-        let a_ecef = (next.velocity_ecef - prev.velocity_ecef) / dt_s;
-        let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(next.position_ecef);
-        let ecef_to_body = DMat3::from_quat(next.attitude.inverse());
-        self.specific_force_frd_m_s2 = ecef_to_body * (a_ecef - g_ecef);
-        self.utc = self.utc.advanced_by(dt_s);
-        Ok(next)
+        Block::step(self, &controls)?;
+        Ok(self.fdm.output())
     }
 
     /// Builds a Tier-2 [`XilStimulus`] from the current state and standard atmosphere.
@@ -120,6 +112,58 @@ impl JsbsimPlant {
             self.specific_force_frd_m_s2,
             &atm,
         )?)
+    }
+}
+
+/// Complete state of a [`JsbsimPlant`], including the specific force and
+/// atmosphere clock its sensors read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JsbsimPlantSnapshot {
+    fdm: JsbsimFdmSnapshot,
+    specific_force_frd_m_s2: DVec3,
+    utc: UtcTime,
+}
+
+impl Block for JsbsimPlant {
+    type Input = ControlInputs;
+    type Output = VehicleState;
+    type Snapshot = JsbsimPlantSnapshot;
+
+    fn period(&self) -> TickSpan {
+        self.period
+    }
+
+    fn step(&mut self, controls: &ControlInputs) -> Result<(), BlockError> {
+        let prev = self.fdm.output();
+        self.fdm.step(&KinematicInput {
+            controls: *controls,
+        })?;
+        let next = self.fdm.output();
+        let dt_s = self.period.as_seconds();
+        let a_ecef = (next.velocity_ecef - prev.velocity_ecef) / dt_s;
+        let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(next.position_ecef);
+        let ecef_to_body = DMat3::from_quat(next.attitude.inverse());
+        self.specific_force_frd_m_s2 = ecef_to_body * (a_ecef - g_ecef);
+        self.utc = self.utc.advanced_by(dt_s);
+        Ok(())
+    }
+
+    fn output(&self) -> VehicleState {
+        self.fdm.output()
+    }
+
+    fn snapshot(&self) -> JsbsimPlantSnapshot {
+        JsbsimPlantSnapshot {
+            fdm: self.fdm.snapshot(),
+            specific_force_frd_m_s2: self.specific_force_frd_m_s2,
+            utc: self.utc,
+        }
+    }
+
+    fn restore(&mut self, snapshot: &JsbsimPlantSnapshot) {
+        self.fdm.restore(&snapshot.fdm);
+        self.specific_force_frd_m_s2 = snapshot.specific_force_frd_m_s2;
+        self.utc = snapshot.utc;
     }
 }
 
@@ -196,11 +240,7 @@ impl X500RigidPlant {
 
     /// Steps the 6-DoF RK4 plant under `thrusters`.
     pub fn step(&mut self, thrusters: Vec<ThrusterWrench>) -> Result<VehicleState, IronbirdError> {
-        self.body.step(&RigidBodyInput {
-            thrusters,
-            ..RigidBodyInput::default()
-        })?;
-        self.utc = self.utc.advanced_by(self.period.as_seconds());
+        Block::step(self, &thrusters)?;
         Ok(self.body.output())
     }
 
@@ -214,5 +254,47 @@ impl X500RigidPlant {
             self.body.specific_force_cg_body(),
             &atm,
         )?)
+    }
+}
+
+/// Complete state of an [`X500RigidPlant`], including its atmosphere clock.
+#[derive(Debug, Clone, PartialEq)]
+pub struct X500PlantSnapshot {
+    body: RigidBodySnapshot,
+    utc: UtcTime,
+}
+
+impl Block for X500RigidPlant {
+    type Input = Vec<ThrusterWrench>;
+    type Output = VehicleState;
+    type Snapshot = X500PlantSnapshot;
+
+    fn period(&self) -> TickSpan {
+        self.period
+    }
+
+    fn step(&mut self, thrusters: &Vec<ThrusterWrench>) -> Result<(), BlockError> {
+        self.body.step(&RigidBodyInput {
+            thrusters: thrusters.clone(),
+            ..RigidBodyInput::default()
+        })?;
+        self.utc = self.utc.advanced_by(self.period.as_seconds());
+        Ok(())
+    }
+
+    fn output(&self) -> VehicleState {
+        self.body.output()
+    }
+
+    fn snapshot(&self) -> X500PlantSnapshot {
+        X500PlantSnapshot {
+            body: self.body.snapshot(),
+            utc: self.utc,
+        }
+    }
+
+    fn restore(&mut self, snapshot: &X500PlantSnapshot) {
+        self.body.restore(&snapshot.body);
+        self.utc = snapshot.utc;
     }
 }

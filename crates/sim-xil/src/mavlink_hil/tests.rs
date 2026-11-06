@@ -238,3 +238,105 @@ fn udp_endpoint_completes_exchange() {
     assert_eq!(got.time_usec, 25_000);
     udp_peer.join().unwrap();
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn udp_pair(cfg: MavlinkHilConfig) -> (MavlinkHilUdpEndpoint, std::net::UdpSocket) {
+    let fc = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let ep = MavlinkHilUdpEndpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        fc.local_addr().unwrap(),
+        cfg,
+    )
+    .unwrap();
+    fc.connect(ep.local_addr().unwrap()).unwrap();
+    (ep, fc)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn send_controls(fc: &std::net::UdpSocket, time_usec: u64, throttle: f32) {
+    let mut controls = [0.0_f32; 16];
+    controls[3] = throttle;
+    let reply = HilActuatorControls {
+        time_usec,
+        controls,
+        mode: MAV_MODE_FLAG_SAFETY_ARMED,
+        flags: 0,
+    };
+    let mut tx = [0_u8; 128];
+    let n = encode_hil_actuator_controls(0, 1, 1, &reply, &mut tx).unwrap();
+    fc.send(&tx[..n]).unwrap();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn receive_blocking(
+    ep: &mut MavlinkHilUdpEndpoint,
+) -> Option<sim_core::StampedResponse<HilActuatorControls>> {
+    use sim_core::ExternalEndpoint;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let before = ep.link_stats();
+    while std::time::Instant::now() < deadline {
+        if let Some(got) = ep.try_receive().unwrap() {
+            return Some(got);
+        }
+        let stats = ep.link_stats();
+        if stats.stale_actuator_drops != before.stale_actuator_drops {
+            return None;
+        }
+        std::thread::yield_now();
+    }
+    panic!("no actuator frame arrived");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn udp_endpoint_maps_a_day_long_px4_uptime_onto_the_send_instant() {
+    use sim_core::ExternalEndpoint;
+    let (mut ep, fc) = udp_pair(MavlinkHilConfig::default());
+    let stim = sample_stimulus();
+    let step = TickSpan::from_ticks(TICKS_PER_SECOND / 250);
+    let t0 = SimInstant::START.advanced(step);
+    ep.post(t0, &stim).unwrap();
+    send_controls(&fc, 86_400_000_000, 0.6);
+    let got = receive_blocking(&mut ep).unwrap();
+    assert_eq!(got.deliver_at, t0);
+
+    ep.post(t0.advanced(step), &stim).unwrap();
+    send_controls(&fc, 86_400_000_000 + 4_000, 0.6);
+    let got = receive_blocking(&mut ep).unwrap();
+    assert_eq!(got.deliver_at, t0.advanced(step));
+    let stats = ep.link_stats();
+    assert_eq!(stats.sensor_frames_sent, 2);
+    assert_eq!(stats.correlated_actuator_frames, 2);
+    assert_eq!(stats.clock_resyncs, 0);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn udp_endpoint_drops_a_stale_reply_and_keeps_the_fresh_one() {
+    use sim_core::ExternalEndpoint;
+    let (mut ep, fc) = udp_pair(MavlinkHilConfig {
+        max_reply_age: Some(DEFAULT_MAX_REPLY_AGE),
+        ..MavlinkHilConfig::default()
+    });
+    let stim = sample_stimulus();
+    let ms =
+        |n: u64| SimInstant::START.advanced(TickSpan::from_ticks(n * TICKS_PER_SECOND / 1_000));
+    ep.post(ms(0), &stim).unwrap();
+    send_controls(&fc, 5_000_000, 0.5);
+    assert_eq!(receive_blocking(&mut ep).unwrap().deliver_at, ms(0));
+
+    ep.post(ms(300), &stim).unwrap();
+    send_controls(&fc, 5_000_000 + 100_000, 0.9);
+    assert!(receive_blocking(&mut ep).is_none());
+    send_controls(&fc, 5_000_000 + 296_000, 0.7);
+    let fresh = receive_blocking(&mut ep).unwrap();
+    assert_eq!(fresh.deliver_at, ms(296));
+    assert!((fresh.response.controls[3] - 0.7).abs() < 1.0e-6);
+    let stats = ep.link_stats();
+    assert_eq!(stats.stale_actuator_drops, 1);
+    assert_eq!(stats.correlated_actuator_frames, 2);
+    assert_eq!(
+        stats.last_round_trip_ticks,
+        ms(300).duration_since(ms(0)).ticks()
+    );
+}

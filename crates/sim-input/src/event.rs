@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 /// A connected controller, numbered by the platform backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(pub u32);
 
 /// How a device reports its axes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Layout {
     /// The W3C Gamepad "standard" mapping: axes have fixed meanings.
     Standard,
@@ -27,7 +29,7 @@ pub struct DeviceInfo {
 }
 
 /// Axes of the standard gamepad layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum GamepadAxis {
     /// Left stick, right positive.
     LeftStickX,
@@ -44,7 +46,7 @@ pub enum GamepadAxis {
 }
 
 /// Where an axis value comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AxisSource {
     /// A standard-layout axis.
     Gamepad(GamepadAxis),
@@ -68,4 +70,38 @@ pub enum RawInput {
         /// New position.
         value: f32,
     },
+}
+
+/// Buttons of the standard gamepad layout, delivered through
+/// [`InputMapper::handle_button`](crate::InputMapper::handle_button).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum GamepadButton {
+    /// Bottom face button (A / Cross).
+    South,
+    /// Right face button (B / Circle).
+    East,
+    /// Left face button (X / Square).
+    West,
+    /// Top face button (Y / Triangle).
+    North,
+    /// Left bumper (LB / L1).
+    LeftShoulder,
+    /// Right bumper (RB / R1).
+    RightShoulder,
+    /// Select / View / Share.
+    Select,
+    /// Start / Menu / Options.
+    Start,
+    /// Left stick click.
+    LeftStick,
+    /// Right stick click.
+    RightStick,
+    /// D-pad up.
+    DPadUp,
+    /// D-pad down.
+    DPadDown,
+    /// D-pad left.
+    DPadLeft,
+    /// D-pad right.
+    DPadRight,
 }

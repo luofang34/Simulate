@@ -28,12 +28,12 @@ The workspace has four top-level directories:
 | `c172` | `vehicles/` | Data-only vehicle package: a piston C172-class aeroplane, exported from its `ace-rs` design |
 | `sim-apollo` | `vehicles/apollo-11/` | Apollo 11: the Eagle and Columbia packages under `packages/`, gimballed IMU with gimbal lock, abort sensors, radars, optics, entry monitor, source-monitored cockpit panel |
 | `sim-indicate` | `adapters/` | Indicate: aircraft state and tagged frames from flight state, dual-source attitude monitoring, deterministic PFD/HSI framebuffers, and 3D volumetric instrument scenes |
-| `sim-maplibre` | `adapters/` | Shared-GPU `maplibre-rs` adapter: strict Dual-World `TruthSceneMap` (OTW + `30 Hz` optical sensor) vs. `BeliefAvionicsMap` (procedural-relief SVS, dirty-gated `15 Hz` chart, 3D volumetric patch export, and companion gesture streaming) |
+| `sim-maplibre` | `adapters/` | Shared-GPU `maplibre-rs` adapter: the physical `TruthSceneMap` (real imagery on terrain, OTW, `30 Hz` optical sensor, virtual cameras, OpenUSD 3D aircraft) and `0..N` styled instrument maps per avionics preset (`AvionicsMapSet`: conformal SVS relief, dirty-gated 2D charts with ownship symbology), 3D volumetric patch export, and companion gesture streaming |
 | `sim-navigate` | `adapters/` | Navigate: master-clock to monotonic-time bridge, visual fix admission through a real visual session, lever-arm removal, acquisition-ordered navigation filter loop, solution scoring against truth |
 | `sim-aviate` | `adapters/` | Aviate: Tier 0 in-process `DirectXilBoard` runner (`0` syscalls, `0` allocs/step) and Tier 1 shared-memory `SharedStateV2` seqlock endpoint |
 | `sim-pilotage` | `adapters/` | Pilotage: `VehicleAdapter` over kinematic and JSBSim vehicles, verified camera calibration from a package camera, aircraft profile/loading bridges, and `pilotage.bridge.v1` synthetic camera sidecar |
 | `ironbird` | `apps/` | Headless multi-tier XIL bench runner across Tier 0 (`aviate-xil-direct`), Tier 1 (`SharedStateV2`), and Tier 2 (`mavlink_hil` / `betaflight`) |
-| `simulate-app` | `apps/` | Composite split-viewport cockpit for desktop and browser (`TruthSceneMap` OTW/sensor, `BeliefAvionicsMap` SVS/MFD chart, `Indicate` PFD/HSI/HUD, `SimSupervisor`, JSBSim, and Tier-0 `Aviate`) |
+| `simulate-app` | `apps/` | Composite split-viewport cockpit for desktop and browser (`TruthSceneMap` OTW/sensor with 3D aircraft, avionics-preset instrument maps, `Indicate` PFD/HSI and full-window conformal HUD, `SimSupervisor`, JSBSim, and Tier-0 `Aviate`) |
 
 A vehicle package is a `syspack`: a folder holding a `syspack.json` manifest and
 the asset files it lists with their SHA-256 and size. Changing an asset means
@@ -73,8 +73,13 @@ cd apps/simulate-app
 trunk serve --release
 ```
 
+Scenery streams from Esri World Imagery, AWS Terrain Tiles, and OpenFreeMap.
+Natively, downloaded tiles are kept in `target/simulate-tile-cache`, or in
+`$SIMULATE_TILE_CACHE_DIR` when set. Set `SIMULATE_OFFLINE_SCENERY` to use the
+built-in synthetic regional catalog instead, with no network.
+
 Controls: arrow keys fly (Down is stick back), `A`/`D` rudder, `W`/`S` throttle.
-`V` cycles free-flight vehicles (`C172 Skyhawk`, `Light Trainer`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `K` cycles the active home airport (`KDOV`, `47N`, `KEWR`); `C` cycles virtual cameras (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`, `Tower PTZ Auto-Track`, and `Threshold Final Cam`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `U` toggles the conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
+`V` cycles free-flight vehicles (`C172 Skyhawk`, `Light Trainer`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `K` cycles the active home airport (`KDOV`, `47N`, `KEWR`); `C` cycles virtual cameras (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`, `Tower PTZ Auto-Track`, and `Threshold Final Cam`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `P` cycles the avionics preset (gauges with no map, a single moving map, or the glass cockpit with synthetic vision, moving map, and airport diagram); `U` toggles the full-window conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
 A standard-layout gamepad flies with the left stick, rudder on the right stick,
 and throttle on the right trigger. Other joysticks and yokes bind axis 0 to
 roll, axis 1 to pitch, and axis 2 to the throttle lever.

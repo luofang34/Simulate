@@ -13,6 +13,9 @@ const POLAR_AXIS_EPSILON_M: f64 = 1e-6;
 /// Earth's second zonal harmonic, the WGS84 dynamic form factor.
 pub const WGS84_J2: f64 = 1.082_629_821e-3;
 
+/// Mars's second zonal harmonic in the IAU body-fixed frame.
+pub const MARS_IAU_J2: f64 = 1.960_45e-3;
+
 /// A celestial body's reference ellipsoid and central gravity field.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BodyEllipsoid {
@@ -35,7 +38,7 @@ impl BodyEllipsoid {
         omega_rad_s: 7.292_115e-5,
     };
 
-    /// The Moon as the IAU mean sphere.
+    /// The Moon as the IAU mean sphere (`1,737.4 km`, matching `Navigate`'s `MOON_ME` / `MOON_PA`).
     pub const MOON_IAU: Self = Self {
         semi_major_m: 1_737_400.0,
         flattening: 0.0,
@@ -43,14 +46,38 @@ impl BodyEllipsoid {
         omega_rad_s: 2.661_699_5e-6,
     };
 
+    /// Mars on the IAU reference spheroid (`a = 3,396,190 m`, `b = 3,376,200 m`), matching
+    /// `Navigate`'s `Ellipsoid::MARS_IAU` and `PlanetaryBody::MARS_IAU`.
+    pub const MARS_IAU: Self = Self {
+        semi_major_m: 3_396_190.0,
+        flattening: 1.0 / 169.894_447_223_611_8,
+        mu_m3_s2: 4.282_837_2e13,
+        omega_rad_s: 7.088_218_1e-5,
+    };
+
     /// Polar radius, metres.
     pub const fn semi_minor_m(&self) -> f64 {
         self.semi_major_m * (1.0 - self.flattening)
     }
 
+    /// IUGG mean radius `(2a + b) / 3`, metres.
+    pub const fn mean_radius_m(&self) -> f64 {
+        (2.0 * self.semi_major_m + self.semi_minor_m()) / 3.0
+    }
+
     /// First eccentricity squared.
     pub const fn eccentricity_squared(&self) -> f64 {
         self.flattening * (2.0 - self.flattening)
+    }
+
+    /// Meridian and prime-vertical radii of curvature `(meridian_m, prime_vertical_m)` at `lat_rad`.
+    pub fn radii_of_curvature_m(&self, lat_rad: f64) -> (f64, f64) {
+        let a = self.semi_major_m;
+        let e2 = self.eccentricity_squared();
+        let sin_lat = lat_rad.sin();
+        let w2 = 1.0 - e2 * sin_lat * sin_lat;
+        let w = w2.sqrt();
+        (a * (1.0 - e2) / (w2 * w), a / w)
     }
 
     /// Converts a geodetic position to body-fixed metres.

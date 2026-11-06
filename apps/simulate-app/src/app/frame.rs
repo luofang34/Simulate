@@ -1,0 +1,240 @@
+//! One window frame: advance the flight, place the camera, evaluate the sky, draw the
+//! cockpit and the menu, and present.
+
+use std::collections::hash_map::Entry;
+
+use sim_geo::BodyEllipsoid;
+use sim_render::{Camera, FrameOutcome, SceneLighting};
+use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
+use winit::event_loop::ActiveEventLoop;
+
+use super::{FlightApp, TITLE_INTERVAL_S};
+use crate::camera_view::camera_from_virtual_spec_on;
+use crate::platform;
+use crate::sky_rig::wall_clock_utc_s;
+use crate::telemetry;
+
+impl FlightApp {
+    /// Uploads the fallback `GlobeScene` mesh for `world` when needed (e.g. `LunarTranquility`
+    /// or `WebGL2` fallback).
+    fn ensure_globe_world(&mut self, event_loop: &ActiveEventLoop, world: ScenarioWorld) {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        if self.drawn_world == Some(world) {
+            return;
+        }
+        let scene = match self.scenes.entry(world) {
+            Entry::Occupied(scene) => scene.into_mut(),
+            Entry::Vacant(slot) => match world.scene() {
+                Ok(scene) => slot.insert(scene),
+                Err(err) => return self.fail(event_loop, "building the terrain failed", &err),
+            },
+        };
+        if let Err(err) = renderer.set_scene(&scene.mesh, scene.atlas.as_ref()) {
+            return self.fail(event_loop, "uploading the terrain failed", &err);
+        }
+        self.drawn_world = Some(world);
+    }
+
+    /// Viewport mode, and the time scale the flight advances at: held while the menu is open.
+    pub(super) fn view_and_time_scale(&self) -> (OperatorViewportMode, SimTimeScale) {
+        let (mode, scale) = self.cockpit_rig.as_ref().map_or(
+            (OperatorViewportMode::Cockpit, SimTimeScale::RealTime),
+            |rig| {
+                (
+                    rig.supervisor().viewport_mode(),
+                    rig.supervisor().time_scale(),
+                )
+            },
+        );
+        let scale = if self.esc_menu.is_open() {
+            SimTimeScale::Paused
+        } else {
+            scale
+        };
+        (mode, scale)
+    }
+
+    /// Logs cockpit state transitions and refreshes the window title periodically.
+    fn observe_cockpit(&mut self, elapsed_s: f64) {
+        let cockpit = self.flight.cockpit();
+        telemetry::log_changes(&self.cockpit, &cockpit);
+        self.cockpit = cockpit;
+        self.title_age_s += elapsed_s;
+        if self.title_age_s < TITLE_INTERVAL_S {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        self.title_age_s = 0.0;
+        let profile = self.flight.profile();
+        let earth = self.flight.world().body() == BodyEllipsoid::WGS84;
+        let (viewport_mode, cam_title, aero_code, time_scale) = self.cockpit_rig.as_ref().map_or(
+            (
+                OperatorViewportMode::Cockpit,
+                None,
+                None,
+                SimTimeScale::RealTime,
+            ),
+            |rig| {
+                let sup = rig.supervisor();
+                (
+                    sup.viewport_mode(),
+                    Some(sup.active_virtual_camera(profile).title),
+                    earth.then(|| sup.effective_airport_code(profile)),
+                    sup.time_scale(),
+                )
+            },
+        );
+        platform::set_title(
+            window,
+            &telemetry::title(
+                &self.flight,
+                viewport_mode,
+                cam_title,
+                aero_code,
+                time_scale,
+                &cockpit,
+            ),
+        );
+    }
+
+    /// The window camera on the interpolated display state.
+    fn frame_camera(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        mode: OperatorViewportMode,
+    ) -> Option<Camera> {
+        let body = self.flight.world().body();
+        let camera = match self.flight.display_camera(mode) {
+            Ok(camera) => {
+                self.look
+                    .apply_on(body, mode, camera, &self.flight.display_vehicle_state())
+            }
+            Err(err) => {
+                self.fail(event_loop, "the view could not be placed", &err);
+                return None;
+            }
+        };
+        if mode == OperatorViewportMode::SensorAperture
+            && let Some(rig) = self.cockpit_rig.as_ref()
+        {
+            let (cam_body, spec) = rig
+                .supervisor()
+                .active_virtual_camera_on_body(self.flight.profile());
+            if let Some(vcam) =
+                camera_from_virtual_spec_on(cam_body, &spec, &self.flight.display_vehicle_state())
+            {
+                return Some(vcam);
+            }
+        }
+        Some(camera)
+    }
+
+    pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
+        let (viewport_mode, time_scale) = self.view_and_time_scale();
+        let controls = self.mapper.controls();
+        let wall_s;
+        match self.flight.advance_to_now(controls, time_scale) {
+            Ok(elapsed_s) => {
+                if !self.esc_menu.is_open() {
+                    self.keyboard.update(elapsed_s, &mut self.mapper);
+                    let throttle = self.mapper.controls().throttle;
+                    if let Some(t) = self.controls.integrate_throttle(elapsed_s, throttle) {
+                        self.mapper.set(sim_input::Control::Throttle, t);
+                    }
+                    self.controls.sync_live(self.mapper.controls());
+                    if self.controls.take_look_reset() {
+                        self.look.reset();
+                    }
+                    let look_axes = self.controls.camera_look_axes();
+                    if viewport_mode == OperatorViewportMode::Cockpit {
+                        self.look.follow_stick(look_axes, elapsed_s);
+                    } else {
+                        self.look.integrate(look_axes, elapsed_s);
+                    }
+                }
+                self.update_takeover_hint(elapsed_s);
+                wall_s = elapsed_s;
+                self.observe_cockpit(elapsed_s);
+            }
+            Err(err) => return self.fail(event_loop, "the flight model stopped", &err),
+        }
+        let Some(camera) = self.frame_camera(event_loop, viewport_mode) else {
+            return;
+        };
+        let exposures = self.flight.drain_sensor_exposures();
+        let world = self.flight.world();
+        let sky = self
+            .sky
+            .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
+        let lighting = SceneLighting {
+            sun_direction_ecef: sky.sun_direction_ecef,
+        };
+        let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
+            (Some(renderer), Some(rig)) => match rig.prepare_frame(
+                renderer.queue(),
+                renderer.surface_size(),
+                &self.flight,
+                &camera,
+                &sky,
+                &exposures,
+            ) {
+                Ok(need_globe) => need_globe,
+                Err(err) => return self.fail(event_loop, "cockpit avionics update failed", &err),
+            },
+            (Some(_), None) => true,
+            (None, _) => return,
+        };
+        if need_globe {
+            self.ensure_globe_world(event_loop, world);
+            if self.failed {
+                return;
+            }
+        }
+        self.render_menu(event_loop, wall_s);
+        if self.failed {
+            return;
+        }
+        if self.occluded {
+            if let Some(renderer) = &self.renderer
+                && let Err(err) = renderer.device().poll(wgpu::PollType::Poll)
+            {
+                tracing::debug!(?err, "occluded GPU poll failed");
+            }
+            return;
+        }
+        self.present(
+            event_loop,
+            world,
+            need_globe.then_some((&camera, &lighting)),
+        );
+    }
+
+    fn present(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        world: ScenarioWorld,
+        globe: Option<(&Camera, &SceneLighting)>,
+    ) {
+        let (Some(renderer), Some(rig)) = (self.renderer.as_mut(), self.cockpit_rig.as_ref())
+        else {
+            return;
+        };
+        let mut quads = rig.overlay_quads(world);
+        let preview_view =
+            super::hub::hub_preview_view(self.esc_menu.tab(), self.hangar.as_ref(), rig.maps());
+        super::hub::hub_quads(
+            self.menu_overlay.as_ref(),
+            self.hub_preview,
+            preview_view,
+            &mut quads,
+        );
+        match renderer.render_composite(globe, &quads) {
+            Ok(FrameOutcome::Presented | FrameOutcome::Skipped) => {}
+            Err(err) => self.fail(event_loop, "rendering failed", &err),
+        }
+    }
+}

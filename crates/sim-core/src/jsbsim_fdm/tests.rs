@@ -5,6 +5,8 @@ use sim_geo::{LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
 use super::*;
 
+mod ground;
+
 const TRAINER_XML: &str = include_str!("../../../../vehicles/light-trainer/fdm/trainer.xml");
 const JSBSIM_TRAINER_AIRCRAFT_PATH: &str = "aircraft";
 const JSBSIM_TRAINER_MODEL: &str = "sim_trainer";
@@ -305,4 +307,183 @@ fn an_aircraft_without_pitch_trim_reports_that_it_cannot_trim() {
         Err(BlockError::Fdm { .. })
     ));
     assert!(block.output().position_ecef.is_finite());
+}
+
+#[test]
+fn c172_articulation_tracks_propeller_phase_disc_blur_and_control_surfaces() {
+    const C172_XML: &str = include_str!("../../../../vehicles/c172/fdm/c172_class_reference.xml");
+    let mut files = MemoryResolver::new();
+    files.insert(
+        "aircraft/c172_class_reference/c172_class_reference.xml",
+        C172_XML,
+    );
+
+    let cold = JsbsimFdmBlock::new(&JsbsimFdmConfig {
+        resolver: &files,
+        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
+        model: "c172_class_reference",
+        period: JSBSIM_DEFAULT_PERIOD,
+        initial: start(),
+        heading_rad: 0.0,
+        speed_m_s: 0.0,
+        alpha_rad: 0.0,
+        engine_start: EngineStartMode::ColdAndDark,
+    })
+    .unwrap();
+    let cold_vis = cold.articulation().propeller_visual(1.0 / 250.0);
+    assert_eq!(cold_vis.blade_opacity, 1.0);
+    assert_eq!(cold_vis.disc_opacity, 0.0);
+
+    let mut running = JsbsimFdmBlock::new(&JsbsimFdmConfig {
+        resolver: &files,
+        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
+        model: "c172_class_reference",
+        period: JSBSIM_DEFAULT_PERIOD,
+        initial: start(),
+        heading_rad: 0.0,
+        speed_m_s: CRUISE_M_S,
+        alpha_rad: CRUISE_ALPHA_RAD,
+        engine_start: EngineStartMode::Running,
+    })
+    .unwrap();
+    running.set_system_controls(SystemControls {
+        flaps_norm: 1.0,
+        ..SystemControls::running_defaults()
+    });
+    let initial_phase = running.articulation().propeller_phase_rad;
+    run(
+        &mut running,
+        60,
+        ControlInputs {
+            roll: 0.4,
+            pitch: -0.25,
+            yaw: 0.3,
+            throttle: 0.85,
+        },
+    );
+    let art = running.articulation();
+    assert!(art.propeller_rpm > 1_200.0, "rpm={}", art.propeller_rpm);
+    assert_ne!(art.propeller_phase_rad, initial_phase);
+    let spin_vis = art.propeller_visual(1.0 / 250.0);
+    assert_eq!(spin_vis.blade_opacity, 0.0);
+    assert!(
+        (0.25..=0.40).contains(&spin_vis.disc_opacity),
+        "disc_opacity={}",
+        spin_vis.disc_opacity
+    );
+    assert!(spin_vis.shutter_blur_angle_rad > 0.2);
+    assert!((art.flap_deg - 2.5).abs() < 0.25, "flap={}", art.flap_deg);
+    assert!(art.left_aileron_rad.abs() > 0.02);
+    assert!((art.right_aileron_rad + art.left_aileron_rad).abs() < 1e-4);
+    assert!(art.elevator_rad.abs() > 0.02);
+    assert!(art.rudder_rad.abs() > 0.02);
+
+    let snap = running.snapshot();
+    assert_eq!(snap.articulation, art);
+
+    run(&mut running, 720, cruise());
+    assert!(
+        (running.articulation().flap_deg - 30.0).abs() < 0.5,
+        "full flap={}",
+        running.articulation().flap_deg
+    );
+}
+
+/// Body-axis downward gear force, lbf: negative while the ground pushes up.
+fn gear_down_lbf(block: &mut JsbsimFdmBlock) -> f64 {
+    block.fdm.get_property("forces/fbz-gear-lbs").unwrap()
+}
+
+/// JSBSim reports terrain from its own geodetic round trip, good to well
+/// under a millimetre.
+const TERRAIN_READBACK_M: f64 = 1e-4;
+
+#[test]
+fn syncing_the_ground_leaves_the_latest_step_untouched() {
+    let mut block = trainer(0.0);
+    run(&mut block, 30, cruise());
+    let before = block.snapshot();
+
+    block.sync_ground_elevation_m(123.25).unwrap();
+
+    assert_eq!(block.snapshot(), before);
+    let terrain_ft = block
+        .fdm
+        .read_node(block.nodes.terrain_elevation_asl_ft)
+        .unwrap();
+    assert!((terrain_ft * METRES_PER_FOOT - 123.25).abs() < TERRAIN_READBACK_M);
+    assert!(block.sync_ground_elevation_m(f64::NAN).is_err());
+}
+
+#[test]
+fn ground_moving_far_below_every_step_does_not_disturb_the_flight() {
+    let [mut steady, mut tracked] = [trainer(0.4), trainer(0.4)];
+    let input = KinematicInput { controls: cruise() };
+    for step in 0..240_u32 {
+        tracked
+            .sync_ground_elevation_m(f64::from(step % 37) * 2.5)
+            .unwrap();
+        steady.step(&input).unwrap();
+        tracked.step(&input).unwrap();
+        assert_eq!(
+            bits(&tracked.output()),
+            bits(&steady.output()),
+            "step {step}"
+        );
+    }
+}
+
+#[test]
+fn ground_raised_into_the_belly_pushes_up_and_lowering_it_lets_go() {
+    let [mut free, mut grounded] = [trainer(0.0), trainer(0.0)];
+    run(&mut free, 10, cruise());
+    run(&mut grounded, 10, cruise());
+    let height = ecef_to_geodetic(grounded.output().position_ecef).height_m;
+    assert_eq!(gear_down_lbf(&mut grounded), 0.0);
+
+    // The belly contact sits 40 in (about 1 m) below the CG, so ground 0.5 m
+    // below the CG is about half a metre into the airframe.
+    // JSBSim integrates the contact force on the step after it measures it.
+    grounded.sync_ground_elevation_m(height - 0.5).unwrap();
+    run(&mut free, 3, cruise());
+    run(&mut grounded, 3, cruise());
+    assert!(
+        gear_down_lbf(&mut grounded) < -100.0,
+        "{}",
+        gear_down_lbf(&mut grounded)
+    );
+    let up = LocalFrame::at(&start()).up();
+    let climb = |block: &JsbsimFdmBlock| block.output().velocity_ecef.dot(up);
+    assert!(climb(&grounded) > climb(&free), "the contact pushes up");
+    let along = |block: &JsbsimFdmBlock| block.output().velocity_ecef.reject_from(up).length();
+    let (sliding, flying) = (along(&grounded), along(&free));
+    assert!(
+        sliding < flying && sliding > flying - 2.0,
+        "belly friction drags a little: {sliding} vs {flying}"
+    );
+
+    grounded.sync_ground_elevation_m(height - 300.0).unwrap();
+    run(&mut grounded, 1, cruise());
+    assert_eq!(gear_down_lbf(&mut grounded), 0.0);
+    assert!(grounded.output().angular_rate_body.is_finite());
+}
+
+#[test]
+fn msl_ground_is_raised_by_the_geoid_onto_the_ellipsoid() {
+    let mut block = trainer(0.0);
+    let site = start();
+    block
+        .sync_ground_msl_egm96_m(site.lat_rad, site.lon_rad, 10.0)
+        .unwrap();
+    let terrain_m = block
+        .fdm
+        .read_node(block.nodes.terrain_elevation_asl_ft)
+        .unwrap()
+        * METRES_PER_FOOT;
+    let undulation = sim_geo::egm96_undulation_m(site.lat_rad, site.lon_rad);
+    assert!(undulation < -30.0, "{undulation}");
+    assert!(
+        (terrain_m - (10.0 + undulation)).abs() < TERRAIN_READBACK_M,
+        "{terrain_m}"
+    );
 }

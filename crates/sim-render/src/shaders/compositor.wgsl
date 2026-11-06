@@ -6,6 +6,7 @@ struct QuadParams {
     // Bit 0 (1u): decode sRGB-encoded Unorm RGB to linear RGB.
     // Bit 1 (2u): draw subtle glass-cockpit bezel border around the quad.
     // Bit 2 (4u): force source alpha to 1.0 (opaque viewport underlay).
+    // Bit 3 (8u): source colour is already premultiplied by its alpha.
     flags: u32,
     opacity: f32,
 };
@@ -57,6 +58,8 @@ fn vs_quad(@builtin(vertex_index) vid: u32) -> VertexOut {
     return out;
 }
 
+// Output is premultiplied for `PREMULTIPLIED_ALPHA_BLENDING`, so straight
+// and premultiplied sources composite through one blend state.
 @fragment
 fn fs_quad(in: VertexOut) -> @location(0) vec4<f32> {
     let sample = textureSample(quad_tex, quad_sampler, in.uv);
@@ -64,9 +67,14 @@ fn fs_quad(in: VertexOut) -> @location(0) vec4<f32> {
     if (params.flags & 1u) != 0u {
         rgb = srgb_to_linear(rgb);
     }
-    var alpha = sample.a;
-    if (params.flags & 4u) != 0u {
-        alpha = 1.0;
+    let opaque = (params.flags & 4u) != 0u;
+    let alpha_in = select(sample.a, 1.0, opaque);
+    var alpha = alpha_in;
+    // Premultiplied texels already carry their coverage in rgb; an opaque
+    // underlay keeps them unscaled, as does a straight source drawn opaque.
+    var premul = rgb;
+    if (params.flags & 8u) == 0u {
+        premul = rgb * alpha_in;
     }
 
     if (params.flags & 2u) != 0u {
@@ -76,13 +84,14 @@ fn fs_quad(in: VertexOut) -> @location(0) vec4<f32> {
             min(px.y, params.pixel_size.y - px.y),
         );
         if edge_dist < 1.25 {
-            rgb = vec3<f32>(0.02, 0.03, 0.05);
             alpha = 0.96;
+            premul = vec3<f32>(0.02, 0.03, 0.05) * alpha;
         } else if edge_dist < 2.25 {
-            rgb = vec3<f32>(0.10, 0.16, 0.24);
             alpha = max(alpha, 0.92);
+            premul = vec3<f32>(0.10, 0.16, 0.24) * alpha;
         }
     }
 
-    return vec4<f32>(rgb, clamp(alpha * params.opacity, 0.0, 1.0));
+    let opacity = clamp(params.opacity, 0.0, 1.0);
+    return vec4<f32>(premul * opacity, clamp(alpha * opacity, 0.0, 1.0));
 }

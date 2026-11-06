@@ -1,7 +1,7 @@
 use indicate_instrument_state::abi::v8::{AbiError, CAPACITY};
 use indicate_instrument_state::{
-    AirframeDisplayProfile, FreshnessPolicy, PanelData, SignalStatus, UnusualAttitudeState,
-    resolve_stateful,
+    AirframeDisplayProfile, FreshnessPolicy, HeadingReference, IdentStr, PanelData, SignalStatus,
+    UnusualAttitudeState, resolve_stateful,
 };
 use sim_apollo::CockpitInstrumentPanel;
 use sim_core::{TickSpan, VehicleState};
@@ -25,6 +25,7 @@ fn config(altitude: AltitudeSource) -> FeedConfig {
         origin: origin(),
         origin_id: 7,
         altitude,
+        heading_mode: HeadingMode::default(),
     }
 }
 
@@ -360,4 +361,68 @@ fn a_frame_that_does_not_fit_or_does_not_parse_says_so() {
             source: AbiError::BadVersion { found: 9 }
         },
     );
+}
+
+#[test]
+fn earth_magnetic_mode_resolves_newark_rwy_22l_in_magnetic_degrees() {
+    let threshold = Geodetic::from_degrees(40.69, -74.17, 5.0);
+    let course_rad = 206.0_f64.to_radians();
+    let mut mag_feed = StateFeed::new(FeedConfig {
+        origin: threshold,
+        heading_mode: HeadingMode::EarthMagnetic,
+        ..config(AltitudeSource::OriginRelative)
+    });
+    let vehicle = VehicleState::level_flight(&threshold, course_rad, 50.0);
+    let sample = FlightSample {
+        guidance: Some(HostFlightGuidance {
+            selections: PilotSelections {
+                heading_rad: course_rad,
+                altitude_m: None,
+                baro_setting_hpa: None,
+            },
+            nav: HostNavGuidance::RunwayReceiver(RunwayNavGuidance {
+                threshold,
+                course_rad,
+                length_m: 3_353.0,
+                glide_path_rad: 3.0_f64.to_radians(),
+                ident: IdentStr::new("22L").unwrap(),
+            }),
+            autopilot: AutopilotModeSummary::default(),
+            source_epoch: 0,
+        }),
+        ..FlightSample::truth(AT, vehicle)
+    };
+    let state = mag_feed.state(&sample).unwrap();
+    let panel = resolved(&state);
+    assert_eq!(panel.heading.reference, HeadingReference::Magnetic);
+    let hdg_deg = panel.heading.value_rad.value.to_degrees();
+    let trk_deg = panel.track_rad.value.to_degrees();
+    let bug_deg = panel.heading_bug_rose_rad.value.to_degrees();
+    let crs_deg = panel.nav.course_rose_rad.value.to_degrees();
+    assert!((hdg_deg - 219.0).abs() < 1.0, "hdg={hdg_deg}");
+    assert!((trk_deg - hdg_deg).abs() < 0.05, "trk={trk_deg}");
+    assert!((bug_deg - hdg_deg).abs() < 0.05, "bug={bug_deg}");
+    assert!((crs_deg - hdg_deg).abs() < 0.05, "crs={crs_deg}");
+    assert!(panel.nav.data.cdi_dots.abs() < 1e-4);
+}
+
+#[test]
+fn earth_magnetic_mode_reverts_to_true_north_in_polar_keyhole() {
+    for polar in [
+        Geodetic::from_degrees(86.0, 140.0, 1_000.0),
+        Geodetic::from_degrees(-89.9975, 139.2729, 2_835.0),
+    ] {
+        let mut mag_feed = StateFeed::new(FeedConfig {
+            origin: polar,
+            heading_mode: HeadingMode::EarthMagnetic,
+            ..config(AltitudeSource::OriginRelative)
+        });
+        let vehicle = VehicleState::level_flight(&polar, 1.2, 50.0);
+        let state = mag_feed.state(&FlightSample::truth(AT, vehicle)).unwrap();
+        assert_eq!(state.variation.data, None);
+        let panel = resolved(&state);
+        assert_eq!(panel.heading.reference, HeadingReference::True);
+        assert!((panel.heading.value_rad.value - 1.2).abs() < 1e-5);
+        assert!((panel.track_rad.value - 1.2).abs() < 1e-4);
+    }
 }

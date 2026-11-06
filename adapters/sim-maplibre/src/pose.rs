@@ -1,17 +1,18 @@
 //! Geodetic-local 6-DoF [`ExternalView`] bridge and conformal frame stamps.
 //!
-//! Bridges WGS-84 (`sim-geo` / `sim-core`) into `maplibre`'s spherical globe
-//! strictly through geodetic `(lat, lon, h_msl)` and quaternion-derived local
-//! ENU rotation matrices — never by linearly mapping WGS-84 Cartesian ECEF into
-//! unit-sphere coordinates, and never via Euler `forward.cross(up)` decomposition.
+//! Bridges any body reference ellipsoid ([`BodyEllipsoid`]: `WGS84`, `MOON_IAU`,
+//! `MARS_IAU`, or custom) into `maplibre`'s spherical globe ([`Body`]) strictly
+//! through planetographic `(lat, lon, h_datum)` and quaternion-derived local ENU
+//! rotation matrices — never by linearly mapping oblate body-fixed Cartesian coordinates
+//! into unit-sphere coordinates, and never via Euler `forward.cross(up)` decomposition.
 
 use cgmath::{Matrix3, Matrix4, Rad};
-use glam::{DMat3, DVec3};
+use glam::{DMat3, DMat4, DVec3};
 use maplibre::{
     coords::LatLon,
     projection::{body::Body, globe::lat_lon_to_unit_sphere},
     render::{
-        camera::EyeFrustum,
+        camera::{EyeFrustum, OPENGL_TO_WGPU_MATRIX, REVERSED_Z},
         view_state::{ExternalAnchor, ExternalView},
     },
 };
@@ -20,35 +21,76 @@ use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, SensorIntrinsics};
 
 use crate::MapAdapterError;
 
-/// Default far-plane clip distance in local metres (`350 km`, safely past Earth's horizon).
+/// Default far-plane clip distance in local metres (`350 km`, safely past planetary horizons).
 pub const DEFAULT_FAR_CLIP_M: f64 = 350_000.0;
 
 /// Default near-plane clip distance in local metres (`0.25 m`, safe at `0.5 m` runway eye height).
 pub const DEFAULT_NEAR_CLIP_M: f64 = 0.25;
 
-/// Geodetic camera anchor on Earth with explicit orthometric MSL height.
+/// Spherical `maplibre` globe figure for the IAU Moon (`R = 1,737,400 m`, spanning the
+/// Selenean summit `+10,786 m` down to the South Pole-Aitken basin `-9,120 m`).
+pub const LUNAR_RENDER_BODY: Body = Body {
+    radius_meters: 1_737_400.0,
+    highest_ground_meters: 10_786.0,
+    lowest_ground_meters: -9_120.0,
+};
+
+/// Spherical `maplibre` globe figure for IAU Mars (`R₁ = (2a + b) / 3 = 3,389,526.67 m`,
+/// spanning Olympus Mons `+21,287 m` down to Hellas Planitia `-8,200 m`).
+pub const MARS_RENDER_BODY: Body = Body {
+    radius_meters: BodyEllipsoid::MARS_IAU.mean_radius_m(),
+    highest_ground_meters: 21_287.0,
+    lowest_ground_meters: -8_200.0,
+};
+
+/// Default spherical [`Body`] matching `physics_ellipsoid` when rendered on a `maplibre` globe.
+#[must_use]
+pub fn default_render_body(physics_ellipsoid: BodyEllipsoid) -> Body {
+    if physics_ellipsoid == BodyEllipsoid::WGS84 {
+        Body::EARTH
+    } else if physics_ellipsoid == BodyEllipsoid::MOON_IAU {
+        LUNAR_RENDER_BODY
+    } else if physics_ellipsoid == BodyEllipsoid::MARS_IAU {
+        MARS_RENDER_BODY
+    } else {
+        let r = physics_ellipsoid.mean_radius_m();
+        let relief = (r * 0.01).max(1_000.0);
+        Body {
+            radius_meters: r,
+            highest_ground_meters: relief,
+            lowest_ground_meters: -relief,
+        }
+    }
+}
+
+/// Planetographic camera anchor on a celestial body with height above its vertical datum.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GeodeticAnchor {
-    /// WGS-84 geodetic latitude in degrees (`[-90, 90]`).
+    /// Planetographic (geodetic) latitude in degrees (`[-90, 90]`).
     pub lat_deg: f64,
-    /// WGS-84 geodetic longitude in degrees (`[-180, 180]`).
+    /// East-positive longitude in degrees (`[-180, 180]`).
     pub lon_deg: f64,
-    /// Orthometric altitude in metres above mean sea level (may be negative, e.g. `-86 m` in Death Valley).
+    /// Altitude in metres above the body's vertical datum (MSL geoid on Earth, reference
+    /// sphere/ellipsoid or areoid/selenoid elsewhere; may be negative in deep basins).
     pub altitude_msl_m: f64,
 }
 
-/// Atomic pairing of a rendered underlay frame with the exact camera state that drew it.
+/// Atomic pairing of a rendered underlay frame with the exact camera and body state that drew it.
 #[derive(Clone, Copy, Debug)]
 pub struct ConformalFrameStamp {
     /// Simulation timestamp when the pose was sampled.
     pub instant: SimInstant,
+    /// Reference ellipsoid of the vehicle/camera body-fixed Cartesian coordinates.
+    pub physics_ellipsoid: BodyEllipsoid,
+    /// Spherical globe figure on which `maplibre` renders this frame's terrain and overlays.
+    pub render_body: Body,
     /// Geodetic camera origin used for the render pass.
     pub anchor: GeodeticAnchor,
     /// Exact `ExternalView` submitted to `maplibre` for this texture frame.
     pub external_view: ExternalView,
-    /// Geoid undulation (`h_ellipsoid - h_msl`, metres) applied to this frame.
+    /// Equipotential undulation (`h_ellipsoid - h_datum`, metres) applied to this frame.
     pub geoid_undulation_m: f64,
-    /// Deterministic 64-bit hash of the view and frustum matrices for dirty-gating.
+    /// Deterministic 64-bit hash of the view, frustum, and body radius for dirty-gating.
     pub projection_fingerprint: u64,
 }
 
@@ -113,12 +155,15 @@ pub fn symmetric_frustum(
     Ok(EyeFrustum::symmetric(Rad(fov_y_rad), aspect, near_m, far_m))
 }
 
-/// Converts a WGS-84 [`CameraPoseEcef`] into a quaternion-direct [`ExternalView`].
+/// Converts a body-fixed [`CameraPoseEcef`] on `physics_ellipsoid` into a quaternion-direct
+/// [`ExternalView`] on `render_body`.
 ///
-/// `geoid_undulation_m` is `h_wgs84 - h_msl` (`0.0` when heights are already MSL).
-/// Valid across all 6-DoF attitudes (`±90°` zenith/nadir, steep roll, inverted)
-/// and below-MSL elevations down to `Body::EARTH.lowest_ground_meters` (`-450 m`).
-pub fn external_view_from_pose(
+/// `geoid_undulation_m` is `h_ellipsoid - h_datum` (`0.0` when heights are already above the
+/// reference ellipsoid/sphere). Valid across all 6-DoF attitudes (`±90°` zenith/nadir, steep
+/// roll, inverted) and deep basins down to `render_body.lowest_ground_meters`.
+pub fn external_view_from_pose_on(
+    physics_ellipsoid: BodyEllipsoid,
+    render_body: Body,
     pose: &CameraPoseEcef,
     frustum: EyeFrustum,
     geoid_undulation_m: f64,
@@ -126,21 +171,23 @@ pub fn external_view_from_pose(
     if !pose.position_ecef.is_finite()
         || !pose.orientation.is_finite()
         || !geoid_undulation_m.is_finite()
+        || !render_body.radius_meters.is_finite()
+        || render_body.radius_meters <= 0.0
     {
         return Err(MapAdapterError::InvalidPose {
-            detail: "camera ECEF position, quaternion, or geoid offset is non-finite",
+            detail: "camera body-fixed position, quaternion, undulation, or body radius is invalid",
         });
     }
-    let geodetic = BodyEllipsoid::WGS84.fixed_to_geodetic(pose.position_ecef);
+    let geodetic = physics_ellipsoid.fixed_to_geodetic(pose.position_ecef);
     let altitude_msl_m = geodetic.height_m - geoid_undulation_m;
-    if altitude_msl_m <= Body::EARTH.lowest_ground_meters {
+    if altitude_msl_m <= render_body.lowest_ground_meters {
         return Err(MapAdapterError::InvalidPose {
-            detail: "camera altitude is below Earth's lowest ground floor (-450 m MSL)",
+            detail: "camera altitude is below the target body's lowest ground floor",
         });
     }
     let local = LocalFrame::at(&geodetic);
     let ned_to_ecef = local.ned_to_ecef();
-    // ENU basis vectors in ECEF: East = NED +Y, North = NED +X, Up = -NED +Z.
+    // ENU basis vectors in body-fixed axes: East = NED +Y, North = NED +X, Up = -NED +Z.
     let enu_to_ecef = DMat3::from_cols(ned_to_ecef.y_axis, ned_to_ecef.x_axis, -ned_to_ecef.z_axis);
     let ecef_to_eye = DMat3::from_quat(pose.orientation.normalize().inverse());
     let enu_to_eye = ecef_to_eye * enu_to_ecef;
@@ -166,17 +213,42 @@ pub fn external_view_from_pose(
     Ok((anchor, view))
 }
 
-/// Builds a [`ConformalFrameStamp`] directly from a world [`CameraPoseEcef`].
-pub fn conformal_stamp_from_pose(
+/// Earth shorthand for [`external_view_from_pose_on`] (`BodyEllipsoid::WGS84` + `Body::EARTH`).
+pub fn external_view_from_pose(
+    pose: &CameraPoseEcef,
+    frustum: EyeFrustum,
+    geoid_undulation_m: f64,
+) -> Result<(GeodeticAnchor, ExternalView), MapAdapterError> {
+    external_view_from_pose_on(
+        BodyEllipsoid::WGS84,
+        Body::EARTH,
+        pose,
+        frustum,
+        geoid_undulation_m,
+    )
+}
+
+/// Builds a [`ConformalFrameStamp`] on an explicit `(physics_ellipsoid, render_body)` pair.
+pub fn conformal_stamp_from_pose_on(
     instant: SimInstant,
+    physics_ellipsoid: BodyEllipsoid,
+    render_body: Body,
     pose: &CameraPoseEcef,
     frustum: EyeFrustum,
     geoid_undulation_m: f64,
 ) -> Result<ConformalFrameStamp, MapAdapterError> {
-    let (anchor, external_view) = external_view_from_pose(pose, frustum, geoid_undulation_m)?;
-    let projection_fingerprint = fingerprint_external_view(&external_view);
+    let (anchor, external_view) = external_view_from_pose_on(
+        physics_ellipsoid,
+        render_body,
+        pose,
+        frustum,
+        geoid_undulation_m,
+    )?;
+    let projection_fingerprint = fingerprint_external_view(&external_view, render_body);
     Ok(ConformalFrameStamp {
         instant,
+        physics_ellipsoid,
+        render_body,
         anchor,
         external_view,
         geoid_undulation_m,
@@ -184,7 +256,48 @@ pub fn conformal_stamp_from_pose(
     })
 }
 
-/// Builds a [`ConformalFrameStamp`] from [`VehicleState`] and a [`CameraMount`].
+/// Earth shorthand for [`conformal_stamp_from_pose_on`] (`BodyEllipsoid::WGS84` + `Body::EARTH`).
+pub fn conformal_stamp_from_pose(
+    instant: SimInstant,
+    pose: &CameraPoseEcef,
+    frustum: EyeFrustum,
+    geoid_undulation_m: f64,
+) -> Result<ConformalFrameStamp, MapAdapterError> {
+    conformal_stamp_from_pose_on(
+        instant,
+        BodyEllipsoid::WGS84,
+        Body::EARTH,
+        pose,
+        frustum,
+        geoid_undulation_m,
+    )
+}
+
+/// Builds a [`ConformalFrameStamp`] from [`VehicleState`] and a [`CameraMount`] on an
+/// explicit `(physics_ellipsoid, render_body)` pair.
+#[allow(clippy::too_many_arguments)]
+pub fn conformal_stamp_from_vehicle_on(
+    instant: SimInstant,
+    physics_ellipsoid: BodyEllipsoid,
+    render_body: Body,
+    vehicle: &VehicleState,
+    mount: &CameraMount,
+    cg_body_m: DVec3,
+    frustum: EyeFrustum,
+    geoid_undulation_m: f64,
+) -> Result<ConformalFrameStamp, MapAdapterError> {
+    let pose = mount.pose(vehicle, cg_body_m);
+    conformal_stamp_from_pose_on(
+        instant,
+        physics_ellipsoid,
+        render_body,
+        &pose,
+        frustum,
+        geoid_undulation_m,
+    )
+}
+
+/// Earth shorthand for [`conformal_stamp_from_vehicle_on`] (`BodyEllipsoid::WGS84` + `Body::EARTH`).
 pub fn conformal_stamp_from_vehicle(
     instant: SimInstant,
     vehicle: &VehicleState,
@@ -193,13 +306,21 @@ pub fn conformal_stamp_from_vehicle(
     frustum: EyeFrustum,
     geoid_undulation_m: f64,
 ) -> Result<ConformalFrameStamp, MapAdapterError> {
-    let pose = mount.pose(vehicle, cg_body_m);
-    conformal_stamp_from_pose(instant, &pose, frustum, geoid_undulation_m)
+    conformal_stamp_from_vehicle_on(
+        instant,
+        BodyEllipsoid::WGS84,
+        Body::EARTH,
+        vehicle,
+        mount,
+        cg_body_m,
+        frustum,
+        geoid_undulation_m,
+    )
 }
 
-/// Projects a geodetic world point `(lat, lon, h_msl)` onto target pixel coordinates
+/// Projects a geodetic world point `(lat, lon, h_ellipsoid)` onto target pixel coordinates
 /// `([x_px, y_px], reversed_z_depth)` through `stamp`'s exact spherical camera frame,
-/// guaranteeing zero pixel split between `maplibre` terrain and conformal overlays.
+/// guaranteeing zero pixel split between `maplibre` terrain and conformal overlays on any body.
 #[must_use]
 pub fn project_geodetic_to_screen(
     stamp: &ConformalFrameStamp,
@@ -211,40 +332,8 @@ pub fn project_geodetic_to_screen(
     if w_px == 0 || h_px == 0 {
         return None;
     }
-    let body = Body::EARTH;
-    let anchor_ll = stamp.external_view.anchor.position;
-    let point_ll = LatLon::new(point.lat_rad.to_degrees(), point.lon_rad.to_degrees());
-    let point_msl = point.height_m - point_geoid_undulation_m;
-
-    // Position on `maplibre`'s exact mean sphere in globe world metres, then into
-    // `stamp.anchor`'s local ENU tangent frame.
-    let anchor_u = lat_lon_to_unit_sphere(anchor_ll);
-    let point_u = lat_lon_to_unit_sphere(point_ll);
-    // Horizon / far-hemisphere guard (`dot <= 0` is behind the globe center).
-    if anchor_u.x * point_u.x + anchor_u.y * point_u.y + anchor_u.z * point_u.z <= 0.0 {
-        return None;
-    }
-    let r_anchor = body.radius_meters + stamp.anchor.altitude_msl_m;
-    let r_point = body.radius_meters + point_msl;
-    let delta_globe = DVec3::new(
-        point_u.x * r_point - anchor_u.x * r_anchor,
-        point_u.y * r_point - anchor_u.y * r_anchor,
-        point_u.z * r_point - anchor_u.z * r_anchor,
-    );
-
-    let (lat, lon) = (
-        stamp.anchor.lat_deg.to_radians(),
-        stamp.anchor.lon_deg.to_radians(),
-    );
-    let east = DVec3::new(lon.cos(), 0.0, -lon.sin());
-    let up = DVec3::new(lat.cos() * lon.sin(), lat.sin(), lat.cos() * lon.cos());
-    let north = up.cross(east);
-    let local_enu = cgmath::Vector4::new(
-        delta_globe.dot(east),
-        delta_globe.dot(north),
-        delta_globe.dot(up),
-        1.0,
-    );
+    let local = local_enu_from_geodetic(stamp, point, point_geoid_undulation_m)?;
+    let local_enu = cgmath::Vector4::new(local.x, local.y, local.z, 1.0);
 
     let eye = stamp.external_view.view * local_enu;
     // OpenGL camera looks along -Z; points at or behind `near` are clipped.
@@ -264,9 +353,114 @@ pub fn project_geodetic_to_screen(
     Some(([x_px, y_px], rev_z))
 }
 
-fn fingerprint_external_view(view: &ExternalView) -> u64 {
+/// Position of `point` in `stamp`'s local East-North-Up frame, measured on `stamp.render_body`
+/// exactly as `maplibre` draws its terrain; `None` past the horizon hemisphere.
+#[must_use]
+pub fn local_enu_from_geodetic(
+    stamp: &ConformalFrameStamp,
+    point: &Geodetic,
+    point_geoid_undulation_m: f64,
+) -> Option<DVec3> {
+    globe_enu_between_geodetic(
+        stamp.render_body,
+        stamp.anchor.lat_deg,
+        stamp.anchor.lon_deg,
+        stamp.anchor.altitude_msl_m,
+        point,
+        point_geoid_undulation_m,
+    )
+}
+
+/// Position of `point` in `eye`'s local North-East-Down frame on `render_body`'s sphere,
+/// matching [`TruthSceneMap`](crate::TruthSceneMap) and [`project_geodetic_to_screen`] on any
+/// celestial body with zero ellipsoid-vs-sphere anisotropy skew; `None` past the horizon
+/// hemisphere.
+#[must_use]
+pub fn globe_ned_between_geodetic(
+    render_body: Body,
+    eye: &Geodetic,
+    eye_geoid_undulation_m: f64,
+    point: &Geodetic,
+    point_geoid_undulation_m: f64,
+) -> Option<DVec3> {
+    let enu = globe_enu_between_geodetic(
+        render_body,
+        eye.lat_rad.to_degrees(),
+        eye.lon_rad.to_degrees(),
+        eye.height_m - eye_geoid_undulation_m,
+        point,
+        point_geoid_undulation_m,
+    )?;
+    Some(DVec3::new(enu.y, enu.x, -enu.z))
+}
+
+fn globe_enu_between_geodetic(
+    body: Body,
+    anchor_lat_deg: f64,
+    anchor_lon_deg: f64,
+    anchor_altitude_msl_m: f64,
+    point: &Geodetic,
+    point_geoid_undulation_m: f64,
+) -> Option<DVec3> {
+    if !body.radius_meters.is_finite() || body.radius_meters <= 0.0 {
+        return None;
+    }
+    let anchor_ll = LatLon::new(anchor_lat_deg, anchor_lon_deg);
+    let point_ll = LatLon::new(point.lat_rad.to_degrees(), point.lon_rad.to_degrees());
+    let point_msl = point.height_m - point_geoid_undulation_m;
+    let anchor_u = lat_lon_to_unit_sphere(anchor_ll);
+    let point_u = lat_lon_to_unit_sphere(point_ll);
+    // `dot <= 0` lies behind the globe center.
+    if anchor_u.x * point_u.x + anchor_u.y * point_u.y + anchor_u.z * point_u.z <= 0.0 {
+        return None;
+    }
+    let r_anchor = body.radius_meters + anchor_altitude_msl_m;
+    let r_point = body.radius_meters + point_msl;
+    let delta_globe = DVec3::new(
+        point_u.x * r_point - anchor_u.x * r_anchor,
+        point_u.y * r_point - anchor_u.y * r_anchor,
+        point_u.z * r_point - anchor_u.z * r_anchor,
+    );
+    let [east, north, up] = sphere_enu_basis(anchor_lat_deg, anchor_lon_deg);
+    Some(DVec3::new(
+        delta_globe.dot(east),
+        delta_globe.dot(north),
+        delta_globe.dot(up),
+    ))
+}
+
+/// Rotation taking vectors in the sphere's ENU frame at `(lat_deg, lon_deg)` into
+/// `stamp`'s anchor ENU frame, so a model oriented locally keeps its attitude anywhere.
+#[must_use]
+pub fn anchor_enu_from_local_enu(stamp: &ConformalFrameStamp, lat_deg: f64, lon_deg: f64) -> DMat3 {
+    let [ae, an, au] = sphere_enu_basis(stamp.anchor.lat_deg, stamp.anchor.lon_deg);
+    let [pe, pn, pu] = sphere_enu_basis(lat_deg, lon_deg);
+    let anchor_from_globe = DMat3::from_cols(ae, an, au).transpose();
+    anchor_from_globe * DMat3::from_cols(pe, pn, pu)
+}
+
+/// Exact GPU clip transform of `stamp`'s anchor ENU frame: WebGPU depth range with
+/// reversed Z, matching `maplibre`'s terrain and overlay depth test (`GreaterEqual`).
+#[must_use]
+pub fn clip_from_anchor_enu(stamp: &ConformalFrameStamp) -> DMat4 {
+    let view = &stamp.external_view;
+    let m = REVERSED_Z * OPENGL_TO_WGPU_MATRIX * view.frustum.projection() * view.view;
+    let cols: &[[f64; 4]; 4] = m.as_ref();
+    DMat4::from_cols_array_2d(cols)
+}
+
+/// Sphere tangent basis `[east, north, up]` in `maplibre` globe coordinates (`+Y` polar).
+fn sphere_enu_basis(lat_deg: f64, lon_deg: f64) -> [DVec3; 3] {
+    let (lat, lon) = (lat_deg.to_radians(), lon_deg.to_radians());
+    let east = DVec3::new(lon.cos(), 0.0, -lon.sin());
+    let up = DVec3::new(lat.cos() * lon.sin(), lat.sin(), lat.cos() * lon.cos());
+    [east, up.cross(east), up]
+}
+
+fn fingerprint_external_view(view: &ExternalView, body: Body) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    body.radius_meters.to_bits().hash(&mut hasher);
     view.anchor.position.latitude.to_bits().hash(&mut hasher);
     view.anchor.position.longitude.to_bits().hash(&mut hasher);
     view.anchor.altitude_meters.to_bits().hash(&mut hasher);

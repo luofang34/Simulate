@@ -77,6 +77,26 @@ pub enum RenderError {
         /// Largest supported edge.
         max: u32,
     },
+    /// A texture was requested with a zero-sized edge.
+    #[error("{what} is {width}x{height}; both edges must be at least one pixel")]
+    EmptyTexture {
+        /// Which texture.
+        what: &'static str,
+        /// Requested width.
+        width: u32,
+        /// Requested height.
+        height: u32,
+    },
+    /// Vector geometry would not fit one device buffer.
+    #[error("{vertices} vector vertices need {bytes} bytes; the device buffer limit is {max}")]
+    VectorGeometryTooLarge {
+        /// Vertices submitted.
+        vertices: usize,
+        /// Bytes they occupy.
+        bytes: u64,
+        /// Largest buffer the device allows.
+        max: u64,
+    },
     /// Uploaded RGBA8 byte slice did not match the panel texture's tight dimensions.
     #[error("RGBA upload supplied {actual} bytes; expected {expected}")]
     InvalidUploadBytes {

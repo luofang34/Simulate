@@ -96,4 +96,63 @@ pub enum MapAdapterError {
         /// Diagnostic description.
         detail: String,
     },
+    /// OpenUSD stage composition, schema decoding, or `.usda` export failed.
+    #[error("OpenUSD asset or scene stage failed: {detail}")]
+    OpenUsd {
+        /// Diagnostic description.
+        detail: String,
+    },
+    /// A conformal call reached a chart surface, or a chart call a conformal one.
+    #[error("instrument map {id} cannot draw {requested} frames")]
+    InstrumentModeMismatch {
+        /// Surface id.
+        id: String,
+        /// The mode the call needs.
+        requested: &'static str,
+    },
+    /// Two instrument map specs of one preset share an id.
+    #[error("instrument map id {id} is declared twice")]
+    DuplicateInstrumentMap {
+        /// The repeated id.
+        id: String,
+    },
+    /// The 3D aircraft pass could not prepare its GPU state.
+    #[error("3D aircraft pass failed: {detail}")]
+    AircraftPass {
+        /// Diagnostic description.
+        detail: String,
+    },
+    /// The globe camera could not navigate as asked.
+    #[error("globe navigation failed")]
+    Navigation {
+        /// Underlying navigation error.
+        #[source]
+        source: maplibre::render::view_state::NavigationError,
+    },
+    /// An inline GeoJSON source refused new data.
+    #[error("GeoJSON source {source_name} rejected its data")]
+    GeoJsonSource {
+        /// The source updated.
+        source_name: String,
+        /// Underlying update error.
+        #[source]
+        source: maplibre::geojson::update::SourceUpdateError,
+    },
+    /// A live style change was refused.
+    #[error("style change on {target} failed")]
+    StyleMutation {
+        /// The layer or source changed.
+        target: String,
+        /// Underlying mutation error.
+        #[source]
+        source: maplibre::style::mutation::StyleMutationError,
+    },
+    /// A chart raster could not be drawn or encoded.
+    #[error("chart raster {chart_id} failed: {detail}")]
+    ChartRaster {
+        /// The chart drawn.
+        chart_id: String,
+        /// Diagnostic description.
+        detail: String,
+    },
 }

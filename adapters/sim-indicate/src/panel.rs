@@ -1,4 +1,6 @@
 use indicate_alerts::AlertOutput;
+use indicate_instrument_descriptor::DesignFrame;
+use indicate_instrument_hud::{HudContext, draw_hud};
 use indicate_instrument_panels::{BUILTIN_FRAME, PANEL_H, PANEL_W, PfdConfig, draw_hsi, draw_pfd};
 use indicate_instrument_raster::{FrameId, FramebufferDims, RenderReport, render};
 use indicate_instrument_scene::{MAX_SCENE_BYTES, SceneError, SceneWriter};
@@ -6,8 +8,18 @@ use indicate_instrument_state::PanelData;
 
 use crate::PanelError;
 
+mod ownship_symbol;
 #[cfg(test)]
 mod tests;
+
+/// Smallest HUD frame side `indicate-instrument-hud` lays out, pixels.
+pub const HUD_MIN_SIDE_PX: u32 = 390;
+/// Largest HUD frame width `indicate-instrument-hud` lays out, pixels.
+pub const HUD_MAX_WIDTH_PX: u32 = 2560;
+/// Largest HUD frame height `indicate-instrument-hud` lays out, pixels.
+pub const HUD_MAX_HEIGHT_PX: u32 = 1600;
+pub(crate) const HUD_MIN_ASPECT: f32 = 0.45;
+pub(crate) const HUD_MAX_ASPECT: f32 = 2.4;
 
 /// Width every shipped panel draws at, pixels.
 pub const PANEL_WIDTH_PX: u32 = PANEL_W as u32;
@@ -44,23 +56,45 @@ fn paint(
     buffers: &mut PanelBuffers<'_>,
     draw: impl FnOnce(&mut SceneWriter<'_>) -> Result<(), SceneError>,
 ) -> Result<PanelRender, PanelError> {
+    let capacity = buffers.scene.len();
+    paint_sized(
+        panel,
+        [PANEL_WIDTH_PX, PANEL_HEIGHT_PX],
+        frame,
+        buffers,
+        |scene| {
+            draw(scene).map_err(|cause| PanelError::Scene {
+                panel,
+                capacity,
+                cause,
+            })
+        },
+    )
+}
+
+fn paint_sized(
+    panel: &'static str,
+    [min_width, min_height]: [u32; 2],
+    frame: FrameId,
+    buffers: &mut PanelBuffers<'_>,
+    draw: impl FnOnce(&mut SceneWriter<'_>) -> Result<(), PanelError>,
+) -> Result<PanelRender, PanelError> {
     let dims = buffers.dims;
-    if dims.width < PANEL_WIDTH_PX || dims.height < PANEL_HEIGHT_PX {
+    if dims.width < min_width || dims.height < min_height {
         return Err(PanelError::FramebufferClipsPanel {
             width: dims.width,
             height: dims.height,
-            min_width: PANEL_WIDTH_PX,
-            min_height: PANEL_HEIGHT_PX,
+            min_width,
+            min_height,
         });
     }
     let capacity = buffers.scene.len();
-    let scene_error = |cause| PanelError::Scene {
+    let mut writer = SceneWriter::new(buffers.scene).map_err(|cause| PanelError::Scene {
         panel,
         capacity,
         cause,
-    };
-    let mut writer = SceneWriter::new(buffers.scene).map_err(scene_error)?;
-    draw(&mut writer).map_err(scene_error)?;
+    })?;
+    draw(&mut writer)?;
     let scene_bytes = writer.finish();
     let scene = buffers.scene.get(..scene_bytes).unwrap_or_default();
     let report = render(scene, buffers.pixels, dims, frame)
@@ -92,7 +126,41 @@ pub fn render_hsi(
     frame: FrameId,
     buffers: &mut PanelBuffers<'_>,
 ) -> Result<PanelRender, PanelError> {
-    paint("HSI", frame, buffers, |scene| {
+    let render = paint("HSI", frame, buffers, |scene| {
         draw_hsi(data, alerts, BUILTIN_FRAME, scene)
+    })?;
+    if data.heading.value_rad.status.shows_value() {
+        ownship_symbol::stamp_ownship(buffers.pixels, buffers.dims, ownship_symbol::HSI_CENTRE_PX);
+    }
+    Ok(render)
+}
+
+/// Rasterizes Indicate's screen head-up display over the whole of `buffers`.
+///
+/// The design frame is the framebuffer itself, so the conformal cues register
+/// with a world rendered through `context.projection` at the same size. The
+/// frame must lie inside the HUD's layout bounds.
+pub fn render_hud(
+    data: &PanelData,
+    context: &HudContext,
+    alerts: Option<&AlertOutput>,
+    frame: FrameId,
+    buffers: &mut PanelBuffers<'_>,
+) -> Result<PanelRender, PanelError> {
+    let FramebufferDims { width, height, .. } = buffers.dims;
+    let aspect = width as f32 / height.max(1) as f32;
+    if !(HUD_MIN_SIDE_PX..=HUD_MAX_WIDTH_PX).contains(&width)
+        || !(HUD_MIN_SIDE_PX..=HUD_MAX_HEIGHT_PX).contains(&height)
+        || !(HUD_MIN_ASPECT..=HUD_MAX_ASPECT).contains(&aspect)
+    {
+        return Err(PanelError::HudFrameOutOfRange { width, height });
+    }
+    let design = DesignFrame {
+        width: width as f32,
+        height: height as f32,
+    };
+    paint_sized("HUD", [width, height], frame, buffers, |scene| {
+        draw_hud(data, context, alerts, design, scene)
+            .map_err(|source| PanelError::HudDraw { source })
     })
 }

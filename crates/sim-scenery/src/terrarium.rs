@@ -62,6 +62,22 @@ impl TerrariumTile {
         })
     }
 
+    /// Decodes an encoded Terrarium image (PNG, as the public Terrarium
+    /// tile servers deliver it), ignoring any alpha channel.
+    pub fn from_png_bytes(bytes: &[u8]) -> Result<Self, SceneryError> {
+        let corrupt = |detail: String| SceneryError::CorruptTile {
+            path: "in-memory Terrarium tile".to_owned(),
+            detail,
+        };
+        let pixels = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|err| corrupt(err.to_string()))?
+            .decode()
+            .map_err(|err| corrupt(err.to_string()))?
+            .into_rgb8();
+        Self::from_rgb(pixels.width(), pixels.height(), pixels.as_raw())
+    }
+
     fn decode(width: u32, height: u32, pixels: &[u8], stride: usize) -> Result<Self, SceneryError> {
         let expected = pixel_count(width, height).and_then(|count| count.checked_mul(stride));
         if expected != Some(pixels.len()) {

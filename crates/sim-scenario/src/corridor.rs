@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use glam::{DVec2, DVec3};
 use sim_apollo::{CockpitInstrumentPanel, CockpitInstrumentSnapshot, EarthVehicleSources};
+use sim_core::ControlInputs;
 use sim_core::{
     Block, CAMERA_DEFAULT_PERIOD, CameraFrameCapture, CameraMount, CameraPoseEcef,
     CameraSensorBlock, CameraSensorConfig, CameraSensorInput, EnuAnchor, FusionEligibility,
@@ -17,14 +17,23 @@ use sim_scenery::SyntheticCorridorSpec;
 use crate::{ScenarioError, ScenarioProfile};
 
 mod autopilot;
-mod dynamics;
+pub(crate) mod dynamics;
+mod image_mode;
+mod navigation;
+mod report;
+pub(crate) mod snapshot;
 mod visual;
 
 pub(crate) use autopilot::angle_difference;
 use autopilot::{Autopilot, FlightReading, Guidance, Steering};
 pub use dynamics::FlightDynamics;
 use dynamics::{CorridorStart, Source};
+use image_mode::VisualSource;
+pub use image_mode::{ImageDrivenConfig, ImageNavigationReport};
+pub use report::CorridorReport;
+use report::horizon_in_view;
 use visual::SyntheticVisualEstimator;
+pub use visual::{CorridorVisualEstimator, RenderedSensorFrame, SensorObservation, VisualTiers};
 
 #[cfg(test)]
 mod tests;
@@ -185,56 +194,6 @@ fn guidance_of(profile: ScenarioProfile, elapsed_s: f64) -> Guidance {
     }
 }
 
-/// Whether the horizon crosses a capture's image: some corner ray above the
-/// local horizontal and some below.
-fn horizon_in_view(capture: &CameraFrameCapture) -> bool {
-    let intrinsics = capture.intrinsics;
-    let up = LocalFrame::at(&ecef_to_geodetic(capture.pose.position_ecef)).up();
-    let [right, bottom] = [intrinsics.width, intrinsics.height].map(f64::from);
-    let elevation = |u: f64, v: f64| {
-        let ray = DVec3::new(
-            (u - intrinsics.cx) / intrinsics.fx,
-            (intrinsics.cy - v) / intrinsics.fy,
-            -1.0,
-        );
-        (capture.pose.orientation * ray).dot(up)
-    };
-    let corners = [
-        elevation(0.0, 0.0),
-        elevation(right, 0.0),
-        elevation(0.0, bottom),
-        elevation(right, bottom),
-    ];
-    corners.iter().any(|e| *e > 0.0) && corners.iter().any(|e| *e < 0.0)
-}
-
-/// What a corridor flight has shown so far.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct CorridorReport {
-    /// Camera exposures taken.
-    pub frames: u64,
-    /// Warm-track fixes delivered.
-    pub warm_fixes: u64,
-    /// Anchors delivered that are the first in their map cell.
-    pub independent_anchor_fixes: u64,
-    /// Anchors delivered in a cell that already has one.
-    pub shared_map_cell_fixes: u64,
-    /// Map cells with a delivered anchor.
-    pub anchor_cells: BTreeSet<MapCell>,
-    /// 600 m navigation tiles the camera has been over.
-    pub nav_tiles_crossed: BTreeSet<MapCell>,
-    /// Largest bank, radians.
-    pub peak_bank_rad: f64,
-    /// Largest body rate, rad/s.
-    pub peak_body_rate_rad_s: f64,
-    /// Exposures with no horizon in the image.
-    pub horizon_loss_frames: u64,
-    /// Latest distance right of the nominal track, metres.
-    pub cross_track_m: f64,
-    /// Latest height above the nominal cruise height, metres.
-    pub height_error_m: f64,
-}
-
 /// One corridor flight, stepped on the master clock: an autopilot flies the
 /// chosen dynamics source along the profile's script while a nose camera feeds
 /// the two-tier visual harness.
@@ -242,10 +201,11 @@ pub struct CorridorRun {
     profile: ScenarioProfile,
     source: Source,
     autopilot: Autopilot,
+    last_controls: ControlInputs,
     camera: CameraSensorBlock,
     camera_rate: RateAdapter,
     harness: TwoTierVisualHarness,
-    estimator: SyntheticVisualEstimator,
+    visual: VisualSource,
     panel: CockpitInstrumentPanel,
     origin_ecef: DVec3,
     anchor_frame: LocalFrame,
@@ -257,22 +217,40 @@ impl CorridorRun {
     /// `profile` on `dynamics`, at its first instant. `profile` must be a
     /// corridor profile; any other flies the nominal cruise.
     pub fn new(profile: ScenarioProfile, dynamics: FlightDynamics) -> Result<Self, ScenarioError> {
+        Self::assemble(
+            profile,
+            Source::new(dynamics, &start_of(profile))?,
+            CameraMount::forward_nose(CAMERA_OFFSET_BODY_M),
+            CAMERA_INTRINSICS,
+            TwoTierConfig::default(),
+            VisualSource::Synthetic(SyntheticVisualEstimator::new(ESTIMATOR_SEED)),
+        )
+    }
+
+    fn assemble(
+        profile: ScenarioProfile,
+        source: Source,
+        mount: CameraMount,
+        intrinsics: SensorIntrinsics,
+        harness: TwoTierConfig,
+        visual: VisualSource,
+    ) -> Result<Self, ScenarioError> {
         let anchor = anchor_position();
         let camera = CameraSensorBlock::new(CameraSensorConfig {
-            mount: CameraMount::forward_nose(CAMERA_OFFSET_BODY_M),
-            intrinsics: CAMERA_INTRINSICS,
+            mount,
+            intrinsics,
             anchor: EnuAnchor::new(&BodyEllipsoid::WGS84, &anchor),
             period: CAMERA_DEFAULT_PERIOD,
         })?;
-        let source = Source::new(dynamics, &start_of(profile))?;
         let mut run = Self {
             profile,
             source,
             autopilot: Autopilot::default(),
+            last_controls: ControlInputs::default(),
             camera,
             camera_rate: RateAdapter::new(CAMERA_DEFAULT_PERIOD),
-            harness: TwoTierVisualHarness::new(TwoTierConfig::default())?,
-            estimator: SyntheticVisualEstimator::new(ESTIMATOR_SEED),
+            harness: TwoTierVisualHarness::new(harness)?,
+            visual,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
             origin_ecef: geodetic_to_ecef(&anchor),
             anchor_frame: LocalFrame::at(&anchor),
@@ -296,6 +274,12 @@ impl CorridorRun {
     /// The true vehicle state.
     pub fn vehicle(&self) -> VehicleState {
         self.source.output()
+    }
+
+    /// The controls the autopilot last commanded; neutral before the first
+    /// step.
+    pub fn last_controls(&self) -> ControlInputs {
+        self.last_controls
     }
 
     /// The cockpit at [`Self::now`].
@@ -350,6 +334,12 @@ impl CorridorRun {
             self.expose(vehicle)?;
         }
         let reading = FlightReading::of(&vehicle, self.origin_ecef, &self.anchor_frame);
+        let navigated = navigated.or_else(|| match &self.visual {
+            VisualSource::Image(mode) => {
+                Some(mode.navigated(&vehicle, self.origin_ecef, &self.anchor_frame))
+            }
+            VisualSource::Synthetic(_) => None,
+        });
         let steered_on = navigated.map_or(reading, |state| {
             FlightReading::of(&state, self.origin_ecef, &self.anchor_frame)
         });
@@ -357,10 +347,20 @@ impl CorridorRun {
         let controls = self
             .autopilot
             .update(&guidance, &steered_on, PERIOD.as_seconds());
+        self.last_controls = controls;
+        self.source.sync_ground_at(vehicle.position_ecef)?;
         self.source.step(&KinematicInput { controls })?;
         self.now = self.now.advanced(PERIOD);
         self.record_flight(&reading, &vehicle);
         let fixes = self.collect_fixes();
+        if let VisualSource::Image(mode) = &mut self.visual {
+            let truth = self.source.output();
+            let truth_enu = self
+                .anchor_frame
+                .ecef_to_enu_vector(truth.position_ecef - self.origin_ecef);
+            let dt = PERIOD.as_seconds();
+            mode.navigate(&truth, truth_enu, &self.anchor_frame, dt, self.now, &fixes);
+        }
         self.observe_panel();
         Ok(fixes)
     }
@@ -377,8 +377,13 @@ impl CorridorRun {
         let Some(capture) = self.camera.output() else {
             return Ok(());
         };
-        let frame = self.estimator.frame(capture);
-        self.harness.submit(&frame)?;
+        let frame = match &mut self.visual {
+            VisualSource::Synthetic(estimator) => Some(estimator.frame(capture)),
+            VisualSource::Image(mode) => mode.observe(&capture)?,
+        };
+        if let Some(frame) = &frame {
+            self.harness.submit(frame)?;
+        }
         let report = &mut self.report;
         report.frames = report.frames.wrapping_add(1);
         report.nav_tiles_crossed.insert(MapCell::containing(

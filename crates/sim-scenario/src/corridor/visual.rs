@@ -1,6 +1,8 @@
-use glam::{DMat3, DVec3};
-use sim_core::{CameraFrameCapture, VisualEstimate, VisualFrame};
+use glam::{DMat3, DQuat, DVec3};
+use sim_core::{CameraFrameCapture, SimInstant, VisualEstimate, VisualFrame};
 use sim_devices::WhiteNoise;
+use sim_geo::SensorIntrinsics;
+use sim_scenery::LumaImage;
 
 /// One-sigma position error of a warm track, per axis, metres.
 const WARM_SIGMA_M: f64 = 2.0;
@@ -38,4 +40,52 @@ impl SyntheticVisualEstimator {
             corridor_anchor: Some(self.estimate(truth, ANCHOR_SIGMA_M)),
         }
     }
+}
+
+/// A frame the simulated camera rendered: pixels and when, nothing else.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderedSensorFrame {
+    /// The exposure instant.
+    pub timestamp: SimInstant,
+    /// The camera's optics.
+    pub intrinsics: SensorIntrinsics,
+    /// The rendered luma image.
+    pub image: LumaImage,
+}
+
+/// Everything an image-driven estimator is given for one frame: the pixels
+/// and the onboard attitude and altimeter estimates. It carries no position,
+/// so an estimator behind [`CorridorVisualEstimator`] cannot see the truth.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SensorObservation {
+    /// The rendered frame.
+    pub frame: RenderedSensorFrame,
+    /// The attitude reference's estimate of the camera's orientation:
+    /// rotates camera components (`+X` right, `+Y` up, looking along `-Z`)
+    /// into WGS84 body-fixed ones.
+    pub camera_to_ecef_estimate: DQuat,
+    /// The radar altimeter's height above the ground, metres.
+    pub agl_estimate_m: f64,
+}
+
+/// What each tier of a visual estimator made of one frame; `None` where a
+/// tier found nothing or did not run.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct VisualTiers {
+    /// Warm-track result.
+    pub warm_track: Option<VisualEstimate>,
+    /// Corridor map anchor result.
+    pub corridor_anchor: Option<VisualEstimate>,
+}
+
+/// A visual position estimator that works from rendered pixels, as
+/// [`crate::CorridorRun::image_driven`] drives it. Estimates are in the
+/// corridor's east-north-up anchor frame, the frame the harness scores in.
+pub trait CorridorVisualEstimator: std::fmt::Debug + Send {
+    /// Processes one frame.
+    fn estimate(&mut self, observation: &SensorObservation) -> VisualTiers;
+
+    /// A copy of this estimator in its current state, so a run's snapshot
+    /// can rewind it.
+    fn boxed_clone(&self) -> Box<dyn CorridorVisualEstimator>;
 }

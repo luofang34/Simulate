@@ -81,3 +81,29 @@ fn real_time_clock_keeps_fractions_and_caps_stalls() {
     assert_eq!(clock.advance(f64::NAN, 1.0), TickSpan::ZERO);
     assert_eq!(clock.advance(0.001, 0.0), TickSpan::ZERO);
 }
+
+#[test]
+fn rate_adapter_phase_tracks_sub_step_progress() {
+    // A 120 Hz block driven by a 1200 Hz master step advances a tenth of a
+    // block period per tick and wraps to zero on every execution.
+    let mut fdm = RateAdapter::new(TickSpan::period_of_hz(120).unwrap());
+    let tick_1200hz = TickSpan::period_of_hz(1200).unwrap();
+    assert_eq!(fdm.phase(), 0.0);
+    let mut steps = 0;
+    for tick in 1..=25_u32 {
+        steps += fdm.steps_for(tick_1200hz);
+        let expected = f64::from(tick % 10) / 10.0;
+        assert!((fdm.phase() - expected).abs() < 1e-12, "tick {tick}");
+        assert!((0.0..1.0).contains(&fdm.phase()));
+    }
+    assert_eq!(steps, 2);
+
+    // Rational oscillators report the carried fraction of one step.
+    let mut ntsc = RateAdapter::from_hz_ratio(60_000, 1_001);
+    assert_eq!(ntsc.steps_for(TickSpan::SECOND), 59);
+    let expected = 60_000.0 / 1_001.0 - 59.0;
+    assert!((ntsc.phase() - expected).abs() < 1e-9);
+
+    assert_eq!(RateAdapter::new(TickSpan::ZERO).phase(), 0.0);
+    assert_eq!(RateAdapter::from_hz_ratio(0, 1).phase(), 0.0);
+}

@@ -1,7 +1,40 @@
 use super::*;
-use crate::{AxisShape, AxisSource, DeviceInfo, DeviceProfile, GamepadAxis, Layout};
+use crate::{AxisBinding, AxisShape, AxisSource, DeviceInfo, DeviceProfile, GamepadAxis, Layout};
 
-fn device(id: u32, layout: Layout, usb: Option<(u16, u16)>) -> DeviceInfo {
+mod arbitration;
+mod capture;
+mod differential;
+mod presets;
+
+pub(super) const DT: f64 = 0.01;
+
+pub(super) fn pad(axis: GamepadAxis) -> AxisSource {
+    AxisSource::Gamepad(axis)
+}
+
+pub(super) fn approx(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 1e-9,
+        "expected {expected}, got {actual}"
+    );
+}
+
+/// Runs `seconds` of ticks at `DT`.
+pub(super) fn run(mapper: &mut InputMapper, seconds: f64) {
+    for _ in 0..(seconds / DT).round() as usize {
+        mapper.tick(DT);
+    }
+}
+
+/// A mapper with one standard gamepad (id 1) connected under `preset`.
+pub(super) fn gamepad_mapper(preset: crate::ControlPresetId) -> InputMapper {
+    let mut mapper = InputMapper::new(ProfileLibrary::default());
+    mapper.set_preset(preset);
+    mapper.handle(&RawInput::Connected(device(1, Layout::Standard, None)));
+    mapper
+}
+
+pub(super) fn device(id: u32, layout: Layout, usb: Option<(u16, u16)>) -> DeviceInfo {
     DeviceInfo {
         id: DeviceId(id),
         name: format!("device {id}"),
@@ -11,7 +44,7 @@ fn device(id: u32, layout: Layout, usb: Option<(u16, u16)>) -> DeviceInfo {
     }
 }
 
-fn axis(id: u32, source: AxisSource, value: f32) -> RawInput {
+pub(super) fn axis(id: u32, source: AxisSource, value: f32) -> RawInput {
     RawInput::Axis {
         device: DeviceId(id),
         source,
@@ -20,7 +53,7 @@ fn axis(id: u32, source: AxisSource, value: f32) -> RawInput {
 }
 
 #[test]
-fn standard_gamepad_flies_with_stick_back_as_nose_up() {
+fn standard_gamepad_flies_with_stick_back_as_nose_up_and_triggers_as_rudder() {
     let mut mapper = InputMapper::new(ProfileLibrary::default());
     mapper.handle(&RawInput::Connected(device(1, Layout::Standard, None)));
     mapper.handle(&axis(1, AxisSource::Gamepad(GamepadAxis::LeftStickY), -1.0));
@@ -31,7 +64,25 @@ fn standard_gamepad_flies_with_stick_back_as_nose_up() {
     ));
     let controls = mapper.controls();
     assert!((controls.pitch - 1.0).abs() < 1e-12);
-    assert!((controls.throttle - 1.0).abs() < 1e-12);
+    assert!((controls.yaw - 1.0).abs() < 1e-12);
+    assert_eq!(
+        controls.throttle, 0.0,
+        "triggers drive rudder, not throttle"
+    );
+}
+
+#[test]
+fn direct_set_throttle_reads_back_without_tick() {
+    let mut mapper = InputMapper::new(ProfileLibrary::default());
+    mapper.set(Control::Throttle, 0.65);
+    approx(mapper.controls().throttle, 0.65);
+    let next = mapper.controls().throttle + 0.5 * 0.1;
+    mapper.set(Control::Throttle, next);
+    approx(mapper.controls().throttle, 0.7);
+    mapper.set(Control::Throttle, 3.0);
+    approx(mapper.controls().throttle, 1.0);
+    mapper.set(Control::Roll, -1.0);
+    approx(mapper.controls().roll, -1.0);
 }
 
 #[test]

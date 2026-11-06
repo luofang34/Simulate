@@ -19,7 +19,8 @@ mod profile;
 pub mod video_bridge;
 
 pub use adapter::{
-    MOTION_SCOPE, PackageStart, SimulateAdapterConfig, SimulateVehicleAdapter, vehicle_class,
+    AdapterCheckpoint, MOTION_SCOPE, PackageStart, SimulateAdapterConfig, SimulateVehicleAdapter,
+    vehicle_class,
 };
 pub use calibration::{CalibratedCamera, CalibrationLifecycle, package_camera_calibration};
 pub use error::PilotageBridgeError;

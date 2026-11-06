@@ -63,6 +63,25 @@ impl CameraMount {
         }
     }
 
+    /// Looks along body-axis `forward_body` with the image's top as near
+    /// `up_body` as that allows, for airframes whose axes are not an
+    /// aircraft's, such as a lander thrusting along `+x`. A degenerate pair
+    /// falls back to [`Self::forward_nose`]'s orientation.
+    pub fn looking_along(offset_body_m: DVec3, forward_body: DVec3, up_body: DVec3) -> Self {
+        let forward = forward_body.try_normalize();
+        let right = forward.and_then(|f| f.cross(up_body).try_normalize());
+        let camera_to_body = match (forward, right) {
+            (Some(forward), Some(right)) => {
+                DQuat::from_mat3(&DMat3::from_cols(right, right.cross(forward), -forward))
+            }
+            _ => nose_camera_to_body(),
+        };
+        Self {
+            offset_body_m,
+            body_to_camera: camera_to_body.normalize().inverse(),
+        }
+    }
+
     /// Where the camera is at `vehicle`, whose position is the centre of
     /// gravity at `cg_body_m` in the same axes as the mount's offset.
     pub fn pose(&self, vehicle: &VehicleState, cg_body_m: DVec3) -> CameraPoseEcef {

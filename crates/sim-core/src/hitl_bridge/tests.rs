@@ -195,3 +195,82 @@ fn a_restored_bridge_redelivers_what_was_in_flight() {
     assert_eq!(bridge.stats().delivered, 0);
     assert_eq!(bridge.poll(due).unwrap(), first);
 }
+
+#[test]
+fn advance_epoch_discards_queued_and_in_flight_replies_from_the_old_timeline() {
+    let mut bridge = real_time([]);
+    bridge.stimulate(at(10), &1).unwrap();
+    bridge.stimulate(at(20), &2).unwrap();
+    bridge.endpoint.inbox.push_back(StampedResponse {
+        deliver_at: at(15),
+        response: 100,
+    });
+    assert!(bridge.poll(at(12)).unwrap().is_empty());
+    assert_eq!(bridge.mailbox.len(), 1);
+
+    bridge.advance_epoch();
+    assert_eq!(bridge.timeline_epoch(), 1);
+    assert!(bridge.mailbox.is_empty());
+    assert_eq!(bridge.stats().stale_epoch_discards, 1);
+
+    bridge.endpoint.inbox.push_back(StampedResponse {
+        deliver_at: at(25),
+        response: 200,
+    });
+    bridge.stimulate(at(5), &3).unwrap();
+    bridge.endpoint.inbox.push_back(StampedResponse {
+        deliver_at: at(6),
+        response: 6,
+    });
+    let delivered = bridge.poll(at(30)).unwrap();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].response, 6);
+    assert_eq!(bridge.stats().stale_epoch_discards, 2);
+    assert_eq!(bridge.stats().delivered, 1);
+}
+
+#[test]
+fn a_new_epoch_delivers_responses_earlier_than_the_abandoned_timeline_reached() {
+    let mut bridge = real_time([(300, 3)]);
+    assert_eq!(bridge.poll(at(300)).unwrap().len(), 1);
+    bridge.advance_epoch();
+    bridge.endpoint.inbox.push_back(StampedResponse {
+        deliver_at: at(40),
+        response: 4,
+    });
+    let delivered = bridge.poll(at(50)).unwrap();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].response, 4);
+    assert_eq!(bridge.stats().dropped, 0);
+    assert_eq!(bridge.stats().stale_epoch_discards, 0);
+}
+
+#[test]
+fn lockstep_epoch_change_drops_undelivered_answers_and_restore_keeps_the_epoch() {
+    let mut bridge = lockstep();
+    let saved = bridge.snapshot();
+    bridge.stimulate(at(0), &4).unwrap();
+    bridge.advance_epoch();
+    assert!(bridge.poll(at(0).advanced(DELAY)).unwrap().is_empty());
+    assert_eq!(bridge.stats().stale_epoch_discards, 1);
+
+    bridge.stimulate(at(0), &5).unwrap();
+    let epoch_one = bridge.snapshot();
+    assert_eq!(epoch_one.timeline_epoch(), 1);
+    assert_eq!(bridge.poll(at(0).advanced(DELAY)).unwrap()[0].response, 10);
+    bridge.restore(&epoch_one);
+    assert_eq!(bridge.timeline_epoch(), 1);
+    assert_eq!(bridge.poll(at(0).advanced(DELAY)).unwrap()[0].response, 10);
+
+    bridge.restore(&saved);
+    assert_eq!(bridge.timeline_epoch(), 0);
+    assert_eq!(bridge.stats(), BridgeStats::default());
+}
+
+#[test]
+fn epoch_counter_wraps() {
+    let mut bridge = lockstep();
+    bridge.timeline_epoch = u32::MAX;
+    bridge.advance_epoch();
+    assert_eq!(bridge.timeline_epoch(), 0);
+}

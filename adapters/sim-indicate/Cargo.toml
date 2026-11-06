@@ -11,10 +11,14 @@ workspace = true
 [dependencies]
 sim-apollo = { workspace = true }
 sim-geo = { workspace = true }
+sim-render = { workspace = true }
 sim-core = { workspace = true }
 glam = { workspace = true }
 indicate-alerts = { workspace = true }
 indicate-instrument-descriptor = { workspace = true }
+indicate-instrument-feeder = { workspace = true }
+indicate-instrument-glyphs = { workspace = true }
+indicate-instrument-hud = { workspace = true }
 indicate-instrument-panels = { workspace = true }
 indicate-instrument-raster = { workspace = true }
 indicate-instrument-scene = { workspace = true }
@@ -22,6 +26,8 @@ indicate-instrument-state = { workspace = true }
 indicate-instrument-volumes = { workspace = true }
 indicate-interaction = { workspace = true }
 thiserror = { workspace = true }
+world-core = { workspace = true }
+world-geomag = { workspace = true }
 
 [dev-dependencies]
 sim-atmosphere = { workspace = true }

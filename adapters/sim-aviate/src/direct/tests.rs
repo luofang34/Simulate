@@ -169,3 +169,30 @@ fn direct_fixed_wing_kernel_drives_aileron_elevator_and_throttle() {
     assert!((controls.throttle - 0.72).abs() < 1.0e-4);
     assert!(controls.roll.abs() < 0.05);
 }
+
+#[test]
+fn industrial_noise_ekf_estimate_tracks_truth_without_copying_it() {
+    let origin = Geodetic::from_degrees(39.1582, -75.5244, 15.0);
+    let period = TickSpan::from_ticks(TICKS_PER_SECOND / 400);
+    let plant = x500_rigid_body(&origin, period);
+    let config = AviateDirectConfig::industrial(origin);
+    assert_eq!(config.noise, DirectNoiseTier::Industrial);
+    let mut runner = AviateDirectRunner::new(build_direct_x500_kernel().unwrap(), config).unwrap();
+    let truth = plant.output();
+    let g_rest = DVec3::new(0.0, 0.0, -9.801);
+    let mut now = SimInstant::START;
+    for _ in 0..800 {
+        let _ = runner.step_cg(now, &truth, g_rest).unwrap();
+        now = now.advanced(period);
+    }
+    assert!(runner.is_ready(), "industrial-noise EKF never became ready");
+    let estimate = runner.estimated_state().expect("usable estimate");
+    let error_m = (estimate.position_ecef - truth.position_ecef).length();
+    assert!(error_m < 10.0, "position error {error_m} m");
+    assert_ne!(estimate.position_ecef, truth.position_ecef);
+    let attitude_err_rad = estimate.attitude.angle_between(truth.attitude);
+    assert!(
+        attitude_err_rad < 3_f64.to_radians(),
+        "attitude error {attitude_err_rad}"
+    );
+}

@@ -1,5 +1,5 @@
-//! [`CatalogScenery`]-backed [`HttpClient`] tile transport, canonical styles, and
-//! synchronous lockstep DEM supply for `maplibre`.
+//! [`CatalogScenery`]-backed [`HttpClient`] tile transport and synchronous lockstep DEM
+//! supply for `maplibre`.
 
 use std::sync::{
     Arc,
@@ -14,7 +14,7 @@ use maplibre::{
         resource_loader::SharedLoader,
         source_client::{HttpClient, SourceFetchError},
     },
-    style::{Style, source::TileAddressingScheme},
+    style::source::TileAddressingScheme,
 };
 use sim_scenery::{CatalogScenery, ImagerySource, TerrariumTile, TileId, encode_terrarium};
 
@@ -152,114 +152,6 @@ pub fn tile_id_to_world_coords(tile: TileId) -> Option<WorldTileCoords> {
     .into_world_tile(TileAddressingScheme::XYZ)
 }
 
-/// Builds the canonical Simulator `TruthScene` globe style (Terrarium DEM + orthoimagery,
-/// zero symbol layers).
-pub fn truth_otw_style(max_dem_zoom: u8, max_ortho_zoom: u8) -> Result<Style, MapAdapterError> {
-    let spec = serde_json::json!({
-        "version": 8,
-        "name": "Simulate Truth OTW",
-        "projection": { "type": "vertical-perspective" },
-        "sources": {
-            "dem": {
-                "type": "raster-dem",
-                "tiles": [CATALOG_DEM_URL_TEMPLATE],
-                "encoding": "terrarium",
-                "tileSize": 256,
-                "minzoom": 0,
-                "maxzoom": max_dem_zoom
-            },
-            "ortho": {
-                "type": "raster",
-                "tiles": [CATALOG_ORTHO_URL_TEMPLATE],
-                "tileSize": 256,
-                "minzoom": 0,
-                "maxzoom": max_ortho_zoom
-            }
-        },
-        "terrain": { "source": "dem", "exaggeration": 1.0 },
-        "layers": [
-            {
-                "id": "sky-bg",
-                "type": "background",
-                "paint": { "background-color": "#0b1626" }
-            },
-            {
-                "id": "ortho-surface",
-                "type": "raster",
-                "source": "ortho"
-            }
-        ]
-    });
-    serde_json::from_value(spec).map_err(|source| MapAdapterError::StyleParse { source })
-}
-
-/// Builds the canonical PFD `ConformalSvs3D` style (Globe + Terrarium DEM only, zero raster
-/// or vector drape layers — shaded directly by `TerrainDrapeMode::ProceduralRelief`).
-pub fn belief_svs_relief_style(max_dem_zoom: u8) -> Result<Style, MapAdapterError> {
-    let spec = serde_json::json!({
-        "version": 8,
-        "name": "Indicate Belief SVS Relief",
-        "projection": { "type": "vertical-perspective" },
-        "sources": {
-            "dem": {
-                "type": "raster-dem",
-                "tiles": [CATALOG_DEM_URL_TEMPLATE],
-                "encoding": "terrarium",
-                "tileSize": 256,
-                "minzoom": 0,
-                "maxzoom": max_dem_zoom
-            }
-        },
-        "terrain": { "source": "dem", "exaggeration": 1.0 },
-        "layers": [
-            {
-                "id": "svs-bg",
-                "type": "background",
-                "paint": { "background-color": "#1c4f8a" }
-            }
-        ]
-    });
-    serde_json::from_value(spec).map_err(|source| MapAdapterError::StyleParse { source })
-}
-
-/// Builds the canonical MFD `Map2D` belief chart style.
-pub fn belief_chart_style(max_dem_zoom: u8, max_ortho_zoom: u8) -> Result<Style, MapAdapterError> {
-    let spec = serde_json::json!({
-        "version": 8,
-        "name": "Indicate Belief Chart 2D",
-        "sources": {
-            "dem": {
-                "type": "raster-dem",
-                "tiles": [CATALOG_DEM_URL_TEMPLATE],
-                "encoding": "terrarium",
-                "tileSize": 256,
-                "minzoom": 0,
-                "maxzoom": max_dem_zoom
-            },
-            "ortho": {
-                "type": "raster",
-                "tiles": [CATALOG_ORTHO_URL_TEMPLATE],
-                "tileSize": 256,
-                "minzoom": 0,
-                "maxzoom": max_ortho_zoom
-            }
-        },
-        "layers": [
-            {
-                "id": "chart-bg",
-                "type": "background",
-                "paint": { "background-color": "#101b29" }
-            },
-            {
-                "id": "chart-ortho",
-                "type": "raster",
-                "source": "ortho"
-            }
-        ]
-    });
-    serde_json::from_value(spec).map_err(|source| MapAdapterError::StyleParse { source })
-}
-
 fn encode_rgba_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, SourceFetchError> {
     let mut bytes = Vec::new();
     let encoder = PngEncoder::new(&mut bytes);
@@ -269,7 +161,7 @@ fn encode_rgba_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, Sour
     Ok(bytes)
 }
 
-fn parse_zxy_suffix(url: &str, prefix: &str) -> Option<TileId> {
+pub(crate) fn parse_zxy_suffix(url: &str, prefix: &str) -> Option<TileId> {
     let rest = url.strip_prefix(prefix)?.strip_suffix(".png")?;
     let mut parts = rest.split('/');
     let zoom = parts.next()?.parse::<u8>().ok()?;

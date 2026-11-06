@@ -1,0 +1,123 @@
+//! OpenUSD aircraft the physical scene draws: ownship and traffic, and which ownship
+//! parts each camera sees.
+
+use glam::{DMat3, DQuat};
+use sim_core::{AirframeArticulation, VehicleState, VirtualCameraSpec};
+use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_maplibre::{
+    AircraftInstance, AltitudeReference, DynamicEntity3D, DynamicEntityKind, LatLon,
+    OwnshipVisualKind, Placement3d, SlotCameraRole, ViewSlotMask, orientation_from_ned_body_quat,
+};
+use sim_scenario::{OperatorViewportMode, ScenarioProfile};
+
+use crate::vehicles::FreeFlightVehicle;
+
+/// Cruise propeller speed of drawn traffic, rpm.
+const TRAFFIC_PROP_RPM: f64 = 2_350.0;
+
+/// Ownship at its true state, with its own articulation. The placement is `AboveMsl`, so
+/// the WGS84 ellipsoidal height becomes orthometric by subtracting `undulation_m`
+/// (`H = h − N`); without it a real-world airframe sits `N` metres off its runway.
+pub fn ownship_aircraft(
+    vehicle: &VehicleState,
+    articulation: AirframeArticulation,
+    undulation_m: f64,
+) -> AircraftInstance {
+    let geo = ecef_to_geodetic(vehicle.position_ecef);
+    let ecef_to_ned = LocalFrame::at(&geo).ned_to_ecef().transpose();
+    let ned_from_body =
+        DQuat::from_mat3(&(ecef_to_ned * DMat3::from_quat(vehicle.attitude))).normalize();
+    AircraftInstance {
+        placement: Placement3d {
+            position: LatLon::new(geo.lat_rad.to_degrees(), geo.lon_rad.to_degrees()),
+            altitude_meters: geo.height_m - undulation_m,
+            altitude_reference: AltitudeReference::AboveMsl,
+            orientation: orientation_from_ned_body_quat(ned_from_body),
+            view_mask: ViewSlotMask::ALL,
+        },
+        articulation,
+        ownship: true,
+    }
+}
+
+/// Fixed-wing truth traffic drawn as cruising C172s with spinning propellers.
+pub fn traffic_aircraft(entities: &[DynamicEntity3D], elapsed_s: f64) -> Vec<AircraftInstance> {
+    let phase = (elapsed_s * TRAFFIC_PROP_RPM / 60.0 * std::f64::consts::TAU)
+        .rem_euclid(std::f64::consts::TAU);
+    entities
+        .iter()
+        .filter(|entity| entity.kind == DynamicEntityKind::FixedWing)
+        .map(|entity| AircraftInstance {
+            placement: entity.placement,
+            articulation: AirframeArticulation {
+                engine_running: true,
+                engine_rpm: TRAFFIC_PROP_RPM,
+                propeller_rpm: TRAFFIC_PROP_RPM,
+                propeller_phase_rad: phase,
+                beacon_flash_norm: if (elapsed_s % 1.2) < 0.12 { 1.0 } else { 0.0 },
+                ..AirframeArticulation::default()
+            },
+            ownship: false,
+        })
+        .collect()
+}
+
+/// Which ownship parts the main window sees in `mode`.
+pub const fn window_camera_role(mode: OperatorViewportMode) -> SlotCameraRole {
+    match mode {
+        OperatorViewportMode::Cockpit => SlotCameraRole::HudForward,
+        OperatorViewportMode::Chase
+        | OperatorViewportMode::VolumetricScene
+        | OperatorViewportMode::ChartMap
+        | OperatorViewportMode::SensorAperture => SlotCameraRole::External,
+    }
+}
+
+/// Which ownship parts a virtual camera sees: body-mounted cameras look past the airframe.
+pub fn virtual_camera_role(spec: &VirtualCameraSpec) -> SlotCameraRole {
+    match spec.placement {
+        sim_core::VirtualCameraPlacement::BodyMounted(_) if spec.id.contains("window") => {
+            SlotCameraRole::LeftCabinWindow
+        }
+        sim_core::VirtualCameraPlacement::BodyMounted(_) => SlotCameraRole::BellyNadir,
+        _ => SlotCameraRole::External,
+    }
+}
+
+/// The ownship airframe for what is flying: the scenario's vehicle, else the free-flight
+/// plant's airframe, else the C172.
+pub const fn ownship_visual(
+    profile: Option<ScenarioProfile>,
+    vehicle: Option<FreeFlightVehicle>,
+) -> OwnshipVisualKind {
+    match (profile, vehicle) {
+        (Some(ScenarioProfile::Apollo11CapsuleReentry), _) => OwnshipVisualKind::Hidden,
+        (Some(ScenarioProfile::Apollo11LunarLanding), _) => OwnshipVisualKind::LunarLander,
+        (
+            Some(
+                ScenarioProfile::CorridorNominalCruise
+                | ScenarioProfile::CorridorOffSeedAcquisition
+                | ScenarioProfile::CorridorAggressiveBank
+                | ScenarioProfile::CorridorSameCellLoiter,
+            ),
+            _,
+        ) => OwnshipVisualKind::FixedWingUav,
+        (
+            Some(
+                ScenarioProfile::Airport47NUncontrolledPattern
+                | ScenarioProfile::AirportKewrToweredPattern,
+            ),
+            _,
+        )
+        | (None, Some(FreeFlightVehicle::JsbsimC172) | None) => OwnshipVisualKind::C172,
+        (
+            None,
+            Some(
+                FreeFlightVehicle::JsbsimLightTrainer
+                | FreeFlightVehicle::AviateFixedWingDirect
+                | FreeFlightVehicle::Kinematic,
+            ),
+        ) => OwnshipVisualKind::FixedWingUav,
+        (None, Some(FreeFlightVehicle::AviateX500Direct)) => OwnshipVisualKind::QuadrotorX500,
+    }
+}

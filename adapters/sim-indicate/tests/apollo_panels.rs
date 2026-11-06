@@ -44,6 +44,7 @@ fn fly() -> Frames {
         origin: site,
         origin_id: 11,
         altitude: AltitudeSource::OriginRelative,
+        heading_mode: sim_indicate::HeadingMode::SimLocalTrue,
     });
     let mut monitor = SourceMonitor::new();
     let moon = InertialTransform::moon_at(UtcTime::from_unix_seconds(-14_182_940.0));

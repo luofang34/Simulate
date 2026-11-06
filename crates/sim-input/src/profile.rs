@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{AxisShape, AxisSource, DeviceInfo, GamepadAxis, InputRange, Layout};
 
 /// A pilot control an axis can drive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Control {
     /// Roll (ailerons).
     Roll,
@@ -14,7 +16,7 @@ pub enum Control {
 }
 
 /// One axis bound to one control.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AxisBinding {
     /// The device axis.
     pub source: AxisSource,

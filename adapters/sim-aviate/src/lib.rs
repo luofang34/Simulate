@@ -4,7 +4,9 @@
 //!   stepping of `aviate-xil-direct`'s [`DirectXilBoard`] directly from
 //!   [`sim_core::VehicleState`] and body specific force (`>1,000x` real-time).
 //! - **Tier 1 (`endpoint` / `wire`)**: shared-memory seqlock protocol over
-//!   [`SharedStateV2`], matching Gazebo's XIL contract.
+//!   [`SharedStateV2`], matching Gazebo's XIL contract. The peer runs on the
+//!   calling thread; [`AviateExecutionBoundary`] and [`Tier1StepMetrics`]
+//!   keep that explicit for harnesses that also drive out-of-process peers.
 
 mod direct;
 mod endpoint;
@@ -24,7 +26,8 @@ pub use direct::{
     build_direct_x500_kernel, direct_fixed_wing_controls,
 };
 pub use endpoint::{
-    AviateSharedMemoryEndpoint, AviateStimulus, AviateXilBridge, FlightControllerCommand,
+    AviateExecutionBoundary, AviateSharedMemoryEndpoint, AviateStimulus, AviateXilBridge,
+    FlightControllerCommand, Tier1StepMetrics,
 };
 pub use error::{AviateBridgeError, DirectInitStage};
 pub use frame::{EnuWorld, ModelLanes};

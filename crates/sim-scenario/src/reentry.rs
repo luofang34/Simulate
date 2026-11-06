@@ -14,6 +14,7 @@ use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 
 use crate::ScenarioError;
 
+pub(crate) mod snapshot;
 mod steering;
 
 use steering::{EntryCondition, bank_moment_nm, bank_rad, lift_up_fraction};

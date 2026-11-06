@@ -1,7 +1,7 @@
-mod gpu;
+pub(crate) mod gpu;
 
 use flightbag::{RunwayDesignator, RunwayEndSpec};
-use glam::{DQuat, DVec3};
+use glam::{DMat3, DQuat, DVec3};
 use indicate_frames::Quat;
 use indicate_instrument_state::{
     AirData, AircraftState, Attitude, EstimateQuality, FreshnessPolicy, Kinematics, PanelData,
@@ -28,9 +28,9 @@ use crate::{
     CompanionStreamSession, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, DynamicEntity3D,
     XVS_DEFAULT_PERIOD, XvsSvsConfig, XvsSvsInput, XvsSvsMbdBlock, build_conformal_overlay,
     conformal_stamp_from_vehicle, decode_outbound_packet, encode_inbound_interaction_bytes,
-    entities_from_surveillance_belief, external_view_from_pose, frustum_from_intrinsics,
-    orientation_from_ned_body_quat, project_geodetic_to_screen, symmetric_frustum,
-    xvs_svs_component_spec,
+    entities::build_conformal_overlay_with_dem, entities_from_surveillance_belief,
+    external_view_from_pose, frustum_from_intrinsics, orientation_from_ned_body_quat,
+    project_geodetic_to_screen, symmetric_frustum, xvs_svs_component_spec,
 };
 
 pub(super) fn sample_panel_data() -> PanelData {
@@ -261,9 +261,85 @@ fn conformal_projection_and_xvs_mbd_block_snapshot_restore() {
         project_geodetic_to_screen(&stamp, &thr_geo, -32.0, [800, 600]).expect("visible ahead");
     assert!((px[0] - 400.0).abs() < 2.0);
     assert!(rev_z > 0.0 && rev_z < 1.0);
-    let (mesh, probes) = build_conformal_overlay(&stamp, [800, 600], Some(&rwy), &[], None);
+    let rwy_geom = sim_scenery::LandingRunwayGeometry::from_runway_end_spec(&rwy);
+    let (mesh, probes) = build_conformal_overlay(&stamp, [800, 600], Some(&rwy_geom), &[], None);
     assert!(!mesh.is_empty());
     assert_eq!(probes.len(), 1);
+}
+
+#[test]
+fn crowned_runway_conforms_to_onboard_dem_and_clears_grazing_facets() {
+    let db = sim_scenery::AirportDatabase::builtin();
+    let (_, n51) = db.by_code("N51").expect("N51");
+    let raw = n51
+        .landing_runway("04", sim_scenery::CatalogVerticalDatum::OrthometricMslEgm96)
+        .expect("N51 04");
+    assert!((raw.displaced_threshold_m - 165.81).abs() < 0.2);
+    assert!((raw.reciprocal_displaced_m - 402.03).abs() < 0.2);
+    assert!(raw.field_elevation_msl_m > raw.start_elevation_msl_m + 2.5);
+
+    // Simulate a crowned DEM reaching ARP (~57.7 m MSL) near the 04 displaced threshold.
+    let refined = raw.with_onboard_dem(
+        sim_scenery::CatalogVerticalDatum::OrthometricMslEgm96,
+        |lat: f64, _lon: f64| {
+            let t = ((lat - 40.5784) / (40.5906 - 40.5784)).clamp(0.0, 1.0);
+            Some(54.8 + 3.0 * (1.0_f64 - (2.0 * t - 0.35).powi(2)).max(0.0))
+        },
+    );
+    assert!(
+        refined.threshold_elevation_msl_m > raw.threshold_elevation_msl_m + 2.0,
+        "DO-315B DEM refinement lifts threshold onto crowned pavement: {} vs {}",
+        refined.threshold_elevation_msl_m,
+        raw.threshold_elevation_msl_m
+    );
+
+    let frustum = symmetric_frustum(50.0_f64.to_radians(), 800, 600, 0.5, 250_000.0).expect("f");
+    let heading_q = DQuat::from_rotation_z(raw.true_bearing_rad)
+        * DQuat::from_rotation_y(-3.0_f64.to_radians());
+    // 95 m MSL -> 61.5 m WGS84 ellipsoidal height with -33.5 m EGM96 geoid undulation.
+    let veh = sample_vehicle_at(40.5720, -74.7426, 95.0 - 33.5, heading_q);
+    let stamp = conformal_stamp_from_vehicle(
+        SimInstant::START,
+        &veh,
+        &CameraMount::forward_nose(DVec3::ZERO),
+        DVec3::ZERO,
+        frustum,
+        -33.5,
+    )
+    .expect("stamp");
+    let (flat_mesh, _) = build_conformal_overlay(&stamp, [800, 600], Some(&raw), &[], None);
+    let (dem_mesh, probes) = build_conformal_overlay_with_dem(
+        &stamp,
+        [800, 600],
+        Some(&refined),
+        &[],
+        None,
+        &mut |_lat, _lon| Some((57.7, 58.1)),
+    );
+    assert_eq!(dem_mesh.vertices.len(), flat_mesh.vertices.len());
+    assert_eq!(probes.len(), 1);
+    let max_dem_depth = dem_mesh
+        .vertices
+        .iter()
+        .map(|v| v.depth)
+        .fold(0.0_f32, f32::max);
+    let max_flat_depth = flat_mesh
+        .vertices
+        .iter()
+        .map(|v| v.depth)
+        .fold(0.0_f32, f32::max);
+    assert!(
+        max_dem_depth > max_flat_depth,
+        "DEM-conformed grazing clearance lifts reversed-Z depth ({max_dem_depth} > {max_flat_depth})"
+    );
+
+    // Unpaved turf runway (`N51 RWY 10`) omits painted centreline/aiming-point segments.
+    let turf = n51
+        .landing_runway("10", sim_scenery::CatalogVerticalDatum::OrthometricMslEgm96)
+        .expect("N51 10");
+    assert!(turf.surface.is_unpaved());
+    let (turf_mesh, _) = build_conformal_overlay(&stamp, [800, 600], Some(&turf), &[], None);
+    assert!(!turf_mesh.is_empty());
 }
 
 #[test]
@@ -344,4 +420,73 @@ fn companion_stream_session_roundtrips_outbound_and_inbound_gestures() {
         .expect("apply tap")
         .expect("accepted tap");
     assert_eq!(tap_res.activated_target, Some(TargetId(42)));
+}
+
+#[test]
+fn real_world_imagery_stops_at_esri_served_zoom() {
+    let endpoints = crate::SceneryEndpoints::real_world();
+    assert_eq!(endpoints.ortho_maxzoom, 18);
+    assert!(
+        endpoints
+            .ortho_tiles
+            .starts_with("https://services.arcgisonline.com/")
+    );
+    assert!(!endpoints.ortho_tiles.contains("blankTile"));
+}
+
+#[test]
+fn non_earth_stamps_and_globe_ned_scale_with_moon_and_mars_bodies() {
+    use crate::{
+        LUNAR_RENDER_BODY, MARS_RENDER_BODY, conformal_stamp_from_pose_on, default_render_body,
+        globe_ned_between_geodetic, project_geodetic_to_screen,
+    };
+    use sim_core::CameraPoseEcef;
+    use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
+
+    assert_eq!(
+        default_render_body(BodyEllipsoid::MOON_IAU),
+        LUNAR_RENDER_BODY
+    );
+    assert_eq!(
+        default_render_body(BodyEllipsoid::MARS_IAU),
+        MARS_RENDER_BODY
+    );
+
+    let frustum = symmetric_frustum(50.0_f64.to_radians(), 800, 600, 0.5, 250_000.0).expect("f");
+    // Hellas Planitia sits ~7.1 km below the Martian datum; Earth's -450 m floor would reject it,
+    // whereas `MARS_RENDER_BODY` (-8,200 m floor) admits it cleanly.
+    let hellas_eye = Geodetic::from_degrees(-42.4, 70.5, -7_100.0);
+    let local = LocalFrame::at(&hellas_eye);
+    let cam_pose = CameraPoseEcef {
+        position_ecef: BodyEllipsoid::MARS_IAU.geodetic_to_fixed(&hellas_eye),
+        orientation: DQuat::from_mat3(&DMat3::from_cols(local.east(), local.up(), -local.north())),
+    };
+    assert!(external_view_from_pose(&cam_pose, frustum, 0.0).is_err());
+    let mars_stamp = conformal_stamp_from_pose_on(
+        SimInstant::START,
+        BodyEllipsoid::MARS_IAU,
+        MARS_RENDER_BODY,
+        &cam_pose,
+        frustum,
+        0.0,
+    )
+    .expect("Mars Hellas stamp");
+    assert!((mars_stamp.anchor.altitude_msl_m + 7_100.0).abs() < 1e-6);
+
+    let ahead = Geodetic::from_degrees(-42.39, 70.5, -7_100.0);
+    assert!(project_geodetic_to_screen(&mars_stamp, &ahead, 0.0, [800, 600]).is_some());
+
+    // 0.01 deg north on the Moon (~303.2 m) vs Earth (~1,111.9 m): ratio equals R_moon / R_earth.
+    let moon_a = Geodetic::from_degrees(0.0, 23.47, 0.0);
+    let moon_b = Geodetic::from_degrees(0.01, 23.47, 0.0);
+    let ned_moon = globe_ned_between_geodetic(LUNAR_RENDER_BODY, &moon_a, 0.0, &moon_b, 0.0)
+        .expect("moon ned");
+    let ned_earth =
+        globe_ned_between_geodetic(crate::RenderBody::EARTH, &moon_a, 0.0, &moon_b, 0.0)
+            .expect("earth ned");
+    let ratio = ned_moon.x / ned_earth.x;
+    assert!(
+        (ratio - LUNAR_RENDER_BODY.radius_meters / crate::RenderBody::EARTH.radius_meters).abs()
+            < 1e-9
+    );
 }

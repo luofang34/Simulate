@@ -1,26 +1,33 @@
-use glam::DVec3;
+//! `Indicate` panels of the cockpit: PFD, HSI, full-window conformal HUD, and 3D volumes.
+
+use glam::{DQuat, DVec3};
 use sim_apollo::CockpitInstrumentSnapshot;
-use sim_atmosphere::{AtmosphereField, StandardAtmosphere};
-use sim_core::{SimInstant, SourceValidity, StampedReading, VehicleState};
-use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime, ecef_to_geodetic};
+use sim_core::{SimInstant, VehicleState};
+use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 use sim_indicate::{
-    AirDataReading, AirDataSample, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig,
-    FlightSample, FrameId, FramebufferDims, MonitoredFrame, PANEL_HEIGHT_PX, PANEL_RGBA_BYTES,
-    PANEL_SCENE_BYTES, PANEL_WIDTH_PX, PanelBuffers, PfdConfig, SourceMonitor, StateFeed,
-    SvsViewport, VOLUME_SCENE_BYTES, VSpeeds, ViewPose3D, VolumeInstrument, emit_volume_scene,
-    render_hsi, render_pfd,
+    AirDataReading, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig, FlightSample, FrameId,
+    FramebufferDims, HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX,
+    PANEL_RGBA_BYTES, PANEL_SCENE_BYTES, PANEL_WIDTH_PX, PanelBuffers, PfdConfig, SourceMonitor,
+    StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VSpeeds, VectorHudPanel, ViewPose3D,
+    VolumeInstrument, emit_volume_scene, render_hsi, render_pfd,
 };
-use sim_maplibre::{TerrainPatchSnapshot, TerrainVolumeRequest, emit_terrain_volume_with_patch};
-use sim_render::RgbaPanelTexture;
+use sim_maplibre::{
+    DynamicEntity3D, TerrainPatchSnapshot, TerrainVolumeRequest, emit_terrain_volume_with_patch,
+};
+use sim_render::{Camera, RgbaPanelTexture, VectorScenePass, VectorTarget};
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
+use sim_scenery::{CatalogVerticalDatum, LandingRunwayGeometry};
 
 use crate::error::AppSimError;
 use crate::supervisor_rig::default_delaware_spawn;
 
+mod hud;
+pub use hud::ConformalSurface;
+#[cfg(test)]
+pub(crate) use hud::hud_runway;
+
 const APOLLO_LM_EPOCH_UNIX_S: f64 = -14_182_200.0;
 const APOLLO_CM_EPOCH_UNIX_S: f64 = -13_854_300.0;
-const EARTH_EPOCH_UNIX_S: f64 = 1_782_864_000.0;
-const STANDARD_QNH_HPA: f64 = 1_013.25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FeedDomain {
@@ -46,6 +53,7 @@ impl FeedDomain {
                 origin: default_delaware_spawn(),
                 origin_id: 1,
                 altitude: AltitudeSource::Barometric,
+                heading_mode: HeadingMode::EarthMagnetic,
             },
             Self::ApolloLunarModule => FeedConfig {
                 body: BodyEllipsoid::MOON_IAU,
@@ -53,6 +61,7 @@ impl FeedDomain {
                 origin: Geodetic::from_degrees(0.674_16, 23.473_15, 0.0),
                 origin_id: 11,
                 altitude: AltitudeSource::OriginRelative,
+                heading_mode: HeadingMode::SimLocalTrue,
             },
             Self::ApolloCommandModule => FeedConfig {
                 body: BodyEllipsoid::WGS84,
@@ -60,6 +69,7 @@ impl FeedDomain {
                 origin: Geodetic::from_degrees(-3.2, 171.9, 0.0),
                 origin_id: 12,
                 altitude: AltitudeSource::OriginRelative,
+                heading_mode: HeadingMode::SimLocalTrue,
             },
         }
     }
@@ -71,23 +81,52 @@ pub struct AvionicsFrameInput<'a> {
     pub profile: Option<ScenarioProfile>,
     /// Current simulation clock instant.
     pub timestamp: SimInstant,
-    /// True or navigation-estimated vehicle state.
+    /// Navigation solution the displays draw (never simulation truth).
     pub vehicle: VehicleState,
-    /// Cockpit instrument health/attitude snapshot.
+    /// Cockpit instruments as the onboard attitude and rate sensors read them.
     pub cockpit: CockpitInstrumentSnapshot,
-    /// Body FRD specific force (`m/s²`), if modeled.
+    /// Pitot-static air data, `None` where the static port reads nothing.
+    pub air_data: Option<AirDataReading>,
+    /// Accelerometer body FRD specific force (`m/s²`), if modeled.
     pub specific_force_frd_m_s2: Option<DVec3>,
-    /// Whether `BeliefAvionicsMap` rendered a live `ConformalSvs3D` underlay this frame.
+    /// Whether a conformal SVS instrument map rendered an underlay this frame.
     pub svs_underlay_active: bool,
-    /// Whether the conformal HUD overlay is active on the main viewport.
-    pub render_hud: bool,
+    /// The window the conformal HUD overlays, when it is shown.
+    pub hud: Option<HudView<'a>>,
+    /// Surveyed landing runway geometry (FAA/AIP), drawn conformally on the HUD.
+    pub runway: Option<&'a LandingRunwayGeometry>,
+    /// What the flight-guidance host reports; shown on Earth aircraft, and its epoch resets
+    /// the display's guidance clock whenever the host's time goes back.
+    pub guidance: &'a HostFlightGuidance,
     /// Active operator viewport mode (triggers 3D `VolumeInstrument` emission on `VolumetricScene`).
     pub viewport_mode: OperatorViewportMode,
-    /// Optional stitched `129×129` DEM patch from `BeliefAvionicsMap` for `terrain-volume`.
+    /// Optional stitched `129×129` DEM patch from a conformal instrument map for `terrain-volume`.
     pub terrain_patch: Option<&'a TerrainPatchSnapshot>,
 }
 
-/// Owns `Indicate` state feeds, source monitors, CPU raster buffers, and persistent GPU panel textures.
+/// The window a conformal HUD is drawn over.
+#[derive(Clone, Copy, Debug)]
+pub struct HudView<'a> {
+    /// Window size, physical pixels; the HUD keeps its aspect.
+    pub surface_size: [u32; 2],
+    /// Camera drawing the window, whose field of view the HUD shares.
+    pub camera: Camera,
+    /// Belief traffic shown as HUD contacts.
+    pub traffic: &'a [DynamicEntity3D],
+    /// True attitude of the airframe the combiner glass is bolted to: with the window
+    /// camera it fixes where the glass sits in view, while everything drawn on the glass
+    /// comes from the navigation solution.
+    pub airframe_attitude: DQuat,
+    /// Lever arm (`m`, body FRD) from the aircraft reference point to the pilot's eye.
+    pub eye_body_lever_m: DVec3,
+    /// Body ellipsoid and rendered surface figure that conformal cues register against.
+    pub conformal_surface: ConformalSurface,
+    /// Earth vertical datum in which `traffic` carries `AboveMsl` heights (`None` off Earth).
+    pub vertical_datum: Option<CatalogVerticalDatum>,
+}
+
+/// Owns `Indicate` state feeds, source monitors, CPU raster buffers, persistent GPU panel
+/// textures, and the `4×` MSAA vector HUD target.
 pub struct AvionicsRig {
     domain: FeedDomain,
     feed: StateFeed,
@@ -100,12 +139,21 @@ pub struct AvionicsRig {
     render_gen: u32,
     pfd_texture: RgbaPanelTexture,
     hsi_texture: RgbaPanelTexture,
-    hud_texture: RgbaPanelTexture,
+    hud_pass: VectorScenePass,
+    hud_target: Option<VectorTarget>,
+    hud_panel: VectorHudPanel,
+    hud_shown: bool,
+    guidance_epoch: Option<u32>,
+    #[cfg(test)]
+    last_heading_ref: Option<sim_indicate::HeadingReference>,
+    #[cfg(test)]
+    last_heading_and_course_rad: Option<(f32, Option<f32>)>,
 }
 
 impl AvionicsRig {
-    /// Allocates reusable `Indicate` scene/pixel buffers and `480 × 360` sRGB GPU textures.
-    pub fn new(device: &wgpu::Device) -> Result<Self, AppSimError> {
+    /// Allocates reusable `Indicate` scene/pixel buffers and `480 × 360` sRGB GPU textures;
+    /// the HUD draws through `hud_pass` into a target sized to the window on first use.
+    pub fn new(device: &wgpu::Device, hud_pass: VectorScenePass) -> Result<Self, AppSimError> {
         let domain = FeedDomain::EarthAircraft;
         Ok(Self {
             domain,
@@ -129,12 +177,15 @@ impl AvionicsRig {
                 PANEL_WIDTH_PX,
                 PANEL_HEIGHT_PX,
             )?,
-            hud_texture: RgbaPanelTexture::new(
-                device,
-                "indicate hud",
-                PANEL_WIDTH_PX,
-                PANEL_HEIGHT_PX,
-            )?,
+            hud_pass,
+            hud_target: None,
+            hud_panel: VectorHudPanel::new(),
+            hud_shown: false,
+            guidance_epoch: None,
+            #[cfg(test)]
+            last_heading_ref: None,
+            #[cfg(test)]
+            last_heading_and_course_rad: None,
         })
     }
 
@@ -150,10 +201,13 @@ impl AvionicsRig {
         &self.hsi_texture
     }
 
-    /// GPU texture holding the latest transparent conformal HUD frame (`BackgroundMode::None`).
+    /// Premultiplied full-window HUD view, when the HUD drew this frame.
     #[must_use]
-    pub const fn hud_texture(&self) -> &RgbaPanelTexture {
-        &self.hud_texture
+    pub fn hud_view(&self) -> Option<&wgpu::TextureView> {
+        self.hud_target
+            .as_ref()
+            .filter(|_| self.hud_shown)
+            .map(VectorTarget::view)
     }
 
     /// Byte count of the most recently emitted 3D volumetric instrument scene (`VOL-01`).
@@ -163,10 +217,25 @@ impl AvionicsRig {
         self.last_volume_bytes
     }
 
+    /// Active heading reference (`Magnetic` vs polar `True` reversion) resolved on the latest frame.
+    #[cfg(test)]
+    #[must_use]
+    pub const fn last_heading_reference(&self) -> Option<sim_indicate::HeadingReference> {
+        self.last_heading_ref
+    }
+
+    /// `(heading_rad, nav_course_rose_rad)` resolved on the latest frame.
+    #[cfg(test)]
+    #[must_use]
+    pub const fn last_heading_and_course_rad(&self) -> Option<(f32, Option<f32>)> {
+        self.last_heading_and_course_rad
+    }
+
     /// Steps `Indicate` state resolution, rasterizes PFD + HSI (+ optional HUD), uploads GPU textures,
     /// and emits the 3D volumetric instrument IR when in `VolumetricScene`.
     pub fn update(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         input: &AvionicsFrameInput<'_>,
     ) -> Result<MonitoredFrame, AppSimError> {
@@ -176,9 +245,30 @@ impl AvionicsRig {
             self.feed = StateFeed::new(next_domain.feed_config());
             self.monitor = SourceMonitor::new();
         }
+        let epoch = input.guidance.source_epoch;
+        if self.guidance_epoch.is_some_and(|seen| seen != epoch) {
+            // The host's clock went back: the guidance lane and the source comparator both
+            // refuse time that runs backwards, so they start over at the new epoch.
+            self.feed.reset_guidance_clock();
+            self.monitor = SourceMonitor::new();
+        }
+        self.guidance_epoch = Some(epoch);
+        self.hud_shown = false;
 
         let sample = build_flight_sample(self.domain, input);
         let monitored = self.monitor.step(&mut self.feed, &sample)?;
+        #[cfg(test)]
+        {
+            self.last_heading_ref = Some(monitored.panel.heading.reference);
+            let crs = monitored
+                .panel
+                .nav
+                .course_rose_rad
+                .status
+                .shows_value()
+                .then_some(monitored.panel.nav.course_rose_rad.value);
+            self.last_heading_and_course_rad = Some((monitored.panel.heading.value_rad.value, crs));
+        }
         self.render_gen = self.render_gen.wrapping_add(1);
         let frame_id = FrameId {
             frame_generation: monitored.state.snapshot.generation,
@@ -188,8 +278,11 @@ impl AvionicsRig {
         let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
         self.rasterize_and_upload_pfd(queue, &monitored, &pfd_cfg, frame_id)?;
         self.rasterize_and_upload_hsi(queue, &monitored, frame_id)?;
-        if input.render_hud {
-            self.rasterize_and_upload_hud(queue, &monitored, frame_id)?;
+        if let Some(view) = input
+            .hud
+            .filter(|_| self.domain == FeedDomain::EarthAircraft)
+        {
+            self.render_vector_hud(device, queue, &monitored, input, &view)?;
         }
         if input.viewport_mode == OperatorViewportMode::VolumetricScene {
             self.emit_active_volume(&monitored, input.terrain_patch)?;
@@ -241,29 +334,40 @@ impl AvionicsRig {
         Ok(())
     }
 
-    fn rasterize_and_upload_hud(
+    /// Tessellates the HUD at the window's physical resolution and draws it with `4×` MSAA;
+    /// a window outside the HUD's aspect range shows no HUD rather than failing the frame.
+    fn render_vector_hud(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         monitored: &MonitoredFrame,
-        frame_id: FrameId,
+        input: &AvionicsFrameInput<'_>,
+        view: &HudView<'_>,
     ) -> Result<(), AppSimError> {
-        let dims = FramebufferDims::tight(PANEL_WIDTH_PX, PANEL_HEIGHT_PX);
-        let hud_cfg = PfdConfig {
-            background: BackgroundMode::None,
-            v_speeds: None,
+        let [w, h] = view.surface_size.map(|v| v.max(1));
+        if VectorHudPanel::design_frame(w, h).is_err() {
+            return Ok(());
+        }
+        let context = hud::hud_context(&input.vehicle, view, input.runway);
+        let vertices =
+            self.hud_panel
+                .tessellate(&monitored.panel, &context, Some(&monitored.alerts), w, h)?;
+        let target = match self.hud_target.as_mut() {
+            Some(target) => {
+                target.ensure_size(device, w, h)?;
+                target
+            }
+            None => self
+                .hud_target
+                .insert(VectorTarget::new(device, "indicate hud", w, h)?),
         };
-        let _stats = render_pfd(
-            &monitored.panel,
-            &hud_cfg,
-            Some(&monitored.alerts),
-            frame_id,
-            &mut PanelBuffers {
-                scene: &mut self.scene_buf,
-                pixels: &mut self.rgba_buf,
-                dims,
-            },
-        )?;
-        self.hud_texture.upload(queue, &self.rgba_buf)?;
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("indicate hud"),
+        });
+        self.hud_pass
+            .encode(device, queue, &mut encoder, target, &vertices)?;
+        queue.submit([encoder.finish()]);
+        self.hud_shown = true;
         Ok(())
     }
 
@@ -325,9 +429,10 @@ fn build_flight_sample(domain: FeedDomain, input: &AvionicsFrameInput<'_>) -> Fl
         )),
     };
     let air_data = match domain {
-        FeedDomain::EarthAircraft => sample_earth_air_data(input.timestamp, &input.vehicle),
+        FeedDomain::EarthAircraft => input.air_data,
         FeedDomain::ApolloLunarModule | FeedDomain::ApolloCommandModule => None,
     };
+    let earth = domain == FeedDomain::EarthAircraft;
     FlightSample {
         timestamp: input.timestamp,
         vehicle: input.vehicle,
@@ -335,28 +440,8 @@ fn build_flight_sample(domain: FeedDomain, input: &AvionicsFrameInput<'_>) -> Fl
         central_body,
         air_data,
         specific_force_body_m_s2: input.specific_force_frd_m_s2,
+        guidance: earth.then_some(*input.guidance),
     }
-}
-
-fn sample_earth_air_data(timestamp: SimInstant, vehicle: &VehicleState) -> Option<AirDataReading> {
-    let geo = ecef_to_geodetic(vehicle.position_ecef);
-    if geo.height_m > 19_500.0 {
-        return None;
-    }
-    let atm = StandardAtmosphere
-        .sample(&geo, UtcTime::from_unix_seconds(EARTH_EPOCH_UNIX_S))
-        .ok()?;
-    let sample = AirDataSample {
-        true_airspeed_m_s: vehicle.velocity_ecef.length(),
-        density_kg_m3: atm.density_kg_m3,
-        static_pressure_pa: Some(atm.pressure_pa),
-        altimeter_setting_hpa: Some(STANDARD_QNH_HPA),
-    };
-    Some(StampedReading::new(
-        sample,
-        timestamp,
-        SourceValidity::Valid,
-    ))
 }
 
 fn pfd_config_for(domain: FeedDomain, svs_underlay_active: bool) -> PfdConfig {

@@ -9,11 +9,15 @@
 //! - [`betaflight`]: Betaflight SITL `144`-byte `FdmPacket` and motor servo
 //!   packets, paired with sans-IO MultiWii Serial Protocol (`MSP` v1 and v2)
 //!   framing and native UDP endpoints.
+//!
+//! [`RealtimePacer`] holds real-time runs to wall-clock deadlines.
 
 pub mod betaflight;
 mod error;
 mod kinematics;
 pub mod mavlink_hil;
+mod pacer;
 
 pub use error::XilError;
 pub use kinematics::{NedKinematics, SEA_LEVEL_DENSITY_KG_M3, STANDARD_GRAVITY_M_S2, XilStimulus};
+pub use pacer::{PacerStats, RealtimePacer};

@@ -67,8 +67,8 @@ fn regional_network_grades_flat_plateaus_under_47n_and_kewr_and_merges_geojson()
     let h_kewr = catalog
         .ground_height_m(&Geodetic::from_degrees(40.692_5, -74.168_7, 0.0))?
         .ok_or("KEWR outside synthetic regional network")?;
-    assert!((h_47n - 26.0).abs() < 0.05, "47N graded height {h_47n}");
-    assert!((h_kewr - 4.5).abs() < 0.05, "KEWR graded height {h_kewr}");
+    assert!((h_47n - 26.18).abs() < 0.05, "47N graded height {h_47n}");
+    assert!((h_kewr - 5.33).abs() < 0.05, "KEWR graded height {h_kewr}");
 
     let merged = OsmAerodromeDiagram::builtin_all_merged_geojson()?;
     let count = merged

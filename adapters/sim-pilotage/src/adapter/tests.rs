@@ -12,6 +12,9 @@ use sim_pack::{SystemKind, builtin_c172_package, builtin_light_trainer_package};
 
 use super::*;
 
+mod approach;
+mod attitude;
+mod checkpoint;
 mod link_loss;
 
 const VEHICLE: VehicleId = VehicleId::new(5);

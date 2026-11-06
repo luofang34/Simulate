@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use sim_render::Renderer;
 use tracing::{Level, error};
 use tracing_wasm::WASMLayerConfigBuilder;
 use winit::event_loop::{EventLoop, EventLoopProxy};
 use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 use winit::window::{Window, WindowAttributes};
 
-use crate::app::{AppEvent, FlightApp};
+use crate::app::{AppEvent, FlightApp, GpuReady};
 
 /// Starts the app; the browser drives the event loop from here on.
 pub fn run() {
@@ -56,8 +55,11 @@ pub fn window_attributes() -> WindowAttributes {
 pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     let size = window.inner_size();
     wasm_bindgen_futures::spawn_local(async move {
-        let renderer = Renderer::new(window, size.width, size.height).await;
-        if proxy.send_event(AppEvent::RendererReady(renderer)).is_err() {
+        let gpu = GpuReady::new(window, size.width, size.height).await;
+        if proxy
+            .send_event(AppEvent::RendererReady(Box::new(gpu)))
+            .is_err()
+        {
             error!("event loop closed before the renderer was ready");
         }
     });

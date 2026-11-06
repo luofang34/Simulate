@@ -148,7 +148,7 @@ pub fn extract_volumetric_mesh_patch(
 /// Parameters for emitting `Indicate`'s `terrain-volume` 3D scene from a resident DEM patch.
 #[derive(Clone, Copy, Debug)]
 pub struct TerrainVolumeRequest<'a> {
-    /// Resident stitched DEM patch from `BeliefAvionicsMap`.
+    /// Resident stitched DEM patch from a conformal instrument map.
     pub snapshot: &'a TerrainPatchSnapshot,
     /// Downsampled grid side (`2..=32`, e.g. `8`) encoded into `AuxChannelId::TERRAIN_PATCH_3D`.
     pub grid_side: u8,
@@ -167,7 +167,7 @@ pub struct TerrainVolumeRequest<'a> {
 }
 
 /// Emits and validates `Indicate`'s `terrain-volume` 3D scene populated with a live
-/// [`TerrainPatchSnapshot`] from `BeliefAvionicsMap`.
+/// [`TerrainPatchSnapshot`] from a conformal instrument map.
 pub fn emit_terrain_volume_with_patch(
     request: &TerrainVolumeRequest<'_>,
     out_scene: &mut [u8],

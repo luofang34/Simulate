@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::Duration;
 
 use aviate_xil_contract::{FcState, SharedStateV2, unpack_fc_status};
 use mbd_core::LocalSiteKinematics;
@@ -10,8 +11,11 @@ use sim_core::{
 use crate::wire::{publish_model_state, read_motor_command};
 use crate::{AviateBridgeError, EnuWorld, MotorCommand, validate_shared_state};
 
+mod boundary;
 #[cfg(test)]
 mod tests;
+
+pub use boundary::{AviateExecutionBoundary, Tier1StepMetrics};
 
 const TICKS_PER_MICROSECOND: u64 = TICKS_PER_SECOND / 1_000_000;
 // `time_us` truncates only what a tick count below one microsecond can hold.
@@ -51,12 +55,19 @@ pub struct FlightControllerCommand {
 /// block, and may touch only what the contract gives a flight controller. The
 /// header is validated before every publish and again before the command is
 /// interpreted, so a peer that corrupts the block fails the exchange.
+///
+/// The peer is a callback on the calling thread, so this endpoint's
+/// [`Self::execution_boundary`] is always
+/// [`AviateExecutionBoundary::InProcessSynchronous`]: harnesses must not read
+/// its timing as evidence about an out-of-process controller.
 pub struct AviateSharedMemoryEndpoint<F> {
     shared: SharedStateV2,
     world: EnuWorld,
     peer: F,
     sim_step: u64,
     answered: VecDeque<StampedResponse<FlightControllerCommand>>,
+    metrics: Tier1StepMetrics,
+    step_budget: Option<Duration>,
 }
 
 /// A simulation's link to a flight controller over the Aviate contract.
@@ -78,7 +89,30 @@ impl<F: FnMut(&mut SharedStateV2)> AviateSharedMemoryEndpoint<F> {
             world,
             peer,
             answered: VecDeque::new(),
+            metrics: Tier1StepMetrics::default(),
+            step_budget: None,
         })
+    }
+
+    /// Times every peer call against `budget`, counting
+    /// [`Tier1StepMetrics::budget_overruns`]. Timing is diagnostic only and
+    /// never changes what the simulation sees.
+    #[must_use]
+    pub fn with_step_budget(mut self, budget: Duration) -> Self {
+        self.step_budget = Some(budget);
+        self
+    }
+
+    /// Where the peer runs: always on the calling thread.
+    #[must_use]
+    pub const fn execution_boundary(&self) -> AviateExecutionBoundary {
+        AviateExecutionBoundary::InProcessSynchronous
+    }
+
+    /// Publish, peer, and read counters since attaching.
+    #[must_use]
+    pub const fn metrics(&self) -> Tier1StepMetrics {
+        self.metrics
     }
 
     /// The block as the last exchange left it.
@@ -97,10 +131,12 @@ impl<F: FnMut(&mut SharedStateV2)> AviateSharedMemoryEndpoint<F> {
         let lanes = self.world.model_lanes(stimulus);
         publish_model_state(&mut self.shared, step, micros_since_start(at)?, &lanes)?;
         self.sim_step = step;
-        (self.peer)(&mut self.shared);
+        self.metrics.on_publish(step);
+        self.run_peer();
 
         validate_shared_state(&self.shared)?;
         let acknowledged = self.shared.command.fc_step_ack;
+        self.metrics.on_acknowledgement(step, acknowledged);
         if self.shared.control.lockstep_enabled != 0 && acknowledged != step {
             return Err(AviateBridgeError::StepNotAcknowledged {
                 expected: step,
@@ -117,6 +153,18 @@ impl<F: FnMut(&mut SharedStateV2)> AviateSharedMemoryEndpoint<F> {
             fc_ready: fc_state == FcState::Ready
                 && generation == self.shared.header.reset_generation,
         })
+    }
+}
+
+impl<F: FnMut(&mut SharedStateV2)> AviateSharedMemoryEndpoint<F> {
+    fn run_peer(&mut self) {
+        let Some(budget) = self.step_budget else {
+            (self.peer)(&mut self.shared);
+            return;
+        };
+        let started = web_time::Instant::now();
+        (self.peer)(&mut self.shared);
+        self.metrics.on_peer_wall(started.elapsed(), budget);
     }
 }
 

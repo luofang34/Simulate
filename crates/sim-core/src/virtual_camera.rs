@@ -1,16 +1,22 @@
 //! Configurable airframe-mounted, chase, fixed-ground, and auto-tracking PTZ
 //! virtual cameras stepped deterministically on the master clock.
 
-use glam::{DMat3, DQuat, DVec3};
-use sim_geo::{Geodetic, LocalFrame, SensorIntrinsics, ecef_to_geodetic, geodetic_to_ecef};
+use glam::DVec3;
+use sim_geo::{BodyEllipsoid, Geodetic, SensorIntrinsics};
 
 use crate::{
     Block, BlockError, CAMERA_DEFAULT_PERIOD, CameraFrameCapture, CameraMount, CameraPoseEcef,
     EnuAnchor, SimInstant, TickSpan, VehicleState,
 };
 
+mod placement;
 #[cfg(test)]
 mod tests;
+
+pub use placement::FlybyTracker;
+use placement::{
+    AutoZoom, chase_pose, flyby_pose, range_from, world_auto_track_pose, world_fixed_pose,
+};
 
 const BLOCK: &str = "virtual_camera_rig";
 
@@ -30,9 +36,10 @@ pub enum VirtualCameraPlacement {
         /// Elevation pitch relative to local horizon (`rad`, negative tilts nose down).
         pitch_rad: f64,
     },
-    /// Stationary ground or runway-threshold camera fixed on WGS84.
+    /// Stationary ground or runway-threshold camera fixed on the body's
+    /// ellipsoid (WGS84 unless the rig says otherwise).
     WorldFixed {
-        /// Geodetic eye position on WGS84.
+        /// Geodetic eye position on the body's ellipsoid.
         position: Geodetic,
         /// True azimuth clockwise from north (`rad`).
         azimuth_rad: f64,
@@ -41,9 +48,10 @@ pub enum VirtualCameraPlacement {
         /// Roll angle clockwise around the optical axis (`rad`).
         roll_rad: f64,
     },
-    /// Control-tower or range-tracking PTZ camera anchored on WGS84 and aiming at the vehicle.
+    /// Control-tower or range-tracking PTZ camera anchored on the body's
+    /// ellipsoid and aiming at the vehicle.
     WorldAutoTrack {
-        /// Geodetic tower cab or tripod eye position on WGS84.
+        /// Geodetic tower cab or tripod eye position on the body's ellipsoid.
         position: Geodetic,
         /// Velocity lead time (`s`) added to `vehicle.position_ecef` when aiming.
         lead_time_s: f64,
@@ -53,6 +61,31 @@ pub enum VirtualCameraPlacement {
         min_fov_y_rad: f64,
         /// Widest vertical field of view (`rad`) allowed at close range.
         max_fov_y_rad: f64,
+    },
+    /// A ground or spatial observer near ownship that auto-tracks it as it
+    /// flies past, anywhere on any body.
+    FlybyAutoTrack(FlybyTracker),
+    /// [`Self::WorldAutoTrack`] from a fixed site while the vehicle is within
+    /// `max_range_m`, and [`Self::FlybyAutoTrack`] beyond, so a tower camera
+    /// never stares across hundreds of kilometres of haze or through the
+    /// body when the vehicle is far from its airport.
+    RangeLimitedAutoTrack {
+        /// Geodetic eye position on the body's ellipsoid.
+        position: Geodetic,
+        /// Velocity lead time (`s`) added to the vehicle position when aiming
+        /// from the site.
+        lead_time_s: f64,
+        /// Optional target scene span (`m`) at the vehicle range for
+        /// automatic telephoto zoom from the site.
+        auto_zoom_span_m: Option<f64>,
+        /// Narrowest vertical field of view (`rad`) from the site.
+        min_fov_y_rad: f64,
+        /// Widest vertical field of view (`rad`) from the site.
+        max_fov_y_rad: f64,
+        /// Slant range (`m`) beyond which `fallback` takes over.
+        max_range_m: f64,
+        /// The observer used beyond `max_range_m`.
+        fallback: FlybyTracker,
     },
 }
 
@@ -95,12 +128,90 @@ impl VirtualCameraSpec {
         2.0 * (0.5 * f64::from(intrinsics.height) / intrinsics.fy.max(1.0)).atan()
     }
 
-    /// Evaluates the instantaneous ECEF camera pose and pinhole intrinsics for `vehicle`.
+    /// Evaluates the instantaneous ECEF camera pose and pinhole intrinsics for
+    /// `vehicle` on WGS84.
     pub fn pose_and_intrinsics(
         &self,
         vehicle: &VehicleState,
         cg_body_m: DVec3,
     ) -> Result<(CameraPoseEcef, SensorIntrinsics), BlockError> {
+        self.pose_and_intrinsics_on(&BodyEllipsoid::WGS84, vehicle, cg_body_m)
+    }
+
+    /// [`Self::pose_and_intrinsics`] for a vehicle flying over `body`, whose
+    /// ellipsoid places world-anchored cameras and sets their local vertical.
+    pub fn pose_and_intrinsics_on(
+        &self,
+        body: &BodyEllipsoid,
+        vehicle: &VehicleState,
+        cg_body_m: DVec3,
+    ) -> Result<(CameraPoseEcef, SensorIntrinsics), BlockError> {
+        self.validate_inputs(vehicle, cg_body_m)?;
+        let base = &self.base_intrinsics;
+        Ok(match self.placement {
+            VirtualCameraPlacement::BodyMounted(mount) => (mount.pose(vehicle, cg_body_m), *base),
+            VirtualCameraPlacement::ChaseOffset {
+                back_m,
+                right_m,
+                up_m,
+                pitch_rad,
+            } => (
+                chase_pose(body, vehicle, DVec3::new(back_m, right_m, up_m), pitch_rad),
+                *base,
+            ),
+            VirtualCameraPlacement::WorldFixed {
+                position,
+                azimuth_rad,
+                elevation_rad,
+                roll_rad,
+            } => (
+                world_fixed_pose(body, &position, azimuth_rad, elevation_rad, roll_rad),
+                *base,
+            ),
+            VirtualCameraPlacement::WorldAutoTrack {
+                position,
+                lead_time_s,
+                auto_zoom_span_m,
+                min_fov_y_rad,
+                max_fov_y_rad,
+            } => {
+                let zoom = AutoZoom {
+                    span_m: auto_zoom_span_m,
+                    min_fov_y_rad,
+                    max_fov_y_rad,
+                };
+                world_auto_track_pose(body, &position, vehicle, lead_time_s, base, zoom)
+            }
+            VirtualCameraPlacement::FlybyAutoTrack(tracker) => {
+                tracker.validate()?;
+                flyby_pose(body, &tracker, vehicle, base)
+            }
+            VirtualCameraPlacement::RangeLimitedAutoTrack {
+                position,
+                lead_time_s,
+                auto_zoom_span_m,
+                min_fov_y_rad,
+                max_fov_y_rad,
+                max_range_m,
+                fallback,
+            } => {
+                // NaN compares false, so an unusable limit falls back too.
+                if range_from(body, &position, vehicle) <= max_range_m {
+                    let zoom = AutoZoom {
+                        span_m: auto_zoom_span_m,
+                        min_fov_y_rad,
+                        max_fov_y_rad,
+                    };
+                    world_auto_track_pose(body, &position, vehicle, lead_time_s, base, zoom)
+                } else {
+                    fallback.validate()?;
+                    flyby_pose(body, &fallback, vehicle, base)
+                }
+            }
+        })
+    }
+
+    fn validate_inputs(&self, vehicle: &VehicleState, cg_body_m: DVec3) -> Result<(), BlockError> {
         if !self.base_intrinsics.is_usable() {
             return Err(BlockError::InputOutOfRange {
                 block: BLOCK,
@@ -119,47 +230,10 @@ impl VirtualCameraSpec {
                 detail: "non-finite vehicle state".to_owned(),
             });
         }
-        Ok(match self.placement {
-            VirtualCameraPlacement::BodyMounted(mount) => {
-                (mount.pose(vehicle, cg_body_m), self.base_intrinsics)
-            }
-            VirtualCameraPlacement::ChaseOffset {
-                back_m,
-                right_m,
-                up_m,
-                pitch_rad,
-            } => (
-                chase_pose(vehicle, back_m, right_m, up_m, pitch_rad),
-                self.base_intrinsics,
-            ),
-            VirtualCameraPlacement::WorldFixed {
-                position,
-                azimuth_rad,
-                elevation_rad,
-                roll_rad,
-            } => (
-                world_fixed_pose(&position, azimuth_rad, elevation_rad, roll_rad),
-                self.base_intrinsics,
-            ),
-            VirtualCameraPlacement::WorldAutoTrack {
-                position,
-                lead_time_s,
-                auto_zoom_span_m,
-                min_fov_y_rad,
-                max_fov_y_rad,
-            } => world_auto_track_pose(
-                &position,
-                vehicle,
-                lead_time_s,
-                &self.base_intrinsics,
-                auto_zoom_span_m,
-                min_fov_y_rad,
-                max_fov_y_rad,
-            ),
-        })
+        Ok(())
     }
 
-    /// Captures a stamped [`CameraFrameCapture`] relative to `anchor`.
+    /// Captures a stamped [`CameraFrameCapture`] relative to `anchor` on WGS84.
     pub fn capture(
         &self,
         timestamp: SimInstant,
@@ -167,7 +241,19 @@ impl VirtualCameraSpec {
         cg_body_m: DVec3,
         anchor: &EnuAnchor,
     ) -> Result<CameraFrameCapture, BlockError> {
-        let (pose, intrinsics) = self.pose_and_intrinsics(vehicle, cg_body_m)?;
+        self.capture_on(&BodyEllipsoid::WGS84, timestamp, vehicle, cg_body_m, anchor)
+    }
+
+    /// [`Self::capture`] for a vehicle flying over `body`.
+    pub fn capture_on(
+        &self,
+        body: &BodyEllipsoid,
+        timestamp: SimInstant,
+        vehicle: &VehicleState,
+        cg_body_m: DVec3,
+        anchor: &EnuAnchor,
+    ) -> Result<CameraFrameCapture, BlockError> {
+        let (pose, intrinsics) = self.pose_and_intrinsics_on(body, vehicle, cg_body_m)?;
         let nav = pose.to_navigate(anchor);
         Ok(CameraFrameCapture {
             timestamp,
@@ -187,11 +273,13 @@ pub struct VirtualCameraRigSnapshot {
     captures: Vec<CameraFrameCapture>,
 }
 
-/// Multi-camera sensor rig capturing synchronized exposures across body and ground cameras.
+/// Multi-camera sensor rig capturing synchronized exposures across body and
+/// ground cameras, on WGS84 unless [`Self::with_ellipsoid`] names another body.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VirtualCameraRigBlock {
     specs: Vec<VirtualCameraSpec>,
     anchor: EnuAnchor,
+    body: BodyEllipsoid,
     period: TickSpan,
     snapshot: VirtualCameraRigSnapshot,
 }
@@ -222,6 +310,7 @@ impl VirtualCameraRigBlock {
         Ok(Self {
             specs,
             anchor,
+            body: BodyEllipsoid::WGS84,
             period,
             snapshot: VirtualCameraRigSnapshot {
                 next_capture: SimInstant::START,
@@ -236,6 +325,24 @@ impl VirtualCameraRigBlock {
         anchor: EnuAnchor,
     ) -> Result<Self, BlockError> {
         Self::new(specs, anchor, CAMERA_DEFAULT_PERIOD)
+    }
+
+    /// This rig over `body` instead of WGS84.
+    #[must_use]
+    pub fn with_ellipsoid(mut self, body: BodyEllipsoid) -> Self {
+        self.body = body;
+        self
+    }
+
+    /// Places world-anchored cameras on `body` from the next exposure on.
+    pub fn set_ellipsoid(&mut self, body: BodyEllipsoid) {
+        self.body = body;
+    }
+
+    /// The body world-anchored cameras are placed on.
+    #[must_use]
+    pub fn ellipsoid(&self) -> BodyEllipsoid {
+        self.body
     }
 
     /// Configured camera specifications in slot order.
@@ -265,7 +372,13 @@ impl Block for VirtualCameraRigBlock {
         let timestamp = self.snapshot.next_capture;
         let mut captures = Vec::with_capacity(self.specs.len());
         for spec in &self.specs {
-            captures.push(spec.capture(timestamp, &vehicle, cg_body_m, &self.anchor)?);
+            captures.push(spec.capture_on(
+                &self.body,
+                timestamp,
+                &vehicle,
+                cg_body_m,
+                &self.anchor,
+            )?);
         }
         self.snapshot.captures = captures;
         self.snapshot.next_capture = timestamp.advanced(self.period);
@@ -283,103 +396,4 @@ impl Block for VirtualCameraRigBlock {
     fn restore(&mut self, snapshot: &Self::Snapshot) {
         self.snapshot.clone_from(snapshot);
     }
-}
-
-fn chase_pose(
-    vehicle: &VehicleState,
-    back_m: f64,
-    right_m: f64,
-    up_m: f64,
-    pitch_rad: f64,
-) -> CameraPoseEcef {
-    let geo = ecef_to_geodetic(vehicle.position_ecef);
-    let frame = LocalFrame::at(&geo);
-    let zenith = frame.up();
-    let body_fwd = vehicle.forward_ecef();
-    let horiz = body_fwd - zenith * body_fwd.dot(zenith);
-    let fwd_h = horiz.try_normalize().unwrap_or_else(|| frame.north());
-    let right = fwd_h
-        .cross(zenith)
-        .try_normalize()
-        .unwrap_or_else(|| frame.east());
-    let position_ecef = vehicle.position_ecef - fwd_h * back_m + right * right_m + zenith * up_m;
-    let (sin_p, cos_p) = pitch_rad.sin_cos();
-    let forward = (fwd_h * cos_p + zenith * sin_p).normalize();
-    let cam_up = right.cross(forward).normalize();
-    let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -forward)).normalize();
-    CameraPoseEcef {
-        position_ecef,
-        orientation,
-    }
-}
-
-fn world_fixed_pose(
-    position: &Geodetic,
-    azimuth_rad: f64,
-    elevation_rad: f64,
-    roll_rad: f64,
-) -> CameraPoseEcef {
-    let position_ecef = geodetic_to_ecef(position);
-    let frame = LocalFrame::at(position);
-    let (sin_az, cos_az) = azimuth_rad.sin_cos();
-    let (sin_el, cos_el) = elevation_rad.sin_cos();
-    let horiz = frame.north() * cos_az + frame.east() * sin_az;
-    let zenith = frame.up();
-    let forward = (horiz * cos_el + zenith * sin_el).normalize();
-    let right0 = (frame.east() * cos_az - frame.north() * sin_az).normalize();
-    let up0 = (-horiz * sin_el + zenith * cos_el).normalize();
-    let (sin_r, cos_r) = roll_rad.sin_cos();
-    let right = (right0 * cos_r + up0 * sin_r).normalize();
-    let cam_up = (-right0 * sin_r + up0 * cos_r).normalize();
-    let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -forward)).normalize();
-    CameraPoseEcef {
-        position_ecef,
-        orientation,
-    }
-}
-
-fn world_auto_track_pose(
-    position: &Geodetic,
-    vehicle: &VehicleState,
-    lead_time_s: f64,
-    base: &SensorIntrinsics,
-    auto_zoom_span_m: Option<f64>,
-    min_fov_y_rad: f64,
-    max_fov_y_rad: f64,
-) -> (CameraPoseEcef, SensorIntrinsics) {
-    let position_ecef = geodetic_to_ecef(position);
-    let frame = LocalFrame::at(position);
-    let zenith = frame.up();
-    let aim_ecef = vehicle.position_ecef + vehicle.velocity_ecef * lead_time_s;
-    let delta = aim_ecef - position_ecef;
-    let range_m = delta.length().max(0.1);
-    let forward = (delta / range_m)
-        .try_normalize()
-        .unwrap_or_else(|| frame.north());
-    let right = forward
-        .cross(zenith)
-        .try_normalize()
-        .unwrap_or_else(|| frame.east());
-    let cam_up = right.cross(forward).normalize();
-    let orientation = DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -forward)).normalize();
-
-    let mut intrinsics = *base;
-    if let Some(span_m) = auto_zoom_span_m
-        && span_m > 0.0
-    {
-        let lo = min_fov_y_rad.clamp(0.01, 2.4);
-        let hi = max_fov_y_rad.clamp(lo, 2.5);
-        let desired_fov = (2.0 * (0.5 * span_m / range_m).atan()).clamp(lo, hi);
-        let fy = 0.5 * f64::from(base.height) / (0.5 * desired_fov).tan();
-        let aspect_scale = base.fx / base.fy.max(1e-6);
-        intrinsics.fy = fy;
-        intrinsics.fx = fy * aspect_scale;
-    }
-    (
-        CameraPoseEcef {
-            position_ecef,
-            orientation,
-        },
-        intrinsics,
-    )
 }
