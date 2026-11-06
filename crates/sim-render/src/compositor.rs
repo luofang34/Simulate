@@ -147,6 +147,27 @@ impl<'a> OverlayQuad<'a> {
             premultiplied: true,
         }
     }
+
+    /// Inset instrument quad for a premultiplied `Rgba8UnormSrgb` [`VectorTarget`](crate::VectorTarget)
+    /// resolve view (such as PFD or HSI), optionally opaque and framed with a glass-cockpit bezel.
+    #[must_use]
+    pub const fn vector_panel(
+        rect: ViewportRect,
+        view: &'a wgpu::TextureView,
+        opaque: bool,
+        bezel: bool,
+    ) -> Self {
+        Self {
+            rect,
+            view,
+            transfer: ColorTransfer::HardwareLinear,
+            filter: QuadFilter::Linear,
+            opaque,
+            bezel,
+            opacity: 1.0,
+            premultiplied: true,
+        }
+    }
 }
 
 /// Destination attachment and load operation for [`CompositorPass::encode`].

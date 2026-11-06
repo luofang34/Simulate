@@ -40,12 +40,28 @@ impl SkyFrame<'static> {
     }
 }
 
+/// Minimum interval (`s`) and observer displacement (`m²`) before recomputing ephemeris.
+const EPHEMERIS_MIN_DT_S: f64 = 0.10;
+const EPHEMERIS_MAX_MOVE_M2: f64 = 500.0 * 500.0;
+
+#[derive(Debug, Clone)]
+struct CachedSkyEval {
+    mode: SkyTimeMode,
+    body: ReferenceBody,
+    profile: Option<ScenarioProfile>,
+    observer_fixed_m: DVec3,
+    elapsed_s: f64,
+    live_wall_utc_s: f64,
+    frame: CelestialFrame,
+}
+
 /// Owns the ephemeris clock, the selected [`SkyTimeMode`], and the last uploaded starfield.
 #[derive(Debug, Default)]
 pub struct SkyRig {
     clock: CelestialClock,
     mode: SkyTimeMode,
     stars: Vec<CelestialStar>,
+    cached: Option<CachedSkyEval>,
 }
 
 impl SkyRig {
@@ -83,13 +99,27 @@ impl SkyRig {
         } else {
             ReferenceBody::Earth
         };
+        let profile = flight.profile();
         let elapsed_s = flight.now().duration_since(SimInstant::START).as_seconds();
+        if let Some(cached) = self.cached.as_ref().filter(|c| {
+            c.mode == self.mode
+                && c.body == body
+                && c.profile == profile
+                && (elapsed_s - c.elapsed_s).abs() < EPHEMERIS_MIN_DT_S
+                && (live_wall_utc_s - c.live_wall_utc_s).abs() < EPHEMERIS_MIN_DT_S
+                && observer_fixed_m.distance_squared(c.observer_fixed_m) < EPHEMERIS_MAX_MOVE_M2
+        }) {
+            return SkyFrame {
+                sun_direction_ecef: cached.frame.sun_direction_fixed,
+                celestial: Some(sky_input(&cached.frame, None)),
+            };
+        }
         let frame = self.clock.evaluate(
             self.mode,
             body,
             observer_fixed_m,
             elapsed_s,
-            scenario_base_utc_s(flight.profile()),
+            scenario_base_utc_s(profile),
             live_wall_utc_s,
         );
         let refreshed = frame.stars_update.as_deref().map(|stars| {
@@ -97,9 +127,20 @@ impl SkyRig {
             self.stars.extend(stars.iter().map(celestial_star));
         });
         let stars = refreshed.map(|()| self.stars.as_slice());
+        let out_sun = frame.sun_direction_fixed;
+        self.cached = Some(CachedSkyEval {
+            mode: self.mode,
+            body,
+            profile,
+            observer_fixed_m,
+            elapsed_s,
+            live_wall_utc_s,
+            frame,
+        });
+        let celestial = self.cached.as_ref().map(|c| sky_input(&c.frame, stars));
         SkyFrame {
-            sun_direction_ecef: frame.sun_direction_fixed,
-            celestial: Some(sky_input(&frame, stars)),
+            sun_direction_ecef: out_sun,
+            celestial,
         }
     }
 }

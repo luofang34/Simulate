@@ -1,7 +1,7 @@
 use sim_apollo::{CockpitInstrumentSnapshot, GuidanceSource, InstrumentChange};
 use sim_core::SourceValidity;
 use sim_scenario::{OperatorViewportMode, SimTimeScale};
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::flight::Flight;
 
@@ -105,6 +105,13 @@ pub fn title(
 /// Rolling real-time pacing, e.g. `RT 1.00x · 60 FPS`.
 pub fn pacing_label(flight: &Flight) -> String {
     let stats = flight.pacing_stats();
+    debug!(
+        fps = stats.fps,
+        mean_frame_ms = stats.mean_frame_ms,
+        max_frame_ms = stats.max_frame_ms,
+        real_time_ratio = stats.real_time_ratio,
+        "cockpit pacing"
+    );
     format!("RT {:.2}x · {:.0} FPS", stats.real_time_ratio, stats.fps)
 }
 

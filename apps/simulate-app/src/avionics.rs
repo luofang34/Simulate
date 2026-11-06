@@ -5,16 +5,15 @@ use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 use sim_indicate::{
-    AirDataReading, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig, FlightSample, FrameId,
-    FramebufferDims, HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX,
-    PANEL_RGBA_BYTES, PANEL_SCENE_BYTES, PANEL_WIDTH_PX, PanelBuffers, PfdConfig, SourceMonitor,
-    StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VSpeeds, VectorHudPanel, ViewPose3D,
-    VolumeInstrument, emit_volume_scene, render_hsi, render_pfd,
+    AirDataReading, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig, FlightSample,
+    HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX, PANEL_WIDTH_PX, PfdConfig,
+    SourceMonitor, StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VSpeeds, VectorFlightPanels,
+    VectorHudPanel, ViewPose3D, VolumeInstrument, emit_volume_scene,
 };
 use sim_maplibre::{
     DynamicEntity3D, TerrainPatchSnapshot, TerrainVolumeRequest, emit_terrain_volume_with_patch,
 };
-use sim_render::{Camera, RgbaPanelTexture, VectorScenePass, VectorTarget};
+use sim_render::{Camera, VectorScenePass, VectorTarget};
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 use sim_scenery::{CatalogVerticalDatum, LandingRunwayGeometry};
 
@@ -91,6 +90,8 @@ pub struct AvionicsFrameInput<'a> {
     pub specific_force_frd_m_s2: Option<DVec3>,
     /// Whether a conformal SVS instrument map rendered an underlay this frame.
     pub svs_underlay_active: bool,
+    /// Physical `[width, height]` of a docked PFD/HSI panel when instruments are shown (`None` skips both).
+    pub dock_panel_px: Option<[u32; 2]>,
     /// The window the conformal HUD overlays, when it is shown.
     pub hud: Option<HudView<'a>>,
     /// Surveyed landing runway geometry (FAA/AIP), drawn conformally on the HUD.
@@ -125,20 +126,18 @@ pub struct HudView<'a> {
     pub vertical_datum: Option<CatalogVerticalDatum>,
 }
 
-/// Owns `Indicate` state feeds, source monitors, CPU raster buffers, persistent GPU panel
-/// textures, and the `4×` MSAA vector HUD target.
+/// Owns `Indicate` state feeds, source monitors, and `4×` MSAA GPU vector targets for
+/// PFD, HSI, and the conformal HUD.
 pub struct AvionicsRig {
     domain: FeedDomain,
     feed: StateFeed,
     monitor: SourceMonitor,
-    scene_buf: Vec<u8>,
-    rgba_buf: Vec<u8>,
+    panels: VectorFlightPanels,
     volume_buf: Vec<u8>,
     volume_pose: ViewPose3D,
     last_volume_bytes: usize,
-    render_gen: u32,
-    pfd_texture: RgbaPanelTexture,
-    hsi_texture: RgbaPanelTexture,
+    pfd_target: VectorTarget,
+    hsi_target: VectorTarget,
     hud_pass: VectorScenePass,
     hud_target: Option<VectorTarget>,
     hud_panel: VectorHudPanel,
@@ -151,32 +150,20 @@ pub struct AvionicsRig {
 }
 
 impl AvionicsRig {
-    /// Allocates reusable `Indicate` scene/pixel buffers and `480 × 360` sRGB GPU textures;
-    /// the HUD draws through `hud_pass` into a target sized to the window on first use.
+    /// Allocates reusable `Indicate` scene encoders and `4×` MSAA GPU vector targets for PFD,
+    /// HSI, and the HUD; panel targets resize automatically to match the dock's physical pixels.
     pub fn new(device: &wgpu::Device, hud_pass: VectorScenePass) -> Result<Self, AppSimError> {
         let domain = FeedDomain::EarthAircraft;
         Ok(Self {
             domain,
             feed: StateFeed::new(domain.feed_config()),
             monitor: SourceMonitor::new(),
-            scene_buf: vec![0_u8; PANEL_SCENE_BYTES],
-            rgba_buf: vec![0_u8; PANEL_RGBA_BYTES],
+            panels: VectorFlightPanels::new(),
             volume_buf: vec![0_u8; VOLUME_SCENE_BYTES],
             volume_pose: ViewPose3D::default(),
             last_volume_bytes: 0,
-            render_gen: 0,
-            pfd_texture: RgbaPanelTexture::new(
-                device,
-                "indicate pfd",
-                PANEL_WIDTH_PX,
-                PANEL_HEIGHT_PX,
-            )?,
-            hsi_texture: RgbaPanelTexture::new(
-                device,
-                "indicate hsi",
-                PANEL_WIDTH_PX,
-                PANEL_HEIGHT_PX,
-            )?,
+            pfd_target: VectorTarget::new(device, "indicate pfd", PANEL_WIDTH_PX, PANEL_HEIGHT_PX)?,
+            hsi_target: VectorTarget::new(device, "indicate hsi", PANEL_WIDTH_PX, PANEL_HEIGHT_PX)?,
             hud_pass,
             hud_target: None,
             hud_panel: VectorHudPanel::new(),
@@ -189,16 +176,16 @@ impl AvionicsRig {
         })
     }
 
-    /// GPU texture holding the latest PFD frame (`BackgroundMode::Svs` or `BackgroundMode::Horizon`).
+    /// Premultiplied `Rgba8UnormSrgb` view of the latest PFD frame (`BackgroundMode::Svs` or `Horizon`).
     #[must_use]
-    pub const fn pfd_texture(&self) -> &RgbaPanelTexture {
-        &self.pfd_texture
+    pub fn pfd_view(&self) -> &wgpu::TextureView {
+        self.pfd_target.view()
     }
 
-    /// GPU texture holding the latest HSI frame.
+    /// Premultiplied `Rgba8UnormSrgb` view of the latest HSI frame.
     #[must_use]
-    pub const fn hsi_texture(&self) -> &RgbaPanelTexture {
-        &self.hsi_texture
+    pub fn hsi_view(&self) -> &wgpu::TextureView {
+        self.hsi_target.view()
     }
 
     /// Premultiplied full-window HUD view, when the HUD drew this frame.
@@ -269,15 +256,10 @@ impl AvionicsRig {
                 .then_some(monitored.panel.nav.course_rose_rad.value);
             self.last_heading_and_course_rad = Some((monitored.panel.heading.value_rad.value, crs));
         }
-        self.render_gen = self.render_gen.wrapping_add(1);
-        let frame_id = FrameId {
-            frame_generation: monitored.state.snapshot.generation,
-            render_generation: self.render_gen,
-        };
-
-        let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
-        self.rasterize_and_upload_pfd(queue, &monitored, &pfd_cfg, frame_id)?;
-        self.rasterize_and_upload_hsi(queue, &monitored, frame_id)?;
+        if let Some([pw, ph]) = input.dock_panel_px {
+            let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
+            self.render_vector_panels(device, queue, &monitored, &pfd_cfg, [pw, ph])?;
+        }
         if let Some(view) = input
             .hud
             .filter(|_| self.domain == FeedDomain::EarthAircraft)
@@ -290,47 +272,36 @@ impl AvionicsRig {
         Ok(monitored)
     }
 
-    fn rasterize_and_upload_pfd(
+    fn render_vector_panels(
         &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         monitored: &MonitoredFrame,
         config: &PfdConfig,
-        frame_id: FrameId,
+        [raw_w, raw_h]: [u32; 2],
     ) -> Result<(), AppSimError> {
-        let dims = FramebufferDims::tight(PANEL_WIDTH_PX, PANEL_HEIGHT_PX);
-        let _stats = render_pfd(
-            &monitored.panel,
-            config,
-            Some(&monitored.alerts),
-            frame_id,
-            &mut PanelBuffers {
-                scene: &mut self.scene_buf,
-                pixels: &mut self.rgba_buf,
-                dims,
-            },
-        )?;
-        self.pfd_texture.upload(queue, &self.rgba_buf)?;
-        Ok(())
-    }
+        let (w, h) = (raw_w.max(64), raw_h.max(48));
+        let pfd_verts =
+            self.panels
+                .tessellate_pfd(&monitored.panel, config, Some(&monitored.alerts), w, h)?;
+        self.pfd_target.ensure_size(device, w, h)?;
+        let mut pfd_enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("indicate pfd vector"),
+        });
+        self.hud_pass
+            .encode(device, queue, &mut pfd_enc, &self.pfd_target, &pfd_verts)?;
+        queue.submit([pfd_enc.finish()]);
 
-    fn rasterize_and_upload_hsi(
-        &mut self,
-        queue: &wgpu::Queue,
-        monitored: &MonitoredFrame,
-        frame_id: FrameId,
-    ) -> Result<(), AppSimError> {
-        let dims = FramebufferDims::tight(PANEL_WIDTH_PX, PANEL_HEIGHT_PX);
-        let _stats = render_hsi(
-            &monitored.panel,
-            Some(&monitored.alerts),
-            frame_id,
-            &mut PanelBuffers {
-                scene: &mut self.scene_buf,
-                pixels: &mut self.rgba_buf,
-                dims,
-            },
-        )?;
-        self.hsi_texture.upload(queue, &self.rgba_buf)?;
+        let hsi_verts =
+            self.panels
+                .tessellate_hsi(&monitored.panel, Some(&monitored.alerts), w, h)?;
+        self.hsi_target.ensure_size(device, w, h)?;
+        let mut hsi_enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("indicate hsi vector"),
+        });
+        self.hud_pass
+            .encode(device, queue, &mut hsi_enc, &self.hsi_target, &hsi_verts)?;
+        queue.submit([hsi_enc.finish()]);
         Ok(())
     }
 

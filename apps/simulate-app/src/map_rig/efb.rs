@@ -10,7 +10,7 @@ use sim_maplibre::{
     EfbMapConfig, EfbMapSurface, SceneryEndpoints, SharedMapRuntime, ViewSlotMask,
 };
 use sim_scenario::OperatorViewportMode;
-use sim_scenery::AirportDatabase;
+use sim_scenery::{AirportDatabase, LandingRunwayGeometry};
 use tracing::warn;
 
 use super::{AvionicsPreset, MapFrameInput, MapLibreRig, charts};
@@ -82,16 +82,6 @@ pub struct EfbStatus {
 
 /// The airport and runway end the EFB shows, `(code, designator)`.
 pub type EfbAirport = (String, String);
-
-/// One frame's inputs to the EFB.
-pub struct EfbFrame<'a> {
-    /// Simulation time of the frame.
-    pub sim_time: Duration,
-    /// Active airport and runway end.
-    pub airport: Option<EfbAirport>,
-    /// Ownship, runway, and traffic symbology (camera and viewport are the EFB's own).
-    pub symbology: ChartSymbologyInput<'a>,
-}
 
 /// The EFB map surface and the state its chrome toggles.
 pub struct EfbRig {
@@ -269,23 +259,31 @@ impl EfbRig {
         Ok(())
     }
 
-    /// Follows the active airport and draws the shown view when it is due.
-    pub fn step(&mut self, frame: &EfbFrame<'_>) -> Result<(), AppSimError> {
-        if frame.airport != self.airport {
-            self.show_airport(frame.airport.clone())?;
+    fn prepare_step(
+        &mut self,
+        sim_time: Duration,
+        airport: Option<EfbAirport>,
+    ) -> Result<bool, AppSimError> {
+        if airport != self.airport {
+            self.show_airport(airport)?;
         }
         if self.collapsed && self.mode() == EfbDisplayMode::CompactCorner {
             self.dirty = false;
-            return Ok(());
+            return Ok(false);
         }
-        let due = self.last_frame.is_none_or(|last| {
-            frame.sim_time < last || frame.sim_time.saturating_sub(last) >= FRAME_INTERVAL
-        });
-        if !(due || self.view.is_none() || self.needs_redraw()) {
-            return Ok(());
-        }
-        self.view = self.surface.render(&frame.symbology)?.cloned();
-        self.last_frame = Some(frame.sim_time);
+        let due = self
+            .last_frame
+            .is_none_or(|last| sim_time < last || sim_time.saturating_sub(last) >= FRAME_INTERVAL);
+        Ok(due || self.view.is_none() || self.needs_redraw())
+    }
+
+    fn render_prepared(
+        &mut self,
+        sim_time: Duration,
+        symbology: &ChartSymbologyInput<'_>,
+    ) -> Result<(), AppSimError> {
+        self.view = self.surface.render(symbology)?.cloned();
+        self.last_frame = Some(sim_time);
         self.dirty = false;
         Ok(())
     }
@@ -447,6 +445,7 @@ impl MapLibreRig {
         &mut self,
         input: &MapFrameInput<'_>,
         sim_time: Duration,
+        landing_runway: Option<&LandingRunwayGeometry>,
     ) -> Result<(), AppSimError> {
         if self.preset == AvionicsPreset::NoMapGauges
             || input.supervisor.viewport_mode() == OperatorViewportMode::ChartMap
@@ -461,22 +460,23 @@ impl MapLibreRig {
                 .map_or_else(String::new, |r| r.designator.as_str().to_owned());
             Some((code.to_owned(), runway))
         });
-        let landing_runway = self.active_onboard_landing_runway(input);
         let Some(efb) = self.efb.as_mut() else {
             return Ok(());
         };
+        if !efb.prepare_step(sim_time, airport)? {
+            return Ok(());
+        }
         let own = charts::chart_ownship(&input.estimated_vehicle);
         let traffic = input.supervisor.belief_entities(ViewSlotMask::ALL);
-        efb.step(&EfbFrame {
+        efb.render_prepared(
             sim_time,
-            airport,
-            symbology: ChartSymbologyInput {
+            &ChartSymbologyInput {
                 camera: charts::moving_map_camera(&own, input.supervisor),
                 viewport_px: [1, 1],
                 ownship: Some(own),
-                runway: landing_runway.as_ref(),
+                runway: landing_runway,
                 traffic: &traffic,
             },
-        })
+        )
     }
 }

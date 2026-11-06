@@ -46,16 +46,16 @@ const OTW_COMPACT_VECTORS: BufferPoolSizes = BufferPoolSizes {
 };
 
 const AVIONICS_DESKTOP_VECTORS: BufferPoolSizes = BufferPoolSizes {
-    vertices: 2_500_000,
-    indices: 7_500_000,
-    feature_metadata: 2_500_000,
-    layer_metadata: 8 * 1024,
+    vertices: 1_000_000,
+    indices: 3_000_000,
+    feature_metadata: 1_000_000,
+    layer_metadata: 4 * 1024,
 };
 
 const AVIONICS_COMPACT_VECTORS: BufferPoolSizes = BufferPoolSizes {
-    vertices: 1_200_000,
-    indices: 3_600_000,
-    feature_metadata: 1_200_000,
+    vertices: 600_000,
+    indices: 1_800_000,
+    feature_metadata: 600_000,
     layer_metadata: 4 * 1024,
 };
 

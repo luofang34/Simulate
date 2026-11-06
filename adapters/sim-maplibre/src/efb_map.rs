@@ -27,11 +27,11 @@ use maplibre::{
 use serde_json::{Value, json};
 
 use crate::{
-    ChartAssetStore, ChartSymbologyInput, MapAdapterError, SceneryEndpoints, SharedMapRuntime,
-    build_chart_symbology_scaled, chart_url,
+    ChartAssetStore, ChartSymbologyInput, CockpitDeviceTier, MapAdapterError, SceneryEndpoints,
+    SharedMapRuntime, build_chart_symbology_scaled, chart_url,
     geodesy::wrap_lon_deg,
     runtime::{
-        EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin, pixel_ratio_update,
+        DrapeBudgetPlugin, EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin, pixel_ratio_update,
         resolve_or_strip_tile_json, validate_size,
     },
 };
@@ -118,8 +118,9 @@ impl EfbMapSurface {
         let mut style = style::efb_style(endpoints, aerodrome_geojson)?;
         resolve_or_strip_tile_json(runtime, &mut style, kernel.source_client());
         let aerodrome_layers = style::aerodrome_layer_ids(&style);
+        let tier = runtime.device_tier();
         let mut map = runtime
-            .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins()))
+            .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins(tier)))
             .map_err(|source| MapAdapterError::Assemble { source })?;
         map.set_available_memory(runtime.device_tier().available_memory_bytes());
         map.set_navigation_mode(NavigationMode::FreeGlobe)
@@ -461,7 +462,7 @@ fn size([width, height]: [u32; 2]) -> Result<maplibre::window::PhysicalSize, Map
     validate_size(width, height)
 }
 
-fn plugins() -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
+fn plugins(tier: CockpitDeviceTier) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
     vec![
         Box::new(RenderPlugin),
         Box::new(BackgroundPlugin),
@@ -469,6 +470,7 @@ fn plugins() -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
         Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
         Box::new(HillshadePlugin),
         Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+        Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
         Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
         Box::new(OverlayPlugin),
     ]

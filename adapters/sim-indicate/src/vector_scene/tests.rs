@@ -387,3 +387,15 @@ fn a_hud_target_outside_the_layout_aspect_is_refused() {
     let [w, h] = VectorHudPanel::design_frame(500, 1000).unwrap();
     assert!(w >= 390.0 && (w / h - 0.5).abs() < 0.01);
 }
+
+#[test]
+fn vector_pfd_and_hsi_tessellate_into_physical_triangles() {
+    let (data, _) = hud_inputs();
+    let mut panels = VectorFlightPanels::new();
+    let pfd = panels
+        .tessellate_pfd(&data, &crate::PfdConfig::default(), None, 960, 720)
+        .unwrap();
+    let hsi = panels.tessellate_hsi(&data, None, 960, 720).unwrap();
+    assert!(pfd.len() > 300 && pfd.len().is_multiple_of(3));
+    assert!(hsi.len() > 300 && hsi.len().is_multiple_of(3));
+}

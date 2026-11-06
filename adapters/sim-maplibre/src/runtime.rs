@@ -217,6 +217,7 @@ pub(crate) fn validate_size(width: u32, height: u32) -> Result<PhysicalSize, Map
 
 pub(super) fn instrument_plugins_for(
     mode: InstrumentMapMode,
+    tier: CockpitDeviceTier,
 ) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
     use maplibre::{
         background::BackgroundPlugin,
@@ -242,6 +243,7 @@ pub(super) fn instrument_plugins_for(
             Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
             Box::new(HillshadePlugin),
             Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+            Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
             Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
             Box::new(OverlayPlugin),
         ],

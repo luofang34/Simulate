@@ -3,8 +3,13 @@
 
 use glam::DVec3;
 use sim_core::VehicleState;
-use sim_geo::{LocalFrame, ecef_to_geodetic};
-use sim_render::ViewportRect;
+use sim_geo::{BodyEllipsoid, LocalFrame, ecef_to_geodetic};
+use sim_maplibre::{DynamicEntity3D, default_render_body};
+use sim_render::{Camera, OverlayQuad, ViewportRect};
+use sim_scenery::CatalogVerticalDatum;
+
+use super::efb_chrome::rect_px;
+use crate::avionics::{ConformalSurface, HudView};
 
 /// Panel width over height (`480 × 360`).
 const PANEL_ASPECT: f32 = 4.0 / 3.0;
@@ -52,6 +57,71 @@ pub(super) fn heading_rad(vehicle: &VehicleState) -> f64 {
     let local = LocalFrame::at(&ecef_to_geodetic(vehicle.position_ecef));
     let nose = vehicle.attitude * DVec3::X;
     nose.dot(local.east()).atan2(nose.dot(local.north()))
+}
+
+/// Physical pixel dimensions of a docked panel for `surface_size`.
+pub(super) fn dock_panel_px(surface_size: [u32; 2], has_dock_chart: bool) -> Option<[u32; 2]> {
+    let rects = dock_rects(surface_size, if has_dock_chart { 3 } else { 2 });
+    rects.first().map(|&r| rect_px(r, surface_size))
+}
+
+/// Appends the docked PFD (with optional SVS underlay), optional MFD chart, and HSI quads.
+pub(super) fn push_dock_quads<'a>(
+    quads: &mut Vec<OverlayQuad<'a>>,
+    surface_size: [u32; 2],
+    svs_view: Option<&'a wgpu::TextureView>,
+    pfd_view: &'a wgpu::TextureView,
+    chart_view: Option<&'a wgpu::TextureView>,
+    hsi_view: &'a wgpu::TextureView,
+) {
+    let rects = dock_rects(surface_size, if chart_view.is_some() { 3 } else { 2 });
+    let (Some(&pfd_rect), Some(&hsi_rect)) = (rects.first(), rects.last()) else {
+        return;
+    };
+    if let Some(svs) = svs_view {
+        quads.push(OverlayQuad::inset_map(pfd_rect, svs, false));
+    }
+    quads.push(OverlayQuad::vector_panel(
+        pfd_rect,
+        pfd_view,
+        svs_view.is_none(),
+        true,
+    ));
+    if let (Some(chart), Some(&mfd_rect)) = (chart_view, rects.get(1)) {
+        quads.push(OverlayQuad::inset_map(mfd_rect, chart, true));
+    }
+    quads.push(OverlayQuad::vector_panel(hsi_rect, hsi_view, true, true));
+}
+
+/// Conformal HUD camera and surface projection parameters for `camera`.
+pub(super) fn hud_view<'a>(
+    surface_size: [u32; 2],
+    body: BodyEllipsoid,
+    map_sphere_active: bool,
+    camera: &Camera,
+    truth_vehicle: &VehicleState,
+    traffic: &'a [DynamicEntity3D],
+    vertical_datum: CatalogVerticalDatum,
+) -> HudView<'a> {
+    let eye_body_lever_m = truth_vehicle.attitude.inverse()
+        * (camera.pose.position_ecef - truth_vehicle.position_ecef);
+    let conformal_surface = if map_sphere_active {
+        ConformalSurface::GlobeSphere {
+            physics: body,
+            render_body: default_render_body(body),
+        }
+    } else {
+        ConformalSurface::Ellipsoid { physics: body }
+    };
+    HudView {
+        surface_size,
+        camera: *camera,
+        traffic,
+        airframe_attitude: truth_vehicle.attitude,
+        eye_body_lever_m,
+        conformal_surface,
+        vertical_datum: (body == BodyEllipsoid::WGS84).then_some(vertical_datum),
+    }
 }
 
 #[cfg(test)]

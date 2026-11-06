@@ -1,11 +1,11 @@
-use sim_core::{SensorExposureEvent, VehicleState};
+use sim_core::SensorExposureEvent;
 use sim_geo::BodyEllipsoid;
-use sim_maplibre::{DynamicEntity3D, HostGpu, ViewSlotMask, default_render_body};
+use sim_maplibre::{HostGpu, ViewSlotMask};
 use sim_render::{Camera, OverlayQuad, Renderer, VectorScenePass, ViewportRect};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld};
 use tracing::warn;
 
-use crate::avionics::{AvionicsFrameInput, AvionicsRig, ConformalSurface, HudView};
+use crate::avionics::{AvionicsFrameInput, AvionicsRig};
 use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::host_guidance::StandInPilotageHost;
@@ -312,37 +312,36 @@ impl CockpitRig {
         let body = flight.world().body();
         let earth = body == BodyEllipsoid::WGS84;
         let viewport_mode = self.supervisor.viewport_mode();
-        let mut terrain_patch = None;
-        let mut svs_underlay_active = false;
-        let mut map_sphere_active = false;
-        if earth && let Some(maps) = self.maps.as_mut() {
-            map_sphere_active = true;
-            let expanded = efb_map_rect(surface_size, EfbDisplayMode::ExpandedEfb);
-            maps.set_efb_expanded_px(rect_px(expanded, surface_size))?;
-            maps.render_earth_frame(&MapFrameInput {
-                surface_size,
-                timestamp: now,
-                profile,
-                active_vehicle: flight.free_vehicle(),
-                vehicle: truth_vehicle,
-                estimated_vehicle: estimated,
-                sensor_exposures,
-                articulation: flight.display_articulation(),
-                otw_camera: *camera,
-                sky,
-                supervisor: &self.supervisor,
-            })?;
-            svs_underlay_active = maps.instrument_view(PFD_SVS_MAP).is_some();
-            if viewport_mode == OperatorViewportMode::VolumetricScene {
-                terrain_patch = maps.sample_terrain_patch();
-            }
-        }
+        let (map_sphere_active, svs_underlay_active, terrain_patch, earth_runway) = if earth {
+            self.step_earth_maps(surface_size, flight, camera, sky, sensor_exposures)?
+        } else {
+            (false, false, None, None)
+        };
 
         let show_hud = self.show_conformal_hud && viewport_mode == OperatorViewportMode::Cockpit;
-        let traffic = self.supervisor.belief_entities(ViewSlotMask::ALL);
-        let runway = self.active_onboard_runway(earth, profile);
-        let hud = show_hud
-            .then(|| self.hud_view(body, map_sphere_active, camera, &truth_vehicle, &traffic));
+        let traffic = if show_hud {
+            self.supervisor.belief_entities(ViewSlotMask::ALL)
+        } else {
+            Vec::new()
+        };
+        let runway = if map_sphere_active {
+            earth_runway
+        } else {
+            self.active_onboard_runway(earth, profile)
+        };
+        let dock_panel_px = self.dock_panel_px(earth, viewport_mode);
+        let datum = self.supervisor.vertical_datum();
+        let hud = show_hud.then(|| {
+            layout::hud_view(
+                self.surface_size,
+                body,
+                map_sphere_active,
+                camera,
+                &truth_vehicle,
+                &traffic,
+                datum,
+            )
+        });
         let guidance = self
             .host
             .publish(flight, runway.as_ref(), layout::heading_rad(&estimated));
@@ -357,6 +356,7 @@ impl CockpitRig {
                 air_data: sensed.air_data,
                 specific_force_frd_m_s2: sensed.specific_force_frd_m_s2,
                 svs_underlay_active,
+                dock_panel_px,
                 hud,
                 runway: runway.as_ref(),
                 guidance: &guidance,
@@ -367,6 +367,60 @@ impl CockpitRig {
 
         let full_map_covered = earth && self.full_window_map_view().is_some();
         Ok(!full_map_covered)
+    }
+
+    fn step_earth_maps(
+        &mut self,
+        surface_size: [u32; 2],
+        flight: &Flight,
+        camera: &Camera,
+        sky: &SkyFrame<'_>,
+        sensor_exposures: &[SensorExposureEvent],
+    ) -> Result<
+        (
+            bool,
+            bool,
+            Option<sim_maplibre::TerrainPatchSnapshot>,
+            Option<sim_scenery::LandingRunwayGeometry>,
+        ),
+        AppSimError,
+    > {
+        let Some(maps) = self.maps.as_mut() else {
+            return Ok((false, false, None, None));
+        };
+        let expanded = efb_map_rect(surface_size, EfbDisplayMode::ExpandedEfb);
+        maps.set_efb_expanded_px(rect_px(expanded, surface_size))?;
+        let runway = maps.render_earth_frame(&MapFrameInput {
+            surface_size,
+            timestamp: flight.now(),
+            profile: flight.profile(),
+            active_vehicle: flight.free_vehicle(),
+            vehicle: flight.display_vehicle_state(),
+            estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
+            sensor_exposures,
+            articulation: flight.display_articulation(),
+            otw_camera: *camera,
+            sky,
+            supervisor: &self.supervisor,
+        })?;
+        let svs = maps.instrument_view(PFD_SVS_MAP).is_some();
+        let patch = (self.supervisor.viewport_mode() == OperatorViewportMode::VolumetricScene)
+            .then(|| maps.sample_terrain_patch())
+            .flatten();
+        Ok((true, svs, patch, runway))
+    }
+
+    fn dock_panel_px(&self, earth: bool, mode: OperatorViewportMode) -> Option<[u32; 2]> {
+        if !self.show_instruments {
+            return None;
+        }
+        let has_dock_chart = earth
+            && mode != OperatorViewportMode::ChartMap
+            && self
+                .maps
+                .as_ref()
+                .is_some_and(|m| !m.efb_shown() && m.instrument_view(MFD_CHART_MAP).is_some());
+        layout::dock_panel_px(self.surface_size, has_dock_chart)
     }
 
     fn active_onboard_runway(
@@ -384,36 +438,6 @@ impl CockpitRig {
                 }
                 None => rwy,
             })
-    }
-
-    fn hud_view<'a>(
-        &self,
-        body: BodyEllipsoid,
-        map_sphere_active: bool,
-        camera: &Camera,
-        truth_vehicle: &VehicleState,
-        traffic: &'a [DynamicEntity3D],
-    ) -> HudView<'a> {
-        let eye_body_lever_m = truth_vehicle.attitude.inverse()
-            * (camera.pose.position_ecef - truth_vehicle.position_ecef);
-        let conformal_surface = if map_sphere_active {
-            ConformalSurface::GlobeSphere {
-                physics: body,
-                render_body: default_render_body(body),
-            }
-        } else {
-            ConformalSurface::Ellipsoid { physics: body }
-        };
-        HudView {
-            surface_size: self.surface_size,
-            camera: *camera,
-            traffic,
-            airframe_attitude: truth_vehicle.attitude,
-            eye_body_lever_m,
-            conformal_surface,
-            vertical_datum: (body == BodyEllipsoid::WGS84)
-                .then(|| self.supervisor.vertical_datum()),
-        }
     }
 
     /// Assembles the ordered zero-copy [`OverlayQuad`] stack for [`Renderer::render_composite`].
@@ -444,28 +468,14 @@ impl CockpitRig {
         let chart_view = maps
             .filter(|m| !m.efb_shown() && mode != OperatorViewportMode::ChartMap)
             .and_then(|m| m.instrument_view(MFD_CHART_MAP));
-        let rects = layout::dock_rects(self.surface_size, if chart_view.is_some() { 3 } else { 2 });
-        let (Some(&pfd_rect), Some(&hsi_rect)) = (rects.first(), rects.last()) else {
-            return quads;
-        };
-        if let Some(svs) = svs_view {
-            quads.push(OverlayQuad::inset_map(pfd_rect, svs, false));
-        }
-        quads.push(OverlayQuad::panel(
-            pfd_rect,
-            self.avionics.pfd_texture().view(),
-            svs_view.is_none(),
-            true,
-        ));
-        if let (Some(chart), Some(&mfd_rect)) = (chart_view, rects.get(1)) {
-            quads.push(OverlayQuad::inset_map(mfd_rect, chart, true));
-        }
-        quads.push(OverlayQuad::panel(
-            hsi_rect,
-            self.avionics.hsi_texture().view(),
-            true,
-            true,
-        ));
+        layout::push_dock_quads(
+            &mut quads,
+            self.surface_size,
+            svs_view,
+            self.avionics.pfd_view(),
+            chart_view,
+            self.avionics.hsi_view(),
+        );
         // Last, so the expanded tablet lies over the dock.
         quads.extend(efb);
         quads

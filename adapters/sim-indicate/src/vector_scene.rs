@@ -17,6 +17,7 @@ use crate::PanelError;
 mod error;
 mod hud;
 mod mesh;
+mod panels;
 mod shapes;
 mod state;
 #[cfg(test)]
@@ -25,6 +26,7 @@ mod text;
 
 pub use error::VectorSceneError;
 pub use hud::{VECTOR_HUD_DESIGN_HEIGHT, VectorHudPanel};
+pub use panels::VectorFlightPanels;
 
 use mesh::Mesh;
 use state::{StateStack, finite, rect_corners};
@@ -42,15 +44,16 @@ pub fn tessellate_scene_cmds(
     target_w: u32,
     target_h: u32,
 ) -> Result<Vec<VectorVertex>, PanelError> {
-    tessellate(scene, [design_w, design_h], [target_w, target_h])
+    tessellate_mesh(scene, [design_w, design_h], [target_w, target_h])
+        .map(Mesh::into_vertices)
         .map_err(|source| PanelError::VectorScene { source })
 }
 
-fn tessellate(
+fn tessellate_mesh(
     scene: &[u8],
     design: [f32; 2],
     target: [u32; 2],
-) -> Result<Vec<VectorVertex>, VectorSceneError> {
+) -> Result<Mesh, VectorSceneError> {
     let [design_w, design_h] = design;
     let usable = |d: f32| d.is_finite() && d > 0.0;
     if !usable(design_w) || !usable(design_h) || target[0] == 0 || target[1] == 0 {
@@ -69,7 +72,7 @@ fn tessellate(
     for (command, item) in SceneCmds::new(scene)?.enumerate() {
         run(&item?, command, &mut state, &mut mesh)?;
     }
-    Ok(mesh.into_vertices())
+    Ok(mesh)
 }
 
 fn run(

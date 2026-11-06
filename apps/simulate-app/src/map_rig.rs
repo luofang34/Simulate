@@ -17,7 +17,9 @@ use sim_maplibre::{
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
-use sim_scenery::{CatalogScenery, LiveDemBridge, OsmAerodromeDiagram, TileId};
+use sim_scenery::{
+    CatalogScenery, LandingRunwayGeometry, LiveDemBridge, OsmAerodromeDiagram, TileId,
+};
 
 use crate::error::AppSimError;
 use crate::sky_rig::SkyFrame;
@@ -277,8 +279,12 @@ impl MapLibreRig {
             .find_map(|s| s.resident_terrain_patch(coords))
     }
 
-    /// Steps the physical scene (window + 30 Hz sensor) and every instrument map.
-    pub fn render_earth_frame(&mut self, input: &MapFrameInput<'_>) -> Result<(), AppSimError> {
+    /// Steps the physical scene (window + 30 Hz sensor) and every instrument map, returning
+    /// the frame's DEM-refined active landing runway so onboard HUD/guidance share one query.
+    pub fn render_earth_frame(
+        &mut self,
+        input: &MapFrameInput<'_>,
+    ) -> Result<Option<LandingRunwayGeometry>, AppSimError> {
         let _ = self.aux_virtual_camera_slot;
         if let Some(bridge) = &self.live_dem {
             let _resident = self.surface.drain(bridge);
@@ -305,8 +311,10 @@ impl MapLibreRig {
                 .max(0.0),
         );
         self.step_truth_world(input, sim_dur)?;
-        self.step_instrument_maps(input, sim_dur)?;
-        self.step_efb(input, sim_dur)
+        let landing_runway = self.active_onboard_landing_runway(input);
+        self.step_instrument_maps(input, sim_dur, landing_runway.as_ref())?;
+        self.step_efb(input, sim_dur, landing_runway.as_ref())?;
+        Ok(landing_runway)
     }
 
     /// Geoid undulation at `position_ecef` in the datum of this rig's scenery.
@@ -408,19 +416,27 @@ impl MapLibreRig {
         &mut self,
         input: &MapFrameInput<'_>,
         sim_dur: Duration,
+        landing_runway: Option<&LandingRunwayGeometry>,
     ) -> Result<(), AppSimError> {
         let mode = input.supervisor.viewport_mode();
         let own_geo = ecef_to_geodetic(input.estimated_vehicle.position_ecef);
-        let undulation_m = self.undulation_at(input.estimated_vehicle.position_ecef);
         self.last_ownship_tile = Some(scenery::tile_at(&own_geo, 11));
-        let belief_entities = input.supervisor.belief_entities(ViewSlotMask::ALL);
-        let landing_runway = self.active_onboard_landing_runway(input);
-        let own = charts::chart_ownship(&input.estimated_vehicle);
         // The EFB replaces the dock's moving map; the map still draws as the full-window
         // chart of a preset without an airport-surface map.
         let chart_fallback = mode == OperatorViewportMode::ChartMap
             && self.avionics.get(AIRPORT_SURFACE_MAP).is_none();
         let skip_dock_chart = self.efb_shown() && !chart_fallback;
+        let any_due = self.avionics.iter().any(|s| {
+            s.is_due(sim_dur)
+                && !(skip_dock_chart && s.id() == MFD_CHART_MAP)
+                && !(s.id() == AIRPORT_SURFACE_MAP && mode != OperatorViewportMode::ChartMap)
+        });
+        if !any_due {
+            return Ok(());
+        }
+        let undulation_m = self.undulation_at(input.estimated_vehicle.position_ecef);
+        let belief_entities = input.supervisor.belief_entities(ViewSlotMask::ALL);
+        let own = charts::chart_ownship(&input.estimated_vehicle);
         for surface in self.avionics.iter_mut() {
             if !surface.is_due(sim_dur) || (skip_dock_chart && surface.id() == MFD_CHART_MAP) {
                 continue;
@@ -436,7 +452,7 @@ impl MapLibreRig {
                     timestamp: sim_dur,
                     stamp,
                     ownship_msl_m: (own_geo.height_m - undulation_m) as f32,
-                    runway: landing_runway.as_ref(),
+                    runway: landing_runway,
                     entities: &belief_entities,
                 })?;
                 continue;
@@ -455,7 +471,7 @@ impl MapLibreRig {
                     camera,
                     viewport_px: surface.size(),
                     ownship: Some(own),
-                    runway: landing_runway.as_ref(),
+                    runway: landing_runway,
                     traffic: &belief_entities,
                 },
                 surface.pixel_ratio(),
