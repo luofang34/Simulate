@@ -4,12 +4,30 @@
 use glam::DVec3;
 use sim_core::VehicleState;
 use sim_geo::{BodyEllipsoid, LocalFrame, ecef_to_geodetic};
-use sim_maplibre::{DynamicEntity3D, default_render_body};
+use sim_maplibre::{DynamicEntity3D, HostGpu, default_render_body};
 use sim_render::{Camera, OverlayQuad, ViewportRect};
 use sim_scenery::CatalogVerticalDatum;
+use tracing::warn;
 
 use super::efb_chrome::rect_px;
 use crate::avionics::{ConformalSurface, HudView};
+use crate::map_rig::{AvionicsPreset, MapLibreRig, ScenerySource};
+use crate::world_surface::WorldSurfaceHandle;
+
+/// Attempts to create [`MapLibreRig`], logging and returning `None` on initialization failure.
+pub(super) fn try_build_maps(
+    host_gpu: HostGpu,
+    size: [u32; 2],
+    source: &ScenerySource,
+    preset: AvionicsPreset,
+    surface: WorldSurfaceHandle,
+) -> Option<MapLibreRig> {
+    MapLibreRig::new(host_gpu, size, source, preset, surface)
+        .inspect_err(|err| {
+            warn!(error = %err, "MapLibre maps unavailable; using GlobeScene fallback");
+        })
+        .ok()
+}
 
 /// Panel width over height (`480 × 360`).
 const PANEL_ASPECT: f32 = 4.0 / 3.0;

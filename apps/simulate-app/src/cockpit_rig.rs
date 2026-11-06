@@ -81,18 +81,14 @@ impl CockpitRig {
     ) -> Result<Self, AppSimError> {
         let avionics = AvionicsRig::new(&host_gpu.device, hud_pass)?;
         let device = host_gpu.device.clone();
-        let maps = scenery.and_then(|source| {
-            MapLibreRig::new(
+        let maps = scenery.as_ref().and_then(|source| {
+            layout::try_build_maps(
                 host_gpu,
                 initial_size,
-                &source,
+                source,
                 AvionicsPreset::default(),
                 surface.clone(),
             )
-            .inspect_err(|err| {
-                warn!(error = %err, "MapLibre maps unavailable; using GlobeScene fallback");
-            })
-            .ok()
         });
         let mut supervisor = SupervisorRig::new();
         supervisor.set_vertical_datum(surface.vertical_datum());
@@ -199,17 +195,13 @@ impl CockpitRig {
         let efb_airport = self.maps.as_ref().and_then(MapLibreRig::efb_airport);
         self.maps = None;
         self.maps = source.and_then(|source| {
-            MapLibreRig::new(
+            layout::try_build_maps(
                 host_gpu,
                 self.surface_size,
                 source,
                 preset,
                 self.surface.clone(),
             )
-            .inspect_err(|err| {
-                warn!(error = %err, "MapLibre maps unavailable; using GlobeScene fallback");
-            })
-            .ok()
         });
         // Without a rig nothing streams live tiles, so the ground falls back offline.
         if self.maps.is_none()
@@ -313,7 +305,7 @@ impl CockpitRig {
         let earth = body == BodyEllipsoid::WGS84;
         let viewport_mode = self.supervisor.viewport_mode();
         let (map_sphere_active, svs_underlay_active, terrain_patch, earth_runway) = if earth {
-            self.step_earth_maps(surface_size, flight, camera, sky, sensor_exposures)?
+            self.step_earth_maps(surface_size, flight, camera, sky, sensor_exposures)
         } else {
             (false, false, None, None)
         };
@@ -365,7 +357,7 @@ impl CockpitRig {
             },
         )?;
 
-        let full_map_covered = earth && self.full_window_map_view().is_some();
+        let full_map_covered = map_sphere_active && self.full_window_map_view().is_some();
         Ok(!full_map_covered)
     }
 
@@ -376,38 +368,45 @@ impl CockpitRig {
         camera: &Camera,
         sky: &SkyFrame<'_>,
         sensor_exposures: &[SensorExposureEvent],
-    ) -> Result<
-        (
-            bool,
-            bool,
-            Option<sim_maplibre::TerrainPatchSnapshot>,
-            Option<sim_scenery::LandingRunwayGeometry>,
-        ),
-        AppSimError,
-    > {
+    ) -> (
+        bool,
+        bool,
+        Option<sim_maplibre::TerrainPatchSnapshot>,
+        Option<sim_scenery::LandingRunwayGeometry>,
+    ) {
         let Some(maps) = self.maps.as_mut() else {
-            return Ok((false, false, None, None));
+            return (false, false, None, None);
         };
         let expanded = efb_map_rect(surface_size, EfbDisplayMode::ExpandedEfb);
-        maps.set_efb_expanded_px(rect_px(expanded, surface_size))?;
-        let runway = maps.render_earth_frame(&MapFrameInput {
-            surface_size,
-            timestamp: flight.now(),
-            profile: flight.profile(),
-            active_vehicle: flight.free_vehicle(),
-            vehicle: flight.display_vehicle_state(),
-            estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
-            sensor_exposures,
-            articulation: flight.display_articulation(),
-            otw_camera: *camera,
-            sky,
-            supervisor: &self.supervisor,
-        })?;
+        let step = maps
+            .set_efb_expanded_px(rect_px(expanded, surface_size))
+            .and_then(|()| {
+                maps.render_earth_frame(&MapFrameInput {
+                    surface_size,
+                    timestamp: flight.now(),
+                    profile: flight.profile(),
+                    active_vehicle: flight.free_vehicle(),
+                    vehicle: flight.display_vehicle_state(),
+                    estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
+                    sensor_exposures,
+                    articulation: flight.display_articulation(),
+                    otw_camera: *camera,
+                    sky,
+                    supervisor: &self.supervisor,
+                })
+            });
+        let runway = match step {
+            Ok(runway) => runway,
+            Err(error) => {
+                warn!(%error, "MapLibre frame failed; falling back for this frame");
+                return (false, false, None, None);
+            }
+        };
         let svs = maps.instrument_view(PFD_SVS_MAP).is_some();
         let patch = (self.supervisor.viewport_mode() == OperatorViewportMode::VolumetricScene)
             .then(|| maps.sample_terrain_patch())
             .flatten();
-        Ok((true, svs, patch, runway))
+        (true, svs, patch, runway)
     }
 
     fn dock_panel_px(&self, earth: bool, mode: OperatorViewportMode) -> Option<[u32; 2]> {
