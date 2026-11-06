@@ -89,7 +89,7 @@ pilotage-geo = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a
 pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 syspack = { path = "../mbd/crates/syspack" }
-maplibre = { path = "../maplibre-rs-perf/maplibre", default-features = false, features = ["headless", "raster", "geojson", "experimental"] }
+maplibre = { path = "../maplibre-rs-experimental/maplibre", default-features = false, features = ["headless", "raster", "geojson", "experimental"] }
 
 async-trait = "0.1"
 bytemuck = "1.25"
