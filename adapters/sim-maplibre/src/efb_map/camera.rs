@@ -2,6 +2,7 @@
 //! compensation, and 3D unit-sphere panning across the poles (`±90°`).
 
 use std::f64::consts::FRAC_PI_2;
+use std::time::Duration;
 
 use glam::DVec3;
 use maplibre::projection::globe::scale;
@@ -41,6 +42,41 @@ pub enum EfbDisplayMode {
     CompactCorner,
     /// Full electronic flight bag page.
     ExpandedEfb,
+}
+
+/// Monotonic wall-clock refresh policy for an [`EfbMapSurface`](crate::EfbMapSurface),
+/// decoupling display pacing from simulation time warp, pause, or in-flight network I/O.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EfbRefreshPolicy {
+    /// Adaptive cockpit pacing: the expanded EFB page draws arrived tiles immediately and
+    /// follows ownship at `30 Hz` (`33 ms`), while the compact corner inset coalesces both
+    /// ownship motion and streaming tile arrivals to `15 Hz` (`66 ms`).
+    #[default]
+    CockpitAdaptive,
+    /// Standalone or dedicated tablet EFB pacing: arrived tiles and animations draw immediately
+    /// (`0 ms`), and ownship/traffic updates pace at `30 Hz` (`33 ms`).
+    StandaloneInteractive,
+}
+
+impl EfbRefreshPolicy {
+    /// Whether arrived worker tiles or map animations bypass the motion interval in `mode`.
+    #[must_use]
+    pub const fn immediate_on_ready_work(self, mode: EfbDisplayMode) -> bool {
+        match self {
+            Self::StandaloneInteractive => true,
+            Self::CockpitAdaptive => matches!(mode, EfbDisplayMode::ExpandedEfb),
+        }
+    }
+
+    /// Wall-clock interval between coalesced motion (or inset tile-arrival) frames in `mode`.
+    #[must_use]
+    pub const fn motion_interval(self, mode: EfbDisplayMode) -> Duration {
+        match (self, mode) {
+            (Self::CockpitAdaptive, EfbDisplayMode::CompactCorner) => Duration::from_millis(66),
+            (Self::CockpitAdaptive, EfbDisplayMode::ExpandedEfb)
+            | (Self::StandaloneInteractive, _) => Duration::from_millis(33),
+        }
+    }
 }
 
 /// How the EFB map's camera follows ownship.

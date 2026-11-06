@@ -9,8 +9,8 @@ mod tests;
 
 pub use target::{VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorTarget};
 
-/// Smallest vertex buffer the pass allocates, in vertices.
-const MIN_VERTEX_CAPACITY: u64 = 4096;
+/// Smallest vertex buffer a [`VectorTarget`] allocates, in vertices.
+pub(super) const MIN_VERTEX_CAPACITY: u64 = 4096;
 
 /// One triangle-list vertex of an anti-aliased vector scene.
 ///
@@ -39,14 +39,11 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
     3 => Float32,
 ];
 
-/// Multisampled triangle pass that rasterizes [`VectorVertex`] lists into a
-/// [`VectorTarget`] with premultiplied blending.
+/// Stateless multisampled triangle pass that rasterizes [`VectorVertex`] lists
+/// into any number of [`VectorTarget`]s with premultiplied blending.
 pub struct VectorScenePass {
     pipeline: wgpu::RenderPipeline,
-    viewport: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    vertices: Option<wgpu::Buffer>,
-    capacity_bytes: u64,
+    layout: wgpu::BindGroupLayout,
 }
 
 impl VectorScenePass {
@@ -70,49 +67,32 @@ impl VectorScenePass {
         if let Some(err) = scope.pop().await {
             return Err(RenderError::PipelineValidation(err));
         }
-        let viewport = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("vector scene viewport"),
-            size: std::mem::size_of::<[f32; 4]>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("vector scene"),
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: viewport.as_entire_binding(),
-            }],
-        });
-        Ok(Self {
-            pipeline,
-            viewport,
-            bind_group,
-            vertices: None,
-            capacity_bytes: 0,
-        })
+        Ok(Self { pipeline, layout })
     }
 
     /// Clears `target` to transparent and draws `vertices` as a triangle list,
     /// resolving into [`VectorTarget::view`]. The pass always runs, so an
     /// empty list still leaves a cleared overlay rather than a stale one.
+    ///
+    /// Because each [`VectorTarget`] owns its uniform and vertex buffers,
+    /// callers can encode multiple targets into the same `encoder` and submit
+    /// once.
     pub fn encode(
-        &mut self,
+        &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        target: &VectorTarget,
+        target: &mut VectorTarget,
         vertices: &[VectorVertex],
     ) -> Result<(), RenderError> {
         let whole = vertices.len() - vertices.len() % 3;
         let drawn = vertices.get(..whole).unwrap_or_default();
         let draw_count = u32::try_from(drawn.len()).map_err(|_| too_large(device, drawn.len()))?;
         if !drawn.is_empty() {
-            self.upload(device, queue, drawn)?;
+            target.ensure_bind_group(device, &self.layout);
+            target.upload_vertices(device, queue, drawn)?;
         }
-        let [w, h] = target.size_px();
-        let viewport = [w as f32, h as f32, 0.0, 0.0];
-        queue.write_buffer(&self.viewport, 0, bytemuck::bytes_of(&viewport));
+        target.write_viewport(queue);
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("vector scene"),
@@ -137,50 +117,17 @@ impl VectorScenePass {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        if let (Some(buffer), true) = (&self.vertices, draw_count > 0) {
+        if let (Some((bind_group, buffer)), true) = (target.draw_resources(), draw_count > 0) {
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_bind_group(0, bind_group, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             pass.draw(0..draw_count, 0..1);
         }
         Ok(())
     }
-
-    fn upload(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        vertices: &[VectorVertex],
-    ) -> Result<(), RenderError> {
-        let bytes: &[u8] = bytemuck::cast_slice(vertices);
-        let needed = bytes.len() as u64;
-        if self.vertices.is_none() || needed > self.capacity_bytes {
-            let max = device.limits().max_buffer_size;
-            let stride = std::mem::size_of::<VectorVertex>() as u64;
-            let capacity = needed
-                .max(MIN_VERTEX_CAPACITY * stride)
-                .checked_next_power_of_two()
-                .unwrap_or(needed)
-                .min(max);
-            if needed > capacity {
-                return Err(too_large(device, vertices.len()));
-            }
-            self.vertices = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("vector scene vertices"),
-                size: capacity,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-            self.capacity_bytes = capacity;
-        }
-        if let Some(buffer) = &self.vertices {
-            queue.write_buffer(buffer, 0, bytes);
-        }
-        Ok(())
-    }
 }
 
-fn too_large(device: &wgpu::Device, vertices: usize) -> RenderError {
+pub(super) fn too_large(device: &wgpu::Device, vertices: usize) -> RenderError {
     let stride = std::mem::size_of::<VectorVertex>() as u64;
     RenderError::VectorGeometryTooLarge {
         vertices,

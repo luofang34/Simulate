@@ -69,13 +69,23 @@ impl TerrariumTile {
             path: "in-memory Terrarium tile".to_owned(),
             detail,
         };
-        let pixels = image::ImageReader::new(std::io::Cursor::new(bytes))
+        let decoded = image::ImageReader::new(std::io::Cursor::new(bytes))
             .with_guessed_format()
             .map_err(|err| corrupt(err.to_string()))?
             .decode()
-            .map_err(|err| corrupt(err.to_string()))?
-            .into_rgb8();
-        Self::from_rgb(pixels.width(), pixels.height(), pixels.as_raw())
+            .map_err(|err| corrupt(err.to_string()))?;
+        match decoded {
+            image::DynamicImage::ImageRgb8(rgb) => {
+                Self::from_rgb(rgb.width(), rgb.height(), rgb.as_raw())
+            }
+            image::DynamicImage::ImageRgba8(rgba) => {
+                Self::from_rgba(rgba.width(), rgba.height(), rgba.as_raw())
+            }
+            other => {
+                let rgb = other.into_rgb8();
+                Self::from_rgb(rgb.width(), rgb.height(), rgb.as_raw())
+            }
+        }
     }
 
     fn decode(width: u32, height: u32, pixels: &[u8], stride: usize) -> Result<Self, SceneryError> {

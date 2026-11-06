@@ -67,7 +67,7 @@ fn alpha(pixels: &[u8], x: u32, y: u32) -> u8 {
     pixels[((y * SIZE + x) * 4 + 3) as usize]
 }
 
-fn draw(gpu: &HeadlessGpu, pass: &mut VectorScenePass, target: &VectorTarget, v: &[VectorVertex]) {
+fn draw(gpu: &HeadlessGpu, pass: &VectorScenePass, target: &mut VectorTarget, v: &[VectorVertex]) {
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     pass.encode(&gpu.device, &gpu.queue, &mut encoder, target, v)
         .unwrap();
@@ -95,8 +95,8 @@ fn vector_pass_antialiases_clips_blends_once_and_clears() {
     let Ok(gpu) = pollster::block_on(HeadlessGpu::new()) else {
         return;
     };
-    let mut pass = pollster::block_on(VectorScenePass::new(&gpu.device)).unwrap();
-    let target = VectorTarget::new(&gpu.device, "vector test", SIZE, SIZE).unwrap();
+    let pass = pollster::block_on(VectorScenePass::new(&gpu.device)).unwrap();
+    let mut target = VectorTarget::new(&gpu.device, "vector test", SIZE, SIZE).unwrap();
     let white = [1.0, 1.0, 1.0, 1.0];
     let half = [0.5, 0.5, 0.5, 0.5];
     let mut v = vec![
@@ -116,7 +116,7 @@ fn vector_pass_antialiases_clips_blends_once_and_clears() {
     quad(&mut v, [0.0, 20.0, 10.0, 30.0], half, FULL_CLIP, 0.3);
     // ...while a later operation still composites over it.
     quad(&mut v, [5.0, 20.0, 10.0, 30.0], half, FULL_CLIP, 0.4);
-    draw(&gpu, &mut pass, &target, &v);
+    draw(&gpu, &pass, &mut target, &v);
     let px = read_back(&gpu, &target);
     gpu.check_device().unwrap();
 
@@ -138,7 +138,48 @@ fn vector_pass_antialiases_clips_blends_once_and_clears() {
         "later operation lost"
     );
 
-    draw(&gpu, &mut pass, &target, &[]);
+    draw(&gpu, &pass, &mut target, &[]);
     let cleared = read_back(&gpu, &target);
     assert!(cleared.iter().all(|&b| b == 0), "empty draw must clear");
+}
+
+#[test]
+fn multiple_targets_encode_into_one_command_buffer_without_clobbering() {
+    let Ok(gpu) = pollster::block_on(HeadlessGpu::new()) else {
+        return;
+    };
+    let pass = pollster::block_on(VectorScenePass::new(&gpu.device)).unwrap();
+    let mut left = VectorTarget::new(&gpu.device, "pfd", SIZE, SIZE).unwrap();
+    let mut right = VectorTarget::new(&gpu.device, "hud", SIZE * 2, SIZE).unwrap();
+    let white = [1.0, 1.0, 1.0, 1.0];
+    let mut left_v = Vec::new();
+    quad(&mut left_v, [0.0, 0.0, 12.0, 12.0], white, FULL_CLIP, 0.1);
+    let mut right_v = Vec::new();
+    quad(
+        &mut right_v,
+        [40.0, 4.0, 60.0, 24.0],
+        white,
+        [0.0, 0.0, (SIZE * 2) as f32, SIZE as f32],
+        0.1,
+    );
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    pass.encode(&gpu.device, &gpu.queue, &mut encoder, &mut left, &left_v)
+        .unwrap();
+    pass.encode(&gpu.device, &gpu.queue, &mut encoder, &mut right, &right_v)
+        .unwrap();
+    gpu.queue.submit([encoder.finish()]);
+
+    let left_px = read_back(&gpu, &left);
+    let right_px = read_back(&gpu, &right);
+    gpu.check_device().unwrap();
+    assert_eq!(alpha(&left_px, 4, 4), 255);
+    assert_eq!(alpha(&left_px, 24, 24), 0);
+    assert_eq!(
+        alpha(&right_px[((10 * SIZE * 2 + 50) * 4) as usize..], 0, 0),
+        255
+    );
+    assert_eq!(
+        alpha(&right_px[((4 * SIZE * 2 + 4) * 4) as usize..], 0, 0),
+        0
+    );
 }

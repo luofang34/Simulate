@@ -24,6 +24,7 @@ pub const VECTOR_HUD_DESIGN_HEIGHT: f32 = 720.0;
 /// frame supplies the horizontal extent.
 pub struct VectorHudPanel {
     scene: Vec<u8>,
+    vertices: Vec<VectorVertex>,
 }
 
 impl Default for VectorHudPanel {
@@ -33,11 +34,12 @@ impl Default for VectorHudPanel {
 }
 
 impl VectorHudPanel {
-    /// A panel with a scene buffer large enough for any accepted scene.
+    /// A panel with reusable scene and vertex buffers large enough for any accepted scene.
     #[must_use]
     pub fn new() -> Self {
         Self {
             scene: vec![0; PANEL_SCENE_BYTES],
+            vertices: Vec::with_capacity(8_192),
         }
     }
 
@@ -67,16 +69,16 @@ impl VectorHudPanel {
         }
     }
 
-    /// Draws the HUD for `data` and tessellates it into physical-pixel
-    /// triangles for a `target_w × target_h` vector target.
-    pub fn tessellate(
+    /// Draws the HUD for `data` and tessellates it into the panel's reusable
+    /// vertex buffer, returning a borrowed slice for [`sim_render::VectorScenePass::encode`].
+    pub fn tessellate_slice(
         &mut self,
         data: &PanelData,
         context: &HudContext,
         alerts: Option<&AlertOutput>,
         target_w: u32,
         target_h: u32,
-    ) -> Result<Vec<VectorVertex>, PanelError> {
+    ) -> Result<&[VectorVertex], PanelError> {
         let [width, height] = Self::design_frame(target_w, target_h)?;
         let capacity = self.scene.len();
         let mut writer = SceneWriter::new(&mut self.scene).map_err(|cause| PanelError::Scene {
@@ -94,6 +96,28 @@ impl VectorHudPanel {
         .map_err(|source| PanelError::HudDraw { source })?;
         let scene_bytes = writer.finish();
         let scene = self.scene.get(..scene_bytes).unwrap_or_default();
-        super::tessellate_scene_cmds(scene, width, height, target_w, target_h)
+        super::tessellate_scene_cmds_into(
+            scene,
+            width,
+            height,
+            target_w,
+            target_h,
+            &mut self.vertices,
+        )?;
+        Ok(&self.vertices)
+    }
+
+    /// Draws the HUD for `data` and tessellates it into physical-pixel
+    /// triangles for a `target_w × target_h` vector target.
+    pub fn tessellate(
+        &mut self,
+        data: &PanelData,
+        context: &HudContext,
+        alerts: Option<&AlertOutput>,
+        target_w: u32,
+        target_h: u32,
+    ) -> Result<Vec<VectorVertex>, PanelError> {
+        self.tessellate_slice(data, context, alerts, target_w, target_h)
+            .map(<[VectorVertex]>::to_vec)
     }
 }

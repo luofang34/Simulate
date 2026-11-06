@@ -256,15 +256,33 @@ impl AvionicsRig {
                 .then_some(monitored.panel.nav.course_rose_rad.value);
             self.last_heading_and_course_rad = Some((monitored.panel.heading.value_rad.value, crs));
         }
-        if let Some([pw, ph]) = input.dock_panel_px {
-            let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
-            self.render_vector_panels(device, queue, &monitored, &pfd_cfg, [pw, ph])?;
-        }
-        if let Some(view) = input
+        let hud_view = input
             .hud
-            .filter(|_| self.domain == FeedDomain::EarthAircraft)
-        {
-            self.render_vector_hud(device, queue, &monitored, input, &view)?;
+            .filter(|_| self.domain == FeedDomain::EarthAircraft);
+        if input.dock_panel_px.is_some() || hud_view.is_some() {
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("indicate avionics vector"),
+            });
+            let mut recorded = false;
+            if let Some([pw, ph]) = input.dock_panel_px {
+                let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
+                self.encode_vector_panels(
+                    device,
+                    queue,
+                    &mut encoder,
+                    &monitored,
+                    &pfd_cfg,
+                    [pw, ph],
+                )?;
+                recorded = true;
+            }
+            if let Some(view) = hud_view {
+                recorded |=
+                    self.encode_vector_hud(device, queue, &mut encoder, &monitored, input, &view)?;
+            }
+            if recorded {
+                queue.submit([encoder.finish()]);
+            }
         }
         if input.viewport_mode == OperatorViewportMode::VolumetricScene {
             self.emit_active_volume(&monitored, input.terrain_patch)?;
@@ -272,57 +290,59 @@ impl AvionicsRig {
         Ok(monitored)
     }
 
-    fn render_vector_panels(
+    fn encode_vector_panels(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         monitored: &MonitoredFrame,
         config: &PfdConfig,
         [raw_w, raw_h]: [u32; 2],
     ) -> Result<(), AppSimError> {
         let (w, h) = (raw_w.max(64), raw_h.max(48));
-        let pfd_verts =
-            self.panels
-                .tessellate_pfd(&monitored.panel, config, Some(&monitored.alerts), w, h)?;
+        let pfd_verts = self.panels.tessellate_pfd_slice(
+            &monitored.panel,
+            config,
+            Some(&monitored.alerts),
+            w,
+            h,
+        )?;
         self.pfd_target.ensure_size(device, w, h)?;
-        let mut pfd_enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("indicate pfd vector"),
-        });
         self.hud_pass
-            .encode(device, queue, &mut pfd_enc, &self.pfd_target, &pfd_verts)?;
-        queue.submit([pfd_enc.finish()]);
+            .encode(device, queue, encoder, &mut self.pfd_target, pfd_verts)?;
 
         let hsi_verts =
             self.panels
-                .tessellate_hsi(&monitored.panel, Some(&monitored.alerts), w, h)?;
+                .tessellate_hsi_slice(&monitored.panel, Some(&monitored.alerts), w, h)?;
         self.hsi_target.ensure_size(device, w, h)?;
-        let mut hsi_enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("indicate hsi vector"),
-        });
         self.hud_pass
-            .encode(device, queue, &mut hsi_enc, &self.hsi_target, &hsi_verts)?;
-        queue.submit([hsi_enc.finish()]);
+            .encode(device, queue, encoder, &mut self.hsi_target, hsi_verts)?;
         Ok(())
     }
 
-    /// Tessellates the HUD at the window's physical resolution and draws it with `4×` MSAA;
-    /// a window outside the HUD's aspect range shows no HUD rather than failing the frame.
-    fn render_vector_hud(
+    /// Tessellates the HUD at the window's physical resolution and records it into `encoder`
+    /// with `4×` MSAA; a window outside the HUD's aspect range shows no HUD rather than failing.
+    fn encode_vector_hud(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         monitored: &MonitoredFrame,
         input: &AvionicsFrameInput<'_>,
         view: &HudView<'_>,
-    ) -> Result<(), AppSimError> {
+    ) -> Result<bool, AppSimError> {
         let [w, h] = view.surface_size.map(|v| v.max(1));
         if VectorHudPanel::design_frame(w, h).is_err() {
-            return Ok(());
+            return Ok(false);
         }
         let context = hud::hud_context(&input.vehicle, view, input.runway);
-        let vertices =
-            self.hud_panel
-                .tessellate(&monitored.panel, &context, Some(&monitored.alerts), w, h)?;
+        let vertices = self.hud_panel.tessellate_slice(
+            &monitored.panel,
+            &context,
+            Some(&monitored.alerts),
+            w,
+            h,
+        )?;
         let target = match self.hud_target.as_mut() {
             Some(target) => {
                 target.ensure_size(device, w, h)?;
@@ -332,14 +352,10 @@ impl AvionicsRig {
                 .hud_target
                 .insert(VectorTarget::new(device, "indicate hud", w, h)?),
         };
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("indicate hud"),
-        });
         self.hud_pass
-            .encode(device, queue, &mut encoder, target, &vertices)?;
-        queue.submit([encoder.finish()]);
+            .encode(device, queue, encoder, target, vertices)?;
         self.hud_shown = true;
-        Ok(())
+        Ok(true)
     }
 
     fn emit_active_volume(

@@ -75,7 +75,7 @@ impl MapLibreRig {
             globe.select(selection)?;
         }
         globe.refresh_markers()?;
-        if globe.dirty || globe.view.is_none() || globe.surface.needs_redraw() {
+        if globe.dirty || globe.view.is_none() || globe.surface.has_ready_work() {
             globe.view = globe.surface.render()?.cloned();
             globe.dirty = false;
         }

@@ -32,8 +32,8 @@ pub use chart_symbology::{
 };
 pub use efb_map::{
     ApproachPlateOverlay, DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE,
-    EfbDisplayMode, EfbFollowMode, EfbLayerFlags, EfbMapConfig, EfbMapSurface, ProceduralPlateSpec,
-    generate_procedural_approach_plate,
+    EfbDisplayMode, EfbFollowMode, EfbLayerFlags, EfbMapConfig, EfbMapSurface, EfbPacer,
+    EfbRefreshPolicy, ProceduralPlateSpec, generate_procedural_approach_plate,
 };
 pub use entities::{
     DynamicEntity3D, DynamicEntityKind, build_conformal_overlay, entities_from_surveillance_belief,

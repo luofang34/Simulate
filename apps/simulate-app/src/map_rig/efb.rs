@@ -7,11 +7,13 @@ use std::time::Duration;
 use serde_json::Value;
 use sim_maplibre::{
     ChartAssetStore, ChartSymbologyInput, EfbDisplayMode, EfbFollowMode, EfbLayerFlags,
-    EfbMapConfig, EfbMapSurface, SceneryEndpoints, SharedMapRuntime, ViewSlotMask,
+    EfbMapConfig, EfbMapSurface, EfbPacer, EfbRefreshPolicy, SceneryEndpoints, SharedMapRuntime,
+    ViewSlotMask,
 };
 use sim_scenario::OperatorViewportMode;
 use sim_scenery::{AirportDatabase, LandingRunwayGeometry};
 use tracing::warn;
+use web_time::Instant;
 
 use super::{AvionicsPreset, MapFrameInput, MapLibreRig, charts};
 use crate::cockpit_rig::efb_chrome::{efb_map_rect, rect_px};
@@ -23,8 +25,6 @@ mod tests;
 
 /// Plate opacities the `OPAC` chip cycles through, the first being the default.
 pub const PLATE_OPACITIES: [f32; 3] = [0.75, 0.45, 0.95];
-/// Shortest interval between EFB frames while nothing but ownship moves.
-const FRAME_INTERVAL: Duration = Duration::from_millis(66);
 
 /// An operator command to the EFB.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -94,7 +94,7 @@ pub struct EfbRig {
     plate_shown: [bool; 2],
     diagram_shown: bool,
     opacity_step: usize,
-    last_frame: Option<Duration>,
+    pacer: EfbPacer,
     dirty: bool,
     merged_diagram: Value,
     merged_diagram_shown: bool,
@@ -130,7 +130,7 @@ impl EfbRig {
             plate_shown: [false, true],
             diagram_shown: true,
             opacity_step: 0,
-            last_frame: None,
+            pacer: EfbPacer::new(EfbRefreshPolicy::default()),
             dirty: true,
             merged_diagram: aerodrome_geojson.clone(),
             merged_diagram_shown: true,
@@ -162,13 +162,10 @@ impl EfbRig {
     }
 
     /// Whether arrived tiles still need drawing.
+    #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub fn needs_redraw(&self) -> bool {
-        if self.collapsed {
-            self.dirty
-        } else {
-            self.dirty || self.surface.needs_redraw()
-        }
+        self.dirty || (!self.collapsed && self.surface.needs_redraw())
     }
 
     /// What the EFB shows.
@@ -261,6 +258,7 @@ impl EfbRig {
 
     fn prepare_step(
         &mut self,
+        now: Instant,
         sim_time: Duration,
         airport: Option<EfbAirport>,
     ) -> Result<bool, AppSimError> {
@@ -271,19 +269,25 @@ impl EfbRig {
             self.dirty = false;
             return Ok(false);
         }
-        let due = self
-            .last_frame
-            .is_none_or(|last| sim_time < last || sim_time.saturating_sub(last) >= FRAME_INTERVAL);
-        Ok(due || self.view.is_none() || self.needs_redraw())
+        let ready = self.surface.has_ready_work();
+        Ok(self.pacer.should_render(
+            now,
+            sim_time,
+            self.mode(),
+            self.view.is_some(),
+            self.dirty,
+            ready,
+        ))
     }
 
     fn render_prepared(
         &mut self,
+        now: Instant,
         sim_time: Duration,
         symbology: &ChartSymbologyInput<'_>,
     ) -> Result<(), AppSimError> {
         self.view = self.surface.render(symbology)?.cloned();
-        self.last_frame = Some(sim_time);
+        self.pacer.record_rendered(now, sim_time);
         self.dirty = false;
         Ok(())
     }
@@ -414,18 +418,14 @@ impl MapLibreRig {
 
     /// Applies an operator command to the EFB, if there is one.
     pub fn efb_command(&mut self, command: EfbCommand) -> Result<(), AppSimError> {
-        match self.efb.as_mut() {
-            Some(efb) => efb.command(command),
-            None => Ok(()),
-        }
+        self.efb.as_mut().map_or(Ok(()), |efb| efb.command(command))
     }
 
     /// Sizes the expanded EFB page to its on-screen `size_px`.
     pub fn set_efb_expanded_px(&mut self, size_px: [u32; 2]) -> Result<(), AppSimError> {
-        match self.efb.as_mut() {
-            Some(efb) => efb.resize_expanded(size_px),
-            None => Ok(()),
-        }
+        self.efb
+            .as_mut()
+            .map_or(Ok(()), |efb| efb.resize_expanded(size_px))
     }
 
     /// The airport the EFB shows instead of the supervisor's, if one was set.
@@ -463,12 +463,14 @@ impl MapLibreRig {
         let Some(efb) = self.efb.as_mut() else {
             return Ok(());
         };
-        if !efb.prepare_step(sim_time, airport)? {
+        let now = Instant::now();
+        if !efb.prepare_step(now, sim_time, airport)? {
             return Ok(());
         }
         let own = charts::chart_ownship(&input.estimated_vehicle);
         let traffic = input.supervisor.belief_entities(ViewSlotMask::ALL);
         efb.render_prepared(
+            now,
             sim_time,
             &ChartSymbologyInput {
                 camera: charts::moving_map_camera(&own, input.supervisor),

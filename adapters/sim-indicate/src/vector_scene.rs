@@ -44,16 +44,39 @@ pub fn tessellate_scene_cmds(
     target_w: u32,
     target_h: u32,
 ) -> Result<Vec<VectorVertex>, PanelError> {
-    tessellate_mesh(scene, [design_w, design_h], [target_w, target_h])
-        .map(Mesh::into_vertices)
-        .map_err(|source| PanelError::VectorScene { source })
+    let mut out = Vec::new();
+    tessellate_scene_cmds_into(scene, design_w, design_h, target_w, target_h, &mut out)?;
+    Ok(out)
 }
 
-fn tessellate_mesh(
+/// Like [`tessellate_scene_cmds`], reusing `out`'s heap capacity across frames.
+/// On error `out` is cleared so callers never observe partial geometry.
+pub fn tessellate_scene_cmds_into(
+    scene: &[u8],
+    design_w: f32,
+    design_h: f32,
+    target_w: u32,
+    target_h: u32,
+    out: &mut Vec<VectorVertex>,
+) -> Result<(), PanelError> {
+    tessellate_mesh_into(
+        scene,
+        [design_w, design_h],
+        [target_w, target_h],
+        out,
+        |_| {},
+    )
+    .map_err(|source| PanelError::VectorScene { source })
+}
+
+fn tessellate_mesh_into(
     scene: &[u8],
     design: [f32; 2],
     target: [u32; 2],
-) -> Result<Mesh, VectorSceneError> {
+    out: &mut Vec<VectorVertex>,
+    post: impl FnOnce(&mut Mesh),
+) -> Result<(), VectorSceneError> {
+    out.clear();
     let [design_w, design_h] = design;
     let usable = |d: f32| d.is_finite() && d > 0.0;
     if !usable(design_w) || !usable(design_h) || target[0] == 0 || target[1] == 0 {
@@ -68,11 +91,20 @@ fn tessellate_mesh(
     PANEL_GLYPHS.verify()?;
     let scale = [target[0] as f32 / design_w, target[1] as f32 / design_h];
     let mut state = StateStack::new(target, scale);
-    let mut mesh = Mesh::new(scale);
+    let mut mesh = Mesh::with_buffer(scale, std::mem::take(out));
     for (command, item) in SceneCmds::new(scene)?.enumerate() {
-        run(&item?, command, &mut state, &mut mesh)?;
+        let step = item
+            .map_err(VectorSceneError::from)
+            .and_then(|cmd| run(&cmd, command, &mut state, &mut mesh));
+        if let Err(err) = step {
+            *out = mesh.into_vertices();
+            out.clear();
+            return Err(err);
+        }
     }
-    Ok(mesh)
+    post(&mut mesh);
+    *out = mesh.into_vertices();
+    Ok(())
 }
 
 fn run(

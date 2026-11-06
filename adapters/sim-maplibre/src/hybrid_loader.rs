@@ -116,7 +116,7 @@ impl HybridTileLoader {
         let (Some(bridge), Some(tile)) = (&self.live_dem, terrarium_tile_id(url)) else {
             return;
         };
-        if let Err(error) = bridge.ingest_terrarium_png(tile, bytes) {
+        if let Err(error) = bridge.ingest_terrarium_png_if_new(tile, bytes) {
             tracing::warn!(url, %error, "Terrarium tile not handed to the simulation ground");
         }
     }

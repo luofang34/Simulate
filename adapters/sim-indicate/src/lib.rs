@@ -55,7 +55,7 @@ pub use panel::{
 };
 pub use vector_scene::{
     VECTOR_HUD_DESIGN_HEIGHT, VectorFlightPanels, VectorHudPanel, VectorSceneError,
-    tessellate_scene_cmds,
+    tessellate_scene_cmds, tessellate_scene_cmds_into,
 };
 pub use volume::{
     VOLUME_SCENE_BYTES, VolumeInstrument, VolumeRender, apply_volume_gesture, emit_volume_scene,

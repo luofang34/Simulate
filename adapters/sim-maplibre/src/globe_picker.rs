@@ -255,10 +255,16 @@ impl GlobePickerSurface {
         Ok(self.map.head_texture_view())
     }
 
-    /// Whether arrived tiles or an active camera flight still need drawing.
+    /// Whether requests, arrived tiles, or an active camera flight remain unsettled.
     #[must_use]
     pub fn needs_redraw(&self) -> bool {
         self.map.needs_redraw()
+    }
+
+    /// Whether dirty state, an active flight, or arrived worker tiles are ready to draw now.
+    #[must_use]
+    pub fn has_ready_work(&self) -> bool {
+        self.map.has_ready_work()
     }
 
     /// Copies the last frame into tight RGBA8 bytes (`width * height * 4`).

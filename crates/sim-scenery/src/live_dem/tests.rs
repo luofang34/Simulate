@@ -220,3 +220,18 @@ fn loaders_on_many_threads_all_reach_the_surface() {
     assert_eq!(surface.live_dem_len(), 4);
     assert_eq!(bridge.generation(), 4);
 }
+
+#[test]
+fn duplicate_terrarium_fetches_across_map_views_decode_and_queue_once() {
+    let bridge = LiveDemBridge::new();
+    let tile = tile_over(&dover(), 12);
+    let png = terrarium_png(85.0, 2.0);
+    assert!(bridge.ingest_terrarium_png_if_new(tile, &png).unwrap());
+    assert!(
+        !bridge
+            .ingest_terrarium_png_if_new(tile, b"corrupt duplicate skipped")
+            .unwrap()
+    );
+    assert_eq!(bridge.generation(), 1);
+    assert_eq!(bridge.pending_len_may_be_stale(), 1);
+}

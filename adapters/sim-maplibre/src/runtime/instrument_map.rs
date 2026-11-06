@@ -324,7 +324,7 @@ impl InstrumentMapSurface {
             return Ok(ChartFrameOutcome::ReusedCachedTexture);
         };
         let key = ChartDirtyKey::from_spec(&spec);
-        if self.last_chart_key == Some(key) && !self.needs_redraw() {
+        if self.last_chart_key == Some(key) && !self.has_ready_work() {
             return Ok(ChartFrameOutcome::ReusedCachedTexture);
         }
         if !interval_elapsed(self.last_chart_timestamp, timestamp, min_interval) {
@@ -433,11 +433,20 @@ impl InstrumentMapSurface {
         self.render_count
     }
 
-    /// Whether background tile workers delivered arrivals that still need drawing.
+    /// Whether background requests or arrived tile results remain unsettled.
     #[must_use]
     pub fn needs_redraw(&self) -> bool {
         match &self.backend {
             SurfaceBackend::Active { map, .. } => map.needs_redraw(),
+            SurfaceBackend::DeferredChart(_) => false,
+        }
+    }
+
+    /// Whether dirty state or arrived worker results are ready to render immediately.
+    #[must_use]
+    pub fn has_ready_work(&self) -> bool {
+        match &self.backend {
+            SurfaceBackend::Active { map, .. } => map.has_ready_work(),
             SurfaceBackend::DeferredChart(_) => false,
         }
     }

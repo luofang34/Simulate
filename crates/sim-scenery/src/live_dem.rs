@@ -1,6 +1,7 @@
 //! Hand-off of decoded Terrarium tiles from tile-loader threads to the
 //! simulation thread's [`AuthoritativeWorldSurface`].
 
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, TryLockError};
 
@@ -13,6 +14,36 @@ mod tests;
 /// Tiles decoded and waiting for the simulation thread.
 type Pending = Vec<(TileId, Arc<TerrariumTile>)>;
 
+/// Bounded deduplication window kept comfortably below `DEFAULT_LIVE_TILE_CAPACITY` (`1,024`)
+/// so a tile still in `RecentTiles` has not yet been evicted from the default `LiveDem`.
+const RECENT_INGEST_CAPACITY: usize = 768;
+
+#[derive(Debug, Default)]
+struct RecentTiles {
+    order: VecDeque<TileId>,
+    present: BTreeSet<TileId>,
+}
+
+impl RecentTiles {
+    fn contains(&self, id: TileId) -> bool {
+        self.present.contains(&id)
+    }
+
+    /// Records `id`, returning `true` if it was newly inserted.
+    fn insert(&mut self, id: TileId) -> bool {
+        if !self.present.insert(id) {
+            return false;
+        }
+        if self.order.len() >= RECENT_INGEST_CAPACITY
+            && let Some(evicted) = self.order.pop_front()
+        {
+            self.present.remove(&evicted);
+        }
+        self.order.push_back(id);
+        true
+    }
+}
+
 /// A cheap-to-clone queue between any number of tile loaders and the one
 /// thread that owns the world surface.
 ///
@@ -22,6 +53,7 @@ type Pending = Vec<(TileId, Arc<TerrariumTile>)>;
 #[derive(Clone, Debug, Default)]
 pub struct LiveDemBridge {
     pending: Arc<Mutex<Pending>>,
+    recent: Arc<Mutex<RecentTiles>>,
     generation: Arc<AtomicU64>,
 }
 
@@ -37,8 +69,42 @@ impl LiveDemBridge {
     pub fn ingest_terrarium_png(&self, id: TileId, png_bytes: &[u8]) -> Result<(), SceneryError> {
         require_valid(id)?;
         let tile = TerrariumTile::from_png_bytes(png_bytes)?;
+        let _inserted = self
+            .recent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id);
         self.push(id, Arc::new(tile));
         Ok(())
+    }
+
+    /// Decodes and queues immutable Terrarium PNG bytes for `id` only when `id` is not already
+    /// in the bridge's recent-tile window, avoiding duplicate PNG decompression when OTW, SVS,
+    /// and EFB maps independently fetch the same cached tile.
+    pub fn ingest_terrarium_png_if_new(
+        &self,
+        id: TileId,
+        png_bytes: &[u8],
+    ) -> Result<bool, SceneryError> {
+        require_valid(id)?;
+        if self
+            .recent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(id)
+        {
+            return Ok(false);
+        }
+        let tile = TerrariumTile::from_png_bytes(png_bytes)?;
+        let newly_added = self
+            .recent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id);
+        if newly_added {
+            self.push(id, Arc::new(tile));
+        }
+        Ok(newly_added)
     }
 
     /// Queues an already decoded tile for `id`.
@@ -48,6 +114,11 @@ impl LiveDemBridge {
         tile: TerrariumTile,
     ) -> Result<(), SceneryError> {
         require_valid(id)?;
+        let _inserted = self
+            .recent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id);
         self.push(id, Arc::new(tile));
         Ok(())
     }

@@ -18,6 +18,9 @@ struct Paint {
     depth: f32,
 }
 
+/// Initial vertex capacity reserved on a fresh scratch buffer.
+const INITIAL_VERTEX_CAPACITY: usize = 4_096;
+
 /// Collects physical-pixel triangles from design-space geometry.
 pub(super) struct Mesh {
     out: Vec<VectorVertex>,
@@ -27,9 +30,13 @@ pub(super) struct Mesh {
 }
 
 impl Mesh {
-    pub(super) fn new(scale: [f32; 2]) -> Self {
+    pub(super) fn with_buffer(scale: [f32; 2], mut out: Vec<VectorVertex>) -> Self {
+        out.clear();
+        if out.capacity() < INITIAL_VERTEX_CAPACITY {
+            out.reserve(INITIAL_VERTEX_CAPACITY - out.capacity());
+        }
         Self {
-            out: Vec::new(),
+            out,
             scale,
             operations: 0,
             paint: None,
@@ -72,28 +79,48 @@ impl Mesh {
         let [x0, y0, x1, y1] = paint.clip;
         // Geometry wholly outside its clip (ladder rungs past the frame edge)
         // would only be discarded by the fragment stage.
-        if pts.iter().all(|p| p[0] <= x0)
-            || pts.iter().all(|p| p[0] >= x1)
-            || pts.iter().all(|p| p[1] <= y0)
-            || pts.iter().all(|p| p[1] >= y1)
+        if pts.iter().all(|&[x, _]| x <= x0)
+            || pts.iter().all(|&[x, _]| x >= x1)
+            || pts.iter().all(|&[_, y]| y <= y0)
+            || pts.iter().all(|&[_, y]| y >= y1)
         {
             return;
         }
-        for pos_px in pts {
-            self.out.push(VectorVertex {
-                pos_px,
-                color_premul: paint.color,
-                clip_rect_px: paint.clip,
-                depth: paint.depth,
-            });
-        }
+        let v = |pos_px| VectorVertex {
+            pos_px,
+            color_premul: paint.color,
+            clip_rect_px: paint.clip,
+            depth: paint.depth,
+        };
+        let [pa, pb, pc] = pts;
+        self.out.extend_from_slice(&[v(pa), v(pb), v(pc)]);
     }
 
-    /// Two triangles over a quad given in order around its edge.
+    /// Two triangles over a quad given in order around its edge, scaling and
+    /// clip-testing all four corners in a single pass.
     pub(super) fn quad(&mut self, q: [[f32; 2]; 4]) {
-        let [a, b, c, d] = q;
-        self.tri(a, b, c);
-        self.tri(a, c, d);
+        let Some(paint) = self.paint else {
+            return;
+        };
+        let [sx, sy] = self.scale;
+        let pts = q.map(|[x, y]| [x * sx, y * sy]);
+        let [x0, y0, x1, y1] = paint.clip;
+        if pts.iter().all(|&[x, _]| x <= x0)
+            || pts.iter().all(|&[x, _]| x >= x1)
+            || pts.iter().all(|&[_, y]| y <= y0)
+            || pts.iter().all(|&[_, y]| y >= y1)
+        {
+            return;
+        }
+        let v = |pos_px| VectorVertex {
+            pos_px,
+            color_premul: paint.color,
+            clip_rect_px: paint.clip,
+            depth: paint.depth,
+        };
+        let [pa, pb, pc, pd] = pts;
+        let (va, vc) = (v(pa), v(pc));
+        self.out.extend_from_slice(&[va, v(pb), vc, va, vc, v(pd)]);
     }
 
     /// Chord count for `sweep` radians of a design radius `r`.

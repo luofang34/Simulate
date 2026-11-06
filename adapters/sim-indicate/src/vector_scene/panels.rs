@@ -7,7 +7,7 @@ use indicate_instrument_scene::{Rgba8, SceneError, SceneWriter};
 use indicate_instrument_state::PanelData;
 use sim_render::VectorVertex;
 
-use super::{Mesh, shapes, tessellate_mesh};
+use super::{Mesh, shapes, tessellate_mesh_into};
 use crate::{PANEL_SCENE_BYTES, PanelError};
 
 /// Compass-rose centre of Indicate's `480 × 360` HSI design frame.
@@ -26,11 +26,12 @@ const OWNSHIP_STROKES: [([f32; 2], [f32; 2], f32); 3] = [
     ([-5.0, 9.0], [5.0, 9.0], 1.4),
 ];
 
-/// Reusable scene-encoding buffer that tessellates Indicate's PFD and HSI directly into
-/// physical-pixel [`VectorVertex`] lists for `4×` MSAA GPU rendering, bypassing CPU scanline
-/// rasterization and pixel staging uploads.
+/// Reusable scene-encoding and vertex-tessellation buffers that turn Indicate's PFD and HSI
+/// directly into physical-pixel [`VectorVertex`] lists for `4×` MSAA GPU rendering, bypassing
+/// CPU scanline rasterization and per-frame vertex allocations.
 pub struct VectorFlightPanels {
     scene: Vec<u8>,
+    vertices: Vec<VectorVertex>,
 }
 
 impl Default for VectorFlightPanels {
@@ -40,12 +41,32 @@ impl Default for VectorFlightPanels {
 }
 
 impl VectorFlightPanels {
-    /// Allocates a panel encoder with a reusable scene buffer sized for any valid panel scene.
+    /// Allocates a panel encoder with reusable scene and vertex buffers.
     #[must_use]
     pub fn new() -> Self {
         Self {
             scene: vec![0_u8; PANEL_SCENE_BYTES],
+            vertices: Vec::with_capacity(8_192),
         }
+    }
+
+    /// Encodes and tessellates the PFD into the panel encoder's reusable vertex buffer,
+    /// returning a borrowed slice ready for [`sim_render::VectorScenePass::encode`].
+    pub fn tessellate_pfd_slice(
+        &mut self,
+        data: &PanelData,
+        config: &PfdConfig,
+        alerts: Option<&AlertOutput>,
+        target_w: u32,
+        target_h: u32,
+    ) -> Result<&[VectorVertex], PanelError> {
+        self.encode_and_tessellate(
+            "PFD",
+            [target_w, target_h],
+            |writer| draw_pfd(data, config, alerts, BUILTIN_FRAME, writer),
+            |_| {},
+        )?;
+        Ok(&self.vertices)
     }
 
     /// Encodes and tessellates the PFD (`BackgroundMode::Svs` or `BackgroundMode::Horizon`)
@@ -58,10 +79,31 @@ impl VectorFlightPanels {
         target_w: u32,
         target_h: u32,
     ) -> Result<Vec<VectorVertex>, PanelError> {
-        let mesh = self.encode_and_tessellate("PFD", [target_w, target_h], |writer| {
-            draw_pfd(data, config, alerts, BUILTIN_FRAME, writer)
-        })?;
-        Ok(mesh.into_vertices())
+        self.tessellate_pfd_slice(data, config, alerts, target_w, target_h)
+            .map(<[VectorVertex]>::to_vec)
+    }
+
+    /// Encodes and tessellates the HSI into the panel encoder's reusable vertex buffer,
+    /// returning a borrowed slice ready for [`sim_render::VectorScenePass::encode`].
+    pub fn tessellate_hsi_slice(
+        &mut self,
+        data: &PanelData,
+        alerts: Option<&AlertOutput>,
+        target_w: u32,
+        target_h: u32,
+    ) -> Result<&[VectorVertex], PanelError> {
+        let show_ownship = data.heading.value_rad.status.shows_value();
+        self.encode_and_tessellate(
+            "HSI",
+            [target_w, target_h],
+            |writer| draw_hsi(data, alerts, BUILTIN_FRAME, writer),
+            |mesh| {
+                if show_ownship {
+                    append_hsi_ownship(mesh, [target_w as f32, target_h as f32]);
+                }
+            },
+        )?;
+        Ok(&self.vertices)
     }
 
     /// Encodes and tessellates the HSI (plus its yellow/dark-outlined ownship reference symbol
@@ -73,13 +115,8 @@ impl VectorFlightPanels {
         target_w: u32,
         target_h: u32,
     ) -> Result<Vec<VectorVertex>, PanelError> {
-        let mut mesh = self.encode_and_tessellate("HSI", [target_w, target_h], |writer| {
-            draw_hsi(data, alerts, BUILTIN_FRAME, writer)
-        })?;
-        if data.heading.value_rad.status.shows_value() {
-            append_hsi_ownship(&mut mesh, [target_w as f32, target_h as f32]);
-        }
-        Ok(mesh.into_vertices())
+        self.tessellate_hsi_slice(data, alerts, target_w, target_h)
+            .map(<[VectorVertex]>::to_vec)
     }
 
     fn encode_and_tessellate(
@@ -87,7 +124,8 @@ impl VectorFlightPanels {
         panel: &'static str,
         target: [u32; 2],
         draw: impl FnOnce(&mut SceneWriter<'_>) -> Result<(), SceneError>,
-    ) -> Result<Mesh, PanelError> {
+        post: impl FnOnce(&mut Mesh),
+    ) -> Result<(), PanelError> {
         let capacity = self.scene.len();
         let mut writer = SceneWriter::new(&mut self.scene).map_err(|cause| PanelError::Scene {
             panel,
@@ -101,7 +139,7 @@ impl VectorFlightPanels {
         })?;
         let scene_bytes = writer.finish();
         let scene = self.scene.get(..scene_bytes).unwrap_or_default();
-        tessellate_mesh(scene, [PANEL_W, PANEL_H], target)
+        tessellate_mesh_into(scene, [PANEL_W, PANEL_H], target, &mut self.vertices, post)
             .map_err(|source| PanelError::VectorScene { source })
     }
 }

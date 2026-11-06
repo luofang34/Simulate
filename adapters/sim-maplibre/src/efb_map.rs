@@ -37,6 +37,7 @@ use crate::{
 };
 
 mod camera;
+mod pacing;
 mod plate;
 mod style;
 #[cfg(test)]
@@ -45,8 +46,9 @@ mod tests;
 pub(crate) use camera::effective_globe_zoom;
 pub use camera::{
     DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE, EfbDisplayMode, EfbFollowMode,
-    EfbLayerFlags,
+    EfbLayerFlags, EfbRefreshPolicy,
 };
+pub use pacing::EfbPacer;
 pub use plate::{ApproachPlateOverlay, ProceduralPlateSpec, generate_procedural_approach_plate};
 
 use camera::EfbCamera;
@@ -394,10 +396,16 @@ impl EfbMapSurface {
         }
     }
 
-    /// Whether arrived tiles still need drawing.
+    /// Whether background requests or arrived tiles remain unsettled.
     #[must_use]
     pub fn needs_redraw(&self) -> bool {
         self.map.needs_redraw()
+    }
+
+    /// Whether dirty state, animations, or arrived worker tiles are ready to draw right now.
+    #[must_use]
+    pub fn has_ready_work(&self) -> bool {
+        self.map.has_ready_work()
     }
 
     /// Copies the shown view's last frame into tight RGBA8 bytes.
@@ -478,15 +486,12 @@ fn plugins(tier: CockpitDeviceTier) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>>
 
 /// A 1 × 1 transparent PNG for the plate source while no plate is shown.
 fn transparent_pixel_png() -> Result<Arc<[u8]>, MapAdapterError> {
-    let mut bytes = Vec::new();
-    image::DynamicImage::ImageRgba8(image::RgbaImage::new(1, 1))
-        .write_to(
-            &mut std::io::Cursor::new(&mut bytes),
-            image::ImageFormat::Png,
-        )
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::new(1, 1)
+        .write_to(&mut cursor, image::ImageFormat::Png)
         .map_err(|error| MapAdapterError::ChartRaster {
             chart_id: NO_PLATE_CHART_ID.to_owned(),
             detail: error.to_string(),
         })?;
-    Ok(Arc::from(bytes))
+    Ok(Arc::from(cursor.into_inner()))
 }
