@@ -119,3 +119,33 @@ fn rudders_hinge_on_their_vertical_hinge_line() {
         );
     }
 }
+
+/// The drawn blades are the blades the propeller performance model flies: the planform
+/// constants repeat `design/curtiss_electric_3b.json`.
+#[test]
+fn drawn_blades_follow_the_propeller_design_file() {
+    use crate::articulated::{BLADE_CHORD_OVER_D, BLADE_THICKNESS_OVER_CHORD};
+    let design: serde_json::Value =
+        serde_json::from_str(include_str!("../../design/curtiss_electric_3b.json")).unwrap();
+    let f = |a: &str, b: &str| design[a][b].as_f64().unwrap() as f32;
+    assert_eq!(
+        BLADE_CHORD_OVER_D,
+        (
+            f("chord_over_diameter", "base"),
+            f("chord_over_diameter", "bulge"),
+            f("chord_over_diameter", "tip_taper")
+        )
+    );
+    assert_eq!(
+        BLADE_THICKNESS_OVER_CHORD,
+        (
+            f("thickness_over_chord", "root"),
+            f("thickness_over_chord", "tip")
+        )
+    );
+    assert!(
+        (design["diameter_in"].as_f64().unwrap() as f32 * 0.0254 - 2.0 * crate::PROP_RADIUS_M)
+            .abs()
+            < 0.002
+    );
+}

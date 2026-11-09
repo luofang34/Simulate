@@ -123,17 +123,18 @@ pub const GONDOLA_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
 
 /// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..440`, `y = +1.74..-7.63 m`); the
 /// boom top runs level `24.5 in` above the fuselage reference line aft of the wing, as on
-/// the AN 01-75F-2 side view:
+/// the AN 01-75F-2 side view, and the cowls are as wide as its plan view (`19.7 in` half-width
+/// from `FS 80`, `21.1 in` by `FS 120`):
 /// `(y, z_mid, half_w, z_top, z_bot, rad_w_bulge, rad_z_bulge)`.
 pub const BOOM_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
-    (1.739, 0.04, 0.33, 0.37, -0.29, 0.00, 0.00), // FS 71.3: Spinner backing bulkhead (26 in dia)
-    (1.518, 0.02, 0.38, 0.41, -0.52, 0.00, 0.00), // FS 80: Reduction gear & chin scoop lip
-    (1.086, 0.00, 0.46, 0.48, -0.62, 0.00, 0.00), // FS 97: Oil cooler duct & forward V-12
-    (0.375, 0.02, 0.50, 0.52, -0.56, 0.00, 0.00), // FS 125: Allison V-1710 mid cylinder block
-    (-0.387, 0.04, 0.51, 0.53, -0.50, 0.00, 0.00), // FS 155: Firewall ahead of the main beam
+    (1.739, 0.04, 0.373, 0.37, -0.29, 0.00, 0.00), // FS 71.3: Cowl lip behind the 26 in spinner
+    (1.518, 0.02, 0.499, 0.41, -0.52, 0.00, 0.00), // FS 80: Reduction gear & chin scoop lip
+    (1.086, 0.00, 0.505, 0.48, -0.62, 0.00, 0.00), // FS 97: Oil cooler duct & forward V-12
+    (0.375, 0.02, 0.536, 0.52, -0.56, 0.00, 0.00), // FS 125: Allison V-1710 mid cylinder block
+    (-0.387, 0.04, 0.536, 0.53, -0.50, 0.00, 0.00), // FS 155: Firewall ahead of the main beam
     (-0.768, 0.05, 0.49, 0.51, -0.48, 0.00, 0.00), // FS 170: Main gear bay & turbo well
-    (-1.15, 0.05, 0.47, 0.48, -0.46, 0.00, 0.00), // FS 185: Turbosupercharger impeller center
-    (-1.85, 0.05, 0.44, 0.50, -0.42, 0.00, 0.00), // FS 213: Wing trailing-edge boom junction
+    (-1.15, 0.05, 0.47, 0.48, -0.46, 0.00, 0.00),  // FS 185: Turbosupercharger impeller center
+    (-1.85, 0.05, 0.44, 0.50, -0.42, 0.00, 0.00),  // FS 213: Wing trailing-edge boom junction
     (-2.449, 0.070, 0.378, 0.526, -0.386, 0.000, 0.000), // FS 236: Boom ahead of the radiator
     (-3.105, 0.112, 0.338, 0.533, -0.310, 0.000, 0.000), // FS 262: Ahead of the radiator scoops
     (-3.308, 0.128, 0.317, 0.533, -0.277, 0.000, 0.000), // FS 270: Under the radiator scoops

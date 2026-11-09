@@ -129,6 +129,24 @@ fn circle_xz(y: f32, r: f32, segs: u32) -> Vec<Vec3> {
         .collect()
 }
 
+/// Blade planform of `design/curtiss_electric_3b.json` (the propeller performance model's
+/// own blade): chord over diameter `base + bulge * sin(pi * (x - 0.2) / 0.85)` less a
+/// linear `tip_taper` over the outer tenth, and thickness over chord falling linearly
+/// from `root` to `tip`, at radius fraction `x`.
+pub(crate) const BLADE_CHORD_OVER_D: (f32, f32, f32) = (0.055, 0.030, 0.02);
+pub(crate) const BLADE_THICKNESS_OVER_CHORD: (f32, f32) = (0.30, 0.06);
+
+/// Chord and half-thickness of the blade at radius `r_m`, metres.
+fn blade_section(r_m: f32) -> (f32, f32) {
+    let (base, bulge, taper) = BLADE_CHORD_OVER_D;
+    let (root_t, tip_t) = BLADE_THICKNESS_OVER_CHORD;
+    let x = (r_m / PROP_RADIUS_M).clamp(0.0, 1.0);
+    let planform = base + bulge * (std::f32::consts::PI * ((x - 0.2) / 0.85).min(1.0)).sin();
+    let chord = (planform - taper * ((x - 0.9).max(0.0) / 0.1)) * 2.0 * PROP_RADIUS_M;
+    let t_over_c = root_t + (tip_t - root_t) * ((x - 0.2) / 0.8).clamp(0.0, 1.0);
+    (chord, 0.5 * t_over_c * chord)
+}
+
 fn build_curtiss_paddle_blade(pitch_hand: f32) -> (MeshBuilder, MeshBuilder) {
     let mut body = MeshBuilder::new();
     body.tube(
@@ -138,26 +156,33 @@ fn build_curtiss_paddle_blade(pitch_hand: f32) -> (MeshBuilder, MeshBuilder) {
         0.056,
         12,
     );
-    let body_rings: Vec<Vec<Vec3>> = [
-        (0.36_f32, 0.13_f32, 0.030_f32, 34.0_f32),
-        (0.62, 0.21, 0.024, 28.0),
-        (0.95, 0.25, 0.018, 22.0),
-        (1.28, 0.23, 0.013, 17.0),
-        (1.56, 0.18, 0.009, 13.0),
-    ]
-    .into_iter()
-    .map(|(r, c, t, deg)| blade_ring(r, c, t, deg.to_radians() * pitch_hand))
-    .collect();
+    // Blade angle eases from 34 deg at the root to 9.5 deg at the tip.
+    let ring = |r: f32, squeeze: f32| {
+        let (chord, half_t) = blade_section(r);
+        let deg = 34.0 - 24.5 * ((r - 0.36) / (PROP_RADIUS_M - 0.36)).clamp(0.0, 1.0);
+        blade_ring(
+            r,
+            chord * squeeze,
+            half_t * squeeze,
+            deg.to_radians() * pitch_hand,
+        )
+    };
+    let body_rings: Vec<Vec<Vec3>> = [0.36_f32, 0.55, 0.80, 1.05, 1.30, 1.56]
+        .into_iter()
+        .map(|r| ring(r, 1.0))
+        .collect();
     body.loft(&body_rings, true, Inside::Axis);
 
+    // The paddle tip: full chord to the last few inches, then rounded off.
     let mut tip = MeshBuilder::new();
     let tip_rings: Vec<Vec<Vec3>> = [
-        (1.56_f32, 0.18_f32, 0.009_f32, 13.0_f32),
-        (1.68, 0.13, 0.006, 11.0),
-        (PROP_RADIUS_M, 0.06, 0.004, 9.5),
+        (1.56_f32, 1.0_f32),
+        (1.68, 1.0),
+        (PROP_RADIUS_M - 0.03, 0.85),
+        (PROP_RADIUS_M, 0.45),
     ]
     .into_iter()
-    .map(|(r, c, t, deg)| blade_ring(r, c, t, deg.to_radians() * pitch_hand))
+    .map(|(r, squeeze)| ring(r, squeeze))
     .collect();
     tip.loft(&tip_rings, true, Inside::Axis);
     (body, tip)
