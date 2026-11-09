@@ -56,6 +56,7 @@ fn air(static_pressure_pa: Option<f64>, setting: Option<f64>) -> AirDataSample {
         density_kg_m3: 1.225 * 0.81,
         static_pressure_pa,
         altimeter_setting_hpa: setting,
+        pec_indicated_airspeed_m_s: None,
     }
 }
 

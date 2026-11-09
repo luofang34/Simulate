@@ -33,6 +33,7 @@ pub use feed::{
     decode_frame, encode_frame,
 };
 pub use frames::{DisplayAxes, LocalLevel};
+pub use indicate_instrument_descriptor::{decode_v_speeds_payload, encode_v_speeds_payload};
 pub use indicate_instrument_feeder::{
     CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION, RawStamp,
     nav_guidance::Guidance as LaneGuidance,
@@ -44,7 +45,11 @@ pub use indicate_instrument_hud::{
 pub use indicate_instrument_panels::{BackgroundMode, PfdConfig, SvsViewport, VSpeeds};
 pub use indicate_instrument_raster::{FrameId, FramebufferDims};
 pub use indicate_instrument_state::{
-    HeadingReference, IdentStr, Quat as IndicateQuat, Sig, SignalStatus,
+    HeadingReference, IdentStr, Quat as IndicateQuat, Sig, SignalStatus, VSpeedBug, VSpeedBugs,
+};
+pub use indicate_instrument_symbology::v_speeds::{
+    DialVSpeedScale, LinearVSpeedScale, draw_dial_arcs, draw_dial_bugs, draw_linear_bands,
+    draw_linear_bugs,
 };
 pub use indicate_interaction::{SpatialEvent, ViewPose3D};
 pub use monitor::{AGS_SOURCE, LOCAL_NED_FRAME, MonitoredFrame, PGNS_SOURCE, SourceMonitor};

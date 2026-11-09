@@ -289,3 +289,135 @@ fn settle_and_save_sun(
     }
     h.composite_to_png(&quads, out)
 }
+
+#[test]
+#[ignore = "renders NZSP polar skiway and KEWR/KDOV runway alignment shots into $SIMULATE_VERIFY_OUT"]
+fn render_nzsp_and_kewr_runway_alignment_shots() -> Result<(), AppSimError> {
+    let Some(dir) = std::env::var_os("SIMULATE_VERIFY_OUT").map(PathBuf::from) else {
+        return Ok(());
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| AppSimError::Screenshot {
+        detail: e.to_string(),
+    })?;
+    let Some(mut h) = VerifyHarness::new()? else {
+        return Ok(());
+    };
+    h.rig.set_avionics_preset(AvionicsPreset::GlassCockpit)?;
+    h.rig
+        .supervisor_mut()
+        .set_viewport_mode(OperatorViewportMode::Cockpit);
+    h.rig.set_show_conformal_hud(true);
+
+    // 1. NZSP RWY 02T Overhead pitched down (~5.5 s, reproducing user's screenshot) in both
+    // Realistic WAAS [N] and Ideal [N].
+    let (nzsp_idx, nzsp_rec) = lookup_airport("NZSP")?;
+    h.rig.supervisor_mut().set_free_airport(nzsp_idx, 0);
+    let nzsp_sun = sun_for_airport(nzsp_rec, &h);
+    for (realism, name) in [
+        (
+            SensorRealism::Realistic,
+            "nzsp_02t_overhead_pitch_down_realistic.png",
+        ),
+        (
+            SensorRealism::Ideal,
+            "nzsp_02t_overhead_pitch_down_ideal.png",
+        ),
+    ] {
+        h.flight.set_sensor_realism(realism);
+        h.flight
+            .spawn_at_airport_record(nzsp_rec, 0, SpawnMode::Overhead)?;
+        for step in 0..110_u32 {
+            let pitch = if step < 38 { -0.26 } else { 0.04 };
+            h.flight.advance_by(
+                0.05,
+                ControlInputs {
+                    pitch,
+                    throttle: 0.65,
+                    ..ControlInputs::default()
+                },
+                SimTimeScale::RealTime,
+            )?;
+        }
+        settle_and_save_sun(&mut h, 25, nzsp_sun, &dir.join(name))?;
+    }
+    render_kewr_22l_shots(&mut h, &dir)?;
+    h.gpu.check_device()?;
+    Ok(())
+}
+
+fn render_kewr_22l_shots(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSimError> {
+    let (kewr_idx, kewr_rec) = lookup_airport("KEWR")?;
+    let datum = h.rig.supervisor().vertical_datum();
+    let rwy_22l = kewr_rec
+        .to_flightbag_graph(datum)
+        .runway_ends
+        .iter()
+        .position(|e| e.designator.as_str() == "22L")
+        .unwrap_or(0);
+    h.rig.supervisor_mut().set_free_airport(kewr_idx, rwy_22l);
+    h.flight.set_sensor_realism(SensorRealism::Realistic);
+    h.flight.spawn_at_landing_station(kewr_rec, "22L", -950.0)?;
+    for _ in 0..40 {
+        h.flight.advance_by(
+            0.05,
+            ControlInputs {
+                throttle: 0.65,
+                ..ControlInputs::default()
+            },
+            SimTimeScale::RealTime,
+        )?;
+    }
+    let kewr_sun = sun_for_airport(kewr_rec, h);
+    settle_and_save_sun(
+        h,
+        55,
+        kewr_sun,
+        &dir.join("kewr_22l_short_final_realistic.png"),
+    )?;
+    h.rig
+        .efb_command(EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb))?;
+    h.rig.efb_command(EfbCommand::ZoomBy(1.8))?;
+    settle_and_save_sun(
+        h,
+        25,
+        kewr_sun,
+        &dir.join("kewr_22l_conflated_efb_diagram.png"),
+    )?;
+    h.rig
+        .efb_command(EfbCommand::SetMode(EfbDisplayMode::CompactCorner))?;
+    render_kewr_22l_low_banked_overflight(h, dir, kewr_rec, kewr_sun)
+}
+
+fn render_kewr_22l_low_banked_overflight(
+    h: &mut VerifyHarness,
+    dir: &Path,
+    kewr_rec: &'static AirportRecord,
+    kewr_sun: DVec3,
+) -> Result<(), AppSimError> {
+    // Spawn ~300 m out (~120 ft BARO), fly straight over the threshold into the primary
+    // landing zone, and apply a crisp ~10 deg left bank right over the runway centerline.
+    h.flight.spawn_at_landing_station(kewr_rec, "22L", -300.0)?;
+    for step in 0..150_u32 {
+        let (pitch, roll) = if step < 142 {
+            (0.012, 0.0)
+        } else {
+            (-0.02, -0.14)
+        };
+        h.flight.advance_by(
+            0.05,
+            ControlInputs {
+                pitch,
+                roll,
+                throttle: 0.90,
+                ..ControlInputs::default()
+            },
+            SimTimeScale::RealTime,
+        )?;
+    }
+    settle_and_save_sun(
+        h,
+        25,
+        kewr_sun,
+        &dir.join("kewr_22l_low_banked_overflight_svs.png"),
+    )
+}

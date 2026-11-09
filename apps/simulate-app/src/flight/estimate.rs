@@ -110,9 +110,17 @@ impl Flight {
             };
         };
         let estimated_vehicle = self.display_estimated_vehicle_state();
+        let mut air_data = self.sensors.air_data(self.now(), &truth, &errors);
+        if let (Some(reading), Some(pec)) = (air_data.as_mut(), self.pitot_static_calibration()) {
+            let ias_m_s = pec.cas_to_ias_at_flap_deg_m_s(
+                self.articulation().flap_deg,
+                reading.value.calibrated_airspeed_m_s(),
+            );
+            reading.value = reading.value.with_pec_indicated_airspeed_m_s(ias_m_s);
+        }
         OnboardSensorSnapshot {
             estimated_vehicle,
-            air_data: self.sensors.air_data(self.now(), &truth, &errors),
+            air_data,
             cockpit: sensed_cockpit(cockpit, &estimated_vehicle),
             specific_force_frd_m_s2: sensed_specific_force(force, &errors),
         }

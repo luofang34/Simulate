@@ -25,8 +25,23 @@ fn indicated_falls_below_true_with_height() {
         density_kg_m3,
         static_pressure_pa: None,
         altimeter_setting_hpa: None,
+        pec_indicated_airspeed_m_s: None,
     };
     assert_eq!(sample(1.225).indicated_airspeed_m_s(), 100.0);
     let at_height = sample(1.225 / 4.0).indicated_airspeed_m_s();
     assert!((at_height - 50.0).abs() < 1e-12);
+}
+
+#[test]
+fn pec_override_shifts_indicated_while_preserving_calibrated_airspeed() {
+    let base = AirDataSample {
+        true_airspeed_m_s: 27.265_555_555_6,
+        density_kg_m3: 1.225,
+        static_pressure_pa: Some(101_325.0),
+        altimeter_setting_hpa: Some(1_013.25),
+        pec_indicated_airspeed_m_s: None,
+    };
+    let with_pec = base.with_pec_indicated_airspeed_m_s(24.693_333_333_3);
+    assert!((with_pec.calibrated_airspeed_m_s() - 27.265_555_555_6).abs() < 1e-12);
+    assert!((with_pec.indicated_airspeed_m_s() - 24.693_333_333_3).abs() < 1e-12);
 }

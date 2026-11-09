@@ -7,13 +7,12 @@ use std::time::Duration;
 
 use serde_json::Value;
 use sim_core::{AirframeArticulation, SensorExposureEvent, SimInstant, VehicleState};
-use sim_geo::ecef_to_geodetic;
+use sim_geo::{BodyEllipsoid, ecef_to_geodetic};
 use sim_maplibre::{
-    AvionicsMapSet, ChartAssetStore, ChartSymbologyInput, CockpitDeviceTier, ConformalFrameStamp,
-    ConformalMapFrame, HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints,
-    SharedMapRuntime, TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap,
-    TruthSlotMask, UsdAircraftAsset, ViewSlotId, ViewSlotMask, build_chart_symbology_scaled,
-    tile_id_to_world_coords, truth_real_world_style,
+    AvionicsMapSet, ChartAssetStore, CockpitDeviceTier, ConformalFrameStamp, ConformalMapFrame,
+    HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
+    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
+    UsdAircraftAsset, ViewSlotId, ViewSlotMask, tile_id_to_world_coords, truth_real_world_style,
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
@@ -133,7 +132,7 @@ impl MapLibreRig {
                 stereo_otw: false,
                 otw_depth_readout: false,
                 sensor_size: [SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX],
-                request_overscan: 1.05,
+                request_overscan: 1.22,
             },
             asset,
         )?;
@@ -141,6 +140,7 @@ impl MapLibreRig {
             truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true)?;
         if let Some(scenery) = &catalog {
             let _supplied = truth.supply_dem_synchronously(scenery)?;
+            let _supplied_ortho = truth.supply_ortho_synchronously(scenery)?;
         }
         let mut rig = Self {
             avionics: AvionicsMapSet::default(),
@@ -388,6 +388,7 @@ impl MapLibreRig {
         } else {
             aircraft::window_camera_role(mode)
         };
+        let polar_runway = input.supervisor.active_landing_runway(input.profile);
         self.truth.render_frame_slots(
             TruthSceneFrame {
                 timestamp: sim_dur,
@@ -401,7 +402,7 @@ impl MapLibreRig {
                     (self.truth.otw_slot(), window_role),
                     (self.truth.sensor_slot(), sensor_role),
                 ],
-                polar_runway: input.supervisor.active_runway(input.profile),
+                polar_runway: polar_runway.as_ref(),
             },
             mask,
         )?;
@@ -419,7 +420,10 @@ impl MapLibreRig {
         landing_runway: Option<&LandingRunwayGeometry>,
     ) -> Result<(), AppSimError> {
         let mode = input.supervisor.viewport_mode();
-        let own_geo = ecef_to_geodetic(input.estimated_vehicle.position_ecef);
+        let body = input
+            .profile
+            .map_or(BodyEllipsoid::WGS84, |p| p.world().body());
+        let own_geo = body.fixed_to_geodetic(input.estimated_vehicle.position_ecef);
         self.last_ownship_tile = Some(scenery::tile_at(&own_geo, 11));
         // The EFB replaces the dock's moving map; the map still draws as the full-window
         // chart of a preset without an airport-surface map.
@@ -434,7 +438,11 @@ impl MapLibreRig {
         if !any_due {
             return Ok(());
         }
-        let undulation_m = self.undulation_at(input.estimated_vehicle.position_ecef);
+        let undulation_m = if body == BodyEllipsoid::WGS84 {
+            self.undulation_at(input.estimated_vehicle.position_ecef)
+        } else {
+            0.0
+        };
         let belief_entities = input.supervisor.belief_entities(ViewSlotMask::ALL);
         let own = charts::chart_ownship(&input.estimated_vehicle);
         for surface in self.avionics.iter_mut() {
@@ -444,6 +452,8 @@ impl MapLibreRig {
             if surface.is_conformal() {
                 let stamp = stamps::svs_stamp(
                     input.timestamp,
+                    body,
+                    input.active_vehicle,
                     &input.estimated_vehicle,
                     surface.size(),
                     undulation_m,
@@ -457,26 +467,14 @@ impl MapLibreRig {
                 })?;
                 continue;
             }
-            let full_window = surface.id() == AIRPORT_SURFACE_MAP;
-            if full_window && mode != OperatorViewportMode::ChartMap {
-                continue;
-            }
-            let camera = if full_window {
-                charts::airport_surface_camera(&own, input.profile, input.supervisor)
-            } else {
-                charts::moving_map_camera(&own, input.supervisor)
-            };
-            let symbology = build_chart_symbology_scaled(
-                &ChartSymbologyInput {
-                    camera,
-                    viewport_px: surface.size(),
-                    ownship: Some(own),
-                    runway: landing_runway,
-                    traffic: &belief_entities,
-                },
-                surface.pixel_ratio(),
-            );
-            let _outcome = surface.render_chart_if_dirty(sim_dur, camera, Some(symbology))?;
+            charts::render_chart_surface(
+                surface,
+                input,
+                sim_dur,
+                own,
+                landing_runway,
+                &belief_entities,
+            )?;
         }
         Ok(())
     }

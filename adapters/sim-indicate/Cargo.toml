@@ -23,6 +23,7 @@ indicate-instrument-panels = { workspace = true }
 indicate-instrument-raster = { workspace = true }
 indicate-instrument-scene = { workspace = true }
 indicate-instrument-state = { workspace = true }
+indicate-instrument-symbology = { workspace = true }
 indicate-instrument-volumes = { workspace = true }
 indicate-interaction = { workspace = true }
 thiserror = { workspace = true }

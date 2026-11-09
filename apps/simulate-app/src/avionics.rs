@@ -7,12 +7,13 @@ use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 use sim_indicate::{
     AirDataReading, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig, FlightSample,
     HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX, PANEL_WIDTH_PX, PfdConfig,
-    SourceMonitor, StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VSpeeds, VectorFlightPanels,
-    VectorHudPanel, ViewPose3D, VolumeInstrument, emit_volume_scene,
+    SourceMonitor, StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VectorFlightPanels, VectorHudPanel,
+    ViewPose3D, VolumeInstrument, emit_volume_scene,
 };
 use sim_maplibre::{
     DynamicEntity3D, TerrainPatchSnapshot, TerrainVolumeRequest, emit_terrain_volume_with_patch,
 };
+use sim_pack::ResolvedAirspeedEnvelope;
 use sim_render::{Camera, VectorScenePass, VectorTarget};
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 use sim_scenery::{CatalogVerticalDatum, LandingRunwayGeometry};
@@ -103,6 +104,8 @@ pub struct AvionicsFrameInput<'a> {
     pub viewport_mode: OperatorViewportMode,
     /// Optional stitched `129×129` DEM patch from a conformal instrument map for `terrain-volume`.
     pub terrain_patch: Option<&'a TerrainPatchSnapshot>,
+    /// Package-declared fixed-wing airspeed limits and reference V-speeds at live gross mass.
+    pub airspeed_envelope: Option<ResolvedAirspeedEnvelope>,
 }
 
 /// The window a conformal HUD is drawn over.
@@ -265,7 +268,11 @@ impl AvionicsRig {
             });
             let mut recorded = false;
             if let Some([pw, ph]) = input.dock_panel_px {
-                let pfd_cfg = pfd_config_for(self.domain, input.svs_underlay_active);
+                let pfd_cfg = pfd_config_for(
+                    self.domain,
+                    input.svs_underlay_active,
+                    input.airspeed_envelope.as_ref(),
+                );
                 self.encode_vector_panels(
                     device,
                     queue,
@@ -335,7 +342,12 @@ impl AvionicsRig {
         if VectorHudPanel::design_frame(w, h).is_err() {
             return Ok(false);
         }
-        let context = hud::hud_context(&input.vehicle, view, input.runway);
+        let context = hud::hud_context(
+            &input.vehicle,
+            view,
+            input.runway,
+            input.airspeed_envelope.as_ref(),
+        );
         let vertices = self.hud_panel.tessellate_slice(
             &monitored.panel,
             &context,
@@ -431,7 +443,11 @@ fn build_flight_sample(domain: FeedDomain, input: &AvionicsFrameInput<'_>) -> Fl
     }
 }
 
-fn pfd_config_for(domain: FeedDomain, svs_underlay_active: bool) -> PfdConfig {
+fn pfd_config_for(
+    domain: FeedDomain,
+    svs_underlay_active: bool,
+    airspeed_envelope: Option<&ResolvedAirspeedEnvelope>,
+) -> PfdConfig {
     let background = if domain == FeedDomain::EarthAircraft && svs_underlay_active {
         BackgroundMode::Svs {
             viewport: SvsViewport {
@@ -445,15 +461,14 @@ fn pfd_config_for(domain: FeedDomain, svs_underlay_active: bool) -> PfdConfig {
     } else {
         BackgroundMode::Horizon
     };
-    let v_speeds = (domain == FeedDomain::EarthAircraft).then_some(VSpeeds {
-        vs0_kt: 40.0,
-        vs_kt: 48.0,
-        vfe_kt: 85.0,
-        vno_kt: 129.0,
-        vne_kt: 163.0,
-    });
+    let (v_speeds, v_speed_bugs) = if domain == FeedDomain::EarthAircraft {
+        hud::indicate_v_speeds(airspeed_envelope)
+    } else {
+        Default::default()
+    };
     PfdConfig {
         background,
         v_speeds,
+        v_speed_bugs,
     }
 }

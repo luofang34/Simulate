@@ -133,9 +133,15 @@ impl FlightApp {
             }
             CockpitAction::FlapsDown
             | CockpitAction::FlapsUp
+            | CockpitAction::ToggleGear
+            | CockpitAction::ToggleLandingLight
             | CockpitAction::CycleMagnetos
             | CockpitAction::MixtureRich
-            | CockpitAction::MixtureLean => {
+            | CockpitAction::MixtureLean
+            | CockpitAction::ToggleFlapHoldValve
+            | CockpitAction::CycleCoolingFlaps
+            | CockpitAction::ToggleFeatherLeft
+            | CockpitAction::ToggleFeatherRight => {
                 apply_aircraft_system_action(action, &mut self.flight);
             }
             CockpitAction::CycleViewport

@@ -188,6 +188,7 @@ impl OnboardSensorBus {
             density_kg_m3: air.density_kg_m3,
             static_pressure_pa: Some((air.pressure_pa + errors.static_pa).max(0.0)),
             altimeter_setting_hpa: Some(STANDARD_QNH_HPA),
+            pec_indicated_airspeed_m_s: None,
         };
         Some(StampedReading::new(sample, at, SourceValidity::Valid))
     }

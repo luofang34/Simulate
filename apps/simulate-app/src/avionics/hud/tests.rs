@@ -1,4 +1,5 @@
 use super::*;
+mod conformal_alignment;
 use crate::camera_view::{pilot_eye_mount, scenario_camera};
 use flightbag::AuthoritySource;
 use sim_core::{CameraPoseEcef, SimInstant};
@@ -32,7 +33,10 @@ fn vector_hud_tessellates_at_window_and_retina_resolution() {
         conformal_surface: ConformalSurface::earth_globe(),
         vertical_datum: Some(CatalogVerticalDatum::EllipsoidWgs84),
     };
-    let ctx = hud_context(&vehicle, &view, rwy.as_ref());
+    let c172_env = sim_pack::builtin_c172_package()
+        .expect("C172 package")
+        .resolved_airspeed_envelope();
+    let ctx = hud_context(&vehicle, &view, rwy.as_ref(), c172_env.as_ref());
 
     let mut feed = StateFeed::new(FeedConfig {
         body: BodyEllipsoid::WGS84,
@@ -83,8 +87,8 @@ fn navigation_error_shifts_the_runway_not_the_glass() {
         conformal_surface: ConformalSurface::earth_globe(),
         vertical_datum: Some(CatalogVerticalDatum::EllipsoidWgs84),
     };
-    let ideal = hud_context(&truth, &view, rwy.as_ref());
-    let offset = hud_context(&estimated, &view, rwy.as_ref());
+    let ideal = hud_context(&truth, &view, rwy.as_ref(), None);
+    let offset = hud_context(&estimated, &view, rwy.as_ref(), None);
     let (Some(a), Some(b)) = (ideal.approach, offset.approach) else {
         panic!("runway missing from the HUD context");
     };

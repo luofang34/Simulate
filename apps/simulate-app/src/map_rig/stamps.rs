@@ -6,14 +6,15 @@ use sim_core::{SensorExposureEvent, SimInstant, VehicleState, VirtualCameraSpec}
 use sim_geo::BodyEllipsoid;
 use sim_maplibre::{
     ConformalFrameStamp, DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, conformal_stamp_from_pose,
-    conformal_stamp_from_pose_on, conformal_stamp_from_vehicle, default_render_body,
+    conformal_stamp_from_pose_on, conformal_stamp_from_vehicle_on, default_render_body,
     frustum_from_intrinsics, symmetric_frustum,
 };
 use sim_render::Camera;
 use sim_scenery::CatalogVerticalDatum;
 
-use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_nose_mount};
+use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_mount_for};
 use crate::error::AppSimError;
+use crate::vehicles::FreeFlightVehicle;
 
 /// Geoid height above the WGS84 ellipsoid (`N = h − H`) the maps' altitudes are read
 /// against: zero over a catalog whose terrain is ellipsoidal, the EGM96 undulation
@@ -28,9 +29,12 @@ pub fn geoid_undulation_m(datum: Option<CatalogVerticalDatum>, lat_rad: f64, lon
     }
 }
 
-/// The nose-mounted SVS camera's stamp on the navigation solution `vehicle`.
+/// The centerline cockpit-height SVS camera's stamp on the navigation solution `vehicle`
+/// over `body`.
 pub fn svs_stamp(
     timestamp: SimInstant,
+    body: BodyEllipsoid,
+    active_vehicle: Option<FreeFlightVehicle>,
     vehicle: &VehicleState,
     [w, h]: [u32; 2],
     undulation_m: f64,
@@ -42,10 +46,12 @@ pub fn svs_stamp(
         DEFAULT_NEAR_CLIP_M,
         DEFAULT_FAR_CLIP_M,
     )?;
-    Ok(conformal_stamp_from_vehicle(
+    Ok(conformal_stamp_from_vehicle_on(
         timestamp,
+        body,
+        default_render_body(body),
         vehicle,
-        &svs_nose_mount(),
+        &svs_mount_for(active_vehicle),
         DVec3::ZERO,
         frustum,
         undulation_m,

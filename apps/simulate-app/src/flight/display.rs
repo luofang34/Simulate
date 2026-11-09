@@ -12,16 +12,24 @@ pub(super) fn interpolate(prev: &VehicleState, curr: &VehicleState, phase: f64) 
     interpolate_vehicle_state(prev, curr, t)
 }
 
-/// `articulation` with the propeller advanced `phase` of one `period_s` step at its RPM.
+/// `articulation` with the propellers advanced `phase` of one `period_s` step at their RPMs.
 pub(super) fn advance_propeller(
     mut articulation: AirframeArticulation,
     phase: f64,
     period_s: f64,
 ) -> AirframeArticulation {
-    let advance = phase.clamp(0.0, 1.0) * period_s * articulation.propeller_rpm * TAU / 60.0;
-    if advance.is_finite() {
-        articulation.propeller_phase_rad =
-            (articulation.propeller_phase_rad + advance).rem_euclid(TAU);
+    let dt = phase.clamp(0.0, 1.0) * period_s;
+    let adv_l = dt * articulation.propeller_rpm * TAU / 60.0;
+    if adv_l.is_finite() && !articulation.propeller_feathered[0] {
+        articulation.propeller_phase_rad = (articulation.propeller_phase_rad
+            + articulation.propeller_sense * adv_l)
+            .rem_euclid(TAU);
+    }
+    let adv_r = dt * articulation.propeller_rpm_right * TAU / 60.0;
+    if adv_r.is_finite() && !articulation.propeller_feathered[1] {
+        articulation.propeller_phase_right_rad = (articulation.propeller_phase_right_rad
+            + articulation.propeller_sense_right * adv_r)
+            .rem_euclid(TAU);
     }
     articulation
 }

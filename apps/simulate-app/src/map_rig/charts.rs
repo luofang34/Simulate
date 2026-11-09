@@ -1,15 +1,20 @@
 //! Chart cameras and symbology for the 2D instrument maps.
 
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 
 use glam::DVec3;
 use sim_core::VehicleState;
 use sim_geo::{LocalFrame, ecef_to_geodetic};
-use sim_maplibre::{ChartCameraSpec, ChartOwnship};
-use sim_scenario::ScenarioProfile;
+use sim_maplibre::{
+    ChartCameraSpec, ChartOwnship, ChartSymbologyInput, DynamicEntity3D, InstrumentMapSurface,
+    build_chart_symbology_scaled,
+};
+use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 use sim_scenery::{AerodromeId, LandingRunwayGeometry};
 
-use super::{MapFrameInput, MapLibreRig, PFD_SVS_MAP};
+use super::{AIRPORT_SURFACE_MAP, MapFrameInput, MapLibreRig, PFD_SVS_MAP};
+use crate::error::AppSimError;
 use crate::supervisor_rig::SupervisorRig;
 
 impl MapLibreRig {
@@ -139,4 +144,36 @@ pub fn airport_surface_camera(
         notices_revision: 0,
         symbology_revision: symbology_revision(own, surveillance_revision),
     }
+}
+
+/// Renders one 2D moving-map or airport-surface chart surface when due and visible.
+pub(super) fn render_chart_surface(
+    surface: &mut InstrumentMapSurface,
+    input: &MapFrameInput<'_>,
+    sim_dur: Duration,
+    own: ChartOwnship,
+    landing_runway: Option<&LandingRunwayGeometry>,
+    belief_entities: &[DynamicEntity3D],
+) -> Result<(), AppSimError> {
+    let full_window = surface.id() == AIRPORT_SURFACE_MAP;
+    if full_window && input.supervisor.viewport_mode() != OperatorViewportMode::ChartMap {
+        return Ok(());
+    }
+    let camera = if full_window {
+        airport_surface_camera(&own, input.profile, input.supervisor)
+    } else {
+        moving_map_camera(&own, input.supervisor)
+    };
+    let symbology = build_chart_symbology_scaled(
+        &ChartSymbologyInput {
+            camera,
+            viewport_px: surface.size(),
+            ownship: Some(own),
+            runway: landing_runway,
+            traffic: belief_entities,
+        },
+        surface.pixel_ratio(),
+    );
+    let _outcome = surface.render_chart_if_dirty(sim_dur, camera, Some(symbology))?;
+    Ok(())
 }

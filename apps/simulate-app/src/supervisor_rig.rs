@@ -219,7 +219,9 @@ impl SupervisorRig {
         {
             return Some(landing);
         }
-        Some(LandingRunwayGeometry::from_runway_end_spec(rwy))
+        Some(LandingRunwayGeometry::from_runway_end_spec_in_datum(
+            rwy, self.datum,
+        ))
     }
 
     /// Steps the virtual camera channel (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`,

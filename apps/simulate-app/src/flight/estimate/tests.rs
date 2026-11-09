@@ -77,3 +77,21 @@ fn ideal_sensors_hand_the_displays_truth() {
     assert!(sensed.air_data.is_some());
     assert_eq!(flight.cycle_sensor_realism(), SensorRealism::Realistic);
 }
+
+#[test]
+fn c172_onboard_sensors_apply_poh_pitot_static_calibration() {
+    let mut flight = Flight::new().expect("flight");
+    flight.set_sensor_realism(SensorRealism::Ideal);
+    let _ = fly(&mut flight, 8);
+    let pec = flight
+        .pitot_static_calibration()
+        .expect("C172 package ships PEC");
+    let air = flight
+        .onboard_sensors()
+        .air_data
+        .expect("Earth air data")
+        .value;
+    let cas_m_s = air.calibrated_airspeed_m_s();
+    let expected_ias_m_s = pec.cas_to_ias_at_flap_deg_m_s(flight.articulation().flap_deg, cas_m_s);
+    assert!((air.indicated_airspeed_m_s() - expected_ias_m_s).abs() < 1e-9);
+}

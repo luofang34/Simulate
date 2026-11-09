@@ -6,7 +6,7 @@
 //! the scripted pattern or corridor autopilot leg, the Aviate fly-by-wire mode, or manual
 //! free flight, plus the receiver tuned to the active runway.
 
-use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use sim_indicate::{
     AutopilotModeSummary, HostFlightGuidance, HostNavGuidance, IdentStr, PilotSelections,
     RunwayNavGuidance,
@@ -75,9 +75,18 @@ impl StandInPilotageHost {
         }
         self.seen_discontinuity = Some(discontinuity);
         self.sequence = self.sequence.wrapping_add(1);
-        let est_geo = ecef_to_geodetic(flight.estimated_vehicle_state().position_ecef);
+        let body = flight.world().body();
+        let est_geo = body.fixed_to_geodetic(flight.estimated_vehicle_state().position_ecef);
+        let undulation_m = if body == BodyEllipsoid::WGS84 {
+            flight
+                .world_surface()
+                .geoid_undulation_m(est_geo.lat_rad, est_geo.lon_rad)
+        } else {
+            0.0
+        };
+        let est_datum_height_m = est_geo.height_m - undulation_m;
         HostFlightGuidance {
-            selections: pilot_selections(&est_geo, heading_rad, runway),
+            selections: pilot_selections(&est_geo, est_datum_height_m, heading_rad, runway),
             nav: runway.map_or(HostNavGuidance::None, |rwy| {
                 HostNavGuidance::RunwayReceiver(runway_nav(rwy))
             }),
@@ -88,10 +97,11 @@ impl StandInPilotageHost {
 }
 
 /// Heading bug on the landing course (projected into ownship's local meridian across `±90°`)
-/// and the altitude preselect at pattern altitude when a runway is selected; otherwise on the
-/// current heading and altitude.
+/// and the altitude preselect at pattern altitude in the active vertical datum when a runway
+/// is selected; otherwise on the current heading and datum altitude.
 fn pilot_selections(
     est_geo: &Geodetic,
+    est_datum_height_m: f64,
     heading_rad: f64,
     runway: Option<&LandingRunwayGeometry>,
 ) -> PilotSelections {
@@ -99,13 +109,13 @@ fn pilot_selections(
         || {
             (
                 heading_rad,
-                (est_geo.height_m / HUNDRED_FT_M).round() * HUNDRED_FT_M,
+                (est_datum_height_m / HUNDRED_FT_M).round() * HUNDRED_FT_M,
             )
         },
         |rwy| {
             (
                 local_runway_course_rad(est_geo, rwy),
-                rwy.threshold.height_m + PATTERN_HEIGHT_M,
+                rwy.threshold_elevation_msl_m + PATTERN_HEIGHT_M,
             )
         },
     );

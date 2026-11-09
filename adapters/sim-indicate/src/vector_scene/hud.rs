@@ -61,11 +61,11 @@ impl VectorHudPanel {
             return Err(out_of_range);
         }
         let min_side = HUD_MIN_SIDE_PX as f32;
-        let width = (VECTOR_HUD_DESIGN_HEIGHT * aspect).round();
+        let width = VECTOR_HUD_DESIGN_HEIGHT * aspect;
         if width >= min_side {
             Ok([width.min(HUD_MAX_WIDTH_PX as f32), VECTOR_HUD_DESIGN_HEIGHT])
         } else {
-            Ok([min_side, (min_side / aspect).round()])
+            Ok([min_side, min_side / aspect])
         }
     }
 

@@ -7,9 +7,10 @@ use sim_core::VehicleState;
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, egm96_undulation_m};
 use sim_indicate::{
     HudContact, HudContactDomain, HudContactIdentity, HudContext, HudProfile, HudProjection,
-    HudRunway, IndicateQuat, Sig, SignalStatus, TargetPicture, WorldSource,
+    HudRunway, IndicateQuat, Sig, SignalStatus, TargetPicture, VSpeedBugs, VSpeeds, WorldSource,
 };
 use sim_maplibre::{AltitudeReference, DynamicEntity3D, RenderBody, globe_ned_between_geodetic};
+use sim_pack::ResolvedAirspeedEnvelope;
 use sim_scenery::{CatalogVerticalDatum, LandingRunwayGeometry};
 
 use super::HudView;
@@ -73,6 +74,32 @@ pub(super) fn body_from_view(vehicle_attitude: DQuat, camera_to_ecef: DQuat) -> 
     DQuat::from_mat3(&(body_from_camera * camera_from_view)).normalize()
 }
 
+/// Maps a package-resolved [`ResolvedAirspeedEnvelope`] into shared `Indicate`
+/// airspeed operating-range bands ([`VSpeeds`]) and reference speed bugs ([`VSpeedBugs`]).
+pub(crate) fn indicate_v_speeds(
+    envelope: Option<&ResolvedAirspeedEnvelope>,
+) -> (Option<VSpeeds>, VSpeedBugs) {
+    let Some(env) = envelope else {
+        return (None, VSpeedBugs::default());
+    };
+    let speeds = VSpeeds {
+        vs0_kt: env.vs0_kt,
+        vs_kt: env.vs1_kt,
+        vfe_kt: env.vfe_kt,
+        vno_kt: env.vno_kt,
+        vne_kt: env.vne_kt,
+    };
+    let bugs = VSpeedBugs {
+        vr_kt: env.vr_kt,
+        vx_kt: env.vx_kt,
+        vy_kt: env.vy_kt,
+        vg_kt: env.vg_kt,
+        va_kt: env.va_kt,
+        vref_kt: env.vref_kt,
+    };
+    (Some(speeds), bugs)
+}
+
 /// Everything the screen HUD needs besides aircraft state. The glass is placed in view by
 /// the physical `airframe_attitude` and window `camera`; the runway, contacts, and rates
 /// drawn on it come strictly from the navigation solution `vehicle` (offset to the pilot's
@@ -83,10 +110,12 @@ pub(super) fn hud_context(
     vehicle: &VehicleState,
     view: &HudView<'_>,
     runway: Option<&LandingRunwayGeometry>,
+    airspeed_envelope: Option<&ResolvedAirspeedEnvelope>,
 ) -> HudContext {
     let q = body_from_view(view.airframe_attitude, view.camera.pose.orientation);
     let eye_fixed = vehicle.position_ecef + vehicle.attitude * view.eye_body_lever_m;
     let rates = vehicle.angular_rate_body;
+    let (v_speeds, v_speed_bugs) = indicate_v_speeds(airspeed_envelope);
     HudContext {
         profile: HudProfile::Screen,
         projection: Sig::valid(HudProjection {
@@ -100,6 +129,7 @@ pub(super) fn hud_context(
             source: WorldSource::Synthetic,
         }),
         targets: target_picture(
+            vehicle.position_ecef,
             eye_fixed,
             vehicle.velocity_ecef,
             view.traffic,
@@ -107,8 +137,17 @@ pub(super) fn hud_context(
             view.vertical_datum,
         ),
         body_rates_rps: Sig::valid([rates.x as f32, rates.y as f32, rates.z as f32]),
-        approach: runway
-            .map(|rwy| hud_runway(eye_fixed, view.conformal_surface, view.vertical_datum, rwy)),
+        approach: runway.map(|rwy| {
+            hud_runway_for_vehicle(
+                vehicle.position_ecef,
+                eye_fixed,
+                view.conformal_surface,
+                view.vertical_datum,
+                rwy,
+            )
+        }),
+        v_speeds,
+        v_speed_bugs,
         ..HudContext::default()
     }
 }
@@ -134,68 +173,91 @@ fn undulation_for_surface(
     }
 }
 
-fn conformal_ned(
+struct ConformalObserver {
     eye_fixed: DVec3,
-    eye_geo: &Geodetic,
+    eye_geo: Geodetic,
     eye_undul: f64,
-    local: &LocalFrame,
+    eye_local: LocalFrame,
+    cg_local: LocalFrame,
     surface: ConformalSurface,
     datum: Option<CatalogVerticalDatum>,
-    point: &Geodetic,
-) -> DVec3 {
-    match surface {
-        ConformalSurface::GlobeSphere {
-            physics,
-            render_body,
-        } => {
-            let pt_undul = undulation_for_surface(surface, datum, point);
-            globe_ned_between_geodetic(render_body, eye_geo, eye_undul, point, pt_undul)
-                .unwrap_or_else(|| {
-                    local.ecef_to_ned_vector(physics.geodetic_to_fixed(point) - eye_fixed)
-                })
+}
+
+impl ConformalObserver {
+    fn new(
+        vehicle_position_fixed: DVec3,
+        eye_fixed: DVec3,
+        surface: ConformalSurface,
+        datum: Option<CatalogVerticalDatum>,
+    ) -> Self {
+        let physics = surface.physics_ellipsoid();
+        let cg_local = LocalFrame::at(&physics.fixed_to_geodetic(vehicle_position_fixed));
+        let eye_geo = physics.fixed_to_geodetic(eye_fixed);
+        let eye_undul = undulation_for_surface(surface, datum, &eye_geo);
+        let eye_local = LocalFrame::at(&eye_geo);
+        Self {
+            eye_fixed,
+            eye_geo,
+            eye_undul,
+            eye_local,
+            cg_local,
+            surface,
+            datum,
         }
-        ConformalSurface::Ellipsoid { physics } => {
-            local.ecef_to_ned_vector(physics.geodetic_to_fixed(point) - eye_fixed)
+    }
+
+    fn ned_to(&self, point: &Geodetic) -> DVec3 {
+        match self.surface {
+            ConformalSurface::GlobeSphere {
+                physics,
+                render_body,
+            } => {
+                let pt_undul = undulation_for_surface(self.surface, self.datum, point);
+                if let Some(ned_eye) = globe_ned_between_geodetic(
+                    render_body,
+                    &self.eye_geo,
+                    self.eye_undul,
+                    point,
+                    pt_undul,
+                ) {
+                    self.cg_local
+                        .ecef_to_ned_vector(self.eye_local.ned_to_ecef() * ned_eye)
+                } else {
+                    self.cg_local
+                        .ecef_to_ned_vector(physics.geodetic_to_fixed(point) - self.eye_fixed)
+                }
+            }
+            ConformalSurface::Ellipsoid { physics } => self
+                .cg_local
+                .ecef_to_ned_vector(physics.geodetic_to_fixed(point) - self.eye_fixed),
         }
     }
 }
 
+#[cfg(test)]
 pub(crate) fn hud_runway(
     eye_fixed: DVec3,
     surface: ConformalSurface,
     datum: Option<CatalogVerticalDatum>,
     rwy: &LandingRunwayGeometry,
 ) -> HudRunway {
-    let eye_geo = surface.physics_ellipsoid().fixed_to_geodetic(eye_fixed);
-    let eye_undul = undulation_for_surface(surface, datum, &eye_geo);
-    let local = LocalFrame::at(&eye_geo);
-    let start_ned = conformal_ned(
-        eye_fixed,
-        &eye_geo,
-        eye_undul,
-        &local,
-        surface,
-        datum,
-        &rwy.pavement_start,
-    );
-    let thr_ned = conformal_ned(
-        eye_fixed,
-        &eye_geo,
-        eye_undul,
-        &local,
-        surface,
-        datum,
-        &rwy.threshold,
-    );
-    let far_ned = conformal_ned(
-        eye_fixed,
-        &eye_geo,
-        eye_undul,
-        &local,
-        surface,
-        datum,
-        &rwy.far_end,
-    );
+    hud_runway_for_vehicle(eye_fixed, eye_fixed, surface, datum, rwy)
+}
+
+/// Conformal [`HudRunway`] from `eye_fixed`, expressed in the local tangent NED basis of
+/// `vehicle_position_fixed` (`StateFeed`'s attitude reference) so any non-zero pilot-eye
+/// lever arm registers identically against [`ConformalSurface`] even across `±90°` poles.
+pub(crate) fn hud_runway_for_vehicle(
+    vehicle_position_fixed: DVec3,
+    eye_fixed: DVec3,
+    surface: ConformalSurface,
+    datum: Option<CatalogVerticalDatum>,
+    rwy: &LandingRunwayGeometry,
+) -> HudRunway {
+    let obs = ConformalObserver::new(vehicle_position_fixed, eye_fixed, surface, datum);
+    let start_ned = obs.ned_to(&rwy.pavement_start);
+    let thr_ned = obs.ned_to(&rwy.threshold);
+    let far_ned = obs.ned_to(&rwy.far_end);
     let dn = far_ned.x - thr_ned.x;
     let de = far_ned.y - thr_ned.y;
     let horiz = dn.hypot(de);
@@ -235,16 +297,14 @@ pub(crate) fn hud_runway(
 }
 
 fn target_picture(
+    vehicle_position_fixed: DVec3,
     eye_fixed: DVec3,
     own_velocity_fixed: DVec3,
     traffic: &[DynamicEntity3D],
     surface: ConformalSurface,
     datum: Option<CatalogVerticalDatum>,
 ) -> TargetPicture {
-    let eye_geo = surface.physics_ellipsoid().fixed_to_geodetic(eye_fixed);
-    let eye_undul = undulation_for_surface(surface, datum, &eye_geo);
-    let local = LocalFrame::at(&eye_geo);
-    let own_velocity = local.ecef_to_ned_vector(own_velocity_fixed);
+    let obs = ConformalObserver::new(vehicle_position_fixed, eye_fixed, surface, datum);
     let mut picture = TargetPicture::default();
     for entity in traffic {
         let lat_rad = entity.placement.position.latitude.to_radians();
@@ -263,11 +323,13 @@ fn target_picture(
             lon_rad,
             height_m: entity.placement.altitude_meters + undulation_m,
         };
+        let ent_local = LocalFrame::at(&position);
         let v = entity.velocity_enu_mps;
-        let velocity_ned = DVec3::new(v.y, v.x, -v.z) - own_velocity;
-        let rel_ned = conformal_ned(
-            eye_fixed, &eye_geo, eye_undul, &local, surface, datum, &position,
-        );
+        let ent_vel_fixed = ent_local.east() * v.x + ent_local.north() * v.y + ent_local.up() * v.z;
+        let velocity_ned = obs
+            .cg_local
+            .ecef_to_ned_vector(ent_vel_fixed - own_velocity_fixed);
+        let rel_ned = obs.ned_to(&position);
         let contact = HudContact {
             relative_position_m: rel_ned.to_array().map(|c| c as f32),
             relative_velocity_mps: velocity_ned.to_array().map(|c| c as f32),

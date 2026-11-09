@@ -29,13 +29,34 @@ pub struct AirDataSample {
     pub static_pressure_pa: Option<f64>,
     /// Altimeter setting the source applies, hPa.
     pub altimeter_setting_hpa: Option<f64>,
+    /// Optional pitot-static position-error-corrupted indicated airspeed, m/s,
+    /// when the aircraft package supplies a POH `PEC` curve (`KIAS` ↔ `KCAS`).
+    pub pec_indicated_airspeed_m_s: Option<f64>,
 }
 
 impl AirDataSample {
-    /// Equivalent airspeed, m/s: the compressibility of a real pitot is not
-    /// modelled, so this reads low of indicated above about 100 m/s at height.
-    pub fn indicated_airspeed_m_s(&self) -> f64 {
+    /// Calibrated/equivalent airspeed, m/s (`TAS * sqrt(rho / rho0)`): subsonic
+    /// compressibility is negligible below ~100 m/s, so `KCAS` and `KEAS` agree
+    /// across the light-aviation envelope.
+    #[must_use]
+    pub fn calibrated_airspeed_m_s(&self) -> f64 {
         self.true_airspeed_m_s * (self.density_kg_m3 / SEA_LEVEL_DENSITY_KG_M3).sqrt()
+    }
+
+    /// Indicated airspeed, m/s: returns the package's `PEC`-adjusted dial/tape
+    /// airspeed when supplied (matching POH `KIAS` markings and Garmin G3X STC
+    /// `SA01899WI`), otherwise falls back to [`Self::calibrated_airspeed_m_s`].
+    #[must_use]
+    pub fn indicated_airspeed_m_s(&self) -> f64 {
+        self.pec_indicated_airspeed_m_s
+            .unwrap_or_else(|| self.calibrated_airspeed_m_s())
+    }
+
+    /// Attaches a `PEC`-adjusted indicated airspeed (`m/s`) to this sample.
+    #[must_use]
+    pub const fn with_pec_indicated_airspeed_m_s(mut self, ias_m_s: f64) -> Self {
+        self.pec_indicated_airspeed_m_s = Some(ias_m_s);
+        self
     }
 }
 

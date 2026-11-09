@@ -88,6 +88,14 @@ impl WorldSurfaceHandle {
         Some(sample.ellipsoidal_height_m.0)
     }
 
+    /// Ellipsoidal ground height and [`AuthoritativeWorldSurface::world_version`] under
+    /// `position`, so grounded plants distinguish physical terrain slope from asynchronous
+    /// DEM tile arrivals.
+    pub fn ellipsoidal_ground_and_version(&self, position: &Geodetic) -> Option<(f64, u64)> {
+        let sample = self.read().surface.sample_surface(position).ok()??;
+        Some((sample.ellipsoidal_height_m.0, sample.world_version))
+    }
+
     fn read(&self) -> RwLockReadGuard<'_, Shared> {
         self.shared.read().unwrap_or_else(PoisonError::into_inner)
     }

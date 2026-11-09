@@ -73,6 +73,29 @@ fn degraded_navigation_wanders_further_than_realistic() {
     assert!(spread(SensorRealism::DegradedNavigation) > 4.0 * spread(SensorRealism::Realistic));
 }
 
+/// Baro-inertial vertical stabilization keeps `position_ned_m.z` coherent with the onboard
+/// altimeter even under degraded horizontal GNSS, preventing unphysical 25 m subterranean dips.
+#[test]
+fn baro_aided_vertical_channel_stays_bounded_under_degraded_gnss() {
+    let mut bus = OnboardSensorBus::new(SensorRealism::DegradedNavigation);
+    let mut worst_vert_m = 0.0_f64;
+    let mut sum_vert_sq = 0.0_f64;
+    for _ in 0..2_000 {
+        for _ in 0..60 {
+            bus.step(STEP_S);
+        }
+        let z = bus.current().position_ned_m.z.abs();
+        worst_vert_m = worst_vert_m.max(z);
+        sum_vert_sq += z * z;
+    }
+    let rms_vert_m = (sum_vert_sq / 2_000.0).sqrt();
+    assert!(rms_vert_m < 3.5, "degraded vertical RMS {rms_vert_m} m");
+    assert!(
+        worst_vert_m < 10.0,
+        "degraded vertical peak {worst_vert_m} m"
+    );
+}
+
 #[test]
 fn display_errors_interpolate_between_steps() {
     let bus = flown(SensorRealism::Realistic, 10);
