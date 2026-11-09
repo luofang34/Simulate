@@ -202,5 +202,5 @@ Indicate = { git = "https://github.com/luofang34/Indicate.git", rev = "2ef55d2db
 mbd = { git = "https://github.com/luofang34/mbd.git", rev = "03c605829ae282a51c6ea9e948390f428d532644", path = "../mbd", version = "0.1.0" }
 Navigate = { git = "https://github.com/luofang34/Navigate.git", rev = "0452a4c9259080846839da93612442eb2f67b458", path = "../Navigate", version = "0.1.0" }
 Pilotage = { git = "https://github.com/luofang34/Pilotage.git", rev = "e2714e54c480670561d2f6c91bb64e5e26b81a00", version = "0.1.0" }
-maplibre-rs-experimental = { git = "https://github.com/luofang34/maplibre-rs-experimental.git", rev = "c3170074ba030f331fd02d29ea47ba972e032e85", path = "../maplibre-rs-experimental", version = "0.1.0" }
+maplibre-rs-experimental = { git = "https://github.com/luofang34/maplibre-rs-experimental.git", rev = "8b49ba592b8c5aacbd4834514726986f0166411f", path = "../maplibre-rs-experimental", version = "0.1.0" }
 
