@@ -4,7 +4,8 @@
 //! with rigid-body and JSBSim dynamics, crew and hardware-in-the-loop bridges,
 //! source-stamped instrument readings, a mounted camera sensor with its
 //! visual-navigation evaluation harness, and a frame-rate-invariant session
-//! kernel shared by headless runners and interactive shells.
+//! kernel shared by headless runners and interactive shells, hosted inline
+//! or on a simulation thread of its own.
 //!
 //! Time is an integer count of [`TICKS_PER_SECOND`] ticks so blocks with
 //! unrelated rates (a 120 Hz flight model, an AGC memory cycle of
@@ -15,6 +16,7 @@ mod camera_sensor;
 mod controls;
 mod crew_port;
 mod hitl_bridge;
+mod host;
 mod instrument;
 mod instrument_panel;
 mod jsbsim_fdm;
@@ -41,6 +43,9 @@ pub use hitl_bridge::{
     BridgeError, BridgeSnapshot, BridgeStats, DeliveredResponse, EndpointError, ExternalEndpoint,
     ExternalNodeBridge, HitlSyncMode, StampedResponse,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use host::ThreadedHost;
+pub use host::{DisplayFrame, FrameSeq, HostError, InlineHost, ShutdownReport, SimHost};
 pub use instrument::{SourceValidity, StampedReading};
 pub use instrument_panel::{
     InstrumentNeedles, NEEDLE_HANDS_PER_SLOT, NEEDLE_SLOTS, SecondEngineGauges,
