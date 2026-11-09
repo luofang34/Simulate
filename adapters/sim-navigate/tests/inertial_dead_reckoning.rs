@@ -2,11 +2,13 @@
 //! simulator's truth through Navigate's 22-state inertial filter, scored
 //! against truth outside the filter.
 
+use std::sync::Arc;
+
 use glam::DVec3;
 use navigate_contract::SourceId;
 use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_devices::{ImuErrorSpec, ImuGrade};
-use sim_geo::Geodetic;
+use sim_geo::{BodyEllipsoid, Geodetic, GravityField, LocalFrame};
 use sim_navigate::{
     InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, compare_with_truth,
     inertial_config,
@@ -79,8 +81,19 @@ struct Drift {
 /// Dead-reckons over `truth`, scoring once a second.
 #[cfg(test)]
 fn dead_reckon(truth: &Truth, spec: ImuErrorSpec, seed: u64, alignment: InitialAlignment) -> Drift {
+    let imu = SimulatedImu::new(spec, seed).unwrap();
+    dead_reckon_with(truth, imu, spec, alignment)
+}
+
+/// Dead-reckons over `truth` with `imu`, built from `spec`.
+#[cfg(test)]
+fn dead_reckon_with(
+    truth: &Truth,
+    mut imu: SimulatedImu,
+    spec: ImuErrorSpec,
+    alignment: InitialAlignment,
+) -> Drift {
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, seed).unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = truth[0];
     navigator
@@ -127,6 +140,46 @@ fn a_parked_ideal_imu_holds_position() {
     );
     assert!(drift.final_horizontal_m < 1e-2, "{drift:?}");
     assert!(drift.final_vertical_m < 1e-2, "{drift:?}");
+}
+
+/// Earth's reference field plus a uniform horizontal anomaly, a world whose
+/// gravity the navigator's `J2` model does not know.
+#[derive(Debug)]
+struct Anomalous {
+    extra_m_s2: DVec3,
+}
+
+impl GravityField for Anomalous {
+    fn attraction_fixed(&self, fixed: DVec3) -> DVec3 {
+        BodyEllipsoid::WGS84.gravity_fixed(fixed) + self.extra_m_s2
+    }
+}
+
+#[test]
+fn unmodelled_gravity_reaches_the_navigator_as_drift() {
+    init_tracing();
+    let truth = stationary_truth(60);
+    // 10 mGal towards the north, a strong but ordinary anomaly.
+    let at = sim_geo::ecef_to_geodetic(truth[0].1.position_ecef);
+    let north = LocalFrame::at(&at).north();
+    let anomaly = Arc::new(Anomalous {
+        extra_m_s2: north * 1e-4,
+    });
+    let imu = SimulatedImu::new(ImuErrorSpec::IDEAL, 0)
+        .unwrap()
+        .with_gravity(anomaly);
+    let drift = dead_reckon_with(&truth, imu, ImuErrorSpec::IDEAL, InitialAlignment::EXACT);
+    tracing::info!(
+        horizontal_m = drift.final_horizontal_m,
+        vertical_m = drift.final_vertical_m,
+        "parked 60 s, ideal IMU, 10 mGal unmodelled"
+    );
+    // The accelerometers cannot sense the pull, so the filter integrates
+    // its reaction: ½·a·t² = 0.18 m in a minute.
+    assert!(
+        (0.12..0.24).contains(&drift.final_horizontal_m),
+        "{drift:?}"
+    );
 }
 
 #[test]

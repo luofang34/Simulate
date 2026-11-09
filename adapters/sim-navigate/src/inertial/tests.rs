@@ -30,7 +30,7 @@ fn level_flight_points_the_body_along_its_heading_in_ned() {
 #[test]
 fn a_vehicle_at_rest_senses_earth_rate_and_the_ground_reaction() {
     let state = VehicleState::level_flight(&delaware(), 0.0, 0.0);
-    let increment = ideal_increment(&state, &state, DT_S);
+    let increment = ideal_increment(&BodyEllipsoid::WGS84, &state, &state, DT_S);
     let earth_rate_body = state.attitude.inverse() * DVec3::new(0.0, 0.0, 7.292_115e-5);
     assert!((increment.delta_theta_rad - earth_rate_body * DT_S).length() < 1e-15);
     // Level body axes put the ground reaction along body up, which is -Z.
@@ -47,7 +47,7 @@ fn a_body_rotation_relative_to_the_earth_adds_to_earth_rate() {
         attitude: start.attitude * DQuat::from_scaled_axis(rates * DT_S),
         ..start
     };
-    let increment = ideal_increment(&start, &end, DT_S);
+    let increment = ideal_increment(&BodyEllipsoid::WGS84, &start, &end, DT_S);
     let earth_rate_body = start.attitude.inverse() * DVec3::new(0.0, 0.0, 7.292_115e-5);
     let expected = (rates + earth_rate_body) * DT_S;
     // The two rotations do not commute; their product differs at second order.

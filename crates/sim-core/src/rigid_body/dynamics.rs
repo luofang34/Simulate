@@ -1,7 +1,7 @@
 use glam::{DMat3, DQuat, DVec3};
 use mbd_core::{AeroFlowState, AeroModel, AeroWrench, AmbientFlow, MassProperties};
 use sim_atmosphere::AtmosphereField;
-use sim_geo::{BodyEllipsoid, LocalFrame, UtcTime};
+use sim_geo::{BodyEllipsoid, GravityField, LocalFrame, UtcTime};
 
 use super::{RigidBodyInput, ThrusterWrench, block_error};
 use crate::{BlockError, VehicleState};
@@ -130,6 +130,7 @@ fn inertia_inverse(mass: &MassProperties) -> Result<DMat3, BlockError> {
 /// One vehicle configuration, frozen for the span of a step.
 pub(super) struct Dynamics<'a> {
     body: BodyEllipsoid,
+    gravity: &'a dyn GravityField,
     atmosphere: &'a dyn AtmosphereField,
     aero: &'a dyn AeroModel,
     mass: &'a MassProperties,
@@ -141,6 +142,7 @@ pub(super) struct Dynamics<'a> {
 impl<'a> Dynamics<'a> {
     pub(super) fn of(
         body: BodyEllipsoid,
+        gravity: &'a dyn GravityField,
         atmosphere: &'a dyn AtmosphereField,
         aero: &'a dyn AeroModel,
         mass: &'a MassProperties,
@@ -148,6 +150,7 @@ impl<'a> Dynamics<'a> {
     ) -> Result<Self, BlockError> {
         Ok(Self {
             body,
+            gravity,
             atmosphere,
             aero,
             mass,
@@ -173,7 +176,7 @@ impl<'a> Dynamics<'a> {
         let position = state.position_fixed_m;
         let velocity = state.velocity_fixed_m_s;
         let spin = spin_fixed(&self.body);
-        let acceleration = self.body.gravity_fixed(position)
+        let acceleration = self.gravity.attraction_fixed(position)
             + state.attitude * specific_force_cg_body
             - 2.0 * spin.cross(velocity)
             - spin.cross(spin.cross(position));

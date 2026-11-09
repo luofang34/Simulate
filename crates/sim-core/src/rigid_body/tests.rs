@@ -137,6 +137,39 @@ fn free_fall_follows_central_gravity_on_any_body() {
     }
 }
 
+/// The reference field plus a uniform pull, standing in for a world with
+/// gravity the navigator does not model.
+#[derive(Debug)]
+struct Anomalous {
+    body: BodyEllipsoid,
+    extra_m_s2: DVec3,
+}
+
+impl GravityField for Anomalous {
+    fn attraction_fixed(&self, fixed: DVec3) -> DVec3 {
+        self.body.gravity_fixed(fixed) + self.extra_m_s2
+    }
+}
+
+#[test]
+fn the_block_integrates_the_gravity_field_it_is_given() {
+    let body = no_spin(BodyEllipsoid::WGS84);
+    let start = rest_at(&body, 10_000.0);
+    let extra_m_s2 = DVec3::new(0.0, 1e-3, 0.0);
+    let field = Arc::new(Anomalous { body, extra_m_s2 });
+    let mut reference = vacuum_block(config(body, TEN_MS, start), vehicle(0.0));
+    let mut anomalous = vacuum_block(config(body, TEN_MS, start), vehicle(0.0)).with_gravity(field);
+    run(&mut reference, 100, &RigidBodyInput::default());
+    run(&mut anomalous, 100, &RigidBodyInput::default());
+
+    // One second of a uniform extra pull: Δv = a·t, Δp = ½·a·t².
+    let dv = anomalous.output().velocity_ecef - reference.output().velocity_ecef;
+    let dp = anomalous.output().position_ecef - reference.output().position_ecef;
+    assert!((dv - extra_m_s2).length() < 1e-9, "{dv}");
+    assert!((dp - extra_m_s2 * 0.5).length() < 1e-9, "{dp}");
+    assert_eq!(anomalous.specific_force_cg_body(), DVec3::ZERO);
+}
+
 #[test]
 fn a_vehicle_at_rest_on_a_rotating_body_falls_with_the_apparent_gravity() {
     let body = BodyEllipsoid::WGS84;

@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use glam::{DQuat, DVec3};
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::{ImuErrorModel, ImuErrorSpec, InertialIncrement};
-use sim_geo::BodyEllipsoid;
+use sim_geo::{BodyEllipsoid, GravityField};
 
 use crate::NavigateBridgeError;
 
@@ -48,12 +50,17 @@ pub(crate) fn rotation_vector(rotation: DQuat) -> DVec3 {
 /// Navigate takes a velocity increment `Δv` whose rotation correction
 /// `Δv + ½·Δθ×Δv` is the specific-force integral in the body axes fixed at
 /// the start of the step. The synthesis forms that integral by quadrature of
-/// `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, with `g` the world's own
-/// [`BodyEllipsoid::gravity_fixed`], carried from each instant's ECEF axes
+/// `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, with `g` the world's truth
+/// `gravity`, carried from each instant's ECEF axes
 /// into the start's inertial body axes, and inverts the rotation correction
 /// exactly. A raw `∫f_body dt` would differ from it by the sculling term,
 /// which grows with turn rate times acceleration.
-pub fn ideal_increment(from: &VehicleState, to: &VehicleState, dt_s: f64) -> InertialIncrement {
+pub fn ideal_increment(
+    gravity: &dyn GravityField,
+    from: &VehicleState,
+    to: &VehicleState,
+    dt_s: f64,
+) -> InertialIncrement {
     let frame_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * dt_s);
     let delta_theta_rad = rotation_vector(from.attitude.inverse() * frame_turn * to.attitude);
     let acceleration = (to.velocity_ecef - from.velocity_ecef) / dt_s;
@@ -68,7 +75,7 @@ pub fn ideal_increment(from: &VehicleState, to: &VehicleState, dt_s: f64) -> Ine
             let specific_force = acceleration
                 + 2.0 * EARTH_RATE_ECEF.cross(velocity)
                 + EARTH_RATE_ECEF.cross(EARTH_RATE_ECEF.cross(position))
-                - BodyEllipsoid::WGS84.gravity_fixed(position);
+                - gravity.attraction_fixed(position);
             let inertial_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * t);
             start_axes * (inertial_turn * specific_force) * (weight * dt_s)
         })
@@ -93,19 +100,31 @@ fn without_rotation_correction(theta: DVec3, y: DVec3) -> DVec3 {
 ///
 /// This is the simulator's side of the link; it reads truth because it is
 /// the physics of the sensor. Only its output reaches a filter.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SimulatedImu {
+    gravity: Arc<dyn GravityField>,
     errors: ImuErrorModel,
     previous: Option<(SimInstant, VehicleState)>,
 }
 
 impl SimulatedImu {
-    /// A unit with errors drawn from `spec` and `seed`.
+    /// A unit with errors drawn from `spec` and `seed`, on Earth's reference
+    /// field [`BodyEllipsoid::WGS84`].
     pub fn new(spec: ImuErrorSpec, seed: u64) -> Result<Self, NavigateBridgeError> {
         Ok(Self {
+            gravity: Arc::new(BodyEllipsoid::WGS84),
             errors: ImuErrorModel::new(spec, seed).map_err(NavigateBridgeError::ImuModel)?,
             previous: None,
         })
+    }
+
+    /// The unit in a world whose truth gravity is `gravity`: the instance
+    /// the vehicle's dynamics integrate, such as
+    /// `sim_core::RigidBody6DofBlock::gravity`.
+    #[must_use]
+    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
+        self.gravity = gravity;
+        self
     }
 
     /// The unit's error state, for scoring its bias against an estimate.
@@ -128,7 +147,7 @@ impl SimulatedImu {
             return Err(NavigateBridgeError::ImuIntervalNotAdvancing { start, end: at });
         }
         let dt_s = at.duration_since(start).as_seconds();
-        let ideal = ideal_increment(&from, truth, dt_s);
+        let ideal = ideal_increment(self.gravity.as_ref(), &from, truth, dt_s);
         self.errors
             .sense(&ideal)
             .map(Some)

@@ -4,7 +4,9 @@ use mbd_core::{
     MassProperties, MbdError, compute_site_kinematics,
 };
 use sim_atmosphere::AtmosphereField;
-use sim_geo::{BodyEllipsoid, UtcTime};
+use std::sync::Arc;
+
+use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
 use crate::{Block, BlockError, SimInstant, TickSpan, VehicleState};
 
@@ -148,6 +150,7 @@ pub struct RigidBody6DofBlock {
     tree: ComponentTree,
     aero: Box<dyn AeroModel>,
     atmosphere: Box<dyn AtmosphereField>,
+    gravity: Arc<dyn GravityField>,
     state: RigidState,
     loads: Loads,
     mass: MassProperties,
@@ -172,8 +175,10 @@ impl RigidBody6DofBlock {
         }
         let mass = tree.mass_properties().map_err(block_error)?;
         let state = RigidState::from_vehicle(&config.initial, &config.body);
+        let gravity: Arc<dyn GravityField> = Arc::new(config.body);
         let dynamics = Dynamics::of(
             config.body,
+            gravity.as_ref(),
             atmosphere.as_ref(),
             aero.as_ref(),
             &mass,
@@ -185,11 +190,26 @@ impl RigidBody6DofBlock {
             tree,
             aero,
             atmosphere,
+            gravity,
             state,
             loads,
             mass,
             now: SimInstant::START,
         })
+    }
+
+    /// The block in a world whose truth gravity is `gravity` instead of the
+    /// reference field of `config.body`. Hand the same instance to every
+    /// sensor that senses gravity, so they read the field the vehicle flies
+    /// through.
+    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
+        self.gravity = gravity;
+        self
+    }
+
+    /// The truth gravity the block integrates.
+    pub fn gravity(&self) -> &Arc<dyn GravityField> {
+        &self.gravity
     }
 
     /// The live component tree.
@@ -290,6 +310,7 @@ impl RigidBody6DofBlock {
     ) -> Result<Dynamics<'a>, BlockError> {
         Dynamics::of(
             self.config.body,
+            self.gravity.as_ref(),
             self.atmosphere.as_ref(),
             self.aero.as_ref(),
             mass,
