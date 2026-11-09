@@ -20,6 +20,10 @@
 //! `sim_scenario::CorridorRun::image_driven`. Navigate's filter publishes no
 //! protection levels yet; nothing here invents them.
 //!
+//! [`SimulatedImu`], [`InitialAlignment`] and [`InertialNavigator`] carry
+//! simulated strapdown increments into Navigate's 22-state
+//! [`navigate_fusion::InertialNavigationFilter`] for unaided dead reckoning.
+//!
 //! [`CelestialClock`] turns a sky time mode and observer position into a
 //! [`CelestialFrame`] of Sun, Moon, eclipse, Earth-shadow, and star geometry
 //! from Navigate's analytic ephemeris.
@@ -39,6 +43,7 @@ mod evaluation;
 mod filter_loop;
 mod frame_link;
 mod image_nav;
+mod inertial;
 mod truth;
 mod visual_fix;
 
@@ -61,5 +66,9 @@ pub use frame_link::{
     CameraFrameLink, FramePixelFormat, OwnedCameraFrame, imager_model, navigate_mount,
 };
 pub use image_nav::{ImageCorridorEstimator, ImageEstimatorConfig, ImageEstimatorStats};
+pub use inertial::{
+    AlignmentFix, InertialNavigator, InitialAlignment, SimulatedImu, TruthGravity, ideal_increment,
+    inertial_config,
+};
 pub use truth::{TruthComparison, compare_with_truth, solution_position_ecef};
 pub use visual_fix::{FixDisposition, VisualFixAdapter, VisualFixConfig};

@@ -28,4 +28,21 @@ pub enum DeviceError {
         /// The latest earlier request.
         previous: SimInstant,
     },
+    /// An inertial error statistic is negative or not finite.
+    #[error("{triad} {field} of {value} is not a usable error statistic")]
+    InvalidErrorModel {
+        /// The sensor triad, `accel` or `gyro`.
+        triad: &'static str,
+        /// The offending field.
+        field: &'static str,
+        /// Its value.
+        value: f64,
+    },
+    /// An ideal inertial increment is not finite, or its interval is not
+    /// finite and positive.
+    #[error("inertial increment over {dt_s} s is not usable")]
+    InvalidIncrement {
+        /// The interval, seconds.
+        dt_s: f64,
+    },
 }

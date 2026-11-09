@@ -1,10 +1,12 @@
 use navigate_camera::CameraError;
 use navigate_contract::DurationNanos;
+use navigate_fusion::RejectionReason;
 use navigate_geodesy::GeodesyError;
 use navigate_visual::VisualError;
 use navigate_visual::fusion_bridge::VisualFusionError;
 use navigate_visual::session::SessionError;
 use sim_core::SimInstant;
+use sim_devices::DeviceError;
 
 /// Why the bridge could not carry a value into Navigate.
 #[derive(Debug, thiserror::Error)]
@@ -112,5 +114,26 @@ pub enum NavigateBridgeError {
         truth_at: SimInstant,
         /// The instant the output describes.
         valid_at: SimInstant,
+    },
+    /// The simulated IMU's error model refused its statistics or an
+    /// increment.
+    #[error("simulated IMU refused its input")]
+    ImuModel(#[source] DeviceError),
+    /// Two IMU readings did not advance the clock.
+    #[error("IMU interval from {start:?} to {end:?} does not advance")]
+    ImuIntervalNotAdvancing {
+        /// Start of the interval.
+        start: SimInstant,
+        /// End of the interval.
+        end: SimInstant,
+    },
+    /// The inertial filter refused an alignment or an IMU increment.
+    #[error("inertial filter refused the {stage}")]
+    InertialRefused {
+        /// What was offered.
+        stage: &'static str,
+        /// The filter's reason.
+        #[source]
+        reason: RejectionReason,
     },
 }

@@ -9,6 +9,7 @@ mod arinc429_bus;
 mod bmp390;
 mod error;
 mod icm42688;
+mod inertial_error;
 mod supply;
 mod white_noise;
 
@@ -16,4 +17,7 @@ pub use arinc429_bus::{ARINC429_WORD_BITS, Arinc429Bus, Arinc429Delivery, Arinc4
 pub use bmp390::{BMP390_ADDRESS, Bmp390Block, Bmp390Config, Bmp390Input, Bmp390Sample};
 pub use error::DeviceError;
 pub use icm42688::{Icm42688Block, Icm42688Config, Icm42688Sample, Icm42688Snapshot};
+pub use inertial_error::{
+    GaussMarkov, ImuErrorModel, ImuErrorSpec, ImuGrade, InertialIncrement, TriadErrorSpec,
+};
 pub use white_noise::WhiteNoise;
