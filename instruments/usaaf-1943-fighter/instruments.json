@@ -1,0 +1,344 @@
+{
+  "instruments": [
+    {
+      "id": "airspeed",
+      "name": "AAF airspeed indicator, 0-700 mph",
+      "bezel": "ThreeAndOneEighthInch",
+      "source": "pitot_static.pitot_static",
+      "needle": {
+        "natural_frequency_rad_s": 12.0,
+        "damping_ratio": 0.7
+      },
+      "markings": [
+        {
+          "Radial": {
+            "at": 420,
+            "colour": "Red"
+          }
+        }
+      ],
+      "kind": {
+        "Airspeed": {
+          "units": "MilesPerHour",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 100,
+              "angle_deg": 50
+            },
+            {
+              "value": 200,
+              "angle_deg": 120
+            },
+            {
+              "value": 300,
+              "angle_deg": 180
+            },
+            {
+              "value": 400,
+              "angle_deg": 235
+            },
+            {
+              "value": 500,
+              "angle_deg": 280
+            },
+            {
+              "value": 700,
+              "angle_deg": 345
+            }
+          ],
+          "instrument_error": [
+            [
+              95.0,
+              2.0
+            ],
+            [
+              115.0,
+              2.0
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "altimeter",
+      "name": "Kollsman Type C-12 sensitive altimeter, 0-50,000 ft",
+      "bezel": "ThreeAndOneEighthInch",
+      "source": "pitot_static.pitot_static",
+      "needle": {
+        "natural_frequency_rad_s": 15.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Altimeter": {
+          "units": "Feet",
+          "kollsman": {
+            "units": "InchesOfMercury",
+            "min": 28.1,
+            "max": 31.0
+          },
+          "aneroid_tau_s": 0.3,
+          "range": [
+            -1000.0,
+            50000.0
+          ]
+        }
+      }
+    },
+    {
+      "id": "rate_of_climb",
+      "name": "Rate-of-climb indicator, +/-6,000 ft/min",
+      "bezel": "ThreeAndOneEighthInch",
+      "source": "pitot_static.pitot_static",
+      "needle": {
+        "natural_frequency_rad_s": 10.0,
+        "damping_ratio": 0.7
+      },
+      "kind": {
+        "VerticalSpeed": {
+          "units": "FeetPerMinute",
+          "scale": [
+            {
+              "value": -6000,
+              "angle_deg": -170
+            },
+            {
+              "value": -2000,
+              "angle_deg": -100
+            },
+            {
+              "value": -1000,
+              "angle_deg": -60
+            },
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 1000,
+              "angle_deg": 60
+            },
+            {
+              "value": 2000,
+              "angle_deg": 100
+            },
+            {
+              "value": 6000,
+              "angle_deg": 170
+            }
+          ],
+          "leak_tau_s": 7.0
+        }
+      }
+    },
+    {
+      "id": "manifold_pressure_0",
+      "name": "Manifold pressure gauge, engine 1, 10-75 inHg",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[0].manifold_pressure",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "markings": [
+        {
+          "Radial": {
+            "at": 44.7,
+            "colour": "Green"
+          }
+        },
+        {
+          "Radial": {
+            "at": 48.0,
+            "colour": "Red"
+          }
+        }
+      ],
+      "kind": {
+        "PressureGauge": {
+          "units": "InchesOfMercury",
+          "scale": [
+            {
+              "value": 10,
+              "angle_deg": 0
+            },
+            {
+              "value": 75,
+              "angle_deg": 300
+            }
+          ],
+          "line_tau_s": 0.5
+        }
+      }
+    },
+    {
+      "id": "manifold_pressure_1",
+      "name": "Manifold pressure gauge, engine 2, 10-75 inHg",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[1].manifold_pressure",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "markings": [
+        {
+          "Radial": {
+            "at": 44.7,
+            "colour": "Green"
+          }
+        },
+        {
+          "Radial": {
+            "at": 48.0,
+            "colour": "Red"
+          }
+        }
+      ],
+      "kind": {
+        "PressureGauge": {
+          "units": "InchesOfMercury",
+          "scale": [
+            {
+              "value": 10,
+              "angle_deg": 0
+            },
+            {
+              "value": 75,
+              "angle_deg": 300
+            }
+          ],
+          "line_tau_s": 0.5
+        }
+      }
+    },
+    {
+      "id": "tachometer_0",
+      "name": "Tachometer, engine 1, 0-4,500 rpm",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[0].rpm",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "markings": [
+        {
+          "Radial": {
+            "at": 3000,
+            "colour": "Red"
+          }
+        }
+      ],
+      "kind": {
+        "Tachometer": {
+          "units": "RevolutionsPerMinute",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 4500,
+              "angle_deg": 300
+            }
+          ],
+          "drag_cup_tau_s": 0.4
+        }
+      }
+    },
+    {
+      "id": "tachometer_1",
+      "name": "Tachometer, engine 2, 0-4,500 rpm",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[1].rpm",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "markings": [
+        {
+          "Radial": {
+            "at": 3000,
+            "colour": "Red"
+          }
+        }
+      ],
+      "kind": {
+        "Tachometer": {
+          "units": "RevolutionsPerMinute",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 4500,
+              "angle_deg": 300
+            }
+          ],
+          "drag_cup_tau_s": 0.4
+        }
+      }
+    }
+  ],
+  "layout": [
+    {
+      "slot": "flight_left",
+      "instrument": "airspeed",
+      "offset_m": [
+        -0.1,
+        0.05
+      ]
+    },
+    {
+      "slot": "flight_right",
+      "instrument": "altimeter",
+      "offset_m": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "slot": "flight_lower",
+      "instrument": "rate_of_climb",
+      "offset_m": [
+        -0.1,
+        -0.05
+      ]
+    },
+    {
+      "slot": "engine_mp_left",
+      "instrument": "manifold_pressure_0",
+      "offset_m": [
+        0.12,
+        0.06
+      ]
+    },
+    {
+      "slot": "engine_mp_right",
+      "instrument": "manifold_pressure_1",
+      "offset_m": [
+        0.19,
+        0.06
+      ]
+    },
+    {
+      "slot": "engine_rpm_left",
+      "instrument": "tachometer_0",
+      "offset_m": [
+        0.12,
+        -0.01
+      ]
+    },
+    {
+      "slot": "engine_rpm_right",
+      "instrument": "tachometer_1",
+      "offset_m": [
+        0.19,
+        -0.01
+      ]
+    }
+  ]
+}

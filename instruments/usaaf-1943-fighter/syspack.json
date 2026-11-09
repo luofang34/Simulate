@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "usaaf-1943-fighter",
+  "name": "USAAF 1943 single-seat fighter panel (P-38G)",
+  "version": "1.0.0",
+  "kind": "InstrumentPack",
+  "assets": {
+    "instruments.json": {
+      "sha256": "80757673a1f3a90339e49e6227b1385eafd2ccdfbcb67409e45ed2f1d2d12f08",
+      "size_bytes": 7193
+    }
+  },
+  "components": [
+    {
+      "key": "panel",
+      "name": "Instrument cases on the panel plane",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 4.6,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "None",
+  "devices": []
+}

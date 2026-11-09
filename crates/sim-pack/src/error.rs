@@ -17,4 +17,53 @@ pub enum PackError {
         #[source]
         source: Box<BlockError>,
     },
+    /// The package's airspeed envelope JSON could not be parsed.
+    #[error("airspeed envelope {path:?} could not be parsed")]
+    AirspeedEnvelopeParse {
+        /// Asset path inside the package.
+        path: String,
+        /// JSON decoder error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// The package's airspeed envelope failed physical sanity checks.
+    #[error("airspeed envelope {path:?} is invalid: {detail}")]
+    InvalidAirspeedEnvelope {
+        /// Asset path inside the package.
+        path: String,
+        /// Why the envelope was refused.
+        detail: String,
+    },
+    /// A package calibration or pitot-static JSON table could not be parsed.
+    #[error("calibration asset {path:?} could not be parsed")]
+    CalibrationParse {
+        /// Asset path inside the package.
+        path: String,
+        /// JSON decoder error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A package calibration or pitot-static table failed physical validation.
+    #[error("calibration asset {path:?} is invalid: {detail}")]
+    InvalidCalibration {
+        /// Asset path inside the package.
+        path: String,
+        /// Why the calibration payload was refused.
+        detail: String,
+    },
+    /// The instrument pack a vehicle pins could not be resolved, or one of its
+    /// instruments reads a source the vehicle does not have.
+    #[error("instrument pack {pack:?} refused: {detail}")]
+    InstrumentPack {
+        /// The pinned pack's id.
+        pack: String,
+        /// Why it was refused.
+        detail: String,
+    },
+    /// Closed-loop FDM execution failed during calibration or sensitivity evaluation.
+    #[error("closed-loop calibration run failed: {detail}")]
+    CalibrationRun {
+        /// Failure diagnostic from JSBSim or the trim/hold loop.
+        detail: String,
+    },
 }

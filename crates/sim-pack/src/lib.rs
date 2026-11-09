@@ -7,15 +7,39 @@
 //! be built, is a typed [`PackError`], and nothing of the package is usable.
 
 mod builtin;
+pub mod calibration;
+mod envelope;
 mod error;
+mod instruments;
+mod livery;
 mod loaded;
+mod pec;
 
 pub use builtin::{
-    builtin_c172_package, builtin_c172_source, builtin_light_trainer_package,
-    builtin_light_trainer_source,
+    builtin_c172_package, builtin_c172_source, builtin_p38g_package, builtin_p38g_source,
 };
+pub use calibration::{
+    AceFeedbackReport, CALIBRATION_SUITE_ASSET, CalibrationReport, CalibrationSuite,
+    CalibrationTolerances, ClimbBenchmark, CruiseBenchmark, DesignClimbPoint, DesignCruisePoint,
+    DesignPerformanceReport, DesignTradeCandidateResult, DesignTradeSpec, DesignTradeStudyReport,
+    EmpiricalFlightSegment, EmpiricalSegmentMode, HandbookProperty, MissionProfileResult,
+    MissionProfileSpec, MissionSegmentKind, MissionSegmentResult, MissionSegmentSpec,
+    PayloadRangePoint, SensitivityReport, StallBenchmark, StaticRunupBenchmark, TailProfile,
+    TakeoffBenchmark, TakeoffResult, apply_design_trade, build_ace_feedback_report,
+    default_design_trades, default_manual_mission_profiles, estimate_design_performance,
+    evaluate_mission_profile, evaluate_package, evaluate_package_against,
+    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
+    write_syspack_with_manual_assets,
+};
+pub use envelope::{AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, ResolvedAirspeedEnvelope};
 pub use error::PackError;
+pub use instruments::{BUILTIN_INSTRUMENT_PACKS, builtin_instrument_pack_source};
+pub use livery::{LIVERY_CATALOG_ASSET, LiveryCatalog, VehicleLivery};
 pub use loaded::{CotsDevice, LoadedSyspack, MountedCotsDevice, PackageCamera};
+pub use pec::{
+    AirspeedCalibrationPoint, PITOT_STATIC_CALIBRATION_ASSET, PitotStaticCalibration,
+    PitotStaticCurve,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use syspack::DirectoryPackageSource;
 pub use syspack::{

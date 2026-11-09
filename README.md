@@ -24,7 +24,6 @@ The workspace has four top-level directories:
 | `sim-scenery` | `crates/` | Elevation, imagery, radiometry, photogrammetry, and OpenStreetMap (`aeroway=*`) airport surface diagrams (`47N`, `KEWR`, `KDOV`): Web Mercator Terrarium and orthoimagery catalogs, flat-graded airport plateaus, and the procedural Apollo 11 site |
 | `sim-render` | `crates/` | wgpu renderer: camera-relative terrain on any body, ortho draping, offscreen visible, starfield, and thermal sensor apertures, zero-copy viewport textures, reversed-Z depth |
 | `sim-scenario` | `crates/` | Deterministic scenarios (Delaware corridor, C172 airport traffic patterns at `47N` and `KEWR`, and Apollo 11), `SimSupervisor` truth-to-belief radio projection, NOTAM-gated `Flightbag` spawn, and 5-channel `30 Hz` virtual camera rigs |
-| `light-trainer` | `vehicles/` | Data-only vehicle package: a JSBSim light trainer with no Rust code of its own |
 | `c172` | `vehicles/` | Data-only vehicle package: a piston C172-class aeroplane, exported from its `ace-rs` design |
 | `sim-apollo` | `vehicles/apollo-11/` | Apollo 11: the Eagle and Columbia packages under `packages/`, gimballed IMU with gimbal lock, abort sensors, radars, optics, entry monitor, source-monitored cockpit panel |
 | `sim-indicate` | `adapters/` | Indicate: aircraft state and tagged frames from flight state, dual-source attitude monitoring, deterministic PFD/HSI framebuffers, and 3D volumetric instrument scenes |
@@ -79,7 +78,7 @@ Natively, downloaded tiles are kept in `target/simulate-tile-cache`, or in
 built-in synthetic regional catalog instead, with no network.
 
 Controls: arrow keys fly (Down is stick back), `A`/`D` rudder, `W`/`S` throttle.
-`V` cycles free-flight vehicles (`C172 Skyhawk`, `Light Trainer`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `K` cycles the active home airport (`KDOV`, `47N`, `KEWR`); `C` cycles virtual cameras (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`, `Tower PTZ Auto-Track`, and `Threshold Final Cam`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `P` cycles the avionics preset (gauges with no map, a single moving map, or the glass cockpit with synthetic vision, moving map, and airport diagram); `U` toggles the full-window conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
+`V` cycles free-flight vehicles (`C172 Skyhawk`, `P-38G Lightning`, `Aviate X500 Direct`, `Aviate Fixed-Wing Direct`, and `Kinematic`); `K` cycles the active home airport (`KDOV`, `47N`, `KEWR`); `C` cycles virtual cameras (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`, `Tower PTZ Auto-Track`, and `Threshold Final Cam`); `Tab` cycles `OperatorViewportMode` (`Cockpit`, `Chase`, `SensorAperture`, `ChartMap`, and `VolumetricScene`); `H` toggles the glass-cockpit PFD/MFD/HSI dock; `P` cycles the avionics preset (gauges with no map, a single moving map, or the glass cockpit with synthetic vision, moving map, and airport diagram); `U` toggles the full-window conformal HUD; `Space` pauses/resumes; `]` cycles time warp (`1x`/`2x`/`4x`). On JSBSim aircraft, `F`/`G` move flaps, `B` holds wheel brakes, `M` cycles magnetos, `E` engages the starter, and `R`/`T` adjust mixture.
 A standard-layout gamepad flies with the left stick, rudder on the right stick,
 and throttle on the right trigger. Other joysticks and yokes bind axis 0 to
 roll, axis 1 to pitch, and axis 2 to the throttle lever.
@@ -103,4 +102,13 @@ instruments.
 ## Checks
 
 `scripts/ci.sh` runs every gate in order: formatting, Clippy (native and
-wasm32), tests, docs, release build, the web bundle, and the structure checks.
+wasm32), tests, docs, release build, the web bundle, the `mdbook` engineering
+manual in `book/`, and the structure checks.
+
+Build or preview the engineering manual (covering `syspack` aircraft onboarding,
+`ironbird` multi-tier XIL verification, closed-loop POH/flight-test calibration,
+and new-design V-speed/ceiling/range estimation) with:
+
+```sh
+mdbook build book   # or: mdbook serve book
+```

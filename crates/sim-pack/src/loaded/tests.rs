@@ -171,16 +171,16 @@ fn a_jsbsim_package_has_no_aero_model_and_a_rigid_body_has_no_resolver() {
         package.jsbsim_model(),
         Err(PackError::Syspack(SyspackError::DynamicsMismatch { .. }))
     ));
-    let trainer = crate::builtin_light_trainer_package().unwrap();
+    let c172 = crate::builtin_c172_package().unwrap();
     assert!(matches!(
-        trainer.build_aero_model(),
+        c172.build_aero_model(),
         Err(SyspackError::DynamicsMismatch {
             declared: "JsbsimXml",
             ..
         })
     ));
     assert!(matches!(
-        trainer.capsule_aero(),
+        c172.capsule_aero(),
         Err(SyspackError::DynamicsMismatch { .. })
     ));
 }

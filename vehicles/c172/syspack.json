@@ -6,8 +6,20 @@
   "kind": "FixedWing",
   "assets": {
     "fdm/c172_class_reference.xml": {
-      "sha256": "b79409245e47e69c2a7ceacf50e773a6cc8a4b176b2a2fb77f579ea49030112f",
-      "size_bytes": 10754
+      "sha256": "433ffe16b5080aa99bb3656494702f7159d8b910d3a0cc6f23ccfb4fc8483ab7",
+      "size_bytes": 24332
+    },
+    "performance/airspeed_envelope.json": {
+      "sha256": "ae29343a08ecf91d446959b8d14043933ba578a2275ed3e309908f1a82c9e898",
+      "size_bytes": 473
+    },
+    "performance/pitot_static_calibration.json": {
+      "sha256": "fdc1b2003afa5145213c3beaec22cb6541b073e44e0cd2ddc019fce28734f1ad",
+      "size_bytes": 1686
+    },
+    "performance/poh_benchmarks.json": {
+      "sha256": "35d3488080832f8a2822249197901dd5afb3eb3716b6762138c98a69dcacd7c7",
+      "size_bytes": 9360
     }
   },
   "components": [
@@ -16,9 +28,9 @@
       "name": "Airframe",
       "parent": null,
       "translation_m": [
-        -3.05,
+        -3.02612,
         0.0,
-        -0.0
+        0.0
       ],
       "rotation_xyzw": [
         0.0,
@@ -26,7 +38,7 @@
         0.0,
         1.0
       ],
-      "dry_mass_kg": 767.0,
+      "dry_mass_kg": 769.9368,
       "dry_inertia_body": [
         [
           1450.109375,
@@ -51,13 +63,13 @@
       "nominal_power_w": 0.0
     },
     {
-      "key": "fuel_tank",
-      "name": "Fuel tank",
+      "key": "left_fuel_tank",
+      "name": "Left wing fuel tank",
       "parent": "airframe",
       "translation_m": [
-        -0.10000000000000009,
-        0.0,
-        0.0
+        -0.1966,
+        -1.5748,
+        -0.762
       ],
       "rotation_xyzw": [
         0.0,
@@ -83,7 +95,46 @@
           0.0
         ]
       ],
-      "initial_fluid_mass_kg": 114.0,
+      "initial_fluid_mass_kg": 57.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "right_fuel_tank",
+      "name": "Right wing fuel tank",
+      "parent": "airframe",
+      "translation_m": [
+        -0.1966,
+        1.5748,
+        -0.762
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 57.0,
       "initial_payload_mass_kg": 0.0,
       "attached": true,
       "thermal_capacity_j_k": 0.0,
@@ -91,10 +142,10 @@
     },
     {
       "key": "payload_station",
-      "name": "Payload station",
+      "name": "Front seats",
       "parent": "airframe",
       "translation_m": [
-        -0.20000000000000018,
+        0.0828,
         0.0,
         0.0
       ],
@@ -123,7 +174,46 @@
         ]
       ],
       "initial_fluid_mass_kg": 0.0,
-      "initial_payload_mass_kg": 230.0,
+      "initial_payload_mass_kg": 154.221406,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "rear_seats",
+      "name": "Rear seats",
+      "parent": "airframe",
+      "translation_m": [
+        -0.8316,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 72.574779,
       "attached": true,
       "thermal_capacity_j_k": 0.0,
       "nominal_power_w": 0.0
@@ -310,6 +400,32 @@
           "rate_hz": 30
         }
       }
+    },
+    {
+      "id": "pitot_static",
+      "site": "airframe",
+      "kind": {
+        "PitotStatic": {
+          "pitot_body_m": [
+            0.35,
+            -2.4,
+            -0.95
+          ],
+          "static_body_m": [
+            1.25,
+            -0.55,
+            -0.2
+          ],
+          "probe": "left_wing_pitot_left_fuselage_static",
+          "total_line_tau_s": 0.1,
+          "static_line_tau_s": 0.2
+        }
+      }
     }
-  ]
+  ],
+  "instrument_pack": {
+    "id": "ga-analog-six-pack",
+    "version": "1.0.0",
+    "manifest_sha256": "13f26b928e861734ca25b30ebc5eb039192f98aef4639a979d5705d94aa5f7ea"
+  }
 }

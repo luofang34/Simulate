@@ -14,10 +14,14 @@ sim-core = { workspace = true }
 glam = { workspace = true }
 jsbsim = { workspace = true }
 mbd-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 syspack = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+mbd-airdata = { workspace = true }
 sim-atmosphere = { workspace = true }
 sim-geo = { workspace = true }
 serde_json = { workspace = true }

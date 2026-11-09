@@ -9,9 +9,10 @@ use sim_geo::{Geodetic, ecef_to_geodetic};
 use sim_pack::{LoadedSyspack, builtin_c172_package};
 
 const STEPS_PER_SECOND: u32 = 120;
-/// The main wheels' reach below the centre of gravity, which puts them just on
-/// the ground at the start.
-const RIDE_HEIGHT_M: f64 = 1.3;
+/// The main wheels' reach below the centre of gravity at the shipped load (51.2 in
+/// below the reference line, which the high wing tanks lift the CG 3.1 in above),
+/// which puts them just on the ground at the start.
+const RIDE_HEIGHT_M: f64 = 1.378;
 const IDLE_THROTTLE: f64 = 0.2;
 
 #[cfg(test)]

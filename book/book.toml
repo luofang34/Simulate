@@ -1,0 +1,13 @@
+[book]
+title = "Simulate & Ironbird Engineering Manual"
+description = "Onboarding aircraft packages, closed-loop POH/flight-test calibration, XIL verification, and new-design performance estimation in Simulate"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "build"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/luofang34/Simulate"
+edit-url-template = "https://github.com/luofang34/Simulate/edit/main/book/{path}"

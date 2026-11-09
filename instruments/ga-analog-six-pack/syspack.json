@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "ga-analog-six-pack",
+  "name": "Light GA analog flight and engine instruments",
+  "version": "1.0.0",
+  "kind": "InstrumentPack",
+  "assets": {
+    "instruments.json": {
+      "sha256": "e77f7cc2d70568424131c2f26f684962a018515f29c6b4db701b06cbb36f7813",
+      "size_bytes": 4795
+    }
+  },
+  "components": [
+    {
+      "key": "panel",
+      "name": "Instrument cases on the panel plane",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 2.4,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "None",
+  "devices": []
+}

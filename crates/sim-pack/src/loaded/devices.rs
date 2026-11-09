@@ -118,7 +118,10 @@ impl LoadedSyspack {
                     let bus = Arinc429Bus::new(channel, speed);
                     CotsDevice::Arinc429(bus.with_gap_bits(u64::from(gap_bits)))
                 }
-                DeviceKindSpec::PinholeCamera { .. } | DeviceKindSpec::Custom { .. } => continue,
+                // Pitot-static plumbing is an air-data source, not a COTS bus device.
+                DeviceKindSpec::PinholeCamera { .. }
+                | DeviceKindSpec::PitotStatic { .. }
+                | DeviceKindSpec::Custom { .. } => continue,
             };
             devices.push(MountedCotsDevice {
                 id: spec.id.clone(),

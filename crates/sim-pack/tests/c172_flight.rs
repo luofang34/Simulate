@@ -27,7 +27,7 @@ const CRUISE_ALPHA_RAD: f64 = 0.05;
 /// Full rich there cannot hold cruise, and a pilot leans for that reason.
 const CRUISE_MIXTURE: f64 = 0.7;
 const AIRFRAME_FUEL_KG: f64 = 114.0;
-const LOADED_MASS_KG: f64 = 1_111.0;
+const LOADED_MASS_KG: f64 = 1_110.732_985;
 
 #[cfg(test)]
 fn start() -> Geodetic {
@@ -111,13 +111,18 @@ fn the_exported_package_loads_and_declares_what_it_is() {
         }
     );
     assert!(matches!(manifest.dynamics, DynamicsSpec::JsbsimXml { .. }));
-    assert_eq!(manifest.components.len(), 6);
+    assert_eq!(manifest.components.len(), 8);
     assert_eq!(package.instantiate_cots_devices().unwrap().len(), 2);
     assert_eq!(package.camera_mounts().unwrap().len(), 1);
     let mass = package.tree().mass_properties().unwrap();
     assert!((mass.total_mass_kg - LOADED_MASS_KG).abs() < 1e-9);
-    let tank = package.component_id("fuel_tank").unwrap();
-    let fuel = package.tree().state(tank).unwrap().fluid_mass_kg;
+    let fuel: f64 = ["left_fuel_tank", "right_fuel_tank"]
+        .iter()
+        .map(|key| {
+            let tank = package.component_id(key).unwrap();
+            package.tree().state(tank).unwrap().fluid_mass_kg
+        })
+        .sum();
     assert_eq!(fuel, AIRFRAME_FUEL_KG);
     assert_eq!(package.component_id("airframe").unwrap(), ComponentId(0));
 }
