@@ -390,6 +390,7 @@ impl CockpitRig {
                     profile: flight.profile(),
                     active_vehicle: flight.free_vehicle(),
                     vehicle: flight.display_vehicle_state(),
+                    model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
                     ground_m: flight.display_ground_height_m(),
                     estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
                     sensor_exposures,

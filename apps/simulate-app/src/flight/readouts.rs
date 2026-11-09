@@ -17,6 +17,9 @@ use super::mode::Mode;
 use super::rewind::seconds;
 use crate::vehicles::FreeFlightVehicle;
 
+/// Metres per inch, the unit of JSBSim structural frames.
+const METRES_PER_INCH: f64 = 0.0254;
+
 struct CachedAeroSpecs {
     envelope: Option<(AirspeedEnvelope, f64)>,
     pec: Option<PitotStaticCalibration>,
@@ -136,6 +139,30 @@ impl Flight {
             f(&mut sys);
             session.block().queue_system_controls(sys);
         }
+    }
+
+    /// Body FRD metres from the centre of gravity, which the vehicle position tracks, to
+    /// the drawn airframe's origin at its fixed structural datum
+    /// ([`sim_maplibre::OwnshipVisualKind::structural_origin_in`]), so loading and fuel burn
+    /// move the CG inside the model rather than the model against its wheels. Zero for a
+    /// model or plant without a structural frame.
+    #[must_use]
+    pub fn model_origin_from_cg_frd_m(&self) -> DVec3 {
+        let Mode::Free {
+            vehicle, session, ..
+        } = &self.mode
+        else {
+            return DVec3::ZERO;
+        };
+        let visual = crate::map_rig::aircraft::ownship_visual(None, Some(*vehicle));
+        let (Some(origin), Some(cg)) = (
+            visual.structural_origin_in(),
+            session.block().plant().cg_structural_in(),
+        ) else {
+            return DVec3::ZERO;
+        };
+        let aft_right_up = DVec3::from_array(origin) - cg;
+        DVec3::new(-aft_right_up.x, aft_right_up.y, -aft_right_up.z) * METRES_PER_INCH
     }
 
     /// The ellipsoidal ground height the free-flight JSBSim plant was last given.

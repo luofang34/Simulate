@@ -64,43 +64,69 @@ fn contact(h: &VerifyHarness) -> Result<(Geodetic, f64, f64), AppSimError> {
     ))
 }
 
-#[test]
-#[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
-fn parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
+/// Parks `vehicle` at KEWR and KDEN and requires the drawn model's lowest point, its
+/// wheels at their static compression, within 5 cm of the drawn terrain, and the ground
+/// within 5 cm of it too.
+fn assert_parked_wheels_touch(
+    vehicle: FreeFlightVehicle,
+    asset: &UsdAircraftAsset,
+) -> Result<(), AppSimError> {
     let Some(mut h) = chase_harness()? else {
         return Ok(());
     };
     let db = AirportDatabase::builtin();
-    for (vehicle, asset) in [
-        (
-            FreeFlightVehicle::JsbsimC172,
-            UsdAircraftAsset::embedded_c172()?,
-        ),
-        (FreeFlightVehicle::JsbsimP38g, UsdAircraftAsset::p38g()?),
-    ] {
-        h.flight.select_vehicle(vehicle)?;
-        let lowest_m = f64::from(asset.lowest_point_z_m());
-        for code in ["KEWR", "KDEN"] {
-            let (idx, record) = db.by_code(code).ok_or_else(|| fail(code))?;
-            h.rig.supervisor_mut().set_free_airport(idx, 0);
-            h.flight
-                .spawn_at_airport_record(record, 0, SpawnMode::Threshold)?;
-            run_frames(&mut h, 120)?;
-            let (own, drawn, ground) = contact(&h)?;
-            let wheels = own.height_m + lowest_m;
-            let label = format!("{} {code}", vehicle.title());
-            assert!(
-                (wheels - drawn).abs() < CONTACT_TOLERANCE_M,
-                "{label}: wheels {wheels:.3} m vs drawn {drawn:.3} m MSL"
-            );
-            assert!(
-                (ground - drawn).abs() < CONTACT_TOLERANCE_M,
-                "{label}: ground {ground:.3} m vs drawn {drawn:.3} m MSL"
-            );
-        }
+    h.flight.select_vehicle(vehicle)?;
+    let lowest_m = f64::from(asset.lowest_point_z_m());
+    for code in ["KEWR", "KDEN"] {
+        let (idx, record) = db.by_code(code).ok_or_else(|| fail(code))?;
+        h.rig.supervisor_mut().set_free_airport(idx, 0);
+        h.flight
+            .spawn_at_airport_record(record, 0, SpawnMode::Threshold)?;
+        run_frames(&mut h, 120)?;
+        let (own, drawn, ground) = contact(&h)?;
+        let state = h.flight.vehicle_state();
+        let origin_up_m =
+            (state.attitude * h.flight.model_origin_from_cg_frd_m()).dot(LocalFrame::at(&own).up());
+        let compression_m = h
+            .flight
+            .articulation()
+            .gear_compression_m
+            .into_iter()
+            .fold(f64::INFINITY, f64::min);
+        let wheels = own.height_m + origin_up_m + lowest_m + compression_m;
+        let label = format!("{} {code}", vehicle.title());
+        assert!(
+            (wheels - drawn).abs() < CONTACT_TOLERANCE_M,
+            "{label}: wheels {wheels:.3} m vs drawn {drawn:.3} m MSL"
+        );
+        assert!(
+            (ground - drawn).abs() < CONTACT_TOLERANCE_M,
+            "{label}: ground {ground:.3} m vs drawn {drawn:.3} m MSL"
+        );
     }
     h.gpu.check_device()?;
     Ok(())
+}
+
+/// Within tolerance once drawn from its structural datum; the static check
+/// (`c172_wheels_meet_the_fdm_gear_red_until_the_model_wheelbase_matches`) still sees the
+/// model's mains 14 cm aft of the flight model's.
+#[test]
+#[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
+fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
+    assert_parked_wheels_touch(
+        FreeFlightVehicle::JsbsimC172,
+        &UsdAircraftAsset::embedded_c172()?,
+    )
+}
+
+/// Red until the P-38G's model gear and flight model gear agree: the model's wheels reach
+/// 22 cm below the flight model's contact points.
+#[test]
+#[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
+fn p38g_parked_wheels_touch_the_drawn_terrain_red_until_the_gear_geometry_agrees()
+-> Result<(), AppSimError> {
+    assert_parked_wheels_touch(FreeFlightVehicle::JsbsimP38g, &UsdAircraftAsset::p38g()?)
 }
 
 /// With room for only a few live tiles, flying to another airport and back evicts the

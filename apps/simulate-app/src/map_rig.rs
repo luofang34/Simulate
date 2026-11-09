@@ -24,7 +24,7 @@ use crate::supervisor_rig::SupervisorRig;
 use crate::vehicles::FreeFlightVehicle;
 use crate::world_surface::WorldSurfaceHandle;
 
-mod aircraft;
+pub(crate) mod aircraft;
 mod charts;
 mod efb;
 mod globe;
@@ -55,6 +55,8 @@ pub struct MapFrameInput<'a> {
     pub active_vehicle: Option<FreeFlightVehicle>,
     /// Display-interpolated truth: the physical scene's ownship.
     pub vehicle: VehicleState,
+    /// Body FRD metres from `vehicle`'s position (its CG) to its drawn model's origin.
+    pub model_origin_from_cg_frd_m: glam::DVec3,
     /// Ellipsoidal ground height under ownship, which receives its sun shadow.
     pub ground_m: Option<f64>,
     /// Display-interpolated navigation solution: the instrument maps' ownship.
@@ -379,12 +381,7 @@ impl MapLibreRig {
             .transpose()?;
         let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
         let mut aircraft = aircraft::traffic_aircraft(&truth_entities, sim_dur.as_secs_f64());
-        aircraft.push(aircraft::ownship_aircraft(
-            &input.vehicle,
-            input.articulation,
-            undulation_m,
-            input.ground_m,
-        ));
+        aircraft.push(aircraft::ownship_of(input, undulation_m));
         let sensor_role = aircraft::virtual_camera_role(&cam_spec);
         let window_role = if mode == OperatorViewportMode::SensorAperture {
             sensor_role
