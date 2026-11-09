@@ -25,6 +25,11 @@ const MAX_RUN_STEPS: u32 = 12_000;
 const OBSTACLE_FT: f64 = 50.0;
 /// Fraction of the lift-off speed at which the pilot starts lowering the tail.
 const ROTATE_FRACTION: f64 = 0.9;
+/// Pitch attitude held on the roll before rotation: the short-field technique's
+/// "Elevator Control -- SLIGHTLY TAIL LOW" from brake release (C172S POH
+/// Section 4), taken as about 3.4 degrees, nose wheel light; the elevator only
+/// reaches it once the slipstream and airspeed give it authority.
+const TAIL_LOW_ATTITUDE_RAD: f64 = 0.06;
 /// Pitch attitude held for lift-off: about 9 degrees, the lift coefficient a
 /// short-field lift-off near 1.15 stall speeds needs, short of a tail strike.
 const LIFT_OFF_ATTITUDE_RAD: f64 = 0.16;
@@ -62,7 +67,7 @@ pub(super) fn solve_takeoff(
     fdm.run_ic().map_err(fdm_err)?;
     apply_engine_overrides(fdm, base, overrides)?;
     let mixture = settle_on_brakes(fdm, bench)?;
-    let (ground_roll_ft, total_ft) = fly_takeoff(fdm, bench, mixture)?;
+    let (ground_roll_ft, total_ft, lift_off_kcas) = fly_takeoff(fdm, bench, mixture)?;
     restore_engine_tuning(fdm, base)?;
 
     let within = |sim: f64, target: f64| (sim - target).abs() <= target * tolerance_pct / 100.0;
@@ -73,6 +78,8 @@ pub(super) fn solve_takeoff(
         target_ground_roll_ft: bench.target_ground_roll_ft,
         sim_total_ft: total_ft,
         target_total_ft: bench.target_total_50ft_ft,
+        sim_lift_off_kcas: lift_off_kcas,
+        target_lift_off_kcas: bench.lift_off_kcas,
         passed: within(ground_roll_ft, bench.target_ground_roll_ft)
             && within(total_ft, bench.target_total_50ft_ft),
     })
@@ -109,29 +116,31 @@ fn settle_on_brakes(fdm: &mut Fdm, bench: &TakeoffBenchmark) -> Result<f64, Pack
     Ok(mixture)
 }
 
-/// Returns `(ground roll, total distance to the obstacle)` in feet.
+/// Returns the ground roll and total distance to the obstacle in feet and the
+/// calibrated airspeed at the step the last wheel left the runway, in knots.
 fn fly_takeoff(
     fdm: &mut Fdm,
     bench: &TakeoffBenchmark,
     mixture: f64,
-) -> Result<(f64, f64), PackError> {
+) -> Result<(f64, f64, f64), PackError> {
     let h0 = fdm.get_property("position/h-agl-ft").map_err(fdm_err)?;
     let mut distance_ft = 0.0_f64;
     let mut ground_roll_ft = None;
+    let mut lift_off_kcas = 0.0_f64;
     for _ in 0..MAX_RUN_STEPS {
         let vc = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
         let theta = fdm.get_property("attitude/theta-rad").map_err(fdm_err)?;
         let q = fdm.get_property("velocities/q-rad_sec").map_err(fdm_err)?;
         let airborne = ground_roll_ft.is_some();
-        // Short-field technique: nose wheel light on the roll, the tail lowered
-        // from 90% of the lift-off speed so the airplane flies itself off at it,
-        // then the obstacle speed held with pitch.
+        // Short-field technique: slightly tail low on the roll, the tail lowered
+        // further from 90% of the lift-off speed so the airplane flies itself off
+        // at it, then the obstacle speed held with pitch.
         let wanted_theta = if airborne {
             (0.15 + 0.03 * (vc - bench.obstacle_kcas)).clamp(0.0, 0.30)
         } else if vc >= ROTATE_FRACTION * bench.lift_off_kcas {
             LIFT_OFF_ATTITUDE_RAD
         } else {
-            0.0
+            TAIL_LOW_ATTITUDE_RAD
         };
         let nose_up = ((wanted_theta - theta) * 4.0 - 1.5 * q).clamp(-1.0, 1.0);
         brakes(fdm, 0.0)?;
@@ -139,12 +148,13 @@ fn fly_takeoff(
         distance_ft += fdm.get_property("velocities/vg-fps").map_err(fdm_err)? * DT_S;
         if ground_roll_ft.is_none() && !on_ground(fdm)? {
             ground_roll_ft = Some(distance_ft);
+            lift_off_kcas = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
         }
         let height = fdm.get_property("position/h-agl-ft").map_err(fdm_err)? - h0;
         if let Some(roll) = ground_roll_ft
             && height >= OBSTACLE_FT
         {
-            return Ok((roll, distance_ft));
+            return Ok((roll, distance_ft, lift_off_kcas));
         }
     }
     Err(PackError::CalibrationRun {

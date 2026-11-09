@@ -143,16 +143,18 @@ impl CalibrationReport {
     fn append_takeoffs(&self, out: &mut String) {
         if !self.takeoffs.is_empty() {
             out.push_str(
-                "\n## Takeoff Distance\n| Condition | Sim roll (ft) | POH roll (ft) | Sim 50 ft (ft) | POH 50 ft (ft) | Status |\n|---|---:|---:|---:|---:|:---:|\n",
+                "\n## Takeoff Distance\n| Condition | Sim roll (ft) | POH roll (ft) | Sim 50 ft (ft) | POH 50 ft (ft) | Sim lift-off (KCAS) | POH lift-off (KCAS) | Status |\n|---|---:|---:|---:|---:|---:|---:|:---:|\n",
             );
             for t in &self.takeoffs {
                 out.push_str(&format!(
-                    "| {} | {:.0} | {:.0} | {:.0} | {:.0} | {} |\n",
+                    "| {} | {:.0} | {:.0} | {:.0} | {:.0} | {:.1} | {:.1} | {} |\n",
                     t.label,
                     t.sim_ground_roll_ft,
                     t.target_ground_roll_ft,
                     t.sim_total_ft,
                     t.target_total_ft,
+                    t.sim_lift_off_kcas,
+                    t.target_lift_off_kcas,
                     pass_str(t.passed)
                 ));
             }
