@@ -1,5 +1,9 @@
 //! The factory finish: Olive Drab 41 on upper and side surfaces over
-//! Neutral Gray 43 below.
+//! Neutral Gray 43 below. The demarcation is hard and follows the split
+//! the airframe's geometry already makes between its upper and lower
+//! skins; no Lockheed finish specification for the line's height or edge
+//! was found, so neither is claimed as sourced. The colours are the
+//! airframe palette's.
 
 use glam::Vec3;
 

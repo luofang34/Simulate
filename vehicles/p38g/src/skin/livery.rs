@@ -7,8 +7,13 @@ const PORT: f32 = -1.0;
 const STARBOARD: f32 = 1.0;
 
 /// Insignia of the period: the white star in a blue disc, no bars and no
-/// surround (bars and red surround from 29 June 1943; red centre deleted
-/// May 1942), on the upper port and lower starboard wing and both booms.
+/// surround (red centre deleted 15 May 1942, bars from 28 June 1943), on
+/// the upper port and lower starboard wing only, the Air Corps rule since
+/// 26 February 1941 (as summarised by Wikipedia, "United States military
+/// aircraft national insignia"; the T.O. 07-1-1 text itself was not
+/// reached). The star's points meeting the disc's rim follows period
+/// photographs. The 45 in wing diameter at WS 205 is carried from the
+/// earlier model and is unsourced.
 const WING_STAR: Art = Art::Insignia { diameter_in: 45.0 };
 /// The boom insignia measured on 41-7631 (USAAF, RAF Goxhill 1942) against
 /// its 36 in main tyre: about 25 in, centred about 24 in aft of the wing's

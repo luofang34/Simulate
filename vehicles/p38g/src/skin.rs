@@ -127,11 +127,11 @@ impl P38Skin {
         if coat == scheme::Coat::Olive && relief.touch_up > 0.0 {
             // Fresh olive drab, darker and less chalky than the faded skin.
             let (fresh, gloss) = scheme::base(coat);
-            worn.albedo = worn.albedo.lerp(fresh * 0.92, relief.touch_up * 0.85);
+            worn.albedo = worn.albedo.lerp(fresh * 0.8, relief.touch_up * 0.95);
             worn.roughness += (gloss - worn.roughness) * relief.touch_up;
         }
         // Dirt in the gaps and around the rivet heads; the gap holds shadow.
-        let dirt = 1.0 - 0.55 * relief.seam - 0.10 * relief.rivet;
+        let dirt = 1.0 - 0.7 * relief.seam - 0.12 * relief.rivet;
         SkinPaint {
             albedo: worn.albedo * dirt,
             roughness: (worn.roughness + 0.15 * relief.seam).min(1.0),

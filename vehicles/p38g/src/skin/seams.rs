@@ -164,7 +164,7 @@ impl Seams {
 }
 
 /// Share of seams whose panels were off and touched up again.
-const TOUCHED_UP: f32 = 0.4;
+const TOUCHED_UP: f32 = 0.55;
 
 /// How much fresh paint lies at `p` beside the break of `hit`: a brushed
 /// band an inch or three wide along a third or so of the seams.

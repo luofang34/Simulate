@@ -65,13 +65,13 @@ fn fade(worn: &mut Worn, at: &Exposure) {
     let sun = (0.25 + 0.75 * up) * at.sky.clamp(0.0, 1.0);
     let blotch = noise::fractal(at.position, 1.9);
     let strength = match at.coat {
-        Coat::Olive => 0.85,
+        Coat::Olive => 1.0,
         Coat::Gray => 0.25,
     };
     let fade = (strength * sun * (0.2 + 0.95 * blotch * blotch)).clamp(0.0, 1.0);
     let luma = worn.albedo.dot(Vec3::new(0.2126, 0.7152, 0.0722));
     let chalked = Vec3::splat(luma) * Vec3::new(1.12, 1.04, 0.86) * 1.75 + Vec3::splat(0.012);
-    worn.albedo = worn.albedo.lerp(chalked, fade * 0.75);
+    worn.albedo = worn.albedo.lerp(chalked, fade * 0.9);
     worn.roughness = (worn.roughness + 0.18 * fade).min(0.95);
 }
 
