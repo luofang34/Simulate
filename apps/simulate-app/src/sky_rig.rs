@@ -5,33 +5,53 @@
 use glam::DVec3;
 use sim_core::SimInstant;
 use sim_geo::BodyEllipsoid;
-use sim_maplibre::{
-    CelestialDisc, CelestialEarthShadow, CelestialSkyInput, CelestialStar, CelestialTwilight,
-};
+use sim_maplibre::{CelestialDisc, CelestialEarthShadow, CelestialStar};
 use sim_navigate::{CelestialClock, CelestialFrame, ReferenceBody, SkyTimeMode, StarSkySample};
+use sim_render::EnvironmentFrame;
 use sim_scenario::ScenarioProfile;
 
+use crate::environment::environment_frame;
 use crate::esc_menu::Step;
 use crate::flight::Flight;
 
 /// One frame's sky for the renderers.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SkyFrame<'a> {
-    /// Unit direction to the Sun in the observer body's fixed axes.
-    pub sun_direction_ecef: DVec3,
-    /// The full sky for the truth scene, or `None` to light it by the Sun alone.
-    pub celestial: Option<CelestialSkyInput<'a>>,
+    /// Sun, twilight, atmosphere, and fog: what every renderer lights and fogs the world by.
+    pub environment: EnvironmentFrame,
+    /// What only the truth scene draws on top, or `None` to light it by the Sun alone.
+    pub bodies: Option<SkyBodies<'a>>,
+}
+
+/// The Moon, Earth's shadow, and the stars for the truth scene.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SkyBodies<'a> {
+    /// Lunar disc, when the Moon is drawn.
+    pub moon: Option<CelestialDisc>,
+    /// Earth's shadow, during a lunar eclipse.
+    pub earth_shadow: Option<CelestialEarthShadow>,
+    /// Replacement star list; `None` keeps the stars already uploaded.
+    pub stars: Option<&'a [CelestialStar]>,
 }
 
 #[cfg(any(test, not(target_arch = "wasm32")))]
 impl SkyFrame<'static> {
-    /// A sky lit only by a fixed Sun direction, for deterministic headless renders.
+    /// A sky over `body` lit only by a fixed Sun direction, for deterministic headless renders.
     #[must_use]
-    pub const fn fixed_sun(sun_direction_ecef: DVec3) -> Self {
+    pub fn fixed_sun(body: BodyEllipsoid, sun_direction_ecef: DVec3) -> Self {
         Self {
-            sun_direction_ecef,
-            celestial: None,
+            environment: environment_frame(
+                &CelestialFrame::with_sun(sun_direction_ecef, 0.0),
+                body,
+            ),
+            bodies: None,
         }
+    }
+
+    /// [`Self::fixed_sun`] with the scenario world's body and Sun.
+    #[must_use]
+    pub fn of_world(world: sim_scenario::ScenarioWorld) -> Self {
+        Self::fixed_sun(world.body(), world.sun_direction_ecef())
     }
 }
 
@@ -90,7 +110,8 @@ impl SkyRig {
         observer_fixed_m: DVec3,
         live_wall_utc_s: f64,
     ) -> SkyFrame<'_> {
-        let body = if flight.world().body() == BodyEllipsoid::MOON_IAU {
+        let world_body = flight.world().body();
+        let body = if world_body == BodyEllipsoid::MOON_IAU {
             ReferenceBody::Moon
         } else {
             ReferenceBody::Earth
@@ -112,8 +133,8 @@ impl SkyRig {
                 && observer_fixed_m.distance_squared(c.observer_fixed_m) < EPHEMERIS_MAX_MOVE_M2
         }) {
             return SkyFrame {
-                sun_direction_ecef: cached.frame.sun_direction_fixed,
-                celestial: Some(sky_input(&cached.frame, None)),
+                environment: environment_frame(&cached.frame, world_body),
+                bodies: Some(sky_bodies(&cached.frame, None)),
             };
         }
         let frame = self.clock.evaluate(
@@ -129,7 +150,7 @@ impl SkyRig {
             self.stars.extend(stars.iter().map(celestial_star));
         });
         let stars = refreshed.map(|()| self.stars.as_slice());
-        let out_sun = frame.sun_direction_fixed;
+        let environment = environment_frame(&frame, world_body);
         self.cached = Some(CachedSkyEval {
             mode: self.mode,
             body,
@@ -140,10 +161,9 @@ impl SkyRig {
             live_wall_utc_s,
             frame,
         });
-        let celestial = self.cached.as_ref().map(|c| sky_input(&c.frame, stars));
         SkyFrame {
-            sun_direction_ecef: out_sun,
-            celestial,
+            environment,
+            bodies: self.cached.as_ref().map(|c| sky_bodies(&c.frame, stars)),
         }
     }
 }
@@ -156,15 +176,9 @@ pub fn wall_clock_utc_s() -> f64 {
         .map_or(0.0, |d| d.as_secs_f64())
 }
 
-/// The scenario's historical start time, if it has one; other flights follow live UTC.
-fn sky_input<'a>(
-    frame: &CelestialFrame,
-    stars: Option<&'a [CelestialStar]>,
-) -> CelestialSkyInput<'a> {
-    CelestialSkyInput {
-        sun_direction_ecef: frame.sun_direction_fixed,
-        sun_angular_radius_deg: frame.sun_angular_radius_deg,
-        sun_visible_fraction: frame.sun_visible_fraction,
+/// What the truth scene draws beyond the Sun, from the ephemeris frame.
+fn sky_bodies<'a>(frame: &CelestialFrame, stars: Option<&'a [CelestialStar]>) -> SkyBodies<'a> {
+    SkyBodies {
         moon: frame.moon_disc.map(|moon| CelestialDisc {
             direction_ecef: moon.direction_ecef,
             angular_radius_deg: moon.angular_radius_deg,
@@ -175,11 +189,6 @@ fn sky_input<'a>(
             penumbra_deg: shadow.penumbra_radius_deg,
             danjon: shadow.danjon,
         }),
-        twilight: CelestialTwilight {
-            night_end_deg: frame.twilight_night_end_deg,
-            day_start_deg: frame.twilight_day_start_deg,
-            night_brightness: frame.night_brightness,
-        },
         stars,
     }
 }
@@ -228,10 +237,10 @@ mod tests {
         assert_eq!(rig.cycle(Step::Prev), SkyTimeMode::Auto);
         let observer = flight.vehicle_state().position_ecef;
         let first = rig.evaluate(&flight, observer, 1_782_864_000.0);
-        assert!((first.sun_direction_ecef.length() - 1.0).abs() < 1e-6);
-        let stars = first.celestial.and_then(|c| c.stars).map_or(0, <[_]>::len);
+        assert!((first.environment.sun.direction_fixed.length() - 1.0).abs() < 1e-6);
+        let stars = first.bodies.and_then(|c| c.stars).map_or(0, <[_]>::len);
         assert!(stars > 1_000, "naked-eye starfield, got {stars}");
         let second = rig.evaluate(&flight, observer, 1_782_864_000.5);
-        assert!(second.celestial.is_some_and(|c| c.stars.is_none()));
+        assert!(second.bodies.is_some_and(|c| c.stars.is_none()));
     }
 }

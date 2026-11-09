@@ -355,7 +355,7 @@ fn settle_tiles(
     camera: &sim_render::Camera,
     size: [u32; 2],
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(flight.world());
     let started = Instant::now();
     let mut quiet = 0_u32;
     for pass in 0..SETTLE_MAX_PASSES {

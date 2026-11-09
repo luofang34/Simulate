@@ -217,7 +217,7 @@ fn step_all_earth_viewports(
             size,
             flight,
             &cam,
-            &SkyFrame::fixed_sun(world.sun_direction_ecef()),
+            &SkyFrame::of_world(world),
             &exposures,
         )?;
         if enable_maps {
@@ -263,7 +263,7 @@ fn verify_vector_hud_and_menu_overlay(
     rig.supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Cockpit);
     let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
-    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(flight.world());
     let _need_globe = rig.prepare_frame(&gpu.queue, size, flight, &cam, &sky, &[])?;
     assert!(rig.avionics().hud_view().is_some(), "the vector HUD drew");
 
@@ -326,7 +326,7 @@ fn verify_avionics_presets(
     rig.supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Cockpit);
     let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
-    let sun = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sun = SkyFrame::of_world(flight.world());
     for (preset, maps_expected, dock_panels) in [
         (AvionicsPreset::NoMapGauges, 0, 2),
         (AvionicsPreset::SingleMovingMap, 1, 3),
@@ -369,7 +369,7 @@ fn verify_airport_patterns_and_virtual_cameras(
                 size,
                 flight,
                 &cam,
-                &SkyFrame::fixed_sun(world.sun_direction_ecef()),
+                &SkyFrame::of_world(world),
                 &[],
             )?;
             let title_str = telemetry::title(
@@ -409,7 +409,7 @@ fn verify_apollo_lunar_fallback(
         size,
         flight,
         &cam,
-        &SkyFrame::fixed_sun(ScenarioWorld::LunarTranquility.sun_direction_ecef()),
+        &SkyFrame::of_world(ScenarioWorld::LunarTranquility),
         &[],
     )?;
     assert!(

@@ -1,7 +1,7 @@
 use sim_core::CameraFrameCapture;
 use sim_render::{
-    ApertureFrame, ApertureWaveband, CameraPose, OcclusionOverlayConfig, OffscreenAperture,
-    PinholeProjection, SceneLighting, SensorAperturePass,
+    ApertureFrame, ApertureWaveband, CameraPose, EnvironmentFrame, OcclusionOverlayConfig,
+    OffscreenAperture, PinholeProjection, SensorAperturePass,
 };
 
 use crate::ScenarioError;
@@ -13,8 +13,8 @@ mod tests;
 /// was, and this says what it saw.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CaptureExposure {
-    /// Where the Sun is.
-    pub lighting: SceneLighting,
+    /// The light and air of the frame, shared with every other renderer.
+    pub environment: EnvironmentFrame,
     /// What the camera senses.
     pub waveband: ApertureWaveband,
     /// What obstructs the view.
@@ -31,7 +31,7 @@ pub fn aperture_frame(capture: &CameraFrameCapture, exposure: &CaptureExposure) 
             position_ecef: capture.pose.position_ecef,
             orientation: capture.pose.orientation,
         },
-        lighting: exposure.lighting,
+        environment: exposure.environment,
         waveband: exposure.waveband,
         occlusion: exposure.occlusion,
     }

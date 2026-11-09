@@ -4,7 +4,7 @@
 use std::collections::hash_map::Entry;
 
 use sim_geo::BodyEllipsoid;
-use sim_render::{Camera, FrameOutcome, SceneLighting};
+use sim_render::{Camera, EnvironmentFrame, FrameOutcome};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
 use winit::event_loop::ActiveEventLoop;
 
@@ -170,9 +170,7 @@ impl FlightApp {
         let sky = self
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
-        let lighting = SceneLighting {
-            sun_direction_ecef: sky.sun_direction_ecef,
-        };
+        let environment = sky.environment;
         let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
             (Some(renderer), Some(rig)) => match rig.prepare_frame(
                 renderer.queue(),
@@ -209,7 +207,7 @@ impl FlightApp {
         self.present(
             event_loop,
             world,
-            need_globe.then_some((&camera, &lighting)),
+            need_globe.then_some((&camera, &environment)),
         );
     }
 
@@ -217,7 +215,7 @@ impl FlightApp {
         &mut self,
         event_loop: &ActiveEventLoop,
         world: ScenarioWorld,
-        globe: Option<(&Camera, &SceneLighting)>,
+        globe: Option<(&Camera, &EnvironmentFrame)>,
     ) {
         let (Some(renderer), Some(rig)) = (self.renderer.as_mut(), self.cockpit_rig.as_ref())
         else {

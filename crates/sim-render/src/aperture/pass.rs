@@ -103,14 +103,15 @@ impl SensorAperturePass {
         frame: &ApertureFrame,
     ) {
         let projection = target.projection();
-        let params = FrameParams {
-            view_proj: projection.view_projection(&frame.pose),
-            sun_direction: frame.lighting.sun_direction_ecef,
-            thermal: match frame.waveband {
-                ApertureWaveband::ThermalLwir(scale) => thermal_uniform(&scale),
-                _ => [0.0; 4],
-            },
+        let thermal = match frame.waveband {
+            ApertureWaveband::ThermalLwir(scale) => thermal_uniform(&scale),
+            _ => [0.0; 4],
         };
+        let params = FrameParams::visible(
+            projection.view_projection(&frame.pose),
+            &frame.environment,
+            thermal,
+        );
         self.scene
             .write_frame(queue, &params, frame.pose.position_ecef);
         let (stars, reticle) = match &frame.waveband {
@@ -127,7 +128,7 @@ impl SensorAperturePass {
             label: Some("aperture"),
         });
         {
-            let mut pass = begin_pass(&mut encoder, target, &frame.waveband);
+            let mut pass = begin_pass(&mut encoder, target, frame);
             pass.set_pipeline(match frame.waveband {
                 ApertureWaveband::ThermalLwir(_) => &self.thermal,
                 _ => &self.visible,
@@ -165,6 +166,8 @@ impl SensorAperturePass {
             view_proj: target.projection().view_projection(pose),
             sun_direction: glam::DVec3::ZERO,
             thermal: [0.0; 4],
+            exposure: 1.0,
+            fog: [0.0; 4],
         };
         self.scene.write_frame(queue, &params, pose.position_ecef);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -191,13 +194,17 @@ fn thermal_uniform(scale: &ThermalScale) -> [f32; 4] {
     ]
 }
 
+/// Clears to the sky at the camera: the frame's sky in visible light, black
+/// space through a star optic, and cold sky in the thermal band.
 fn begin_pass<'a>(
     encoder: &'a mut wgpu::CommandEncoder,
     target: &OffscreenAperture,
-    waveband: &ApertureWaveband,
+    frame: &ApertureFrame,
 ) -> wgpu::RenderPass<'a> {
-    let [r, g, b] = match waveband {
-        ApertureWaveband::VisibleRgb { sky_linear_rgb } => *sky_linear_rgb,
+    let [r, g, b] = match frame.waveband {
+        ApertureWaveband::VisibleRgb => frame
+            .environment
+            .sky_linear_rgb_at(frame.pose.position_ecef),
         _ => [0.0; 3],
     };
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

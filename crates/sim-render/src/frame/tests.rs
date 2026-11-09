@@ -16,10 +16,15 @@ fn offsets_keep_their_precision_far_from_the_origin() {
         view_proj: Mat4::IDENTITY,
         sun_direction: DVec3::Z * 3.0,
         thermal: [1.0, 2.0, 3.0, 4.0],
+        exposure: 0.5,
+        fog: [5.0, 6.0, 7.0, 8.0],
     };
     let mut block = Box::new([9.0_f32; FRAME_UNIFORM_FLOATS]);
     write_frame_uniform(&mut block, &params, eye, &[centre]);
-    assert_eq!(block[16..24], [0.0, 0.0, 1.0, 0.0, 1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(block[24..28], [0.5, 1.5, -2.5, 0.0]);
-    assert_eq!(block[28..32], [0.0; 4], "unused slots are cleared");
+    assert_eq!(
+        block[16..28],
+        [0.0, 0.0, 1.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    );
+    assert_eq!(block[28..32], [0.5, 1.5, -2.5, 0.0]);
+    assert_eq!(block[32..36], [0.0; 4], "unused slots are cleared");
 }

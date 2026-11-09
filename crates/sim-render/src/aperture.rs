@@ -1,6 +1,6 @@
 use sim_geo::InertialTransform;
 
-use crate::{CameraPose, SceneLighting};
+use crate::{CameraPose, EnvironmentFrame};
 
 mod exposure_blend;
 mod microbolometer;
@@ -53,11 +53,9 @@ pub struct ThermalScale {
 /// What part of the spectrum a frame is rendered in.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ApertureWaveband {
-    /// Sunlit terrain with orthoimagery under a uniform sky.
-    VisibleRgb {
-        /// Sky colour, linear RGB.
-        sky_linear_rgb: [f32; 3],
-    },
+    /// Sunlit terrain with orthoimagery under the frame's sky, seen through
+    /// its fog.
+    VisibleRgb,
     /// Stars on black space with the sunlit body's limb in front of them, as
     /// seen through a navigation optic.
     StarfieldOptical {
@@ -90,8 +88,8 @@ pub struct PresentedViewport {
 pub struct ApertureFrame {
     /// Where the camera is.
     pub pose: CameraPose,
-    /// Where the Sun is.
-    pub lighting: SceneLighting,
+    /// The light and air the camera sees through.
+    pub environment: EnvironmentFrame,
     /// What the camera senses.
     pub waveband: ApertureWaveband,
     /// What obstructs the view, drawn in every waveband.

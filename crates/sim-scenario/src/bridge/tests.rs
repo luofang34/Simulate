@@ -9,7 +9,7 @@ use sim_geo::{
     BodyEllipsoid, Geodetic, InertialTransform, SensorIntrinsics, UtcTime, ecef_to_geodetic,
     nav_star_by_octal_id,
 };
-use sim_render::{HeadlessGpu, reversed_z_range_m};
+use sim_render::{HeadlessGpu, Sunlight, TwilightRamp, reversed_z_range_m};
 use sim_scenery::{
     CatalogScenery, ElevationSource, LunarTranquilityScenery, SyntheticCorridorSpec, WEST_CRATER,
 };
@@ -73,9 +73,15 @@ fn pass_for(gpu: &HeadlessGpu, world: ScenarioWorld) -> SensorAperturePass {
 
 fn exposure(world: ScenarioWorld, waveband: ApertureWaveband) -> CaptureExposure {
     CaptureExposure {
-        lighting: SceneLighting {
-            sun_direction_ecef: world.sun_direction_ecef(),
-        },
+        environment: EnvironmentFrame::clear(
+            world.body(),
+            Sunlight::uneclipsed(world.sun_direction_ecef(), None),
+            TwilightRamp {
+                night_end_deg: -6.0,
+                day_start_deg: 2.0,
+                night_brightness: 0.22,
+            },
+        ),
         waveband,
         occlusion: OcclusionOverlayConfig::default(),
         near_m: NEAR_M,
@@ -104,9 +110,7 @@ fn the_frame_carries_the_capture_pose_unchanged() {
         &capture,
         &exposure(
             ScenarioWorld::DelawareCorridor,
-            ApertureWaveband::VisibleRgb {
-                sky_linear_rgb: [0.4, 0.6, 0.9],
-            },
+            ApertureWaveband::VisibleRgb,
         ),
     );
     assert_eq!(frame.pose.position_ecef, capture.pose.position_ecef);
@@ -127,9 +131,7 @@ fn a_corridor_capture_renders_the_draped_terrain_at_its_true_range() {
     let capture = belly_capture(&BodyEllipsoid::WGS84, run.vehicle());
     let world = ScenarioWorld::DelawareCorridor;
     let mut pass = pass_for(&gpu, world);
-    let waveband = ApertureWaveband::VisibleRgb {
-        sky_linear_rgb: [0.4, 0.6, 0.9],
-    };
+    let waveband = ApertureWaveband::VisibleRgb;
     let target = render_capture(
         &gpu.device,
         &gpu.queue,
@@ -259,12 +261,7 @@ fn unusable_optics_are_refused_before_anything_renders() {
     let capture = belly_capture(&BodyEllipsoid::WGS84, vehicle);
     let world = ScenarioWorld::EarthGlobe;
     let mut pass = pass_for(&gpu, world);
-    let mut bad = exposure(
-        world,
-        ApertureWaveband::VisibleRgb {
-            sky_linear_rgb: [0.0; 3],
-        },
-    );
+    let mut bad = exposure(world, ApertureWaveband::VisibleRgb);
     bad.near_m = 0.0;
     assert!(matches!(
         render_capture(&gpu.device, &gpu.queue, &mut pass, &capture, &bad),

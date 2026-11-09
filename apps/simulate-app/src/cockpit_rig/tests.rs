@@ -38,7 +38,7 @@ fn the_efb_draws_top_right_then_expands_over_the_dock() -> Result<(), AppSimErro
         .set_viewport_mode(OperatorViewportMode::Cockpit);
     rig.set_avionics_preset(AvionicsPreset::SingleMovingMap)?;
     let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
-    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(flight.world());
     let _globe = rig.prepare_frame(&gpu.queue, size, &flight, &cam, &sky, &[])?;
 
     let chrome = rig.efb_chrome(flight.world()).expect("the EFB drew");
