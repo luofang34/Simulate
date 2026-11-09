@@ -4,9 +4,9 @@
 //! [`MasterClockBridge`] maps [`sim_core::SimInstant`] onto Navigate's monotonic
 //! stamps. [`VisualFixAdapter`] turns harness fixes into
 //! [`navigate_visual::Estimate`]s, labels each anchor in a real
-//! [`navigate_visual_session::VisualSession`], takes the camera lever arm off,
+//! [`navigate_visual::session::VisualSession`], takes the camera lever arm off,
 //! and admits only first-in-cell anchors through
-//! [`navigate_visual_fusion::VisualFixSource`]. [`NavigationLoop`] replays those
+//! [`navigate_visual::fusion_bridge::VisualFixSource`]. [`NavigationLoop`] replays those
 //! fixes and [`KinematicAiding`] velocities in acquisition order into
 //! [`navigate_fusion::NavigationFilter`], and [`compare_with_truth`] scores each
 //! solution against simulation truth.

@@ -1,7 +1,7 @@
 use navigate_contract::{
-    ClockDomainId, FaultDetection, IntegrityAssessment, MonotonicNanos, NedVelocity, Redundancy,
-    SensorClass, SolutionQuality, SolutionStamp, SourceComposition, SourceEpoch, SymmetricCov3,
-    WrappingSequence,
+    ClockDomainId, Ellipsoid, FaultDetection, IntegrityAssessment, MonotonicNanos, NedVelocity,
+    Redundancy, SensorClass, SolutionQuality, SolutionStamp, SourceComposition, SourceEpoch,
+    SymmetricCov3, WrappingSequence,
 };
 use sim_geo::{Geodetic, LocalFrame, geodetic_to_ecef};
 
@@ -29,6 +29,7 @@ fn solution(position: &Geodetic, sigma_m: f64) -> NavigationSolution {
             FaultDetection::Unavailable,
         ),
         contributing,
+        Ellipsoid::WGS84,
     )
 }
 

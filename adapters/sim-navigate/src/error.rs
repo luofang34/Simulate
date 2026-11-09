@@ -1,8 +1,8 @@
 use navigate_contract::DurationNanos;
 use navigate_geodesy::GeodesyError;
 use navigate_visual::VisualError;
-use navigate_visual_fusion::VisualFusionError;
-use navigate_visual_session::SessionError;
+use navigate_visual::fusion_bridge::VisualFusionError;
+use navigate_visual::session::SessionError;
 use sim_core::SimInstant;
 
 /// Why the bridge could not carry a value into Navigate.

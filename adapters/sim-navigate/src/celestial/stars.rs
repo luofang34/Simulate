@@ -16,8 +16,8 @@ const LOCUS_MAX_K: f64 = 25_000.0;
 const SUN: i32 = 10;
 const MOON: i32 = 301;
 const EARTH_J2000: FrameId = FrameId {
-    center: 399,
-    orientation: 1,
+    center_naif_id: 399,
+    orientation_naif_id: 1,
 };
 
 /// The bright stars in ECEF axes at the civil reading `epoch`.

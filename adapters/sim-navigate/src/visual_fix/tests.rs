@@ -1,8 +1,8 @@
 use glam::DMat3;
 use navigate_contract::{ClockDomainId, SourceEpoch, SourceId};
 use navigate_fusion::ObservationValue;
-use navigate_visual_fusion::VerticalDatum;
-use navigate_visual_session::{RegionChange, SurfaceModel};
+use navigate_visual::fusion_bridge::VerticalDatum;
+use navigate_visual::session::{RegionChange, SurfaceModel};
 use sim_core::{MapCell, VisualEstimate};
 
 use super::*;
@@ -88,7 +88,7 @@ fn fix(seconds: u64, position_enu_m: DVec3, eligibility: FusionEligibility) -> V
     }
 }
 
-fn admitted(disposition: FixDisposition) -> navigate_visual_fusion::VisualFix {
+fn admitted(disposition: FixDisposition) -> FusionVisualFix {
     match disposition {
         FixDisposition::Admitted(fix) => *fix,
         other => panic!("{other:?}"),

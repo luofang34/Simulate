@@ -18,8 +18,6 @@ navigate-contract = { workspace = true }
 navigate-fusion = { workspace = true }
 navigate-geodesy = { workspace = true }
 navigate-visual = { workspace = true }
-navigate-visual-fusion = { workspace = true }
-navigate-visual-session = { workspace = true }
 sim-scenario = { workspace = true }
 sim-scenery = { workspace = true }
 sha2 = { workspace = true }

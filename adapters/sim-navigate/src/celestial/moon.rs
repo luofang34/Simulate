@@ -12,8 +12,8 @@ const SUN: i32 = 10;
 /// The Moon's centre with J2000 axes, a frame [`AnalyticEphemeris`] accepts
 /// for an observer.
 const MOON_J2000: FrameId = FrameId {
-    center: 301,
-    orientation: 1,
+    center_naif_id: 301,
+    orientation_naif_id: 1,
 };
 
 /// The rotation from J2000 to the Moon's mean-Earth/polar-axis frame at the

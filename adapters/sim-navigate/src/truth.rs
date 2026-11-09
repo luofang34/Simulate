@@ -1,7 +1,7 @@
 use glam::DVec3;
 use nalgebra::{Matrix3, Vector3};
 use navigate_contract::{GeodeticPosition, NavigationSolution};
-use navigate_geodesy::LocalTangentPlane;
+use navigate_geodesy::{BodyEllipsoid, LocalTangentPlane};
 use sim_geo::{ecef_to_geodetic, geodetic_to_ecef};
 
 use crate::NavigateBridgeError;
@@ -36,8 +36,8 @@ pub fn compare_with_truth(
     solution: &NavigationSolution,
     truth_ecef: DVec3,
 ) -> Result<TruthComparison, NavigateBridgeError> {
-    let plane =
-        LocalTangentPlane::new(solution.position).map_err(NavigateBridgeError::SolutionPlane)?;
+    let plane = LocalTangentPlane::new(solution.position, BodyEllipsoid::WGS84)
+        .map_err(NavigateBridgeError::SolutionPlane)?;
     let truth = ecef_to_geodetic(truth_ecef);
     let offset = plane.to_ned(&GeodeticPosition::new(
         truth.lat_rad,

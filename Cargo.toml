@@ -74,13 +74,12 @@ indicate-instrument-symbology = { path = "../Indicate/crates/indicate-instrument
 indicate-instrument-volumes = { path = "../Indicate/sets/indicate-instrument-volumes" }
 indicate-interaction = { path = "../Indicate/crates/indicate-interaction" }
 mbd-core = { path = "../mbd/crates/mbd-core" }
-navigate-celestial = { git = "https://github.com/luofang34/Navigate", rev = "cdea338b66cccc9bed7fb7629a02c5bbc0f7f817" }
-navigate-contract = { path = "../Navigate/crates/navigate-contract" }
-navigate-fusion = { path = "../Navigate/crates/navigate-fusion" }
-navigate-geodesy = { path = "../Navigate/crates/navigate-geodesy" }
-navigate-visual = { path = "../Navigate/crates/navigate-visual" }
-navigate-visual-fusion = { path = "../Navigate/crates/navigate-visual-fusion" }
-navigate-visual-session = { path = "../Navigate/crates/navigate-visual-session" }
+navigate-camera = { path = "../Navigate-wt-imaging/crates/navigate-camera" }
+navigate-celestial = { path = "../Navigate-wt-imaging/crates/navigate-celestial" }
+navigate-contract = { path = "../Navigate-wt-imaging/crates/navigate-contract" }
+navigate-fusion = { path = "../Navigate-wt-imaging/crates/navigate-fusion" }
+navigate-geodesy = { path = "../Navigate-wt-imaging/crates/navigate-geodesy" }
+navigate-visual = { path = "../Navigate-wt-imaging/crates/navigate-visual" }
 pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 pilotage-aircraft = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
 pilotage-calibration-id = { git = "https://github.com/luofang34/Pilotage", rev = "428dc5c8a62a88d17318b5ef7c339e2ab3af8acd" }
@@ -126,7 +125,7 @@ codegen-units = 1
 [profile.dev.package.nalgebra]
 opt-level = 2
 
-[profile.dev.package.navigate-visual-session]
+[profile.dev.package.navigate-visual]
 opt-level = 2
 
 [profile.dev.package.navigate-fusion]

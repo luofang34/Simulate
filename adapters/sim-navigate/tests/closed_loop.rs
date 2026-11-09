@@ -9,10 +9,10 @@ use navigate_contract::{
     SourceId,
 };
 use navigate_visual::MapRevision;
-use navigate_visual_fusion::{
+use navigate_visual::fusion_bridge::{
     EvidenceIndependence, VerticalDatum, VisualErrorBudget, VisualFixSource, VisualSourceIdentity,
 };
-use navigate_visual_session::{
+use navigate_visual::session::{
     DriftModel, MapReliability, RegionChange, SessionConfig, SurfaceModel,
 };
 use sim_core::{

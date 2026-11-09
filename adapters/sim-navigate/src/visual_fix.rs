@@ -2,17 +2,17 @@ use std::collections::BTreeMap;
 
 use glam::{DQuat, DVec3};
 use nalgebra::{Isometry3, Translation3};
+use navigate_visual::fusion_bridge::{
+    EvidenceIndependence, VisualErrorBudget, VisualFix as FusionVisualFix, VisualFixSource,
+    VisualFusionError, VisualSourceIdentity,
+};
+use navigate_visual::session::{
+    AnchorDecision, AnchorObservation, Calibration, CameraMount as SessionCameraMount, CaptureTime,
+    ContinuityEpoch, FrameKey, FrameRecord, FusionEligibility as SessionEligibility, LensModel,
+    MapReliability, Pose, RelativeMotion, ScaleSource, SessionConfig, SessionError, StreamId,
+    VerticalReference, VisualSession, from_camera,
+};
 use navigate_visual::{CameraPose, Estimate, FrameStamp, MapRevision};
-use navigate_visual_fusion::{
-    EvidenceIndependence, VisualErrorBudget, VisualFixSource, VisualFusionError,
-    VisualSourceIdentity,
-};
-use navigate_visual_session::{
-    AnchorDecision, AnchorObservation, Calibration, CaptureTime, ContinuityEpoch, FrameKey,
-    FrameRecord, FusionEligibility as SessionEligibility, LensModel, MapReliability, Pose,
-    RelativeMotion, ScaleSource, SessionConfig, StreamId, VerticalReference, VisualSession,
-    from_camera,
-};
 use sim_core::{CameraMount, FusionEligibility, SensorIntrinsics, SimInstant, VisualFix};
 use sim_geo::Geodetic;
 
@@ -65,7 +65,7 @@ pub enum FixDisposition {
     /// anchors behind it, so it can never be a position fix.
     Tracked,
     /// The anchor is independent evidence: offer the fix to the filter.
-    Admitted(Box<navigate_visual_fusion::VisualFix>),
+    Admitted(Box<FusionVisualFix>),
     /// `VisualFixSource` refused the fix, because its evidence is correlated
     /// with what the filter already holds.
     RefusedCorrelated {
@@ -345,7 +345,7 @@ impl VisualFixAdapter {
         key: FrameKey,
         digest: &str,
         track: Option<&Pose>,
-    ) -> Result<(), navigate_visual_session::SessionError> {
+    ) -> Result<(), SessionError> {
         let Some(previous) = &self.previous else {
             return Ok(());
         };
@@ -376,7 +376,7 @@ fn session_calibration(config: &VisualFixConfig) -> Calibration {
         lens: LensModel::Undistorted {
             residual_rms_px: 0.0,
         },
-        mount: navigate_visual_session::CameraMount::Fixed {
+        mount: SessionCameraMount::Fixed {
             body_from_camera: Isometry3::from_parts(Translation3::from(translation), rotation),
         },
         map_vertical: VerticalReference::Wgs84Ellipsoid,

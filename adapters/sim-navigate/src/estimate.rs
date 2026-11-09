@@ -172,7 +172,6 @@ pub(crate) fn estimate(parts: EstimateParts) -> Estimate {
             condition_number: 0.0,
         },
         geometry_covariance: covariance,
-        query_ray_domain: None,
         backend: BACKEND.to_owned(),
     }
 }
