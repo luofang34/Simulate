@@ -37,6 +37,9 @@ pub enum OwnshipVisualKind {
 pub(crate) enum AssetKey {
     /// The asset the scene was built with.
     Scene,
+    /// [`UsdAircraftAsset::embedded_n642sp`]: the C172 ownship's own tail, while traffic
+    /// C172s keep the scene's generic airframe.
+    C172Tail,
     /// [`UsdAircraftAsset::p38g`].
     P38g,
     /// [`UsdAircraftAsset::fixed_wing_uav`].
@@ -56,7 +59,7 @@ impl OwnshipVisualKind {
     const fn asset_key(self) -> Option<AssetKey> {
         match self {
             Self::Hidden => None,
-            Self::C172 => Some(AssetKey::Scene),
+            Self::C172 => Some(AssetKey::C172Tail),
             Self::P38g => Some(AssetKey::P38g),
             Self::FixedWingUav => Some(AssetKey::FixedWingUav),
             Self::QuadrotorX500 => Some(AssetKey::QuadrotorX500),
@@ -91,7 +94,8 @@ impl AircraftLibrary {
         self.ownship
     }
 
-    /// Selects ownship's airframe, building a procedural one the first time it is chosen.
+    /// Selects ownship's airframe, building a procedural one (or the C172's tail) the first
+    /// time it is chosen.
     /// A failed build leaves the previous selection in place.
     pub(crate) fn select_ownship(
         &mut self,
@@ -103,7 +107,8 @@ impl AircraftLibrary {
             OwnshipVisualKind::QuadrotorX500 => Some(UsdAircraftAsset::x500_quadrotor),
             OwnshipVisualKind::LunarLander => Some(UsdAircraftAsset::lunar_lander),
             OwnshipVisualKind::Raketa => Some(UsdAircraftAsset::embedded_raketa),
-            OwnshipVisualKind::Hidden | OwnshipVisualKind::C172 => None,
+            OwnshipVisualKind::C172 => Some(UsdAircraftAsset::embedded_n642sp),
+            OwnshipVisualKind::Hidden => None,
         };
         if let (Some(key), Some(build)) = (kind.asset_key(), build)
             && !self.procedural.contains_key(&key)
@@ -115,12 +120,16 @@ impl AircraftLibrary {
     }
 
     /// The asset an aircraft draws from: ownship follows the selection, traffic the scene.
+    /// A C172 ownship whose tail has not been selected yet draws the scene's airframe.
     pub(crate) fn asset_for(&self, ownship: bool) -> Option<(AssetKey, &UsdAircraftAsset)> {
-        let key = if ownship {
+        let mut key = if ownship {
             self.ownship.asset_key()?
         } else {
             AssetKey::Scene
         };
+        if key == AssetKey::C172Tail && !self.procedural.contains_key(&key) {
+            key = AssetKey::Scene;
+        }
         self.get(key).map(|asset| (key, asset))
     }
 

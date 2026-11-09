@@ -127,7 +127,8 @@ impl MapLibreRig {
             Some(loader),
         )?;
         let window_px = clamp_window(initial_size);
-        let asset = Arc::new(UsdAircraftAsset::embedded_n642sp()?);
+        // Traffic draws the generic C172; ownship selects its tail once the rig exists.
+        let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
         let mut truth = TruthSceneMap::new(
             &runtime,
             truth_real_world_style(&endpoints)?,
@@ -170,6 +171,7 @@ impl MapLibreRig {
             globe: None,
         };
         rig.set_preset(preset)?;
+        rig.truth.set_ownship_visual(rig.ownship_visual)?;
         rig.surface
             .configure(source)
             .map_err(sim_scenario::ScenarioError::from)?;

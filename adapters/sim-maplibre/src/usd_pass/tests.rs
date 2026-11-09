@@ -185,6 +185,16 @@ fn ownship_draws_the_selected_airframe_and_traffic_keeps_the_scene_asset() {
             .all(|draw| draw.asset == AssetKey::Scene)
     );
 
+    // A selected C172 ownship wears its own tail; C172 traffic keeps the generic airframe.
+    library.select_ownship(OwnshipVisualKind::C172).unwrap();
+    let tail = pack_slot_draws(&library, &own, None, &view);
+    assert!(!tail.is_empty() && tail.iter().all(|draw| draw.asset == AssetKey::C172Tail));
+    assert!(
+        pack_slot_draws(&library, &traffic, None, &view)
+            .iter()
+            .all(|draw| draw.asset == AssetKey::Scene)
+    );
+
     library.select_ownship(OwnshipVisualKind::Hidden).unwrap();
     assert!(pack_slot_draws(&library, &own, None, &view).is_empty());
     assert_eq!(
@@ -212,7 +222,8 @@ fn a_procedural_airframe_is_built_once_across_switches() {
         .unwrap();
     let again: *const UsdAircraftAsset = library.get(AssetKey::LunarLander).unwrap();
     assert_eq!(first, again);
-    assert_eq!(library.resident().count(), 3);
+    // The scene, the lander, the C172's tail and the UAV.
+    assert_eq!(library.resident().count(), 4);
 }
 
 #[test]
