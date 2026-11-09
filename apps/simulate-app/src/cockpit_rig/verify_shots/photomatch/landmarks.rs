@@ -131,22 +131,33 @@ pub(super) fn p38g_landmarks() -> Vec<(&'static str, DVec3)> {
 }
 
 fn find(prims: &[P38MeshPrim], query: &LandmarkQuery) -> Option<DVec3> {
-    let toward = DVec3::from(query.toward);
-    let points: Vec<DVec3> = prims
-        .iter()
-        .filter(|prim| prim.prim_path.ends_with(query.prim))
-        .flat_map(|prim| {
-            prim.vertices.iter().map(|v| {
-                prim.rest_to_aircraft
-                    .transform_point3(DVec3::from(v.position.map(f64::from)))
-            })
-        })
+    let points: Vec<DVec3> = prim_points(prims, query.prim)
+        .into_iter()
         .filter(|p| match query.side {
             Side::Left => p.x < 0.0,
             Side::Right => p.x > 0.0,
             Side::Any => true,
         })
         .collect();
+    extreme(&points, DVec3::from(query.toward))
+}
+
+/// Every vertex, mesh axes, of the prims whose USD path ends with `suffix`.
+pub(super) fn prim_points(prims: &[P38MeshPrim], suffix: &str) -> Vec<DVec3> {
+    prims
+        .iter()
+        .filter(|prim| prim.prim_path.ends_with(suffix))
+        .flat_map(|prim| {
+            prim.vertices.iter().map(|v| {
+                prim.rest_to_aircraft
+                    .transform_point3(DVec3::from(v.position.map(f64::from)))
+            })
+        })
+        .collect()
+}
+
+/// The middle of the points furthest along `toward`.
+pub(super) fn extreme(points: &[DVec3], toward: DVec3) -> Option<DVec3> {
     let reach = points
         .iter()
         .map(|p| p.dot(toward))

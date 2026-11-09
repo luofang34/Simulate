@@ -262,3 +262,38 @@ fn a_seat_photograph_resects_from_cockpit_starts_on_fixed_structure() {
         solved.pose
     );
 }
+
+#[test]
+fn features_the_photos_place_against_the_model() {
+    let matches: Vec<_> = super::photos()
+        .iter()
+        .filter_map(super::match_photo)
+        .collect();
+    let placed = super::features::place_features(&matches);
+    assert!(
+        placed.iter().any(|f| f.triangulated.is_some()),
+        "{placed:?}"
+    );
+    for f in &placed {
+        let surface = f.on_surface();
+        writeln!(
+            std::io::stderr(),
+            "{:>18}: surface hits {:.2?} mean {:.2?}, triangulated {:.2?}, centreline {:.2?}, \
+             model {:.2?}, surface - model {:.2?}",
+            f.id,
+            f.surface_hits,
+            surface,
+            f.triangulated,
+            f.on_centreline,
+            f.model,
+            surface.zip(f.model).map(|(p, m)| p - m)
+        )
+        .ok();
+        assert!(
+            f.surface_hits
+                .iter()
+                .all(|p| p.is_finite() && p.length() < 12.0),
+            "{f:?}"
+        );
+    }
+}

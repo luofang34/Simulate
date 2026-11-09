@@ -18,6 +18,8 @@ mod backproject;
 #[cfg(test)]
 mod compose;
 #[cfg(test)]
+mod features;
+#[cfg(test)]
 mod landmarks;
 #[cfg(test)]
 mod render;
@@ -40,6 +42,8 @@ struct Photo {
     /// the subject from behind the camera, `+90` from the camera's right.
     sun_deg: Option<(f64, f64)>,
     landmarks_px: Vec<(String, [f64; 2])>,
+    /// Features identified on the photo, placed in 3D by [`features::place_features`].
+    features_px: Vec<(String, [f64; 2])>,
 }
 
 /// A photo's solved camera, with the mesh landmarks it was solved on.
@@ -65,12 +69,18 @@ fn photo(v: &Value) -> Option<Photo> {
             s.get("elevation_deg")?.as_f64()?,
         ))
     });
-    let landmarks_px = v
-        .get("landmarks_px")?
-        .as_object()?
-        .iter()
-        .filter_map(|(k, p)| Some((k.clone(), pair(p)?)))
-        .collect();
+    let points = |key: &str| -> Vec<(String, [f64; 2])> {
+        v.get(key)
+            .and_then(Value::as_object)
+            .map(|o| {
+                o.iter()
+                    .filter_map(|(k, p)| Some((k.clone(), pair(p)?)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let landmarks_px = points("landmarks_px");
+    let features_px = points("features_px");
     Some(Photo {
         id: text("id")?,
         file: text("file")?,
@@ -79,6 +89,7 @@ fn photo(v: &Value) -> Option<Photo> {
         gear_down: flag("gear_down")?,
         sun_deg: sun,
         landmarks_px,
+        features_px,
     })
 }
 
