@@ -2,7 +2,8 @@ use navigate_contract::{
     NavigationSolution, SensorClass, SourceComposition, SourceEpoch, SourceId, WrappingSequence,
 };
 use navigate_fusion::{
-    FogmBias, ImuIncrement, InertialConfig, InertialNavigationFilter, IngestOutcome, PlanetaryBody,
+    FogmBias, ImuIncrement, InertialConfig, InertialNavigationFilter, IngestOutcome, Observation,
+    PlanetaryBody,
 };
 use sim_core::SimInstant;
 use sim_devices::{GaussMarkov, ImuErrorSpec, InertialIncrement, TriadErrorSpec};
@@ -124,6 +125,21 @@ impl InertialNavigator {
                 reason,
             }),
         }
+    }
+
+    /// Offers an aiding observation, such as a star sighting, at `at`.
+    ///
+    /// The outcome is returned, not an error: the innovation gate refusing an
+    /// aid is part of what an evaluation scores, while a gap in the IMU stream
+    /// is not.
+    pub fn observe(
+        &mut self,
+        observation: &Observation,
+        at: SimInstant,
+    ) -> Result<IngestOutcome, NavigateBridgeError> {
+        Ok(self
+            .filter
+            .ingest(observation, self.clock.to_monotonic(at)?))
     }
 
     /// The solution at `at`, or `None` before the alignment and its first

@@ -11,7 +11,7 @@ use glam::{DQuat, DVec3};
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 use navigate_camera::{ImageView, Pixels};
 use navigate_contract::{SourceEpoch, SourceId, WrappingSequence};
-use navigate_fusion::{InertialConfig, InertialNavigationFilter, IngestOutcome, PlanetaryBody};
+use navigate_fusion::{InertialConfig, IngestOutcome};
 use navigate_startrack::{
     AttitudePrior, AttitudeSolution, DetectConfig, IdentifyConfig, SolveConfig, catalogue_ecef,
     detect_stars, identify_stars, line_of_sight_observations, solve_attitude,
@@ -19,8 +19,8 @@ use navigate_startrack::{
 use sim_core::{CameraMount, SimInstant, TickSpan, VehicleState};
 use sim_geo::{Geodetic, UtcTime};
 use sim_navigate::{
-    Estimate, InitialAlignment, MASTER_CLOCK_DOMAIN, MasterClockBridge, Truth, camera_stars,
-    imager_model, navigate_mount, star_camera_epoch,
+    Estimate, InertialNavigator, InitialAlignment, MASTER_CLOCK_DOMAIN, MasterClockBridge, Truth,
+    camera_stars, imager_model, navigate_mount, star_camera_epoch,
 };
 use sim_render::{CameraPose, SensorCounts, StarCamera, StarCameraConfig, StarVisibility};
 
@@ -38,6 +38,8 @@ const PRIOR_SIGMA_RAD: f64 = 0.017_453_292_5;
 /// Camera-to-body alignment knowledge, radians RMS, added to each sighting.
 const MOUNT_ALIGNMENT_RAD: f64 = 2.0e-5;
 const STAR_SOURCE: SourceId = SourceId::new(71);
+/// Source of the inertial stream the sightings aid.
+const INERTIAL_SOURCE: SourceId = SourceId::new(70);
 const ARCSEC_PER_RAD: f64 = 206_264.806;
 
 #[cfg(test)]
@@ -182,11 +184,7 @@ fn ingest_sightings(
     now: SimInstant,
 ) -> Vec<IngestOutcome> {
     let clock = MasterClockBridge::new(MASTER_CLOCK_DOMAIN);
-    let mut filter = InertialNavigationFilter::new_surface(
-        InertialConfig::default(),
-        clock.domain(),
-        PlanetaryBody::EARTH_WGS84,
-    );
+    let mut navigator = InertialNavigator::new(InertialConfig::default(), clock, INERTIAL_SOURCE);
     let alignment = InitialAlignment {
         position_sigma_m: DVec3::splat(5.0),
         velocity_sigma_m_s: DVec3::splat(0.1),
@@ -194,29 +192,21 @@ fn ingest_sightings(
         seed: 5,
     }
     .measure(truth.get());
-    let at = clock.to_monotonic(now).unwrap();
-    filter
-        .initialize_surface(
-            alignment.position,
-            alignment.velocity,
-            alignment.attitude,
-            alignment.position_cov,
-            alignment.velocity_cov,
-            alignment.attitude_cov,
-            at,
-            alignment.composition,
+    navigator.align(&alignment, now).unwrap();
+    let stamp = clock
+        .stamp(
+            STAR_SOURCE,
+            SourceEpoch::new(0),
+            WrappingSequence::new(0),
+            now,
         )
         .unwrap();
-    let sequence = WrappingSequence::new(0);
-    let stamp = clock
-        .stamp(STAR_SOURCE, SourceEpoch::new(0), sequence, now)
-        .unwrap();
     let variance = solution.direction_sigma_rad.powi(2) + MOUNT_ALIGNMENT_RAD.powi(2);
-    let observations =
-        line_of_sight_observations(solution, stamp, filter.frame(), variance).unwrap();
+    let frame = navigator.filter().frame();
+    let observations = line_of_sight_observations(solution, stamp, frame, variance).unwrap();
     observations
         .iter()
-        .map(|observation| filter.ingest(observation, at))
+        .map(|observation| navigator.observe(observation, now).unwrap())
         .collect()
 }
 
