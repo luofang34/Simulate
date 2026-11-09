@@ -26,6 +26,7 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
         "/P38g/Powerplant/TurboBucketWheels",
         "/P38g/Powerplant/RadiatorScoops",
         "/P38g/Powerplant/ChinOilCoolerScoops",
+        "/P38g/Powerplant/ChinOilCoolerInletLips",
         "/P38g/Powerplant/CoolerMatrixCores",
         "/P38g/CockpitInterior/TubAndBulkheads",
         "/P38g/CockpitInterior/InstrumentPanel/Board",
@@ -447,7 +448,7 @@ fn the_nose_number_reads_the_same_from_either_side() {
 /// drab on top, neutral gray underneath. Trim tabs are painted with their surface (no
 /// source shows red tabs on a P-38G-13).
 #[test]
-fn control_surfaces_are_olive_drab_over_neutral_gray() {
+fn control_surfaces_and_spinners_carry_the_factory_scheme() {
     let prims = p38g_mesh_prims();
     let colour = |path: &str| {
         prims
@@ -473,5 +474,12 @@ fn control_surfaces_are_olive_drab_over_neutral_gray() {
     }
     for tab in prims.iter().filter(|p| p.prim_path.contains("TrimTab")) {
         assert_eq!(tab.material.diffuse_rgb, olive, "{}", tab.prim_path);
+    }
+    // The 339th FS painted its spinners with the airframe.
+    for spinner in prims
+        .iter()
+        .filter(|p| p.role == P38PartRole::PropellerSpinner)
+    {
+        assert_eq!(spinner.material.diffuse_rgb, olive, "{}", spinner.prim_path);
     }
 }

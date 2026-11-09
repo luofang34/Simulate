@@ -12,7 +12,7 @@ use crate::mesh::{Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, ae
 use crate::stations::{
     AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
     PROP_BLACK, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
-    RUDDER_HINGE_Y, SPINNER_ALUMINIUM, TAILPLANE_SECTIONS_BL, tailplane_planform_fs, wing_station,
+    RUDDER_HINGE_Y, TAILPLANE_SECTIONS_BL, tailplane_planform_fs, wing_station,
 };
 
 pub(crate) fn articulated_prims() -> Vec<P38MeshPrim> {
@@ -35,6 +35,9 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
             f64::from(PROP_HUB_Y),
             f64::from(PROP_HUB_Z),
         ));
+        // Spinners painted with the airframe, as on the 339th FS's P-38G-13s (photo of
+        // 43-2239 at Fighter 2, 1943); the nose is the blunt ogive of the AN 01-75F-2 plan
+        // view (26 in base, half-width 11.5 in ten inches aft of the tip).
         for (sub, mat, rings_spec) in [
             (
                 "SpinnerBase",
@@ -43,13 +46,14 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
             ),
             (
                 "SpinnerNose",
-                SPINNER_ALUMINIUM,
+                OLIVE_DRAB,
                 &[
-                    (0.26, 0.27),
-                    (0.40, 0.22),
-                    (0.53, 0.155),
-                    (0.64, 0.08),
-                    (0.71, 0.014),
+                    (0.26, 0.285),
+                    (0.40, 0.245),
+                    (0.53, 0.18),
+                    (0.64, 0.095),
+                    (0.69, 0.045),
+                    (0.71, 0.012),
                 ][..],
             ),
         ] {

@@ -226,6 +226,7 @@ fn build_intercooler_louvers(prims: &mut Vec<P38MeshPrim>) {
 fn build_chin_oil_coolers(prims: &mut Vec<P38MeshPrim>) {
     let mut gray_scoops = MeshBuilder::new();
     let mut cores = MeshBuilder::new();
+    let mut lips = MeshBuilder::new();
 
     for side in [-1.0_f32, 1.0] {
         let bx = side * BOOM_X;
@@ -250,10 +251,23 @@ fn build_chin_oil_coolers(prims: &mut Vec<P38MeshPrim>) {
         })
         .collect();
         gray_scoops.loft_open(&chin_sections, Inside::Point(Vec3::new(bx, 1.15, -0.35)));
-        cores.cuboid(
-            Vec3::new(bx - 0.14, 1.467, -0.59),
-            Vec3::new(bx + 0.14, 1.594, -0.45),
-        );
+        // Twin oval oil-cooler inlets side by side in the chin face (AN 01-75F-2 front view,
+        // 16 in below the fuselage reference line; the JBER P-38G shows the pair).
+        for dx in [-0.075_f32, 0.075] {
+            cores.ellipsoid(
+                Vec3::new(bx + dx, 1.664, -0.51),
+                Vec3::new(0.06, 0.012, 0.068),
+                16,
+                6,
+            );
+            lips.tube(
+                Vec3::new(bx + dx, 1.650, -0.51),
+                Vec3::new(bx + dx, 1.676, -0.51),
+                0.072,
+                0.070,
+                16,
+            );
+        }
     }
 
     prims.push(fixed(
@@ -261,6 +275,12 @@ fn build_chin_oil_coolers(prims: &mut Vec<P38MeshPrim>) {
         P38PartRole::CabinExterior,
         NEUTRAL_GRAY,
         gray_scoops,
+    ));
+    prims.push(fixed(
+        "/P38g/Powerplant/ChinOilCoolerInletLips",
+        P38PartRole::CabinExterior,
+        NEUTRAL_GRAY,
+        lips,
     ));
     prims.push(fixed(
         "/P38g/Powerplant/CoolerMatrixCores",

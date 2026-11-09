@@ -66,8 +66,6 @@ pub(crate) const ANTI_GLARE: P38Material = mat([0.075, 0.08, 0.05], 0.0, 0.9);
 /// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);
 pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
-/// Unpainted spun-aluminium spinner, dulled by handling.
-pub(crate) const SPINNER_ALUMINIUM: P38Material = mat([0.62, 0.62, 0.61], 1.0, 0.34);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
 pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.07, 0.13, 0.28], 0.06, 0.46);
 pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
