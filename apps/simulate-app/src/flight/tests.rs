@@ -292,3 +292,99 @@ fn flying_on_after_a_scrub_commits_the_branch() {
     );
     assert!(!flight.scrub_to_live().expect("live"), "no future left");
 }
+
+#[test]
+fn stand_in_host_publishes_datum_matched_pattern_altitude_at_kacy() {
+    use flightbag::{RunwayDesignator, RunwayEndSpec};
+    use sim_scenery::{AirportDatabase, CatalogVerticalDatum, LandingRunwayGeometry};
+    use world::GeodeticPosition;
+
+    let flight = Flight::new().expect("flight");
+    let mut host = StandInPilotageHost::new();
+    let datum = CatalogVerticalDatum::OrthometricMslEgm96;
+
+    let db = AirportDatabase::builtin();
+    let (_, kacy) = db.by_code("KACY").expect("KACY");
+    let nasr_rwy = kacy.landing_runway("04", datum).expect("KACY RWY 04");
+    let nasr_selected_m = host
+        .publish(&flight, Some(&nasr_rwy), 0.0)
+        .selections
+        .altitude_m
+        .expect("selected altitude");
+    assert!(
+        (nasr_selected_m - (nasr_rwy.threshold_elevation_msl_m + 304.8)).abs() < 0.05
+            && nasr_selected_m > 320.0,
+        "KACY NASR pattern preselect must be ~323 m (1060 ft MSL), not 945 ft: {nasr_selected_m}"
+    );
+
+    let lat_deg = 39.4502_f64;
+    let lon_deg = -74.5858_f64;
+    let thr_msl_m = 18.3_f64;
+    let undulation_m = sim_geo::egm96_undulation_m(lat_deg.to_radians(), lon_deg.to_radians());
+    let spec = RunwayEndSpec {
+        designator: RunwayDesignator::parse("04").expect("04"),
+        threshold: GeodeticPosition::wgs84(lat_deg, lon_deg, thr_msl_m + undulation_m),
+        true_bearing_rad: 36.0_f64.to_radians(),
+        length_m: 1_873.0,
+        width_m: 46.0,
+    };
+    let osm_rwy = LandingRunwayGeometry::from_runway_end_spec_in_datum(&spec, datum);
+    let osm_selected_m = host
+        .publish(&flight, Some(&osm_rwy), 0.0)
+        .selections
+        .altitude_m
+        .expect("selected altitude");
+    assert!(
+        (osm_selected_m - (thr_msl_m + 304.8)).abs() < 0.05,
+        "KACY fallback pattern preselect must be ~323.1 m (1060 ft MSL): {osm_selected_m}"
+    );
+}
+
+#[test]
+fn resolved_airspeed_envelope_matches_active_vehicle_and_omits_rotary_or_spacecraft() {
+    let mut flight = Flight::new().expect("flight");
+    let c172 = flight.resolved_airspeed_envelope().expect("C172 envelope");
+    assert_eq!(c172.vs0_kt, 40.0);
+    assert_eq!(c172.vs1_kt, 48.0);
+    assert_eq!(c172.vfe_kt, 85.0);
+    assert_eq!(c172.vno_kt, 129.0);
+    assert_eq!(c172.vne_kt, 163.0);
+    assert_eq!(c172.vr_kt, Some(55.0));
+    assert_eq!(c172.vx_kt, Some(62.0));
+    assert_eq!(c172.vy_kt, Some(74.0));
+    assert_eq!(c172.vg_kt, Some(68.0));
+    assert_eq!(c172.vref_kt, Some(61.0));
+    let va_c172 = c172.va_kt.expect("C172 Va");
+    assert!((va_c172 - 102.9).abs() < 0.25, "loaded Va={va_c172}");
+
+    flight
+        .select_vehicle(FreeFlightVehicle::JsbsimP38g)
+        .expect("p38g");
+    let p38 = flight.resolved_airspeed_envelope().expect("P-38G envelope");
+    let package = sim_pack::builtin_p38g_package()
+        .expect("P-38G package")
+        .resolved_airspeed_envelope()
+        .expect("P-38G package envelope");
+    assert_eq!(p38.vs0_kt, package.vs0_kt);
+    assert_eq!(p38.vy_kt, package.vy_kt);
+    assert_eq!(p38.vne_kt, package.vne_kt);
+    assert_ne!(p38.vne_kt, c172.vne_kt);
+
+    flight
+        .select_vehicle(FreeFlightVehicle::AviateX500Direct)
+        .expect("x500");
+    assert!(flight.resolved_airspeed_envelope().is_none());
+
+    flight
+        .select(Some(ScenarioProfile::Apollo11LunarLanding))
+        .expect("lunar");
+    assert!(flight.resolved_airspeed_envelope().is_none());
+
+    flight
+        .select(Some(ScenarioProfile::AirportKewrToweredPattern))
+        .expect("kewr pattern");
+    assert_eq!(
+        flight.resolved_airspeed_envelope().map(|e| e.vy_kt),
+        Some(Some(74.0))
+    );
+}

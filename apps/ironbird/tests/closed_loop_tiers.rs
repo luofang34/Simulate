@@ -25,7 +25,7 @@ fn tier0_x500_climbs_and_replays_bit_identically_with_industrial_noise() {
 }
 
 #[test]
-fn tier0_c172_and_light_trainer_fly_closed_loop_with_exact_determinism() {
+fn tier0_c172_flies_closed_loop_with_exact_determinism() {
     let origin = Geodetic::from_degrees(39.1582, -75.5244, 450.0);
     let c172_a = run_tier0_fixed_wing_cruise(
         FixedWingVehicle::C172,
@@ -46,15 +46,10 @@ fn tier0_c172_and_light_trainer_fly_closed_loop_with_exact_determinism() {
     assert_eq!(c172_a.final_state, c172_b.final_state);
     assert!(c172_a.final_geodetic.lat_rad > origin.lat_rad);
 
-    let trainer = run_tier0_fixed_wing_cruise(
-        FixedWingVehicle::LightTrainer,
-        origin,
-        5.0,
-        DirectNoiseTier::Off,
-        1,
-    )
-    .unwrap();
-    assert!(trainer.final_geodetic.lat_rad > origin.lat_rad);
+    let noiseless =
+        run_tier0_fixed_wing_cruise(FixedWingVehicle::C172, origin, 5.0, DirectNoiseTier::Off, 1)
+            .unwrap();
+    assert!(noiseless.final_geodetic.lat_rad > origin.lat_rad);
 }
 
 #[test]
@@ -407,4 +402,63 @@ fn tier2_mavlink_tcp_realtime_paces_without_blocking_on_peer() {
         "{:?}",
         summary.bridge_stats
     );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn cli_supports_directory_tier0_and_design_estimation() {
+    use ironbird::cli::{CliMode, CliOutcome, execute_cli, parse_args};
+    use std::path::PathBuf;
+
+    let c172_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../vehicles/c172")
+        .display()
+        .to_string();
+
+    let tier0_args = parse_args([
+        "--mode",
+        "tier0-dir",
+        "--package-dir",
+        &c172_dir,
+        "--duration-s",
+        "0.25",
+    ])
+    .unwrap();
+    assert_eq!(tier0_args.mode, CliMode::Tier0Dir);
+    match execute_cli(&tier0_args).unwrap() {
+        CliOutcome::Rig(summary) => assert_eq!(summary.steps_executed, 30),
+        other => panic!("expected Rig outcome, got {other:?}"),
+    }
+
+    let est_args = parse_args(["--mode", "estimate-dir", "--package-dir", &c172_dir]).unwrap();
+    assert_eq!(est_args.mode, CliMode::EstimateDir);
+    match execute_cli(&est_args).unwrap() {
+        CliOutcome::DesignEstimate(rep) => {
+            assert_eq!(rep.package_id, "c172_class_reference");
+            assert!(rep.service_ceiling_ft > 10_000.0);
+            assert_eq!(rep.payload_range.len(), 3);
+            assert_eq!(rep.mission_profiles.len(), 4);
+        }
+        other => panic!("expected DesignEstimate outcome, got {other:?}"),
+    }
+
+    let trade_args = parse_args(["--mode", "trade-c172"]).unwrap();
+    assert_eq!(trade_args.mode, CliMode::TradeC172);
+    match execute_cli(&trade_args).unwrap() {
+        CliOutcome::TradeStudy(rep) => {
+            assert_eq!(rep.candidates.len(), 4);
+        }
+        other => panic!("expected TradeStudy outcome, got {other:?}"),
+    }
+
+    let ace_args = parse_args(["--mode", "ace-bridge"]).unwrap();
+    assert_eq!(ace_args.mode, CliMode::AceBridge);
+    match execute_cli(&ace_args).unwrap() {
+        CliOutcome::AceCoDesign(_, fb) => {
+            assert_eq!(fb.vehicle_id, "c172_class_reference");
+            assert!(fb.trimmed_6dof_cd0 > 0.015);
+            assert!(fb.aex_cli_command.contains("--bin aex -- synthesize"));
+        }
+        other => panic!("expected AceCoDesign outcome, got {other:?}"),
+    }
 }

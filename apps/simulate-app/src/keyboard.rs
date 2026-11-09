@@ -19,7 +19,7 @@ pub enum CockpitAction {
     CycleVirtualCamera,
     /// `K`: cycle home airport (`KDOV` Dover, `47N` Central Jersey, `KEWR` Newark Liberty) in free flight.
     CycleAirport,
-    /// `V`: cycle free-flight vehicle (`C172`, `LightTrainer`, `Aviate X500`, `Aviate Fixed-Wing`, `Kinematic`).
+    /// `V`: cycle free-flight vehicle (`C172`, `P-38G`, `Aviate X500`, `Aviate Fixed-Wing`, `Kinematic`).
     CycleVehicle,
     /// `H`: toggle glass-cockpit PFD/MFD/HSI dock visibility.
     ToggleInstruments,
@@ -37,6 +37,10 @@ pub enum CockpitAction {
     FlapsDown,
     /// `G`: retract flaps by one notch on JSBSim aircraft.
     FlapsUp,
+    /// `Y` / `[`: toggle retractable landing gear up/down on JSBSim aircraft.
+    ToggleGear,
+    /// `O`: toggle retractable or leading-edge landing lights on JSBSim aircraft.
+    ToggleLandingLight,
     /// `M`: take manual control of a scripted scenario; in free flight, cycle piston
     /// ignition magnetos (`Both` → `Left` → `Right` → `Off` → `Both`).
     CycleMagnetos,
@@ -48,6 +52,14 @@ pub enum CockpitAction {
     CycleSensorRealism,
     /// `J`: expand the top-right EFB moving map into the EFB tablet, or minimize it again.
     ToggleEfb,
+    /// `Q`: toggle hydraulic Fowler flap `CLOSED` hold valve (`T.O. 01-75F-1`).
+    ToggleFlapHoldValve,
+    /// `I`: cycle radiator coolant flaps & oil cooler shutters (`20%` → `60%` → `100%` → `0%`).
+    CycleCoolingFlaps,
+    /// `Z`: toggle Curtiss Electric full feathering on the port propeller (`85°` edge-on).
+    ToggleFeatherLeft,
+    /// `X`: toggle Curtiss Electric full feathering on the starboard propeller (`85°` edge-on).
+    ToggleFeatherRight,
 }
 
 /// What a number key picks: a scripted scenario (`1`–`8`), or `None` (`0`) for free flight.
@@ -94,48 +106,65 @@ pub fn cockpit_action(event: &KeyEvent) -> Option<CockpitAction> {
         KeyCode::KeyL => Some(CockpitAction::CycleSkyTime),
         KeyCode::KeyF => Some(CockpitAction::FlapsDown),
         KeyCode::KeyG => Some(CockpitAction::FlapsUp),
+        KeyCode::KeyY | KeyCode::BracketLeft => Some(CockpitAction::ToggleGear),
+        KeyCode::KeyO => Some(CockpitAction::ToggleLandingLight),
         KeyCode::KeyM => Some(CockpitAction::CycleMagnetos),
         KeyCode::KeyR => Some(CockpitAction::MixtureRich),
         KeyCode::KeyT => Some(CockpitAction::MixtureLean),
         KeyCode::KeyN => Some(CockpitAction::CycleSensorRealism),
         KeyCode::KeyJ => Some(CockpitAction::ToggleEfb),
+        KeyCode::KeyQ => Some(CockpitAction::ToggleFlapHoldValve),
+        KeyCode::KeyI => Some(CockpitAction::CycleCoolingFlaps),
+        KeyCode::KeyZ => Some(CockpitAction::ToggleFeatherLeft),
+        KeyCode::KeyX => Some(CockpitAction::ToggleFeatherRight),
         _ => None,
     }
 }
 
 /// Applies discrete aircraft [`SystemControls`](sim_core::SystemControls) actions to `flight`.
 pub fn apply_aircraft_system_action(action: CockpitAction, flight: &mut Flight) {
-    match action {
-        CockpitAction::FlapsDown => {
-            flight.update_system_controls(|sys| {
-                sys.flaps_norm = (sys.flaps_norm + FLAP_STEP).clamp(0.0, 1.0);
-            });
-        }
-        CockpitAction::FlapsUp => {
-            flight.update_system_controls(|sys| {
-                sys.flaps_norm = (sys.flaps_norm - FLAP_STEP).clamp(0.0, 1.0);
-            });
-        }
+    flight.update_system_controls(|sys| match action {
+        CockpitAction::FlapsDown => sys.flaps_norm = (sys.flaps_norm + FLAP_STEP).clamp(0.0, 1.0),
+        CockpitAction::FlapsUp => sys.flaps_norm = (sys.flaps_norm - FLAP_STEP).clamp(0.0, 1.0),
+        CockpitAction::ToggleGear => sys.gear_down = !sys.gear_down,
+        CockpitAction::ToggleLandingLight => sys.landing_light = !sys.landing_light,
         CockpitAction::CycleMagnetos => {
-            flight.update_system_controls(|sys| {
-                sys.magnetos = match sys.magnetos {
-                    MagnetoSwitch::Both | MagnetoSwitch::Start => MagnetoSwitch::Left,
-                    MagnetoSwitch::Left => MagnetoSwitch::Right,
-                    MagnetoSwitch::Right => MagnetoSwitch::Off,
-                    MagnetoSwitch::Off => MagnetoSwitch::Both,
-                };
-            });
+            sys.magnetos = match sys.magnetos {
+                MagnetoSwitch::Both | MagnetoSwitch::Start => MagnetoSwitch::Left,
+                MagnetoSwitch::Left => MagnetoSwitch::Right,
+                MagnetoSwitch::Right => MagnetoSwitch::Off,
+                MagnetoSwitch::Off => MagnetoSwitch::Both,
+            };
         }
         CockpitAction::MixtureRich => {
-            flight.update_system_controls(|sys| {
-                sys.mixture_norm = (sys.mixture_norm + MIXTURE_STEP).clamp(0.0, 1.0);
-                sys.fuel_cutoff = false;
-            });
+            sys.mixture_norm = (sys.mixture_norm + MIXTURE_STEP).clamp(0.0, 1.0);
+            sys.fuel_cutoff = false;
         }
         CockpitAction::MixtureLean => {
-            flight.update_system_controls(|sys| {
-                sys.mixture_norm = (sys.mixture_norm - MIXTURE_STEP).clamp(0.0, 1.0);
-            });
+            sys.mixture_norm = (sys.mixture_norm - MIXTURE_STEP).clamp(0.0, 1.0);
+        }
+        CockpitAction::ToggleFlapHoldValve => sys.flap_valve_closed = !sys.flap_valve_closed,
+        CockpitAction::CycleCoolingFlaps => {
+            let [cur, _] = sys.coolant_flap_norm;
+            let next = if cur < 0.10 {
+                0.20
+            } else if cur < 0.40 {
+                0.60
+            } else if cur < 0.85 {
+                1.00
+            } else {
+                0.0
+            };
+            sys.coolant_flap_norm = [next; 2];
+            sys.oil_shutter_norm = [next; 2];
+        }
+        CockpitAction::ToggleFeatherLeft => {
+            let [fl, fr] = sys.prop_feather;
+            sys.prop_feather = [!fl, fr];
+        }
+        CockpitAction::ToggleFeatherRight => {
+            let [fl, fr] = sys.prop_feather;
+            sys.prop_feather = [fl, !fr];
         }
         CockpitAction::CycleViewport
         | CockpitAction::CycleVirtualCamera
@@ -149,7 +178,7 @@ pub fn apply_aircraft_system_action(action: CockpitAction, flight: &mut Flight) 
         | CockpitAction::CycleSkyTime
         | CockpitAction::CycleSensorRealism
         | CockpitAction::ToggleEfb => {}
-    }
+    });
 }
 
 /// Flight keys (rebindable through [`KeyBindings`]; by default the arrows fly with Down as

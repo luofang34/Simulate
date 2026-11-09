@@ -12,11 +12,11 @@ use pilotage_timing::SimTick;
 use sim_core::ControlInputs;
 
 /// Largest commanded rates, rad/s. The kinematic model's full stick reaches
-/// these, and the trainer flies well inside them.
+/// these, and the C172 flies well inside them.
 pub(super) const MAX_ROLL_RATE_RAD_S: f64 = 1.0;
 pub(super) const MAX_YAW_RATE_RAD_S: f64 = 0.2;
 const MAX_RATES_RAD_S: DVec3 = DVec3::new(MAX_ROLL_RATE_RAD_S, 0.35, MAX_YAW_RATE_RAD_S);
-/// Largest commanded bank, rad: a 60-degree bank is the trainer's steep-turn
+/// Largest commanded bank, rad: a 60-degree bank is the C172's steep-turn
 /// limit. Pitch clamps tighter because the airframe stalls first.
 pub(super) const MAX_ROLL_RAD: f64 = 1.05;
 const MAX_PITCH_RAD: f64 = 0.60;

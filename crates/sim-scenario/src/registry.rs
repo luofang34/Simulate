@@ -57,7 +57,7 @@ impl ScenarioDescriptor {
             | ScenarioProfile::CorridorAggressiveBank
             | ScenarioProfile::CorridorSameCellLoiter => (
                 ScenarioCategory::VisualCorridor,
-                "light trainer",
+                "Cessna 172",
                 None,
                 "A scripted flight over the synthetic Delaware corridor feeding the two-tier visual navigation harness.",
                 &["delaware", "visual-navigation", "corridor"],

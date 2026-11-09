@@ -44,6 +44,9 @@ pub enum IronbirdError {
         /// Diagnostic message and usage hint.
         detail: String,
     },
+    /// Writing a calibration report file failed.
+    #[error("failed to write calibration report: {0}")]
+    ReportIo(#[from] std::io::Error),
 }
 
 impl From<SessionError> for IronbirdError {

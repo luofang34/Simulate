@@ -66,6 +66,7 @@ pub fn vehicle_class(kind: SystemKind) -> Option<VehicleClass> {
         | SystemKind::Spacecraft
         | SystemKind::GroundStation
         | SystemKind::TestBench
-        | SystemKind::GenericSystem => None,
+        | SystemKind::GenericSystem
+        | SystemKind::InstrumentPack => None,
     }
 }

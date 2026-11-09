@@ -25,7 +25,7 @@ pub use plant::{
 };
 pub use rigs::{
     OPTICAL_CHANNEL, OPTICAL_PERIOD, RigSummary, run_tier0_fixed_wing_cruise,
-    run_tier0_x500_hover_climb, run_tier1_shm_x500,
+    run_tier0_package_cruise, run_tier0_x500_hover_climb, run_tier1_shm_x500,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use rigs::{run_tier2_betaflight_x500, run_tier2_mavlink_fixed_wing};

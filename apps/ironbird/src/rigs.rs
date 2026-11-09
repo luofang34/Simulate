@@ -15,6 +15,7 @@ use sim_core::{
     SimInstant, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, ecef_to_geodetic};
+use sim_pack::{LoadedSyspack, builtin_c172_package};
 #[cfg(not(target_arch = "wasm32"))]
 use sim_xil::{
     XilStimulus,
@@ -168,7 +169,7 @@ pub fn run_tier0_x500_hover_climb(
 }
 
 /// Runs Tier-0 zero-overhead `AviateDirectRunner` (`FixedWingController`) driving
-/// JSBSim (`c172` or `light-trainer`) in stabilized cruise over `duration_s`.
+/// a built-in JSBSim aircraft in stabilized cruise over `duration_s`.
 pub fn run_tier0_fixed_wing_cruise(
     vehicle: FixedWingVehicle,
     origin: Geodetic,
@@ -176,7 +177,25 @@ pub fn run_tier0_fixed_wing_cruise(
     noise: DirectNoiseTier,
     noise_seed: u64,
 ) -> Result<RigSummary, IronbirdError> {
-    let plant = JsbsimPlant::new_cruise(vehicle, origin)?;
+    let package = match vehicle {
+        FixedWingVehicle::C172 => builtin_c172_package()?,
+    };
+    run_tier0_package_cruise(&package, origin, duration_s, noise, noise_seed)
+}
+
+/// Runs Tier-0 zero-overhead `AviateDirectRunner` (`FixedWingController`) driving
+/// any verified fixed-wing [`LoadedSyspack`] in stabilized cruise over `duration_s`.
+pub fn run_tier0_package_cruise(
+    package: &LoadedSyspack,
+    origin: Geodetic,
+    duration_s: f64,
+    noise: DirectNoiseTier,
+    noise_seed: u64,
+) -> Result<RigSummary, IronbirdError> {
+    let speed_m_s = package
+        .airspeed_envelope()
+        .map_or(50.0, |env| f64::from(env.vno_kt) * 0.40);
+    let plant = JsbsimPlant::from_package(package, origin, speed_m_s)?;
     let mut rig = RigSession::new(plant, ControlInputs::default())?;
     let period = rig.period();
     let total_steps = steps_for(duration_s, period.as_seconds());

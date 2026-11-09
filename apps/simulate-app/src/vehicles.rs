@@ -4,7 +4,7 @@ use sim_core::{
     JsbsimFdmSnapshot, KinematicInput, KinematicModel, SystemControls, TickSpan, VehicleState,
 };
 use sim_geo::Geodetic;
-use sim_pack::{builtin_c172_package, builtin_light_trainer_package};
+use sim_pack::{builtin_c172_package, builtin_p38g_package};
 
 use crate::error::AppSimError;
 use crate::supervisor_rig::{DELAWARE_RUNWAY_BEARING_RAD, default_delaware_spawn};
@@ -19,12 +19,13 @@ mod tests;
 pub const X500_GROUND_HOVER_M: f64 = 3.0;
 /// Height over a ground spawn the Aviate fixed-wing starts at instead, metres.
 pub const FBW_GROUND_FALLBACK_AGL_M: f64 = 150.0;
-/// Static height of the C172's JSBSim reference point above level ground on its gear,
-/// metres.
-pub const C172_GEAR_HEIGHT_M: f64 = 1.24;
-/// Static height of the Light Trainer's JSBSim reference point above level ground on its
-/// tricycle gear, metres (`40 in` bogeys less `0.146 ft` static compression).
-pub const LIGHT_TRAINER_GEAR_HEIGHT_M: f64 = 0.9714;
+/// Static height of the C172's JSBSim reference point (its CG) above level ground on
+/// its gear, metres: the wheels reach 1.30 m below the reference line, the high wing
+/// tanks lift the CG 0.08 m above it, and the gear compresses about 0.05 m.
+pub const C172_GEAR_HEIGHT_M: f64 = 1.324;
+/// Static height of the Lockheed P-38G Lightning's JSBSim reference point above level ground
+/// on its tricycle gear, metres (`74 in` bogeys less `0.258 ft` static compression).
+pub const P38G_GEAR_HEIGHT_M: f64 = 1.801;
 /// Height a parked kinematic vehicle sits above the ground, metres: the C172's, so the
 /// pilot eye is at a cockpit's height over the runway.
 pub const KINEMATIC_PARKED_HEIGHT_M: f64 = C172_GEAR_HEIGHT_M;
@@ -41,11 +42,11 @@ pub enum FreeFlightVehicle {
     /// SHA-256-verified JSBSim Cessna 172 Skyhawk (`vehicles/c172`) with `SystemControls`.
     #[default]
     JsbsimC172,
-    /// SHA-256-verified JSBSim Light Trainer (`vehicles/light-trainer`) with `SystemControls`.
-    JsbsimLightTrainer,
+    /// SHA-256-verified JSBSim Lockheed P-38G Lightning (`vehicles/p38g`) twin-boom fighter.
+    JsbsimP38g,
     /// Tier-0 `AviateDirectRunner` (`Ekf` + `MultirotorController` + `QuadXMixerX500`) on 6-DoF X500.
     AviateX500Direct,
-    /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving JSBSim Light Trainer.
+    /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving the JSBSim C172.
     AviateFixedWingDirect,
     /// Fast kinematic 6-DoF free-flight model.
     Kinematic,
@@ -57,8 +58,8 @@ impl FreeFlightVehicle {
     pub const fn prev(self) -> Self {
         match self {
             Self::JsbsimC172 => Self::Kinematic,
-            Self::JsbsimLightTrainer => Self::JsbsimC172,
-            Self::AviateX500Direct => Self::JsbsimLightTrainer,
+            Self::JsbsimP38g => Self::JsbsimC172,
+            Self::AviateX500Direct => Self::JsbsimP38g,
             Self::AviateFixedWingDirect => Self::AviateX500Direct,
             Self::Kinematic => Self::AviateFixedWingDirect,
         }
@@ -68,8 +69,8 @@ impl FreeFlightVehicle {
     #[must_use]
     pub const fn next(self) -> Self {
         match self {
-            Self::JsbsimC172 => Self::JsbsimLightTrainer,
-            Self::JsbsimLightTrainer => Self::AviateX500Direct,
+            Self::JsbsimC172 => Self::JsbsimP38g,
+            Self::JsbsimP38g => Self::AviateX500Direct,
             Self::AviateX500Direct => Self::AviateFixedWingDirect,
             Self::AviateFixedWingDirect => Self::Kinematic,
             Self::Kinematic => Self::JsbsimC172,
@@ -81,7 +82,7 @@ impl FreeFlightVehicle {
     pub const fn title(self) -> &'static str {
         match self {
             Self::JsbsimC172 => "C172 Skyhawk (JSBSim)",
-            Self::JsbsimLightTrainer => "Light Trainer (JSBSim)",
+            Self::JsbsimP38g => "Lockheed P-38G Lightning (JSBSim)",
             Self::AviateX500Direct => "X500 Quadrotor (Aviate Direct)",
             Self::AviateFixedWingDirect => "Fixed-Wing FBW (Aviate + JSBSim)",
             Self::Kinematic => "Kinematic Free Flight",
@@ -111,7 +112,7 @@ pub enum PlantSnapshot {
 
 /// Active free-flight plant stepped by the interactive clock.
 pub enum FreeFlightPlant {
-    /// Direct pilot-flown JSBSim fixed-wing aircraft (`C172` or `LightTrainer`).
+    /// Direct pilot-flown JSBSim fixed-wing aircraft (`C172` or `P-38G`).
     Jsbsim {
         /// Loaded JSBSim flight dynamics block.
         fdm: Box<JsbsimFdmBlock>,
@@ -149,10 +150,9 @@ impl FreeFlightPlant {
                 let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
                 build_jsbsim_plant(&pkg, spawn, heading_rad, 52.0, field_elev_m)
             }
-            FreeFlightVehicle::JsbsimLightTrainer => {
-                let pkg =
-                    builtin_light_trainer_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, heading_rad, 48.0, field_elev_m)
+            FreeFlightVehicle::JsbsimP38g => {
+                let pkg = builtin_p38g_package().map_err(sim_scenario::ScenarioError::from)?;
+                build_jsbsim_plant(&pkg, spawn, heading_rad, 95.0, field_elev_m)
             }
             FreeFlightVehicle::AviateX500Direct => {
                 let hover_spawn = Geodetic {
@@ -194,16 +194,9 @@ impl FreeFlightPlant {
                 let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
                 build_jsbsim_parked(&pkg, spawn, heading_rad, engine, C172_GEAR_HEIGHT_M)
             }
-            FreeFlightVehicle::JsbsimLightTrainer => {
-                let pkg =
-                    builtin_light_trainer_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_parked(
-                    &pkg,
-                    spawn,
-                    heading_rad,
-                    engine,
-                    LIGHT_TRAINER_GEAR_HEIGHT_M,
-                )
+            FreeFlightVehicle::JsbsimP38g => {
+                let pkg = builtin_p38g_package().map_err(sim_scenario::ScenarioError::from)?;
+                build_jsbsim_parked(&pkg, spawn, heading_rad, engine, P38G_GEAR_HEIGHT_M)
             }
             FreeFlightVehicle::AviateX500Direct => {
                 Ok(Self::AviateX500(Box::new(build_aviate_x500(

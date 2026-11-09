@@ -3,7 +3,7 @@ use std::f64::consts::FRAC_PI_2;
 use glam::DVec3;
 use sim_core::{CameraMount, VehicleState};
 use sim_geo::{Geodetic, LocalFrame, SensorIntrinsics, ecef_to_geodetic};
-use sim_pack::builtin_light_trainer_package;
+use sim_pack::builtin_c172_package;
 
 use super::*;
 use crate::{CalibrationLifecycle, PilotageBridgeError, package_camera_calibration};
@@ -17,7 +17,7 @@ fn sample_detent(calibration_id: u32, camera_id: u32, focal_px: f64) -> ZoomDete
         cx: 320.0,
         cy: 240.0,
     };
-    let mut pkg_cam = builtin_light_trainer_package()
+    let mut pkg_cam = builtin_c172_package()
         .unwrap()
         .camera_mounts()
         .unwrap()

@@ -24,7 +24,7 @@ const RATE_KI: f64 = 1.6;
 const BANK_GAIN: f64 = 1.6;
 const FLIGHT_PATH_GAIN: f64 = 1.05;
 const HEIGHT_GAIN: f64 = 0.22;
-const MAX_CLIMB_M_S: f64 = 3.6;
+const MAX_CLIMB_M_S: f64 = 3.4;
 const MAX_DESCENT_M_S: f64 = 4.0;
 const PATH_GAIN: f64 = 0.38;
 const MAX_BANK_RAD: f64 = 25.0 * PI / 180.0;
@@ -273,8 +273,11 @@ impl PatternAutopilot {
             .atan()
             .clamp(-MAX_BANK_RAD, MAX_BANK_RAD);
 
-        let climb_cmd = (HEIGHT_GAIN * (cmd.target_agl_m - reading.agl_m))
-            .clamp(-MAX_DESCENT_M_S, MAX_CLIMB_M_S);
+        let speed_climb_factor = ((reading.speed_m_s - 30.0) / 6.5).clamp(0.0, 1.0);
+        let bank_climb_factor = reading.bank_rad.cos().powi(2).clamp(0.65, 1.0);
+        let max_climb = MAX_CLIMB_M_S * bank_climb_factor * speed_climb_factor;
+        let climb_cmd =
+            (HEIGHT_GAIN * (cmd.target_agl_m - reading.agl_m)).clamp(-MAX_DESCENT_M_S, max_climb);
         let path_cmd = (climb_cmd / speed).clamp(-0.12, 0.12).asin();
 
         let (sin_bank, cos_bank) = reading.bank_rad.sin_cos();

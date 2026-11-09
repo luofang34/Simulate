@@ -51,15 +51,15 @@ pub fn pilot_eye_mount() -> CameraMount {
 #[must_use]
 pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
     match vehicle {
-        FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
-        FreeFlightVehicle::JsbsimLightTrainer | FreeFlightVehicle::AviateFixedWingDirect => {
-            CameraMount::oblique(
-                DVec3::new(0.50, 0.0, -0.28),
-                0.0,
-                -3.0_f64.to_radians(),
-                0.0,
-            )
-        }
+        FreeFlightVehicle::JsbsimC172
+        | FreeFlightVehicle::AviateFixedWingDirect
+        | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
+        FreeFlightVehicle::JsbsimP38g => CameraMount::oblique(
+            DVec3::new(0.25, 0.0, -0.82),
+            0.0,
+            -2.5_f64.to_radians(),
+            0.0,
+        ),
         FreeFlightVehicle::AviateX500Direct => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }
@@ -76,9 +76,29 @@ pub fn belly_sensor_mount() -> CameraMount {
     )
 }
 
-/// PFD `ConformalSvs3D` virtual camera mount aligned with the aircraft nose reference.
+/// Centerline-boresighted PFD `ConformalSvs3D` camera mount at the C172 cockpit eyepoint
+/// height (`0°` angular offset so the PFD zero-pitch horizon line matches aircraft nose `+X`).
 pub fn svs_nose_mount() -> CameraMount {
-    CameraMount::forward_nose(DVec3::ZERO)
+    CameraMount::forward_nose(DVec3::new(0.10, 0.0, -0.12))
+}
+
+/// Centerline-boresighted PFD `ConformalSvs3D` mount at `vehicle`'s cockpit eyepoint height.
+#[must_use]
+pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
+    match vehicle {
+        Some(
+            FreeFlightVehicle::JsbsimC172
+            | FreeFlightVehicle::AviateFixedWingDirect
+            | FreeFlightVehicle::Kinematic,
+        )
+        | None => svs_nose_mount(),
+        Some(FreeFlightVehicle::JsbsimP38g) => {
+            CameraMount::forward_nose(DVec3::new(0.25, 0.0, -0.82))
+        }
+        Some(FreeFlightVehicle::AviateX500Direct) => {
+            CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
+        }
+    }
 }
 
 /// The eye a scenario gives a person aboard.

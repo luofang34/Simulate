@@ -277,7 +277,7 @@ impl CorridorRun {
         config: ImageDrivenConfig,
         estimator: Box<dyn CorridorVisualEstimator>,
     ) -> Result<Self, ScenarioError> {
-        let planned = start_of(profile);
+        let planned = start_of(profile, dynamics);
         let frame = LocalFrame::at(&planned.position);
         let (sin, cos) = planned.heading_rad.sin_cos();
         let right = frame.east() * cos - frame.north() * sin;
@@ -291,6 +291,7 @@ impl CorridorRun {
         let image = ImageMode::new(config, estimator, Self::planned_start_enu_m(profile));
         Self::assemble(
             profile,
+            dynamics,
             Source::new(dynamics, &moved)?,
             CameraMount::nadir_belly(DVec3::ZERO),
             intrinsics,
@@ -301,12 +302,13 @@ impl CorridorRun {
 
     /// Where the flight plan starts `profile`, in the corridor's
     /// east-north-up frame, metres: what an image-driven run's estimator and
-    /// filter are seeded with.
+    /// filter are seeded with. Only the start speed depends on the dynamics.
     #[must_use]
     pub fn planned_start_enu_m(profile: ScenarioProfile) -> DVec3 {
         let anchor = anchor_position();
         LocalFrame::at(&anchor).ecef_to_enu_vector(
-            geodetic_to_ecef(&start_of(profile).position) - geodetic_to_ecef(&anchor),
+            geodetic_to_ecef(&start_of(profile, FlightDynamics::Kinematic).position)
+                - geodetic_to_ecef(&anchor),
         )
     }
 

@@ -40,7 +40,7 @@ impl FdmEngine {
     #[must_use]
     pub const fn of(vehicle: FreeFlightVehicle) -> Self {
         match vehicle {
-            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimLightTrainer => Self::Jsbsim,
+            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimP38g => Self::Jsbsim,
             FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::AviateFixedWingDirect => {
                 Self::AviateXil
             }
@@ -54,12 +54,16 @@ impl FdmEngine {
 pub enum HangarModel {
     /// The packaged Cessna 172 `.usdc`.
     C172,
+    /// The procedural Lockheed P-38G Lightning (`"Miss Virginia"`) twin-boom fighter.
+    P38g,
     /// The procedural X500 quadrotor.
     X500,
     /// The procedural twin-boom corridor UAV.
     FixedWingUav,
     /// The procedural Apollo lunar module.
     LunarLander,
+    /// The packaged Raketa single-stage test rocket (`retro_rocket_v4.usd`).
+    Raketa,
 }
 
 /// How flying a vehicle starts.
@@ -174,20 +178,28 @@ impl VehicleDescriptor {
                 "General Aviation",
                 110.0,
                 1_043.0,
-                vec![FreeFlightVehicle::JsbsimC172],
+                vec![
+                    FreeFlightVehicle::JsbsimC172,
+                    FreeFlightVehicle::AviateFixedWingDirect,
+                ],
                 HangarModel::C172,
             ),
             free(
-                "Light Trainer / Corridor UAV",
+                "Lockheed P-38G Lightning",
+                VehicleClass::FixedWing,
+                "Twin-Boom Fighter",
+                265.0,
+                6_813.0,
+                vec![FreeFlightVehicle::JsbsimP38g],
+                HangarModel::P38g,
+            ),
+            free(
+                "Corridor UAV",
                 VehicleClass::FixedWing,
                 "Fixed-Wing Testbed",
                 95.0,
                 750.0,
-                vec![
-                    FreeFlightVehicle::JsbsimLightTrainer,
-                    FreeFlightVehicle::AviateFixedWingDirect,
-                    FreeFlightVehicle::Kinematic,
-                ],
+                vec![FreeFlightVehicle::Kinematic],
                 HangarModel::FixedWingUav,
             ),
             free(
@@ -208,7 +220,22 @@ impl VehicleDescriptor {
                 launch: AirframeLaunch::Scenario(ScenarioProfile::Apollo11LunarLanding),
                 model: HangarModel::LunarLander,
             },
+            Self::raketa(),
         ]
+    }
+
+    /// Descriptor for the `Raketa` single-stage test rocket (`retro_rocket_v4.usd`, `12,000 kg`).
+    #[must_use]
+    pub fn raketa() -> Self {
+        Self {
+            title: "Raketa Single-Stage Rocket".to_owned(),
+            class: VehicleClass::Spacecraft,
+            role: "Spacecraft",
+            cruise_kt: 0.0,
+            mass_kg: 12_000.0,
+            launch: AirframeLaunch::Scenario(ScenarioProfile::Apollo11LunarLanding),
+            model: HangarModel::Raketa,
+        }
     }
 }
 
@@ -216,8 +243,7 @@ impl VehicleDescriptor {
 #[must_use]
 pub const fn mode_label(vehicle: FreeFlightVehicle) -> &'static str {
     match vehicle {
-        FreeFlightVehicle::JsbsimC172 => "JSBSIM",
-        FreeFlightVehicle::JsbsimLightTrainer => "JSBSIM DIRECT",
+        FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimP38g => "JSBSIM",
         FreeFlightVehicle::AviateFixedWingDirect => "AVIATE FBW",
         FreeFlightVehicle::Kinematic => "KINEMATIC",
         FreeFlightVehicle::AviateX500Direct => "AVIATE DIRECT",

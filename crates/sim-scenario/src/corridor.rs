@@ -64,8 +64,13 @@ const OFF_SEED_LATERAL_M: f64 = 900.0;
 const OFF_SEED_HEIGHT_M: f64 = 200.0;
 const AGGRESSIVE_HEIGHT_M: f64 = 1_300.0;
 const AGGRESSIVE_SPEED_M_S: f64 = 65.0;
-const LOITER_SPEED_M_S: f64 = 32.0;
-const LOITER_RADIUS_M: f64 = 150.0;
+/// The kinematic stand-in has no stall and tracks a slow orbit tightly.
+const KINEMATIC_LOITER_SPEED_M_S: f64 = 32.0;
+/// The C172 stalls at 57 KCAS in a 30 degree bank (POH Figure 5-3), so it orbits
+/// at about 1.4 times its stall speed in the 35 degree bank this circle needs.
+const C172_LOITER_SPEED_M_S: f64 = 42.0;
+/// Small enough that the orbit stays inside one 500 m map cell.
+const LOITER_RADIUS_M: f64 = 200.0;
 /// The middle of a 500 m map cell, so the orbit stays inside it. North first,
 /// as autopilot positions are.
 const LOITER_CENTRE_M: DVec2 = DVec2::new(3_250.0, 2_250.0);
@@ -92,7 +97,7 @@ fn track_point(along_m: f64, right_m: f64) -> DVec2 {
 }
 
 /// How a profile begins.
-fn start_of(profile: ScenarioProfile) -> CorridorStart {
+fn start_of(profile: ScenarioProfile, dynamics: FlightDynamics) -> CorridorStart {
     match profile {
         ScenarioProfile::CorridorOffSeedAcquisition => CorridorStart {
             position: local_position(
@@ -113,7 +118,7 @@ fn start_of(profile: ScenarioProfile) -> CorridorStart {
                 CRUISE_HEIGHT_M,
             ),
             heading_rad: FRAC_PI_2,
-            speed_m_s: LOITER_SPEED_M_S,
+            speed_m_s: loiter_speed_m_s(dynamics),
         },
         _ => CorridorStart {
             position: local_position(TRACK_ORIGIN_M, CRUISE_HEIGHT_M),
@@ -162,7 +167,15 @@ fn aggressive_steering(elapsed_s: f64) -> Steering {
     }
 }
 
-fn guidance_of(profile: ScenarioProfile, elapsed_s: f64) -> Guidance {
+/// Orbit speed of the same-cell loiter on `dynamics`.
+const fn loiter_speed_m_s(dynamics: FlightDynamics) -> f64 {
+    match dynamics {
+        FlightDynamics::Kinematic => KINEMATIC_LOITER_SPEED_M_S,
+        FlightDynamics::Jsbsim => C172_LOITER_SPEED_M_S,
+    }
+}
+
+fn guidance_of(profile: ScenarioProfile, dynamics: FlightDynamics, elapsed_s: f64) -> Guidance {
     let line = Steering::Line {
         through_m: TRACK_ORIGIN_M,
         bearing_rad: TRACK_BEARING_RAD,
@@ -184,7 +197,7 @@ fn guidance_of(profile: ScenarioProfile, elapsed_s: f64) -> Guidance {
                 radius_m: LOITER_RADIUS_M,
             },
             height_m: CRUISE_HEIGHT_M,
-            speed_m_s: LOITER_SPEED_M_S,
+            speed_m_s: loiter_speed_m_s(dynamics),
         },
         _ => Guidance {
             steering: Steering::Track(cruise_track_rad(elapsed_s)),
@@ -199,6 +212,7 @@ fn guidance_of(profile: ScenarioProfile, elapsed_s: f64) -> Guidance {
 /// the two-tier visual harness.
 pub struct CorridorRun {
     profile: ScenarioProfile,
+    dynamics: FlightDynamics,
     source: Source,
     autopilot: Autopilot,
     last_controls: ControlInputs,
@@ -219,7 +233,8 @@ impl CorridorRun {
     pub fn new(profile: ScenarioProfile, dynamics: FlightDynamics) -> Result<Self, ScenarioError> {
         Self::assemble(
             profile,
-            Source::new(dynamics, &start_of(profile))?,
+            dynamics,
+            Source::new(dynamics, &start_of(profile, dynamics))?,
             CameraMount::forward_nose(CAMERA_OFFSET_BODY_M),
             CAMERA_INTRINSICS,
             TwoTierConfig::default(),
@@ -229,6 +244,7 @@ impl CorridorRun {
 
     fn assemble(
         profile: ScenarioProfile,
+        dynamics: FlightDynamics,
         source: Source,
         mount: CameraMount,
         intrinsics: SensorIntrinsics,
@@ -244,6 +260,7 @@ impl CorridorRun {
         })?;
         let mut run = Self {
             profile,
+            dynamics,
             source,
             autopilot: Autopilot::default(),
             last_controls: ControlInputs::default(),
@@ -343,7 +360,7 @@ impl CorridorRun {
         let steered_on = navigated.map_or(reading, |state| {
             FlightReading::of(&state, self.origin_ecef, &self.anchor_frame)
         });
-        let guidance = guidance_of(self.profile, self.elapsed_s());
+        let guidance = guidance_of(self.profile, self.dynamics, self.elapsed_s());
         let controls = self
             .autopilot
             .update(&guidance, &steered_on, PERIOD.as_seconds());

@@ -4,13 +4,13 @@ use sim_core::{
     VehicleState,
 };
 use sim_geo::{Geodetic, ecef_to_geodetic};
-use sim_pack::builtin_light_trainer_package;
+use sim_pack::builtin_c172_package;
 use sim_scenery::{AuthoritativeWorldSurface, WorldSurfaceQuery};
 
 use super::PERIOD;
 use crate::ScenarioError;
 
-/// Angle of attack the trainer starts at, near its cruise trim, radians.
+/// Angle of attack the C172 starts at, near its cruise trim, radians.
 const JSBSIM_START_ALPHA_RAD: f64 = 0.05;
 
 /// Which [`sim_core::Block`] flies a corridor scenario.
@@ -18,7 +18,7 @@ const JSBSIM_START_ALPHA_RAD: f64 = 0.05;
 pub enum FlightDynamics {
     /// The stick-to-rate placeholder with no aerodynamics.
     Kinematic,
-    /// The JSBSim trainer.
+    /// The JSBSim C172.
     Jsbsim,
 }
 
@@ -35,9 +35,9 @@ impl Source {
                 VehicleState::level_flight(&start.position, start.heading_rad, start.speed_m_s),
             )),
             FlightDynamics::Jsbsim => {
-                let trainer = builtin_light_trainer_package()?;
-                let files = trainer.build_jsbsim_resolver()?;
-                let (aircraft_path, model) = trainer.jsbsim_model()?;
+                let c172 = builtin_c172_package()?;
+                let files = c172.build_jsbsim_resolver()?;
+                let (aircraft_path, model) = c172.jsbsim_model()?;
                 Self::Jsbsim(Box::new(JsbsimFdmBlock::new(&JsbsimFdmConfig {
                     resolver: &files,
                     aircraft_path,

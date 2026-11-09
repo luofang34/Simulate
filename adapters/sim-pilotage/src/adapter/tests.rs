@@ -8,7 +8,7 @@ use pilotage_protocol::{
 };
 use pilotage_timing::MonoTimestamp;
 use sim_core::{JSBSIM_DEFAULT_PERIOD, KinematicModel};
-use sim_pack::{SystemKind, builtin_c172_package, builtin_light_trainer_package};
+use sim_pack::{SystemKind, builtin_c172_package};
 
 use super::*;
 
@@ -32,8 +32,8 @@ fn kinematic() -> SimulateVehicleAdapter<KinematicModel> {
     SimulateVehicleAdapter::new(CONFIG, KinematicModel::new(state))
 }
 
-fn trainer() -> SimulateVehicleAdapter<JsbsimFdmBlock> {
-    let package = builtin_light_trainer_package().unwrap();
+fn c172() -> SimulateVehicleAdapter<JsbsimFdmBlock> {
+    let package = builtin_c172_package().unwrap();
     let start = PackageStart {
         position: start(),
         heading_rad: PI / 2.0,
@@ -131,14 +131,14 @@ fn a_roll_rate_intent_banks_either_dynamics_source() {
         Disposition::Accepted
     );
     kinematic.step(StepBudget { ticks: 240 });
-    let mut trainer = trainer();
-    trainer.apply_control(&command(intent));
-    trainer.step(StepBudget { ticks: 240 });
+    let mut jsbsim = c172();
+    jsbsim.apply_control(&command(intent));
+    jsbsim.step(StepBudget { ticks: 240 });
 
     // Two seconds at 0.2 rad/s, less the rate loop's rise.
     for bank in [
         bank_rad(&kinematic.vehicle_state()),
-        bank_rad(&trainer.vehicle_state()),
+        bank_rad(&jsbsim.vehicle_state()),
     ] {
         assert!(bank > 0.25 && bank < 0.5, "{bank}");
     }
@@ -335,10 +335,10 @@ fn truth_bits(
 #[test]
 fn identical_commands_fly_identical_bits_however_the_budget_is_cut() {
     let intent = body_rate(0.1, 0.05, 0.0, 0.5);
-    let mut whole = trainer();
+    let mut whole = c172();
     whole.apply_control(&command(intent));
     whole.step(StepBudget { ticks: 120 });
-    let mut cut = trainer();
+    let mut cut = c172();
     cut.apply_control(&command(intent));
     for _ in 0..12 {
         cut.step(StepBudget { ticks: 10 });
@@ -350,7 +350,7 @@ fn identical_commands_fly_identical_bits_however_the_budget_is_cut() {
 #[test]
 fn a_reset_returns_to_the_start_in_a_new_epoch_with_time_still_running() {
     let intent = body_rate(0.2, 0.0, 0.0, 0.8);
-    let mut adapter = trainer();
+    let mut adapter = c172();
     let first_bits = truth_bits(&adapter);
     adapter.apply_control(&command(intent));
     adapter.step(StepBudget { ticks: 120 });

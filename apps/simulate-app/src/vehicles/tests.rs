@@ -12,7 +12,8 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
     for (vehicle, cold) in [
         (FreeFlightVehicle::JsbsimC172, false),
         (FreeFlightVehicle::JsbsimC172, true),
-        (FreeFlightVehicle::JsbsimLightTrainer, false),
+        (FreeFlightVehicle::JsbsimP38g, false),
+        (FreeFlightVehicle::JsbsimP38g, true),
     ] {
         let mut plant = FreeFlightPlant::new_on_ground(vehicle, ground, 1.2, cold).expect("parked");
         let mut plant_ground = ground;
@@ -44,8 +45,6 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
             end.velocity_ecef.length() < speed_limit,
             "{vehicle:?} cold={cold} moving"
         );
-        // The light trainer's engine model reports no power at zero throttle, so only the
-        // C172's idle is checked.
         let running = plant.engine_status().is_some_and(|e| e.running);
         if cold || vehicle == FreeFlightVehicle::JsbsimC172 {
             assert_eq!(running, !cold, "{vehicle:?}");

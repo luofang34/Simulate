@@ -92,7 +92,7 @@ pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
     match vehicle {
         FreeFlightVehicle::AviateX500Direct => VehicleClass::Multirotor,
         FreeFlightVehicle::JsbsimC172
-        | FreeFlightVehicle::JsbsimLightTrainer
+        | FreeFlightVehicle::JsbsimP38g
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::Kinematic => VehicleClass::FixedWing,
     }

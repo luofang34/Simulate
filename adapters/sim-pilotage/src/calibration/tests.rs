@@ -4,7 +4,7 @@ use pilotage_camera_calibration::{
     verify_sim_recovery,
 };
 use sim_core::{CameraMount, SensorIntrinsics, TickSpan};
-use sim_pack::builtin_light_trainer_package;
+use sim_pack::builtin_c172_package;
 
 use super::*;
 
@@ -17,8 +17,8 @@ const LIFECYCLE: CalibrationLifecycle = CalibrationLifecycle {
     effective_until_unix_ns: 2_051_222_400_000_000_000,
 };
 
-fn trainer_camera() -> PackageCamera {
-    let package = builtin_light_trainer_package().unwrap();
+fn c172_camera() -> PackageCamera {
+    let package = builtin_c172_package().unwrap();
     package.camera_mounts().unwrap().remove(0)
 }
 
@@ -28,8 +28,8 @@ fn rotate(quat_wxyz: [f64; 4], vector: DVec3) -> DVec3 {
 }
 
 #[test]
-fn the_trainers_camera_verifies_with_its_own_geometry() {
-    let calibrated = package_camera_calibration(&trainer_camera(), LIFECYCLE);
+fn the_c172s_camera_verifies_with_its_own_geometry() {
+    let calibrated = package_camera_calibration(&c172_camera(), LIFECYCLE);
     calibrated.calibration.validate().unwrap();
     let model = calibrated.verified_model(NOW_UNIX_NS).unwrap();
 
@@ -46,7 +46,7 @@ fn the_trainers_camera_verifies_with_its_own_geometry() {
 /// the half-turn from Simulate's camera axes.
 #[test]
 fn a_nose_camera_matches_pilotages_published_body_to_camera_rotation() {
-    let ours = package_camera_calibration(&trainer_camera(), LIFECYCLE)
+    let ours = package_camera_calibration(&c172_camera(), LIFECYCLE)
         .calibration
         .geometry
         .extrinsics
@@ -70,7 +70,7 @@ fn a_nose_camera_matches_pilotages_published_body_to_camera_rotation() {
 fn a_belly_camera_looks_down_in_opencv_axes() {
     let camera = PackageCamera {
         mount: CameraMount::nadir_belly(DVec3::new(0.5, 0.0, 1.0)),
-        ..trainer_camera()
+        ..c172_camera()
     };
     let calibrated = package_camera_calibration(&camera, LIFECYCLE);
     let extrinsics = calibrated.calibration.geometry.extrinsics;
@@ -81,7 +81,7 @@ fn a_belly_camera_looks_down_in_opencv_axes() {
 
 #[test]
 fn the_budget_covers_the_fit_it_records() {
-    let calibration = package_camera_calibration(&trainer_camera(), LIFECYCLE).calibration;
+    let calibration = package_camera_calibration(&c172_camera(), LIFECYCLE).calibration;
     let residuals = calibration.identity.residuals;
     assert!(
         residuals.max_px > 0.0 && residuals.max_px < 1.0,
@@ -103,7 +103,7 @@ fn the_fit_matches_pilotages_recovery_on_its_published_camera() {
 
 #[test]
 fn a_changed_value_fails_the_recorded_hash() {
-    let mut calibrated = package_camera_calibration(&trainer_camera(), LIFECYCLE);
+    let mut calibrated = package_camera_calibration(&c172_camera(), LIFECYCLE);
     calibrated.calibration.geometry.intrinsics.focal_x_px += 1.0;
     assert!(matches!(
         calibrated.verified_model(NOW_UNIX_NS),
@@ -113,7 +113,7 @@ fn a_changed_value_fails_the_recorded_hash() {
 
 #[test]
 fn an_expired_calibration_does_not_verify() {
-    let calibrated = package_camera_calibration(&trainer_camera(), LIFECYCLE);
+    let calibrated = package_camera_calibration(&c172_camera(), LIFECYCLE);
     assert!(
         calibrated
             .verified_model(LIFECYCLE.effective_until_unix_ns)
@@ -126,10 +126,10 @@ fn a_zero_sized_camera_is_refused_with_its_reason() {
     let camera = PackageCamera {
         intrinsics: SensorIntrinsics {
             width: 0,
-            ..trainer_camera().intrinsics
+            ..c172_camera().intrinsics
         },
         period: TickSpan::SECOND,
-        ..trainer_camera()
+        ..c172_camera()
     };
     let calibrated = package_camera_calibration(&camera, LIFECYCLE);
     assert!(matches!(
@@ -140,7 +140,7 @@ fn a_zero_sized_camera_is_refused_with_its_reason() {
 
 #[test]
 fn the_artifact_is_distinct_from_pilotages_and_its_schema_is_current() {
-    let calibrated = package_camera_calibration(&trainer_camera(), LIFECYCLE);
+    let calibrated = package_camera_calibration(&c172_camera(), LIFECYCLE);
     assert_ne!(calibrated.recorded_hash, SIM_FPV_CALIBRATION_HASH);
     assert_eq!(CALIBRATION_SCHEMA_VERSION, 2);
 }

@@ -309,7 +309,7 @@ fn render_ui_and_efb_verification_shots() -> Result<(), AppSimError> {
     let _ = h.flight.scrub_to_live()?;
 
     h.menu
-        .sync_vehicle(&h.catalog, FreeFlightVehicle::JsbsimLightTrainer);
+        .sync_vehicle(&h.catalog, FreeFlightVehicle::Kinematic);
     h.draw_hub_tab(HubTab::Hangar, None, &dir.join("05_hub_tab2_hangar.png"))?;
 
     let (kewr_idx, kewr_rec) =

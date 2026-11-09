@@ -37,7 +37,7 @@ fn restoring_a_checkpoint_returns_its_state_in_a_new_epoch() {
 
 #[test]
 fn a_restored_checkpoint_flies_a_neutral_law_and_replays_identically() {
-    let mut adapter = trainer();
+    let mut adapter = c172();
     adapter.apply_control(&command(body_rate(0.1, 0.05, 0.0, 0.5)));
     adapter.step(StepBudget { ticks: 60 });
     let checkpoint = adapter.checkpoint();

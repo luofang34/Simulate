@@ -271,13 +271,15 @@ fn hangar_selects_previews_and_flies_registry_vehicles() {
 fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
     let catalog = catalog();
     let models: Vec<HangarModel> = catalog.vehicles.iter().map(|v| v.model).collect();
-    assert_eq!(catalog.vehicles.len(), 4);
+    assert_eq!(catalog.vehicles.len(), 6);
+    assert!(models.contains(&HangarModel::P38g));
+    assert!(models.contains(&HangarModel::Raketa));
     for (i, model) in models.iter().enumerate() {
         assert!(!models.iter().skip(i + 1).any(|m| m == model), "{models:?}");
     }
     for plant in [
         FreeFlightVehicle::JsbsimC172,
-        FreeFlightVehicle::JsbsimLightTrainer,
+        FreeFlightVehicle::JsbsimP38g,
         FreeFlightVehicle::AviateFixedWingDirect,
         FreeFlightVehicle::Kinematic,
         FreeFlightVehicle::AviateX500Direct,
@@ -293,25 +295,25 @@ fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
 
     let mut hub = Hub::opened();
     hub.input(MenuInput::Tab(HubTab::Hangar));
-    let trainer = hub
+    let p38 = hub
         .catalog
-        .airframe_of(FreeFlightVehicle::Kinematic)
-        .expect("trainer");
+        .airframe_of(FreeFlightVehicle::JsbsimP38g)
+        .expect("p38g");
     let c172 = hub
         .catalog
         .airframe_of(FreeFlightVehicle::JsbsimC172)
         .expect("c172");
-    hub.click(WidgetId::VehicleRow(c172));
+    hub.click(WidgetId::VehicleRow(p38));
     assert!(
         hub.view()
-            .find(WidgetId::VehicleMode(FreeFlightVehicle::JsbsimC172))
+            .find(WidgetId::VehicleMode(FreeFlightVehicle::JsbsimP38g))
             .is_none(),
         "single-plant airframes show no mode chips"
     );
     hub.status.active_vehicle = Some(FreeFlightVehicle::AviateFixedWingDirect);
     hub.menu
         .sync_vehicle(&hub.catalog, FreeFlightVehicle::AviateFixedWingDirect);
-    assert_eq!(hub.menu.vehicle(), trainer);
+    assert_eq!(hub.menu.vehicle(), c172);
     let active_modes = |hub: &Hub| -> Vec<FreeFlightVehicle> {
         hub.view()
             .widgets()
@@ -327,15 +329,15 @@ fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
         [FreeFlightVehicle::AviateFixedWingDirect]
     );
     assert_eq!(
-        hub.click(WidgetId::VehicleMode(FreeFlightVehicle::Kinematic)),
+        hub.click(WidgetId::VehicleMode(FreeFlightVehicle::JsbsimC172)),
         MenuOutcome::Idle
     );
-    assert_eq!(active_modes(&hub), [FreeFlightVehicle::Kinematic]);
+    assert_eq!(active_modes(&hub), [FreeFlightVehicle::JsbsimC172]);
     assert_eq!(
         hub.click(WidgetId::ApplyVehicle),
         MenuOutcome::Command(MenuCommand::ApplyVehicle {
-            vehicle: trainer,
-            mode: Some(FreeFlightVehicle::Kinematic),
+            vehicle: c172,
+            mode: Some(FreeFlightVehicle::JsbsimC172),
         })
     );
 }

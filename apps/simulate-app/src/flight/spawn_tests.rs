@@ -147,7 +147,7 @@ fn assert_rests_on_gear(flight: &mut Flight, label: &str, gear_m: f64) {
 
 #[test]
 fn parked_aircraft_rest_on_their_gear_at_airports_worldwide() {
-    use crate::vehicles::{C172_GEAR_HEIGHT_M, LIGHT_TRAINER_GEAR_HEIGHT_M};
+    use crate::vehicles::{C172_GEAR_HEIGHT_M, P38G_GEAR_HEIGHT_M};
     let db = sim_scenery::AirportDatabase::builtin();
     let mut flight = Flight::with_surface(real_world_surface()).expect("flight");
     assert_eq!(
@@ -156,10 +156,7 @@ fn parked_aircraft_rest_on_their_gear_at_airports_worldwide() {
     );
     for (vehicle, gear_m) in [
         (FreeFlightVehicle::JsbsimC172, C172_GEAR_HEIGHT_M),
-        (
-            FreeFlightVehicle::JsbsimLightTrainer,
-            LIGHT_TRAINER_GEAR_HEIGHT_M,
-        ),
+        (FreeFlightVehicle::JsbsimP38g, P38G_GEAR_HEIGHT_M),
     ] {
         flight.select_vehicle(vehicle).expect("vehicle");
         for code in ["KEWR", "47N", "EGLL", "RJTT"] {

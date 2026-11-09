@@ -11,7 +11,7 @@ use sim_core::{
     RigidBodyInput, RigidBodySnapshot, TICKS_PER_SECOND, ThrusterWrench, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
-use sim_pack::{builtin_c172_package, builtin_light_trainer_package};
+use sim_pack::{LoadedSyspack, builtin_c172_package};
 use sim_xil::XilStimulus;
 use world_core::{GeodeticPosition, normal_gravity};
 
@@ -22,8 +22,6 @@ use crate::IronbirdError;
 pub enum FixedWingVehicle {
     /// Cessna 172 Skyhawk (`vehicles/c172`).
     C172,
-    /// Simulate Light Trainer (`vehicles/light-trainer`).
-    LightTrainer,
 }
 
 impl FixedWingVehicle {
@@ -32,7 +30,6 @@ impl FixedWingVehicle {
     pub const fn nominal_cruise_speed_m_s(self) -> f64 {
         match self {
             Self::C172 => 52.0,
-            Self::LightTrainer => 48.0,
         }
     }
 }
@@ -50,8 +47,17 @@ impl JsbsimPlant {
     pub fn new_cruise(vehicle: FixedWingVehicle, initial: Geodetic) -> Result<Self, IronbirdError> {
         let package = match vehicle {
             FixedWingVehicle::C172 => builtin_c172_package()?,
-            FixedWingVehicle::LightTrainer => builtin_light_trainer_package()?,
         };
+        Self::from_package(&package, initial, vehicle.nominal_cruise_speed_m_s())
+    }
+
+    /// Loads an arbitrary verified [`LoadedSyspack`] trimmed in running cruise at
+    /// `initial` heading North (`cruise_speed_m_s` in `m/s`).
+    pub fn from_package(
+        package: &LoadedSyspack,
+        initial: Geodetic,
+        cruise_speed_m_s: f64,
+    ) -> Result<Self, IronbirdError> {
         let resolver = package.build_jsbsim_resolver()?;
         let (aircraft_path, model) = package.jsbsim_model()?;
         let period = JSBSIM_DEFAULT_PERIOD;
@@ -62,7 +68,7 @@ impl JsbsimPlant {
             period,
             initial,
             heading_rad: 0.0,
-            speed_m_s: vehicle.nominal_cruise_speed_m_s(),
+            speed_m_s: cruise_speed_m_s,
             alpha_rad: 0.035,
             engine_start: EngineStartMode::Running,
         })?;

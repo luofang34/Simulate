@@ -126,9 +126,9 @@ fn a_bank_command_rolls_into_and_holds_the_bank() {
     let bank = bank_rad(&kinematic.vehicle_state());
     assert!((bank - 0.4).abs() < 0.05, "{bank}");
 
-    let mut trainer = trainer();
-    trainer.apply_control(&attitude_command(intent));
-    trainer.step(StepBudget { ticks: 480 });
-    let bank = bank_rad(&trainer.vehicle_state());
+    let mut jsbsim = c172();
+    jsbsim.apply_control(&attitude_command(intent));
+    jsbsim.step(StepBudget { ticks: 480 });
+    let bank = bank_rad(&jsbsim.vehicle_state());
     assert!((bank - 0.4).abs() < 0.15, "{bank}");
 }

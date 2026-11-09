@@ -12,7 +12,7 @@ const KEWR_RUNWAY_M: f64 = -28.7;
 /// Denver's field elevation, far above the ellipsoid.
 const KDEN_RUNWAY_M: f64 = 1_650.0;
 /// The C172's CG height above the ground resting on its compressed gear.
-const PARKED_CG_AGL_M: f64 = 1.24;
+const PARKED_CG_AGL_M: f64 = 1.324;
 
 fn c172_resolver() -> MemoryResolver {
     let mut files = MemoryResolver::new();
@@ -94,4 +94,42 @@ fn starting_on_non_finite_terrain_is_refused() {
     assert!(JsbsimFdmBlock::new_on_terrain(&config, f64::NAN).is_err());
     let default_ground = JsbsimFdmBlock::new(&config).unwrap();
     assert_eq!(default_ground.last_ground_sync_m(), None);
+}
+
+#[test]
+fn late_dem_refinement_lifts_parked_c172_without_belly_slam_and_leaves_airborne_untouched() {
+    let files = c172_resolver();
+    let mut parked =
+        JsbsimFdmBlock::new_on_terrain(&parked_config(&files, KEWR_RUNWAY_M), KEWR_RUNWAY_M)
+            .unwrap();
+    parked.sync_ground_versioned_m(KEWR_RUNWAY_M, 0).unwrap();
+    let idle = KinematicInput::default();
+    for _ in 0..24 {
+        parked.step(&idle).unwrap();
+    }
+    let refined_m = KEWR_RUNWAY_M + 3.8;
+    parked.sync_ground_versioned_m(refined_m, 1).unwrap();
+    let (immediate_h, _) = height_and_climb(&parked);
+    assert!(
+        (1.10..1.40).contains(&(immediate_h - refined_m)),
+        "late DEM jump preserved parked gear height: {} m above {refined_m}",
+        immediate_h - refined_m
+    );
+    for tick in 1..=120_u32 {
+        parked.sync_ground_versioned_m(refined_m, 1).unwrap();
+        parked.step(&idle).unwrap();
+        let (height_m, climb_m_s) = height_and_climb(&parked);
+        let agl_m = height_m - refined_m;
+        assert!(
+            (1.10..1.40).contains(&agl_m) && climb_m_s.abs() < 0.25,
+            "tick {tick}: agl={agl_m} m, climb={climb_m_s} m/s"
+        );
+    }
+
+    let mut airborne = super::c172(0.0);
+    airborne.sync_ground_versioned_m(0.0, 0).unwrap();
+    let before_h = ecef_to_geodetic(airborne.output().position_ecef).height_m;
+    airborne.sync_ground_versioned_m(50.0, 1).unwrap();
+    let after_h = ecef_to_geodetic(airborne.output().position_ecef).height_m;
+    assert!((after_h - before_h).abs() < 1e-6, "{before_h} vs {after_h}");
 }

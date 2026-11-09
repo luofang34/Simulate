@@ -6,10 +6,11 @@ use sim_geo::{LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use super::*;
 
 mod ground;
+mod systems;
 
-const TRAINER_XML: &str = include_str!("../../../../vehicles/light-trainer/fdm/trainer.xml");
-const JSBSIM_TRAINER_AIRCRAFT_PATH: &str = "aircraft";
-const JSBSIM_TRAINER_MODEL: &str = "sim_trainer";
+const C172_XML: &str = include_str!("../../../../vehicles/c172/fdm/c172_class_reference.xml");
+const JSBSIM_AIRCRAFT_PATH: &str = "aircraft";
+const JSBSIM_C172_MODEL: &str = "c172_class_reference";
 
 const CRUISE_M_S: f64 = 45.0;
 const CRUISE_ALPHA_RAD: f64 = 0.06;
@@ -23,18 +24,36 @@ fn start() -> Geodetic {
     Geodetic::from_degrees(39.1, -75.6, 900.0)
 }
 
-fn jsbsim_trainer_resolver() -> MemoryResolver {
+fn c172_resolver() -> MemoryResolver {
     let mut files = MemoryResolver::new();
-    files.insert("aircraft/sim_trainer/sim_trainer.xml", TRAINER_XML);
+    files.insert(
+        "aircraft/c172_class_reference/c172_class_reference.xml",
+        C172_XML,
+    );
     files
 }
 
-fn trainer(heading_rad: f64) -> JsbsimFdmBlock {
-    let files = jsbsim_trainer_resolver();
+/// The C172 with 100 lb more empty weight: the same model under another name.
+fn heavier_c172_xml() -> String {
+    const OPEN: &str = "<emptywt unit=\"LBS\">";
+    const CLOSE: &str = "</emptywt>";
+    let start = C172_XML.find(OPEN).unwrap() + OPEN.len();
+    let end = start + C172_XML[start..].find(CLOSE).unwrap();
+    let pounds: f64 = C172_XML[start..end].trim().parse().unwrap();
+    format!(
+        "{} {} {}",
+        &C172_XML[..start],
+        pounds + 100.0,
+        &C172_XML[end..]
+    )
+}
+
+fn c172(heading_rad: f64) -> JsbsimFdmBlock {
+    let files = c172_resolver();
     JsbsimFdmBlock::new(&JsbsimFdmConfig {
         resolver: &files,
-        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
-        model: JSBSIM_TRAINER_MODEL,
+        aircraft_path: JSBSIM_AIRCRAFT_PATH,
+        model: JSBSIM_C172_MODEL,
         period: JSBSIM_DEFAULT_PERIOD,
         initial: start(),
         heading_rad,
@@ -70,7 +89,7 @@ fn bits(state: &VehicleState) -> [u64; 13] {
 
 #[test]
 fn the_initial_state_lands_on_the_requested_wgs84_pose() {
-    let block = trainer(FRAC_PI_2);
+    let block = c172(FRAC_PI_2);
     let state = block.output();
     let [north, east, down] = ned_axes(&start());
 
@@ -91,7 +110,7 @@ fn the_initial_state_lands_on_the_requested_wgs84_pose() {
 
 #[test]
 fn the_velocity_integrates_to_the_position() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     let before = block.output();
     run(&mut block, 12, cruise());
     let after = block.output();
@@ -118,7 +137,7 @@ fn each_control_moves_the_aircraft_in_pilot_sense() {
         (deflect(0.0, 0.0, 0.5), DVec3::Z, "nose right"),
     ];
     for (controls, axis, what) in cases {
-        let mut block = trainer(0.0);
+        let mut block = c172(0.0);
         run(&mut block, 30, controls);
         let achieved = block.output().angular_rate_body.dot(axis);
         assert!(achieved > 0.05, "{what}: {achieved} rad/s");
@@ -128,7 +147,7 @@ fn each_control_moves_the_aircraft_in_pilot_sense() {
 #[test]
 fn throttle_changes_the_speed_it_settles_at() {
     let settled = |throttle| {
-        let mut block = trainer(0.0);
+        let mut block = c172(0.0);
         run(
             &mut block,
             1_200,
@@ -144,7 +163,7 @@ fn throttle_changes_the_speed_it_settles_at() {
 
 #[test]
 fn a_restored_block_replays_bit_identically() {
-    let mut block = trainer(0.3);
+    let mut block = c172(0.3);
     let busy = ControlInputs {
         roll: 0.2,
         pitch: 0.1,
@@ -167,7 +186,7 @@ fn a_restored_block_replays_bit_identically() {
 
 #[test]
 fn two_blocks_from_one_configuration_fly_the_same_bits() {
-    let [mut one, mut two] = [trainer(1.0), trainer(1.0)];
+    let [mut one, mut two] = [c172(1.0), c172(1.0)];
     run(&mut one, 120, cruise());
     run(&mut two, 120, cruise());
     assert_eq!(bits(&one.output()), bits(&two.output()));
@@ -175,7 +194,7 @@ fn two_blocks_from_one_configuration_fly_the_same_bits() {
 
 #[test]
 fn the_step_matches_the_master_clock_period() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     run(&mut block, 120, cruise());
     assert_eq!(block.period().ticks(), TICKS_PER_SECOND / 120);
     assert!((block.fdm.sim_time() - 1.0).abs() < 1e-12);
@@ -184,12 +203,12 @@ fn the_step_matches_the_master_clock_period() {
 
 #[test]
 fn a_snapshot_of_another_aircraft_is_refused_and_changes_nothing() {
-    let mut files = jsbsim_trainer_resolver();
-    let xml = TRAINER_XML.replace("1320", "1400");
+    let mut files = c172_resolver();
+    let xml = heavier_c172_xml();
     files.insert("aircraft/heavier/heavier.xml", xml);
     let mut other = JsbsimFdmBlock::new(&JsbsimFdmConfig {
         resolver: &files,
-        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
+        aircraft_path: JSBSIM_AIRCRAFT_PATH,
         model: "heavier",
         period: JSBSIM_DEFAULT_PERIOD,
         initial: start(),
@@ -201,7 +220,7 @@ fn a_snapshot_of_another_aircraft_is_refused_and_changes_nothing() {
     .unwrap();
     let before = bits(&other.output());
 
-    let foreign = trainer(0.0).snapshot();
+    let foreign = c172(0.0).snapshot();
     assert!(matches!(
         other.try_restore(&foreign),
         Err(BlockError::Fdm { .. })
@@ -211,10 +230,10 @@ fn a_snapshot_of_another_aircraft_is_refused_and_changes_nothing() {
 
 #[test]
 fn a_zero_period_and_an_unknown_aircraft_are_refused() {
-    let files = jsbsim_trainer_resolver();
+    let files = c172_resolver();
     let config = |period, model| JsbsimFdmConfig {
         resolver: &files,
-        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
+        aircraft_path: JSBSIM_AIRCRAFT_PATH,
         model,
         period,
         initial: start(),
@@ -224,7 +243,7 @@ fn a_zero_period_and_an_unknown_aircraft_are_refused() {
         engine_start: EngineStartMode::Running,
     };
     assert!(matches!(
-        JsbsimFdmBlock::new(&config(TickSpan::ZERO, JSBSIM_TRAINER_MODEL)),
+        JsbsimFdmBlock::new(&config(TickSpan::ZERO, JSBSIM_C172_MODEL)),
         Err(BlockError::InputOutOfRange { .. })
     ));
     assert!(matches!(
@@ -254,12 +273,12 @@ fn the_start_modes_latch_their_controls() {
     assert_eq!(cold.mixture_norm, 0.0);
     assert_eq!(cold.wheel_brake_norm, 1.0);
     assert!(cold.fuel_cutoff && !cold.starter);
-    assert_eq!(trainer(0.0).system_controls(), running);
+    assert_eq!(c172(0.0).system_controls(), running);
 }
 
 #[test]
 fn levers_are_limited_to_their_travel_and_nan_is_the_lower_stop() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     block.set_system_controls(SystemControls {
         mixture_norm: f64::NAN,
         prop_pitch_norm: 2.0,
@@ -275,24 +294,8 @@ fn levers_are_limited_to_their_travel_and_nan_is_the_lower_stop() {
 }
 
 #[test]
-fn an_electric_aircraft_ignores_the_controls_it_lacks() {
-    let mut plain = trainer(0.0);
-    let mut switched = trainer(0.0);
-    switched.set_system_controls(SystemControls {
-        magnetos: MagnetoSwitch::Start,
-        starter: true,
-        mixture_norm: 0.0,
-        fuel_cutoff: true,
-        ..SystemControls::running_defaults()
-    });
-    run(&mut plain, 120, cruise());
-    run(&mut switched, 120, cruise());
-    assert_eq!(bits(&plain.output()), bits(&switched.output()));
-}
-
-#[test]
 fn the_controls_travel_with_the_snapshot() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     let snapshot = block.snapshot();
     block.set_system_controls(SystemControls::cold_and_dark());
     block.restore(&snapshot);
@@ -300,28 +303,13 @@ fn the_controls_travel_with_the_snapshot() {
 }
 
 #[test]
-fn an_aircraft_without_pitch_trim_reports_that_it_cannot_trim() {
-    let mut block = trainer(0.0);
-    assert!(matches!(
-        block.trim_level_flight(),
-        Err(BlockError::Fdm { .. })
-    ));
-    assert!(block.output().position_ecef.is_finite());
-}
-
-#[test]
 fn c172_articulation_tracks_propeller_phase_disc_blur_and_control_surfaces() {
-    const C172_XML: &str = include_str!("../../../../vehicles/c172/fdm/c172_class_reference.xml");
-    let mut files = MemoryResolver::new();
-    files.insert(
-        "aircraft/c172_class_reference/c172_class_reference.xml",
-        C172_XML,
-    );
+    let files = c172_resolver();
 
     let cold = JsbsimFdmBlock::new(&JsbsimFdmConfig {
         resolver: &files,
-        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
-        model: "c172_class_reference",
+        aircraft_path: JSBSIM_AIRCRAFT_PATH,
+        model: JSBSIM_C172_MODEL,
         period: JSBSIM_DEFAULT_PERIOD,
         initial: start(),
         heading_rad: 0.0,
@@ -336,8 +324,8 @@ fn c172_articulation_tracks_propeller_phase_disc_blur_and_control_surfaces() {
 
     let mut running = JsbsimFdmBlock::new(&JsbsimFdmConfig {
         resolver: &files,
-        aircraft_path: JSBSIM_TRAINER_AIRCRAFT_PATH,
-        model: "c172_class_reference",
+        aircraft_path: JSBSIM_AIRCRAFT_PATH,
+        model: JSBSIM_C172_MODEL,
         period: JSBSIM_DEFAULT_PERIOD,
         initial: start(),
         heading_rad: 0.0,
@@ -400,7 +388,7 @@ const TERRAIN_READBACK_M: f64 = 1e-4;
 
 #[test]
 fn syncing_the_ground_leaves_the_latest_step_untouched() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     run(&mut block, 30, cruise());
     let before = block.snapshot();
 
@@ -417,7 +405,7 @@ fn syncing_the_ground_leaves_the_latest_step_untouched() {
 
 #[test]
 fn ground_moving_far_below_every_step_does_not_disturb_the_flight() {
-    let [mut steady, mut tracked] = [trainer(0.4), trainer(0.4)];
+    let [mut steady, mut tracked] = [c172(0.4), c172(0.4)];
     let input = KinematicInput { controls: cruise() };
     for step in 0..240_u32 {
         tracked
@@ -434,17 +422,17 @@ fn ground_moving_far_below_every_step_does_not_disturb_the_flight() {
 }
 
 #[test]
-fn ground_raised_into_the_belly_pushes_up_and_lowering_it_lets_go() {
-    let [mut free, mut grounded] = [trainer(0.0), trainer(0.0)];
+fn ground_raised_into_the_gear_pushes_up_and_lowering_it_lets_go() {
+    let [mut free, mut grounded] = [c172(0.0), c172(0.0)];
     run(&mut free, 10, cruise());
     run(&mut grounded, 10, cruise());
     let height = ecef_to_geodetic(grounded.output().position_ecef).height_m;
     assert_eq!(gear_down_lbf(&mut grounded), 0.0);
 
-    // The belly contact sits 40 in (about 1 m) below the CG, so ground 0.5 m
-    // below the CG is about half a metre into the airframe.
+    // The extended wheels reach about 1.3 m below the reference point, so
+    // ground 1 m below it compresses the struts.
     // JSBSim integrates the contact force on the step after it measures it.
-    grounded.sync_ground_elevation_m(height - 0.5).unwrap();
+    grounded.sync_ground_elevation_m(height - 1.0).unwrap();
     run(&mut free, 3, cruise());
     run(&mut grounded, 3, cruise());
     assert!(
@@ -459,7 +447,7 @@ fn ground_raised_into_the_belly_pushes_up_and_lowering_it_lets_go() {
     let (sliding, flying) = (along(&grounded), along(&free));
     assert!(
         sliding < flying && sliding > flying - 2.0,
-        "belly friction drags a little: {sliding} vs {flying}"
+        "rolling friction drags a little: {sliding} vs {flying}"
     );
 
     grounded.sync_ground_elevation_m(height - 300.0).unwrap();
@@ -470,7 +458,7 @@ fn ground_raised_into_the_belly_pushes_up_and_lowering_it_lets_go() {
 
 #[test]
 fn msl_ground_is_raised_by_the_geoid_onto_the_ellipsoid() {
-    let mut block = trainer(0.0);
+    let mut block = c172(0.0);
     let site = start();
     block
         .sync_ground_msl_egm96_m(site.lat_rad, site.lon_rad, 10.0)

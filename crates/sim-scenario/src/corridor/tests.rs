@@ -126,8 +126,8 @@ fn the_aggressive_profile_loses_the_horizon_and_keeps_the_camera_on_truth() {
             "{dynamics:?}: {report:?}"
         );
         assert!(report.horizon_loss_frames > 15, "{dynamics:?}: {report:?}");
-        // A stick step moves the trainer's rate by 0.3 rad/s within one step,
-        // which bounds the worst sample; the mean shows the rate is the true one.
+        // A stick step moves the JSBSim aircraft's rate within one step, which
+        // bounds the worst sample; the mean shows the rate is the true one.
         assert!(worst_rate_error < 0.15, "{dynamics:?}: {worst_rate_error}");
         let mean_rate_error = rate_error_sum / steps;
         assert!(mean_rate_error < 0.01, "{dynamics:?}: {mean_rate_error}");

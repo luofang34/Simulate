@@ -1,10 +1,18 @@
 //! Command-line configuration and execution for the `ironbird` binary.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use sim_aviate::DirectNoiseTier;
 use sim_core::{HitlSyncMode, TICKS_PER_SECOND, TickSpan};
 use sim_geo::Geodetic;
+use sim_pack::{
+    AceFeedbackReport, CalibrationReport, DesignPerformanceReport, DesignTradeStudyReport,
+    DirectoryPackageSource, LoadedSyspack, SensitivityReport, build_ace_feedback_report,
+    builtin_c172_package, default_design_trades, estimate_design_performance, evaluate_package,
+    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
+    write_syspack_with_manual_assets,
+};
 use sim_xil::betaflight::{BetaflightUdpConfig, BetaflightUdpEndpoint};
 use sim_xil::mavlink_hil::{
     HilControlMapping, MavlinkHilConfig, MavlinkHilTcpEndpoint, MavlinkHilUdpEndpoint,
@@ -13,7 +21,8 @@ use tracing::info;
 
 use crate::{
     FixedWingVehicle, IronbirdError, RigSummary, run_tier0_fixed_wing_cruise,
-    run_tier0_x500_hover_climb, run_tier2_betaflight_x500, run_tier2_mavlink_fixed_wing,
+    run_tier0_package_cruise, run_tier0_x500_hover_climb, run_tier2_betaflight_x500,
+    run_tier2_mavlink_fixed_wing,
 };
 
 /// Selected ironbird execution mode.
@@ -23,8 +32,22 @@ pub enum CliMode {
     Tier0X500,
     /// Tier-0 in-process Aviate C172 cruise.
     Tier0C172,
-    /// Tier-0 in-process Aviate Light Trainer cruise.
-    Tier0Trainer,
+    /// Tier-0 in-process Aviate fixed-wing cruise for an on-disk `syspack` directory.
+    Tier0Dir,
+    /// Closed-loop POH + empirical flight-test calibration of built-in C172 (`N642SP`).
+    CalibrateC172,
+    /// Closed-loop POH + empirical calibration of an on-disk `syspack` directory.
+    CalibrateDir,
+    /// Closed-loop V-speed, ceiling, glide, and range estimation of built-in C172.
+    EstimateC172,
+    /// Closed-loop V-speed, ceiling, glide, and range estimation of an on-disk `syspack` directory.
+    EstimateDir,
+    /// Overall airframe & powerplant trade study on built-in C172.
+    TradeC172,
+    /// Overall airframe & powerplant trade study on an on-disk `syspack` directory.
+    TradeDir,
+    /// Bi-directional `~/ace-rs` (`vehicle.json`) co-design & manual synthesis bridge.
+    AceBridge,
     /// Tier-2 MAVLink v2 HIL TCP listener (e.g. PX4 SITL `127.0.0.1:4560`).
     MavlinkTcpListen,
     /// Tier-2 MAVLink v2 HIL TCP client (e.g. router or UART bridge).
@@ -35,8 +58,25 @@ pub enum CliMode {
     BetaflightUdp,
 }
 
+/// Outcome returned by [`execute_cli`].
+#[derive(Debug, Clone)]
+pub enum CliOutcome {
+    /// Completed XIL simulation rig summary.
+    Rig(RigSummary),
+    /// Completed closed-loop POH & empirical calibration report.
+    Calibration(CalibrationReport),
+    /// Completed closed-loop calibration plus Jacobian Gauss-Newton sensitivity report.
+    Sensitivity(SensitivityReport),
+    /// Completed closed-loop new-design V-speed, climb, glide, and range estimate.
+    DesignEstimate(DesignPerformanceReport),
+    /// Completed overall airframe & powerplant trade study comparison.
+    TradeStudy(DesignTradeStudyReport),
+    /// Completed `~/ace-rs` bi-directional co-design estimate and feedback report.
+    AceCoDesign(DesignPerformanceReport, AceFeedbackReport),
+}
+
 /// Parsed command-line options for `ironbird`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CliArgs {
     /// Execution mode.
     pub mode: CliMode,
@@ -48,6 +88,16 @@ pub struct CliArgs {
     pub peer_addr: SocketAddr,
     /// Optional lockstep barrier delay (`µs`); `None` selects `RealTimeStamped`.
     pub lockstep_delay_us: Option<u64>,
+    /// Package directory when `mode == CliMode::CalibrateDir`.
+    pub package_dir: Option<PathBuf>,
+    /// Optional input path to an `~/ace-rs` `vehicle.json` file (`--ace-vehicle`).
+    pub ace_vehicle: Option<PathBuf>,
+    /// Optional output directory for exporting a calibrated `syspack` (`--export-syspack`).
+    pub export_syspack: Option<PathBuf>,
+    /// Optional output path for Markdown calibration/sensitivity report.
+    pub report_out: Option<PathBuf>,
+    /// Whether to run finite-difference Jacobian sensitivity identification.
+    pub with_sensitivity: bool,
 }
 
 impl Default for CliArgs {
@@ -58,6 +108,11 @@ impl Default for CliArgs {
             bind_addr: SocketAddr::from(([127, 0, 0, 1], 4560)),
             peer_addr: SocketAddr::from(([127, 0, 0, 1], 14550)),
             lockstep_delay_us: Some(2_500),
+            package_dir: None,
+            ace_vehicle: None,
+            export_syspack: None,
+            report_out: None,
+            with_sensitivity: false,
         }
     }
 }
@@ -109,49 +164,74 @@ where
                     .map_err(|_| usage("bad --lockstep-us"))?;
                 cfg.lockstep_delay_us = Some(us);
             }
+            "--package-dir" => {
+                let val = next_val(&mut args, "--package-dir")?;
+                cfg.package_dir = Some(PathBuf::from(val.as_ref()));
+            }
+            "--ace-vehicle" => {
+                let val = next_val(&mut args, "--ace-vehicle")?;
+                cfg.ace_vehicle = Some(PathBuf::from(val.as_ref()));
+            }
+            "--export-syspack" => {
+                let val = next_val(&mut args, "--export-syspack")?;
+                cfg.export_syspack = Some(PathBuf::from(val.as_ref()));
+            }
+            "--report-out" => {
+                let val = next_val(&mut args, "--report-out")?;
+                cfg.report_out = Some(PathBuf::from(val.as_ref()));
+            }
+            "--sensitivity" => {
+                cfg.with_sensitivity = true;
+            }
             other => return Err(usage(&format!("unknown flag `{other}`"))),
         }
     }
     Ok(cfg)
 }
 
-/// Executes the configured ironbird scenario and logs the resulting [`RigSummary`].
-pub fn execute_cli(args: &CliArgs) -> Result<RigSummary, IronbirdError> {
+/// Executes the configured ironbird scenario or calibration suite.
+pub fn execute_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
+    if matches!(
+        args.mode,
+        CliMode::TradeC172 | CliMode::TradeDir | CliMode::AceBridge
+    ) {
+        return execute_trades_or_ace_cli(args);
+    }
+    if matches!(
+        args.mode,
+        CliMode::CalibrateC172
+            | CliMode::CalibrateDir
+            | CliMode::EstimateC172
+            | CliMode::EstimateDir
+    ) {
+        return execute_calibration_cli(args);
+    }
     let origin = Geodetic::from_degrees(39.1582, -75.5244, 120.0);
-    let sync = match args.lockstep_delay_us {
-        Some(us) => HitlSyncMode::LockstepBarrier {
-            processing_delay: TickSpan::from_ticks(
-                (TICKS_PER_SECOND / 1_000_000).saturating_mul(us),
-            ),
-        },
-        None => HitlSyncMode::RealTimeStamped,
-    };
-
+    let sync = args
+        .lockstep_delay_us
+        .map_or(HitlSyncMode::RealTimeStamped, |us| {
+            HitlSyncMode::LockstepBarrier {
+                processing_delay: TickSpan::from_ticks(
+                    (TICKS_PER_SECOND / 1_000_000).saturating_mul(us),
+                ),
+            }
+        });
+    let noise = DirectNoiseTier::Industrial;
     let summary = match args.mode {
-        CliMode::Tier0X500 => run_tier0_x500_hover_climb(
-            origin,
-            5.0,
-            args.duration_s,
-            DirectNoiseTier::Industrial,
-            1,
-        )?,
-        CliMode::Tier0C172 => run_tier0_fixed_wing_cruise(
-            FixedWingVehicle::C172,
-            origin,
-            args.duration_s,
-            DirectNoiseTier::Industrial,
-            1,
-        )?,
-        CliMode::Tier0Trainer => run_tier0_fixed_wing_cruise(
-            FixedWingVehicle::LightTrainer,
-            origin,
-            args.duration_s,
-            DirectNoiseTier::Industrial,
-            1,
-        )?,
+        CliMode::Tier0X500 => run_tier0_x500_hover_climb(origin, 5.0, args.duration_s, noise, 1)?,
+        CliMode::Tier0C172 => {
+            run_tier0_fixed_wing_cruise(FixedWingVehicle::C172, origin, args.duration_s, noise, 1)?
+        }
+        CliMode::Tier0Dir => {
+            let dir = args
+                .package_dir
+                .as_ref()
+                .ok_or_else(|| usage("--mode tier0-dir requires --package-dir <path>"))?;
+            let package = LoadedSyspack::load(&DirectoryPackageSource::new(dir))?;
+            run_tier0_package_cruise(&package, origin, args.duration_s, noise, 1)?
+        }
         _ => execute_tier2_cli(args, origin, sync)?,
     };
-
     info!(
         mode = ?args.mode,
         steps = summary.steps_executed,
@@ -159,12 +239,113 @@ pub fn execute_cli(args: &CliArgs) -> Result<RigSummary, IronbirdError> {
         wall_s = summary.wall_seconds,
         speedup_x = summary.realtime_speedup,
         final_alt_m = summary.final_geodetic.height_m,
-        delivered = summary.bridge_stats.delivered,
-        dropped = summary.bridge_stats.dropped,
-        optical_exposures = summary.optical_exposures,
         "ironbird run completed"
     );
-    Ok(summary)
+    Ok(CliOutcome::Rig(summary))
+}
+
+fn execute_calibration_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
+    let package = match args.mode {
+        CliMode::CalibrateC172 | CliMode::EstimateC172 => builtin_c172_package()?,
+        CliMode::CalibrateDir | CliMode::EstimateDir => {
+            let dir = args.package_dir.as_ref().ok_or_else(|| {
+                usage("--mode calibrate-dir|estimate-dir requires --package-dir <path>")
+            })?;
+            LoadedSyspack::load(&DirectoryPackageSource::new(dir))?
+        }
+        _ => return Err(usage("internal calibration dispatch mismatch")),
+    };
+    if matches!(args.mode, CliMode::EstimateC172 | CliMode::EstimateDir) {
+        let report = estimate_design_performance(&package)?;
+        let md = report.to_markdown();
+        if let Some(path) = &args.report_out {
+            std::fs::write(path, &md)?;
+        }
+        info!(
+            aircraft = %report.package_id,
+            vs0_kcas = report.vs0_kcas,
+            vs1_kcas = report.vs1_kcas,
+            vx_kcas = report.vx_kcas,
+            vy_kcas = report.vy_kcas,
+            vg_kcas = report.vg_kcas,
+            service_ceiling_ft = report.service_ceiling_ft,
+            "\n{md}"
+        );
+        return Ok(CliOutcome::DesignEstimate(report));
+    }
+    if args.with_sensitivity {
+        let report = identify_package_sensitivities(&package)?;
+        let md = report.to_markdown();
+        if let Some(path) = &args.report_out {
+            std::fs::write(path, &md)?;
+        }
+        info!(
+            aircraft = %report.baseline.type_designator,
+            all_passed = report.baseline.all_passed,
+            baseline_cost = report.baseline_cost,
+            predicted_cost = report.linearized_predicted_cost,
+            "\n{md}"
+        );
+        Ok(CliOutcome::Sensitivity(report))
+    } else {
+        let report = evaluate_package(&package)?;
+        let md = report.to_markdown();
+        if let Some(path) = &args.report_out {
+            std::fs::write(path, &md)?;
+        }
+        info!(
+            aircraft = %report.type_designator,
+            all_passed = report.all_passed,
+            stall_rmse_kt = report.stall_kcas_rmse_kt,
+            climb_rmse_fpm = report.climb_rmse_fpm,
+            cruise_rmse_ktas = report.cruise_rmse_ktas,
+            empirical_gs_rmse_kt = report.empirical_gs_rmse_kt,
+            "\n{md}"
+        );
+        Ok(CliOutcome::Calibration(report))
+    }
+}
+
+fn execute_trades_or_ace_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
+    if args.mode == CliMode::AceBridge {
+        let ace_bytes = match &args.ace_vehicle {
+            Some(path) => Some(std::fs::read(path)?),
+            None => None,
+        };
+        let package = match &ace_bytes {
+            Some(bytes) => load_syspack_from_ace_vehicle_json(bytes)?,
+            None => builtin_c172_package()?,
+        };
+        let report = estimate_design_performance(&package)?;
+        if let Some(out_dir) = &args.export_syspack {
+            write_syspack_with_manual_assets(&package, &report, out_dir)?;
+        }
+        let feedback = build_ace_feedback_report(&package, &report, ace_bytes.as_deref());
+        let md = format!("{}\n{}", report.to_markdown(), feedback.to_markdown());
+        if let Some(path) = &args.report_out {
+            std::fs::write(path, &md)?;
+        }
+        info!(aircraft = %report.package_id, "\n{md}");
+        return Ok(CliOutcome::AceCoDesign(report, feedback));
+    }
+    let package = match args.mode {
+        CliMode::TradeC172 => builtin_c172_package()?,
+        CliMode::TradeDir => {
+            let dir = args
+                .package_dir
+                .as_ref()
+                .ok_or_else(|| usage("--mode trade-dir requires --package-dir <path>"))?;
+            LoadedSyspack::load(&DirectoryPackageSource::new(dir))?
+        }
+        _ => return Err(usage("internal trade study dispatch mismatch")),
+    };
+    let study = run_design_trade_study(&package, &default_design_trades())?;
+    let md = study.to_markdown();
+    if let Some(path) = &args.report_out {
+        std::fs::write(path, &md)?;
+    }
+    info!(aircraft = %study.base_package_id, "\n{md}");
+    Ok(CliOutcome::TradeStudy(study))
 }
 
 fn execute_tier2_cli(
@@ -237,7 +418,14 @@ fn parse_mode(s: &str) -> Result<CliMode, IronbirdError> {
     match s {
         "tier0-x500" => Ok(CliMode::Tier0X500),
         "tier0-c172" => Ok(CliMode::Tier0C172),
-        "tier0-trainer" => Ok(CliMode::Tier0Trainer),
+        "tier0-dir" => Ok(CliMode::Tier0Dir),
+        "calibrate-c172" => Ok(CliMode::CalibrateC172),
+        "calibrate-dir" => Ok(CliMode::CalibrateDir),
+        "estimate-c172" => Ok(CliMode::EstimateC172),
+        "estimate-dir" => Ok(CliMode::EstimateDir),
+        "trade-c172" => Ok(CliMode::TradeC172),
+        "trade-dir" => Ok(CliMode::TradeDir),
+        "ace-bridge" => Ok(CliMode::AceBridge),
         "mavlink-tcp-listen" => Ok(CliMode::MavlinkTcpListen),
         "mavlink-tcp-connect" => Ok(CliMode::MavlinkTcpConnect),
         "mavlink-udp" => Ok(CliMode::MavlinkUdp),
@@ -249,7 +437,7 @@ fn parse_mode(s: &str) -> Result<CliMode, IronbirdError> {
 fn usage(msg: &str) -> IronbirdError {
     IronbirdError::CliUsage {
         detail: format!(
-            "{msg} (expected --mode tier0-x500|tier0-c172|tier0-trainer|mavlink-tcp-listen|mavlink-tcp-connect|mavlink-udp|betaflight-udp)"
+            "{msg} (expected --mode tier0-x500|tier0-c172|tier0-dir|calibrate-c172|calibrate-dir|estimate-c172|estimate-dir|trade-c172|trade-dir|ace-bridge|mavlink-tcp-listen|mavlink-tcp-connect|mavlink-udp|betaflight-udp)"
         ),
     }
 }
