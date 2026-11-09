@@ -22,6 +22,7 @@ mod decals;
 mod mesh;
 mod package;
 mod powerplant;
+mod role;
 mod stations;
 #[cfg(test)]
 mod tests;

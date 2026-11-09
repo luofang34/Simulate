@@ -386,7 +386,7 @@ impl MapLibreRig {
         let window_role = if mode == OperatorViewportMode::SensorAperture {
             sensor_role
         } else {
-            aircraft::window_camera_role(mode)
+            aircraft::window_camera_role(mode, self.ownship_visual)
         };
         let polar_runway = input.supervisor.active_landing_runway(input.profile);
         self.truth.render_frame_slots(

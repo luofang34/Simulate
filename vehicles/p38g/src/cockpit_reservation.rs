@@ -343,7 +343,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
     );
     prims.push(fixed(
         "/P38g/CockpitInterior/PilotTorso",
-        P38PartRole::CabinInterior,
+        P38PartRole::PilotFigure,
         PILOT_SUIT,
         pilot,
     ));
@@ -358,7 +358,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
     head.cuboid(Vec3::new(-0.11, -0.35, 0.56), Vec3::new(0.11, -0.29, 0.72));
     prims.push(fixed(
         "/P38g/CockpitInterior/PilotHelmet",
-        P38PartRole::CabinInterior,
+        P38PartRole::PilotFigure,
         LEATHER_BROWN,
         head,
     ));
@@ -372,7 +372,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
     );
     prims.push(fixed(
         "/P38g/CockpitInterior/MaeWestVest",
-        P38PartRole::CabinInterior,
+        P38PartRole::PilotFigure,
         PROP_YELLOW,
         vest,
     ));

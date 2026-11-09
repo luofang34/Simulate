@@ -29,6 +29,7 @@ use crate::world_surface::WorldSurfaceHandle;
 
 mod hud_audit;
 mod n51_audit;
+mod p38g;
 mod polar;
 
 const SHOT_SIZE: [u32; 2] = [1280, 720];
