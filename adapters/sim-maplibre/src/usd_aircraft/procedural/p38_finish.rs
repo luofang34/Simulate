@@ -47,6 +47,38 @@ impl SkinSource for P38SkinSource {
     }
 }
 
+/// Paints the assembled P-38G: recesses its wheel wells and bakes `skin`
+/// onto its stressed skin.
+pub(super) fn finish(asset: &mut crate::UsdAircraftAsset, skin: P38Skin) {
+    recess_wheel_wells(&mut asset.parts);
+    let source = P38SkinSource {
+        skin,
+        paths: asset.parts.iter().map(|p| p.prim_path.clone()).collect(),
+    };
+    asset.bake_skin(SKIN_LAYOUT, &source, skinned);
+}
+
+/// Open sky seen from inside a gear bay through its opening.
+const BAY_SKY: f32 = 0.2;
+
+/// Darkens the wheel wells: the airframe models each bay as a closed box
+/// where the real one is an open, deep recess whose interior sees little
+/// sky, which the vertex bake of a box's outer faces cannot find.
+///
+/// Temporary: this stands in for open gear-bay geometry. Once the
+/// airframe models the bays as recesses, remove it and let the vertex bake
+/// see the real bay.
+fn recess_wheel_wells(parts: &mut [UsdMeshPart]) {
+    for part in parts
+        .iter_mut()
+        .filter(|p| p.prim_path == "/P38g/Gear/WheelWells")
+    {
+        for vertex in &mut part.vertices {
+            vertex.occlusion = vertex.occlusion.min(BAY_SKY);
+        }
+    }
+}
+
 /// Whether `part` is painted by the P-38G's skin.
 pub(super) fn skinned(part: &UsdMeshPart) -> bool {
     P38Skin::paints(&part.prim_path)

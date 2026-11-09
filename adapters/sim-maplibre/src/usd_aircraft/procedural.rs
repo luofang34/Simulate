@@ -74,11 +74,7 @@ impl UsdAircraftAsset {
             })
             .collect();
         let mut asset = assemble("p38g", parts)?;
-        let source = p38_finish::P38SkinSource {
-            skin,
-            paths: asset.parts.iter().map(|p| p.prim_path.clone()).collect(),
-        };
-        asset.bake_skin(p38_finish::SKIN_LAYOUT, &source, p38_finish::skinned);
+        p38_finish::finish(&mut asset, skin);
         Ok(asset)
     }
 

@@ -89,9 +89,12 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let diffuse = (vec3<f32>(1.0) - f) * (1.0 - metallic) * albedo / PI;
     let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, geometric, in.clip.xy);
     // Sky above and sunlit ground below both light the airframe, so undersides never go black.
-    let hemi = mix(GROUND * 1.6, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
+    // Ground light comes mostly from sunlit ground; under the airframe that
+    // ground lies in its own shadow, so wells and bellies see less of it.
+    let ground_light = ground_bounce(world, in.clip.xy);
+    let hemi = mix(GROUND * 1.6 * ground_light, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
     let r = reflect(-v, n);
-    let env = mix(GROUND * 1.35, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
+    let env = mix(GROUND * 1.35 * ground_light, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
     let gloss = 1.0 - roughness * 0.72;
     let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
     // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
@@ -100,6 +103,20 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let specular_ao = mix(ao * ao, 1.0, 0.35);
     let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
+}
+
+// Share of the ground light reaching `world` from the ground straight below
+// it: 1 in flight, or where that ground is sunlit; down to the sky-lit
+// share where ownship's shadow covers it.
+const SHADED_GROUND: f32 = 0.3;
+
+fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
+    if (shadow.ground_centre.w <= 0.0) {
+        return 1.0;
+    }
+    let below = vec3<f32>(world.xy, shadow.ground_centre.z);
+    let lit = sun_visibility(below, vec3<f32>(0.0), pixel);
+    return mix(SHADED_GROUND, 1.0, lit);
 }
 
 @fragment
