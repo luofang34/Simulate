@@ -138,6 +138,15 @@ impl Flight {
         }
     }
 
+    /// The ellipsoidal ground height the free-flight JSBSim plant was last given.
+    #[cfg(test)]
+    pub fn fdm_ground_m(&self) -> Option<f64> {
+        match &self.mode {
+            Mode::Free { session, .. } => session.block().plant().fdm_ground_m(),
+            Mode::Scenario(_) => None,
+        }
+    }
+
     /// Latest engine status (`running`, `propeller_rpm`) on JSBSim free-flight aircraft.
     #[must_use]
     pub fn engine_status(&self) -> Option<EngineStatus> {

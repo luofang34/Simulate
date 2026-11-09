@@ -104,6 +104,120 @@ fn run_feed_and_tessellate(
     )
 }
 
+/// One HUD frame through the full pipeline, with the conformal stamp the window camera
+/// draws the scene through.
+struct Pipeline {
+    rwy: LandingRunwayGeometry,
+    hud: sim_indicate::HudRunway,
+    stamp: sim_maplibre::ConformalFrameStamp,
+    surface: ConformalSurface,
+    datum: CatalogVerticalDatum,
+    target_px: [u32; 2],
+    view_from_ned: DMat3,
+    fy_px: f64,
+}
+
+impl Pipeline {
+    fn new(
+        code: &str,
+        desig: &str,
+        (along_m, agl_m): (f64, f64),
+        (pitch_deg, roll_deg): (f64, f64),
+        target_px: [u32; 2],
+    ) -> Self {
+        let db = AirportDatabase::builtin();
+        let (_, rec) = db.by_code(code).expect("airport");
+        let datum = CatalogVerticalDatum::OrthometricMslEgm96;
+        let rwy = rec.landing_runway(desig, datum).expect("landing runway");
+        let vehicle = build_vehicle_at_station(&rwy, along_m, agl_m, pitch_deg, roll_deg);
+
+        // Non-zero C172 left-seat pilot eye lever arm `[+0.10, -0.26, -0.12]`.
+        let cam = scenario_camera(pilot_eye_mount().pose(&vehicle, DVec3::ZERO));
+        let surface = ConformalSurface::earth_globe();
+        let view = HudView {
+            surface_size: target_px,
+            camera: cam,
+            traffic: &[],
+            airframe_attitude: vehicle.attitude,
+            eye_body_lever_m: vehicle.attitude.inverse()
+                * (cam.pose.position_ecef - vehicle.position_ecef),
+            conformal_surface: surface,
+            vertical_datum: Some(datum),
+        };
+        let ctx = hud_context(&vehicle, &view, Some(&rwy), None);
+        let hud = ctx.approach.expect("HUD approach runway");
+        let view_from_ned = run_feed_and_tessellate(vehicle, rwy.threshold, &ctx, target_px);
+        let fy_px = (0.5 * f64::from(target_px[1]))
+            / (0.5 * f64::from(ctx.projection.value.vertical_fov_rad)).tan();
+        let eye_geo = BodyEllipsoid::WGS84.fixed_to_geodetic(cam.pose.position_ecef);
+        let frustum = symmetric_frustum(
+            cam.fov_y_rad,
+            target_px[0],
+            target_px[1],
+            DEFAULT_NEAR_CLIP_M,
+            DEFAULT_FAR_CLIP_M,
+        )
+        .expect("frustum");
+        let stamp = conformal_stamp_from_pose_on(
+            SimInstant::START,
+            BodyEllipsoid::WGS84,
+            sim_maplibre::RenderBody::EARTH,
+            &CameraPoseEcef {
+                position_ecef: cam.pose.position_ecef,
+                orientation: cam.pose.orientation,
+            },
+            frustum,
+            undulation_for_surface(surface, Some(datum), &eye_geo),
+        )
+        .expect("stamp");
+        Self {
+            rwy,
+            hud,
+            stamp,
+            surface,
+            datum,
+            target_px,
+            view_from_ned,
+            fy_px,
+        }
+    }
+
+    /// Where the window camera draws `geo`, a point at its ellipsoidal height.
+    fn otw_px(&self, geo: &sim_geo::Geodetic) -> Option<[f32; 2]> {
+        project_geodetic_to_screen(
+            &self.stamp,
+            geo,
+            undulation_for_surface(self.surface, Some(self.datum), geo),
+            self.target_px,
+        )
+        .map(|(px, _)| px)
+    }
+
+    /// Where the HUD draws its runway centreline `along_m` past the threshold.
+    fn hud_px(&self, along_m: f32) -> Option<[f32; 2]> {
+        let hud = &self.hud;
+        let (sc, cc) = hud.course_rad.sin_cos();
+        let slope = hud.far_down_offset_m / hud.length_m;
+        let hud_ned = DVec3::new(
+            f64::from(hud.threshold_m[0] + cc * along_m),
+            f64::from(hud.threshold_m[1] + sc * along_m),
+            f64::from(hud.threshold_m[2] + slope * along_m),
+        );
+        let v = self.view_from_ned * hud_ned;
+        if v.x <= DEFAULT_NEAR_CLIP_M {
+            return None;
+        }
+        let (cx, cy) = (
+            0.5 * f64::from(self.target_px[0]),
+            0.5 * f64::from(self.target_px[1]),
+        );
+        Some([
+            (cx + self.fy_px * (v.y / v.x)) as f32,
+            (cy + self.fy_px * (v.z / v.x)) as f32,
+        ])
+    }
+}
+
 fn assert_full_pipeline_hud_alignment(
     code: &str,
     desig: &str,
@@ -113,64 +227,26 @@ fn assert_full_pipeline_hud_alignment(
     roll_deg: f64,
     target_px: [u32; 2],
 ) {
-    let db = AirportDatabase::builtin();
-    let (_, rec) = db.by_code(code).expect("airport");
-    let datum = CatalogVerticalDatum::OrthometricMslEgm96;
-    let rwy = rec.landing_runway(desig, datum).expect("landing runway");
-    let vehicle = build_vehicle_at_station(&rwy, along_m, agl_m, pitch_deg, roll_deg);
-
-    // Non-zero C172 left-seat pilot eye lever arm `[+0.10, -0.26, -0.12]`.
-    let cam = scenario_camera(pilot_eye_mount().pose(&vehicle, DVec3::ZERO));
-    let surface = ConformalSurface::earth_globe();
-    let view = HudView {
-        surface_size: target_px,
-        camera: cam,
-        traffic: &[],
-        airframe_attitude: vehicle.attitude,
-        eye_body_lever_m: vehicle.attitude.inverse()
-            * (cam.pose.position_ecef - vehicle.position_ecef),
-        conformal_surface: surface,
-        vertical_datum: Some(datum),
-    };
-    let ctx = hud_context(&vehicle, &view, Some(&rwy), None);
-    let hud_rwy = ctx.approach.expect("HUD approach runway");
-    let view_from_ned = run_feed_and_tessellate(vehicle, rwy.threshold, &ctx, target_px);
-    let fy_px = (0.5 * f64::from(target_px[1]))
-        / (0.5 * f64::from(ctx.projection.value.vertical_fov_rad)).tan();
-    let eye_geo = BodyEllipsoid::WGS84.fixed_to_geodetic(cam.pose.position_ecef);
-    let frustum = symmetric_frustum(
-        cam.fov_y_rad,
-        target_px[0],
-        target_px[1],
-        DEFAULT_NEAR_CLIP_M,
-        DEFAULT_FAR_CLIP_M,
-    )
-    .expect("frustum");
-    let stamp = conformal_stamp_from_pose_on(
-        SimInstant::START,
-        BodyEllipsoid::WGS84,
-        sim_maplibre::RenderBody::EARTH,
-        &CameraPoseEcef {
-            position_ecef: cam.pose.position_ecef,
-            orientation: cam.pose.orientation,
-        },
-        frustum,
-        undulation_for_surface(surface, Some(datum), &eye_geo),
-    )
-    .expect("stamp");
-    check_stations(
+    let pipe = Pipeline::new(
         code,
         desig,
-        along_m,
-        &rwy,
-        &hud_rwy,
-        &stamp,
-        surface,
-        datum,
+        (along_m, agl_m),
+        (pitch_deg, roll_deg),
         target_px,
-        view_from_ned,
-        fy_px,
     );
+    for (name, geo, a_m) in [
+        ("threshold", &pipe.rwy.threshold, 0.0_f32),
+        ("far_end", &pipe.rwy.far_end, pipe.hud.length_m),
+    ] {
+        let (Some(otw_px), Some(hud_px)) = (pipe.otw_px(geo), pipe.hud_px(a_m)) else {
+            continue;
+        };
+        let err = (hud_px[0] - otw_px[0]).hypot(hud_px[1] - otw_px[1]);
+        assert!(
+            err < 0.20,
+            "{code} {desig} {name} (along={along_m} m): HUD {hud_px:?} vs OTW {otw_px:?} (err={err:.4} px)"
+        );
+    }
 }
 
 fn indicate_view_from_ned(roll: f32, pitch: f32, true_heading: f32, ctx: &HudContext) -> DMat3 {
@@ -188,56 +264,6 @@ fn indicate_view_from_ned(roll: f32, pitch: f32, true_heading: f32, ctx: &HudCon
     view_from_body * ned_to_body
 }
 
-#[allow(clippy::too_many_arguments)]
-fn check_stations(
-    code: &str,
-    desig: &str,
-    along_m: f64,
-    rwy: &LandingRunwayGeometry,
-    hud: &sim_indicate::HudRunway,
-    stamp: &sim_maplibre::ConformalFrameStamp,
-    surface: ConformalSurface,
-    datum: CatalogVerticalDatum,
-    target_px: [u32; 2],
-    view_from_ned: DMat3,
-    fy_px: f64,
-) {
-    let (cx, cy) = (0.5 * f64::from(target_px[0]), 0.5 * f64::from(target_px[1]));
-    let (sc, cc) = hud.course_rad.sin_cos();
-    let slope = hud.far_down_offset_m / hud.length_m;
-    for (name, geo, a_m) in [
-        ("threshold", &rwy.threshold, 0.0_f32),
-        ("far_end", &rwy.far_end, hud.length_m),
-    ] {
-        let Some((otw_px, _)) = project_geodetic_to_screen(
-            stamp,
-            geo,
-            undulation_for_surface(surface, Some(datum), geo),
-            target_px,
-        ) else {
-            continue;
-        };
-        let hud_ned = DVec3::new(
-            f64::from(hud.threshold_m[0] + cc * a_m),
-            f64::from(hud.threshold_m[1] + sc * a_m),
-            f64::from(hud.threshold_m[2] + slope * a_m),
-        );
-        let v = view_from_ned * hud_ned;
-        if v.x <= DEFAULT_NEAR_CLIP_M {
-            continue;
-        }
-        let hud_px = [
-            (cx + fy_px * (v.y / v.x)) as f32,
-            (cy + fy_px * (v.z / v.x)) as f32,
-        ];
-        let err = (hud_px[0] - otw_px[0]).hypot(hud_px[1] - otw_px[1]);
-        assert!(
-            err < 0.20,
-            "{code} {desig} {name} (along={along_m} m): HUD {hud_px:?} vs OTW {otw_px:?} (err={err:.4} px)"
-        );
-    }
-}
-
 #[test]
 fn pilot_seat_lever_arm_registers_at_nzsp_south_pole_and_conus_airports() {
     for (code, desig, along_m, agl_m, pitch_deg, roll_deg, vp) in [
@@ -250,6 +276,39 @@ fn pilot_seat_lever_arm_registers_at_nzsp_south_pole_and_conus_airports() {
         ("47N", "07", -600.0, 45.0, -3.0, -6.0, [1920, 1055]),
     ] {
         assert_full_pipeline_hud_alignment(code, desig, along_m, agl_m, pitch_deg, roll_deg, vp);
+    }
+}
+
+/// The HUD centreline lands on the runway the window draws: the centreline at the
+/// threshold and 1,000 m on, at the ground the world surface has there (the runway datum
+/// the maps also lay into the terrain they draw), projects within a quarter pixel of the
+/// HUD's centreline, at sea level and a mile high.
+#[test]
+fn hud_centreline_lands_on_the_drawn_runway_at_threshold_and_1000_m() {
+    let ground = crate::world_surface::WorldSurfaceHandle::new();
+    ground
+        .configure(&crate::map_rig::ScenerySource::RealWorld { cache_dir: None })
+        .expect("real-world surface");
+    for (code, desig) in [("KEWR", "22L"), ("KDEN", "16R")] {
+        let pipe = Pipeline::new(code, desig, (-950.0, 65.0), (-3.0, 0.0), [1920, 1080]);
+        let rwy = &pipe.rwy;
+        let thr_local = LocalFrame::at(&rwy.threshold);
+        let (sb, cb) = rwy.true_bearing_rad.sin_cos();
+        let ahead = thr_local.north() * cb + thr_local.east() * sb;
+        let hud_scale = f64::from(pipe.hud.length_m) / rwy.landing_length_m;
+        for along_m in [0.0, 1_000.0] {
+            let mut centre = ecef_to_geodetic(geodetic_to_ecef(&rwy.threshold) + ahead * along_m);
+            centre.height_m = ground.ellipsoidal_ground_m(&centre).expect("runway ground");
+            let otw = pipe.otw_px(&centre).expect("centreline in view");
+            let hud = pipe
+                .hud_px((along_m * hud_scale) as f32)
+                .expect("HUD centreline in view");
+            let err = (hud[0] - otw[0]).hypot(hud[1] - otw[1]);
+            assert!(
+                err < 0.25,
+                "{code} {desig} +{along_m} m: HUD {hud:?} vs drawn {otw:?} ({err:.3} px)"
+            );
+        }
     }
 }
 

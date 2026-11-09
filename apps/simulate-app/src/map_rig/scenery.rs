@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use sim_geo::Geodetic;
 use sim_maplibre::{ChartAssetStore, HybridTileLoader, SceneryEndpoints, SharedLoader};
-use sim_scenery::{CatalogScenery, LiveDemBridge, TileId};
+use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TileId};
 
 use crate::error::AppSimError;
 
@@ -80,7 +80,7 @@ impl ScenerySource {
     pub(super) fn loader(&self, charts: ChartAssetStore) -> Result<SceneryLoader, AppSimError> {
         match self {
             Self::Catalog => {
-                let scenery = CatalogScenery::synthetic_regional_network()
+                let scenery = crate::world_surface::stamped_regional_catalog()
                     .map_err(sim_scenario::ScenarioError::from)?;
                 let max_dem = scenery
                     .elevation_tiles()
@@ -126,6 +126,7 @@ fn real_world_loader(transport: HybridTileLoader) -> SceneryLoader {
     let bridge = LiveDemBridge::new();
     SceneryLoader {
         loader: transport
+            .with_runway_datum(RunwayDatum::builtin())
             .with_live_dem_bridge(bridge.clone())
             .into_shared_loader(),
         endpoints: SceneryEndpoints::real_world(),

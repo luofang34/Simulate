@@ -60,7 +60,6 @@ impl Flight {
     /// Respawns the preferred free-flight vehicle over `diagram`'s active runway; later free
     /// flights and restarts start there too.
     pub fn respawn_at_diagram(&mut self, diagram: &OsmAerodromeDiagram) -> Result<(), AppSimError> {
-        self.surface.set_extra_runways(Vec::new());
         let site = SpawnSite::of_diagram(diagram, None, self.surface.vertical_datum());
         self.respawn_free(site.spawn(SpawnMode::Overhead, &self.surface))
     }
@@ -73,7 +72,6 @@ impl Flight {
         runway: usize,
         mode: SpawnMode,
     ) -> Result<(), AppSimError> {
-        self.surface.set_extra_runways(Vec::new());
         let site = SpawnSite::of_diagram(diagram, Some(runway), self.surface.vertical_datum());
         self.respawn_free(site.spawn(mode, &self.surface))?;
         info!(
@@ -86,7 +84,6 @@ impl Flight {
 
     /// Respawns the preferred vehicle at the Delaware corridor default.
     pub fn spawn_delaware(&mut self) -> Result<(), AppSimError> {
-        self.surface.set_extra_runways(Vec::new());
         self.respawn_free(FreeSpawn::Delaware)
     }
 
@@ -171,8 +168,7 @@ pub(super) fn heading_rad(state: &VehicleState) -> f64 {
 impl Flight {
     /// Respawns the preferred vehicle at any airport of the airport database, at its
     /// runway end `runway_end` (else its first) in `mode`; later free flights and restarts
-    /// start there too. A built-in OpenStreetMap aerodrome spawns from its mapped diagram;
-    /// any other airport's runways are laid into the world surface first.
+    /// start there too. A built-in OpenStreetMap aerodrome spawns from its mapped diagram.
     pub fn spawn_at_airport_record(
         &mut self,
         record: &AirportRecord,
@@ -184,7 +180,6 @@ impl Flight {
             .osm_aerodrome()
             .and_then(|id| OsmAerodromeDiagram::builtin(id).ok())
         {
-            self.surface.set_extra_runways(Vec::new());
             // The record numbers its surveyed runway ends; the diagram its mapped ones.
             let designator = record
                 .to_flightbag_graph(datum)
@@ -198,7 +193,6 @@ impl Flight {
                 .position(|end| Some(end.designator) == designator);
             return self.spawn_at_aerodrome(&diagram, mapped.unwrap_or(runway_end), mode);
         }
-        self.surface.set_extra_runways(record.runway_strips(datum));
         let site = SpawnSite::of_record(record, runway_end, datum);
         self.respawn_free(site.spawn(mode, &self.surface))?;
         info!(
@@ -226,11 +220,6 @@ impl Flight {
     ) -> Result<(), AppSimError> {
         use sim_geo::{Geodetic, geodetic_to_ecef};
         let datum = self.surface.vertical_datum();
-        if record.osm_aerodrome().is_some() {
-            self.surface.set_extra_runways(Vec::new());
-        } else {
-            self.surface.set_extra_runways(record.runway_strips(datum));
-        }
         let landing =
             record
                 .landing_runway(designator, datum)

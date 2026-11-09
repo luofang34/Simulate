@@ -14,9 +14,10 @@ use maplibre::{
     },
     platform::http_client,
 };
-use sim_scenery::{CatalogScenery, LiveDemBridge, TileId};
+use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TerrariumTile, TileId};
 
-use crate::{CHART_URL_PREFIX, CatalogTileLoader, ChartAssetStore};
+use crate::scenery_loader::encode_rgba_png;
+use crate::{CHART_URL_PREFIX, CatalogTileLoader, ChartAssetStore, terrarium_tile_to_rgba_image};
 
 mod negative_cache;
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub struct HybridTileLoader {
     platform: PlatformClient,
     missing: Arc<Mutex<NegativeTileCache>>,
     live_dem: Option<LiveDemBridge>,
+    runway_datum: Option<RunwayDatum>,
     charts: ChartAssetStore,
 }
 
@@ -56,6 +58,7 @@ impl HybridTileLoader {
             platform: http_client::ReqwestHttpClient::new(cache_dir),
             missing: new_negative_cache(),
             live_dem: None,
+            runway_datum: None,
             charts: ChartAssetStore::new(),
         }
     }
@@ -69,6 +72,7 @@ impl HybridTileLoader {
             platform: http_client::web_http_client(),
             missing: new_negative_cache(),
             live_dem: None,
+            runway_datum: None,
             charts: ChartAssetStore::new(),
         }
     }
@@ -78,6 +82,15 @@ impl HybridTileLoader {
     #[must_use]
     pub fn with_live_dem_bridge(mut self, bridge: LiveDemBridge) -> Self {
         self.live_dem = Some(bridge);
+        self
+    }
+
+    /// Lays `datum` into every remote Terrarium tile it fetches before any map or the
+    /// [`LiveDemBridge`] sees it, so drawn terrain and the simulation's ground both carry
+    /// the charted runways. The disk cache keeps the tiles as published.
+    #[must_use]
+    pub fn with_runway_datum(mut self, datum: RunwayDatum) -> Self {
+        self.runway_datum = Some(datum);
         self
     }
 
@@ -110,6 +123,34 @@ impl HybridTileLoader {
         url.starts_with(CATALOG_PREFIX)
             .then_some(self.catalog.as_ref())
             .flatten()
+    }
+
+    /// `bytes` with the runway datum laid in, when they are a Terrarium tile it reaches.
+    fn stamp_terrarium(&self, url: &str, bytes: Vec<u8>) -> Vec<u8> {
+        let (Some(datum), Some(tile)) = (&self.runway_datum, terrarium_tile_id(url)) else {
+            return bytes;
+        };
+        if !datum.touches_tile(tile) {
+            return bytes;
+        }
+        let mut dem = match TerrariumTile::from_png_bytes(&bytes) {
+            Ok(dem) => dem,
+            Err(error) => {
+                tracing::warn!(url, %error, "Terrarium tile served without the runway datum");
+                return bytes;
+            }
+        };
+        if !datum.stamp_terrarium(tile, &mut dem) {
+            return bytes;
+        }
+        let rgba = terrarium_tile_to_rgba_image(&dem);
+        match encode_rgba_png(rgba.width(), rgba.height(), rgba.as_raw()) {
+            Ok(stamped) => stamped,
+            Err(error) => {
+                tracing::warn!(url, %error, "Terrarium tile served without the runway datum");
+                bytes
+            }
+        }
     }
 
     fn forward_terrarium(&self, url: &str, bytes: &[u8]) {
@@ -150,8 +191,9 @@ impl HttpClient for HybridTileLoader {
             Some(catalog) => catalog.fetch(url).await,
             None if url.starts_with(CATALOG_PREFIX) => Err(SourceFetchError::not_found(url)),
             None => {
-                let bytes =
+                let fetched =
                     fetch_negative_cached(&self.missing, url, || self.platform.fetch(url)).await?;
+                let bytes = self.stamp_terrarium(url, fetched);
                 self.forward_terrarium(url, &bytes);
                 Ok(bytes)
             }

@@ -291,6 +291,16 @@ impl FreeFlightPlant {
         }
     }
 
+    /// The ellipsoidal ground height the JSBSim plant was last given.
+    #[cfg(test)]
+    pub fn fdm_ground_m(&self) -> Option<f64> {
+        match self {
+            Self::Jsbsim { fdm, .. } => fdm.last_ground_sync_m(),
+            Self::AviateFixedWing(rig) => rig.fdm.last_ground_sync_m(),
+            Self::AviateX500(_) | Self::Kinematic(_) => None,
+        }
+    }
+
     /// Current engine running state and propeller RPM on JSBSim-backed aircraft.
     #[must_use]
     pub fn engine_status(&self) -> Option<EngineStatus> {

@@ -313,7 +313,7 @@ impl MapLibreRig {
                 .max(0.0),
         );
         self.step_truth_world(input, sim_dur)?;
-        let landing_runway = self.active_onboard_landing_runway(input);
+        let landing_runway = self.active_landing_runway(input);
         self.step_instrument_maps(input, sim_dur, landing_runway.as_ref())?;
         self.step_efb(input, sim_dur, landing_runway.as_ref())?;
         Ok(landing_runway)

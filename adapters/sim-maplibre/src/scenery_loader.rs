@@ -197,7 +197,11 @@ pub fn tile_id_to_world_coords(tile: TileId) -> Option<WorldTileCoords> {
     .into_world_tile(TileAddressingScheme::XYZ)
 }
 
-fn encode_rgba_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, SourceFetchError> {
+pub(crate) fn encode_rgba_png(
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> Result<Vec<u8>, SourceFetchError> {
     let mut bytes = Vec::new();
     let encoder = PngEncoder::new(&mut bytes);
     encoder
