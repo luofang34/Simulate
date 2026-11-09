@@ -55,22 +55,32 @@ fn a_body_rotation_relative_to_the_earth_adds_to_earth_rate() {
 }
 
 /// The simulated world and Navigate's surface filter must share one gravity
-/// model: any difference reaches the filter as unmodelled acceleration and
-/// grows into dead-reckoning drift.
+/// model on every body: any difference reaches the filter as unmodelled
+/// acceleration and grows into dead-reckoning drift.
 #[test]
 fn the_world_gravity_is_navigates_gravity_model() {
-    let navigate = navigate_fusion::PlanetaryBody::EARTH_WGS84.central_gravity();
-    let points = [
-        sim_geo::geodetic_to_ecef(&delaware()),
-        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(0.0, -30.0, 0.0)),
-        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(89.0, 120.0, 12_000.0)),
-        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(-45.0, 170.0, 400_000.0)),
+    use navigate_fusion::PlanetaryBody;
+    let bodies = [
+        (BodyEllipsoid::WGS84, PlanetaryBody::EARTH_WGS84),
+        (BodyEllipsoid::MOON_IAU, PlanetaryBody::MOON_PA),
+        (BodyEllipsoid::MARS_IAU, PlanetaryBody::MARS_IAU),
     ];
-    for point in points {
-        let world = BodyEllipsoid::WGS84.gravity_fixed(point);
-        let filter = navigate.acceleration(&nalgebra::Vector3::new(point.x, point.y, point.z));
-        let difference = DVec3::new(filter.x, filter.y, filter.z) - world;
-        assert!(difference.length() < 1e-9, "{point} {difference}");
+    for (world, filter) in bodies {
+        assert_eq!(world.omega_rad_s, filter.rotation_rate_rad_per_s);
+        let navigate = filter.central_gravity();
+        for (lat, lon, height) in [
+            (39.0, -75.5, 300.0),
+            (0.0, -30.0, 0.0),
+            (89.0, 120.0, 12_000.0),
+            (-45.0, 170.0, 400_000.0),
+        ] {
+            let point = world.geodetic_to_fixed(&Geodetic::from_degrees(lat, lon, height));
+            let expected =
+                navigate.acceleration(&nalgebra::Vector3::new(point.x, point.y, point.z));
+            let difference =
+                DVec3::new(expected.x, expected.y, expected.z) - world.gravity_fixed(point);
+            assert!(difference.length() < 1e-9, "{world:?} {point} {difference}");
+        }
     }
 }
 

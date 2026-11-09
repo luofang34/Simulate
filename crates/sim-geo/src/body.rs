@@ -37,13 +37,14 @@ impl BodyEllipsoid {
         j2: 1.082_626_68e-3,
     };
 
-    /// The Moon as the IAU mean sphere (`1,737.4 km`, matching `Navigate`'s `MOON_ME` / `MOON_PA`).
+    /// The Moon as the IAU mean sphere (`1,737.4 km`, matching `Navigate`'s `MOON_ME` / `MOON_PA`),
+    /// with the GRAIL GRGM1200A `μ` and `J2` that `Navigate` uses.
     pub const MOON_IAU: Self = Self {
         semi_major_m: 1_737_400.0,
         flattening: 0.0,
-        mu_m3_s2: 4.904_869_5e12,
+        mu_m3_s2: 4.902_800_122_445_3e12,
         omega_rad_s: 2.661_699_5e-6,
-        j2: 2.032_3e-4,
+        j2: 2.033_639_490e-4,
     };
 
     /// Mars on the IAU reference spheroid (`a = 3,396,190 m`, `b = 3,376,200 m`), matching
