@@ -16,6 +16,9 @@ gate cargo test --workspace --all-targets
 RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" gate cargo doc --workspace --no-deps
 gate cargo build --workspace --release
 (cd apps/simulate-app && gate trunk build --release)
+if command -v mdbook >/dev/null 2>&1; then
+    gate mdbook build book
+fi
 for check in scripts/check-*.sh; do
     gate "$check"
 done

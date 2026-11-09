@@ -1290,7 +1290,7 @@ version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "777d18aa0f12f8b285331cd867133ee14422b3f023f6d388034c47d43e28786a"
 dependencies = [
- "approx 0.4.0",
+ "approx 0.5.1",
  "num-traits",
  "rayon",
  "rstar 0.10.0",
@@ -2796,6 +2796,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mbd-airdata"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "mbd-core"
 version = "0.1.0"
 dependencies = [
@@ -3686,7 +3694,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -3703,7 +3711,7 @@ dependencies = [
 [[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 dependencies = [
  "serde",
  "serde_json",
@@ -3714,12 +3722,12 @@ dependencies = [
 [[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3731,7 +3739,7 @@ dependencies = [
 [[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3743,12 +3751,12 @@ dependencies = [
 [[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -3761,7 +3769,7 @@ dependencies = [
 [[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=428dc5c8a62a88d17318b5ef7c339e2ab3af8acd#428dc5c8a62a88d17318b5ef7c339e2ab3af8acd"
+source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
 
 [[package]]
 name = "pin-project"
@@ -4739,6 +4747,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7f45b8998ced5134fb1d75732c77842a3e888f19c1ff98481822e8fbfbf930b"
 
 [[package]]
+name = "sim-analysis"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "libm",
+ "serde",
+ "serde_json",
+ "sim-analysis-contract",
+ "sim-core",
+ "sim-geo",
+ "sim-orbital",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "sim-analysis-contract"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "serde",
+ "serde_json",
+ "sim-geo",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sim-apollo"
 version = "0.1.0"
 dependencies = [
@@ -4791,6 +4827,7 @@ dependencies = [
  "mbd-core",
  "sim-atmosphere",
  "sim-geo",
+ "sim-spacetime",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -4827,6 +4864,7 @@ dependencies = [
  "indicate-instrument-raster",
  "indicate-instrument-scene",
  "indicate-instrument-state",
+ "indicate-instrument-symbology",
  "indicate-instrument-volumes",
  "indicate-interaction",
  "sim-apollo",
@@ -4874,6 +4912,7 @@ dependencies = [
  "sim-core",
  "sim-geo",
  "sim-indicate",
+ "sim-p38g",
  "sim-scenery",
  "thiserror 2.0.21",
  "tokio",
@@ -4881,6 +4920,23 @@ dependencies = [
  "web-time",
  "wgpu",
  "world",
+]
+
+[[package]]
+name = "sim-mission"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "libm",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-analysis",
+ "sim-geo",
+ "sim-orbital",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+ "world-core",
 ]
 
 [[package]]
@@ -4901,12 +4957,43 @@ dependencies = [
  "sim-core",
  "sim-devices",
  "sim-geo",
+ "sim-orbital",
  "sim-render",
  "sim-scenario",
  "sim-scenery",
+ "sim-spacetime",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sim-orbital"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "libm",
+ "mbd-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-atmosphere",
+ "sim-geo",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+ "world-core",
+]
+
+[[package]]
+name = "sim-p38g"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "image",
+ "openusd",
+ "openusd-schemas",
+ "syspack",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4915,7 +5002,9 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "jsbsim",
+ "mbd-airdata",
  "mbd-core",
+ "serde",
  "serde_json",
  "sha2 0.11.1",
  "sim-atmosphere",
@@ -4950,6 +5039,28 @@ dependencies = [
  "sim-render",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "sim-raketa"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "indicate-alerts",
+ "libm",
+ "mbd-core",
+ "openusd",
+ "openusd-schemas",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-atmosphere",
+ "sim-core",
+ "sim-geo",
+ "sim-orbital",
+ "sim-scenery",
+ "syspack",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4999,7 +5110,23 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sim-geo",
+ "sim-spacetime",
  "tempfile",
+ "thiserror 2.0.21",
+ "world-core",
+]
+
+[[package]]
+name = "sim-spacetime"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "libm",
+ "mbd-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sim-geo",
  "thiserror 2.0.21",
  "world-core",
 ]
@@ -5338,6 +5465,7 @@ name = "syspack"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "mbd-airdata",
  "mbd-core",
  "serde",
  "serde_json",

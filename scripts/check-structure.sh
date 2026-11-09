@@ -20,7 +20,7 @@ fail() {
 }
 
 tree_files() {
-    find . \( -path ./target -o -path ./.git -o -path '*/dist' -o -path ./.claude \) -prune -o -type f "$@" -print | sort
+    find . \( -path ./target -o -path ./.git -o -path '*/dist' -o -path ./book/build -o -path ./.claude \) -prune -o -type f "$@" -print | sort
 }
 
 while IFS= read -r file; do
