@@ -6,10 +6,8 @@
 #   2. the pinned rev is an ancestor of the sibling's remote default branch
 #      (`refs/remotes/origin/HEAD`), so it survives branch deletion and squash
 #      merges.
-# Pins that fail rule 2 today are listed in UNPUBLISHED with the reason. The
-# list only shrinks: an entry whose pin has become published is rejected, so
-# whoever publishes it also removes it here and the guard starts enforcing both
-# rules for that repository.
+# Member crates reach a sibling only through `[workspace.dependencies]`, so a
+# `path` in a member manifest must stay inside the repository.
 set -euo pipefail
 
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -21,12 +19,6 @@ import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1])
-
-# Repository -> why its pin is not yet on the remote default branch.
-UNPUBLISHED = {
-    "jsbsim-rs": "pin is a local workspace commit",
-    "Aviate": "pin is a local workspace commit",
-}
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -43,8 +35,6 @@ with open(root / "Cargo.toml", "rb") as f:
     sources = tomllib.load(f).get("workspace", {}).get("metadata", {}).get("external_sources", {})
 
 errors = []
-for name in sorted(set(UNPUBLISHED) - set(sources)):
-    errors.append(f"{name}: listed in UNPUBLISHED but not in external_sources")
 
 for name, src in sorted(sources.items()):
     if "path" not in src:
@@ -60,12 +50,6 @@ for name, src in sorted(sources.items()):
         continue
     default = git(repo, "symbolic-ref", "-q", "refs/remotes/origin/HEAD").stdout.strip()
     published = bool(default) and is_ancestor(repo, rev, default)
-    if name in UNPUBLISHED:
-        if published:
-            errors.append(
-                f"{name}: pin {rev} is now on {default}; remove it from UNPUBLISHED"
-            )
-        continue
     pinned_tree = git(repo, "rev-parse", f"{rev}^{{tree}}").stdout.strip()
     head_tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
     if pinned_tree != head_tree:
@@ -74,6 +58,35 @@ for name, src in sorted(sources.items()):
     if not published:
         where = default or "a remote default branch (refs/remotes/origin/HEAD is unset)"
         errors.append(f"{name}: pin {rev} is not an ancestor of {where}")
+
+def member_manifests():
+    for manifest in sorted(root.glob("*/*/Cargo.toml")):
+        if "target" not in manifest.parts:
+            yield manifest
+
+
+def dependency_tables(manifest: dict):
+    for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+        yield key, manifest.get(key, {})
+    for target, table in manifest.get("target", {}).items():
+        for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+            yield f"target.{target}.{key}", table.get(key, {})
+
+
+repo_root = root.resolve()
+for manifest_path in member_manifests():
+    with open(manifest_path, "rb") as f:
+        manifest = tomllib.load(f)
+    for where, deps in dependency_tables(manifest):
+        for dep, spec in deps.items():
+            if isinstance(spec, dict) and "path" in spec:
+                target = (manifest_path.parent / spec["path"]).resolve()
+                if not target.is_relative_to(repo_root):
+                    rel = manifest_path.relative_to(root)
+                    errors.append(
+                        f"{rel} [{where}] {dep}: path {spec['path']} leaves the repository; "
+                        "use `workspace = true`"
+                    )
 
 for error in errors:
     print(f"check-external-sources: {error}", file=sys.stderr)

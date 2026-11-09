@@ -13,13 +13,13 @@ world-mbd-bridges = ["dep:mbd-core", "dep:world-core"]
 [dependencies]
 glam = "0.33"
 libm = { version = "0.2", optional = true }
-mbd-core = { path = "../../../mbd/crates/mbd-core", optional = true }
+mbd-core = { workspace = true, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10.9"
 sim-geo = { path = "../sim-geo" }
 thiserror = "2"
-world-core = { path = "../../../world/crates/world-core", optional = true }
+world-core = { workspace = true, optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
