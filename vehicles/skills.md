@@ -203,9 +203,13 @@ cargo test -p sim-pack --test p38g_flight_test engine_operating_points -- --igno
 
 ## 7. 視覺驗證 (Stage 7)
 
-1. **三視圖與隔框疊圖**（純 Rust 光柵化，1600×1200，四象限：俯視、側視、前視、隔框截面與翼型）：
+1. **與工程圖比對**（純 Rust 光柵化）：網格的側、俯、前視輪廓對數位化的 AN 01-75F-2 三視圖（`vehicles/p38g/design/an01-75f-2_general_arrangement.json`，英寸，附像素出處）計算 IoU 與邊界偏差；設定輸出目錄時寫出差異圖 `p38g_silhouette_<view>.png`（紅：只有圖紙，藍：只有網格）：
    ```sh
-   SIMULATE_VERIFY_OUT=/path/to/out cargo test -p sim-p38g render_three_view_blueprint_and_station_overlay -- --nocapture
+   SIMULATE_VERIFY_OUT=/path/to/out cargo test --release -p sim-p38g mesh_silhouettes_match_the_an01_75f_2_general_arrangement
+   ```
+   與原圖逐像素對齊的正射疊圖（圖紙本身不入庫，疊圖需另外合成到原圖上）：
+   ```sh
+   SIMULATE_VERIFY_OUT=/path/to/out cargo test --release -p simulate-app render_fidelity_audit_ortho_overlays -- --ignored
    ```
 2. **GPU 多視角**（機庫 3/4、跑道追尾、前側方、正側、空中大坡度、單發順槳）：
    ```sh
