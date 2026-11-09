@@ -207,6 +207,20 @@ where
         self.curr_output
     }
 
+    /// Exact plant output before the last completed step: the start of the
+    /// span [`Self::display_state`] interpolates across.
+    #[must_use]
+    pub fn previous_truth_state(&self) -> VehicleState {
+        self.prev_output
+    }
+
+    /// Fraction in `[0, 1)` of the next physics step that [`Self::now`] has
+    /// reached past [`Self::physics_time`].
+    #[must_use]
+    pub fn display_phase(&self) -> f64 {
+        self.rate.phase()
+    }
+
     /// Plant output interpolated to [`Self::now`] for smooth display; never
     /// feed this back into the simulation.
     #[must_use]
