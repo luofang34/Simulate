@@ -17,6 +17,14 @@ Usage: propeller_bem.py SPEC.json {ct|cp|beta|eta|ct1|cp1}
 Method: Prandtl tip loss, iterated axial and swirl induction, a Clark-Y-family
 section with thickness-dependent stall and a flat-plate post-stall branch; the
 static column (J = 0) solves the induced velocity from momentum directly.
+
+Optional spec keys (absent, the maps are as before):
+  section_cl_max  the section's maximum lift coefficient; the section stalls at
+                  the lower of this and the thickness-dependent stall angle
+  induction       "velocity" solves tip-loss momentum for the induced velocity
+                  itself at every advance ratio, J = 0 included; the default
+                  induction-factor iteration (a = vi / V) saturates or cycles
+                  below J of about 0.2, where a fixed-pitch blade takes off
 """
 import json
 import math
@@ -32,6 +40,8 @@ class Blade:
         self.chord = spec["chord_over_diameter"]
         self.thickness = spec["thickness_over_chord"]
         self.elements = spec.get("elements", 40)
+        self.cl_max = spec.get("section_cl_max")
+        self.velocity_induction = spec.get("induction", "factor") == "velocity"
 
     def chord_over_d(self, x):
         c = self.chord
@@ -53,6 +63,8 @@ def section(blade, alpha, x):
     cla = 2 * math.pi * 0.92
     tc = blade.tc(x)
     a_stall = math.radians(15.0 - 20.0 * (tc - 0.06))
+    if blade.cl_max is not None:
+        a_stall = min(a_stall, blade.cl_max / cla + a0)
     if abs(alpha) <= a_stall:
         cl = cla * (alpha - a0)
         cd = 0.0085 + 0.6 * tc ** 2 + 0.08 * (alpha - math.radians(3)) ** 2
@@ -64,6 +76,34 @@ def section(blade, alpha, x):
     return cl, cd
 
 
+def tip_loss(blade, r, phi):
+    sphi = max(abs(math.sin(phi)), 1e-4)
+    f = blade.blades / 2 * (blade.radius - r) / (r * sphi)
+    return max(2 / math.pi * math.acos(min(1.0, math.exp(-f))), 1e-3)
+
+
+def velocity_induction(blade, beta, x, r, c, sigma, V, omega):
+    """Disc velocities from 4 pi r F vi (V + vi) = blade-element thrust per unit
+    span, solved for vi, with the swirl factor iterated alongside."""
+    vi, ap = 0.0, 0.0
+    for _ in range(1000):
+        va, vt = V + vi, omega * r * (1 - ap)
+        phi = math.atan2(va, vt)
+        cl, cd = section(blade, beta - phi, x)
+        cn = cl * math.cos(phi) - cd * math.sin(phi)
+        ct = cl * math.sin(phi) + cd * math.cos(phi)
+        F = tip_loss(blade, r, phi)
+        rhs = 0.5 * (va ** 2 + vt ** 2) * blade.blades * c * cn / (4 * math.pi * r * F)
+        vi_new = (-V + math.sqrt(max(V * V + 4 * rhs, 0.0))) / 2
+        sc = math.sin(phi) * math.cos(phi)
+        kp = sigma * ct / (4 * F * sc) if abs(sc) > 1e-5 else 0.0
+        ap_new = max(min(kp / (1 + kp), 0.5), -0.5) if abs(1 + kp) > 1e-3 else 0.0
+        if abs(vi_new - vi) < 1e-8 and abs(ap_new - ap) < 1e-8:
+            break
+        vi, ap = 0.7 * vi + 0.3 * vi_new, 0.7 * ap + 0.3 * ap_new
+    return V + vi, omega * r * (1 - ap)
+
+
 def element(blade, J, beta75, r, dr):
     n, D = 1.0, 2 * blade.radius
     V, omega = J * n * D, 2 * math.pi * n
@@ -71,7 +111,9 @@ def element(blade, J, beta75, r, dr):
     beta = math.radians(beta75 + blade.twist_deg(x))
     c = blade.chord_over_d(x) * D
     sigma = blade.blades * c / (2 * math.pi * r)
-    if V < 1e-6:
+    if blade.velocity_induction:
+        va, vt = velocity_induction(blade, beta, x, r, c, sigma, V, omega)
+    elif V < 1e-6:
         vi = 0.0
         for _ in range(200):
             phi = math.atan2(vi, omega * r)
