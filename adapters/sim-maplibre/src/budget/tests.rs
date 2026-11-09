@@ -5,9 +5,9 @@ use super::CockpitDeviceTier;
 #[test]
 fn desktop_drape_budget_keeps_taxi_frames_short() {
     let budget = CockpitDeviceTier::Desktop.otw_drape_budget();
-    assert_eq!(budget.per_frame, 4);
-    assert_eq!(budget.per_eye_frame, 3);
-    assert_eq!(budget.moving_time, Duration::from_micros(2_000));
+    assert_eq!(budget.per_frame, 6);
+    assert_eq!(budget.per_eye_frame, 5);
+    assert_eq!(budget.moving_time, Duration::from_micros(3_000));
 }
 
 #[test]

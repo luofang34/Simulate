@@ -13,7 +13,7 @@ use maplibre::{
     overlay::{DepthProbe, MAX_PROBES, OverlayMesh, OverlayVertex},
     projection::body::Body,
 };
-use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
+use sim_geo::{Geodetic, LocalFrame};
 use sim_scenery::LandingRunwayGeometry;
 use world::surveillance::{EmitterCategory, SurveillanceStore, TrackPhase};
 
@@ -279,12 +279,13 @@ fn append_airframe_wireframe(
         return;
     }
     let span = entity.characteristic_span_m.max(2.0);
-    let center_ecef = BodyEllipsoid::WGS84.geodetic_to_fixed(center_geo);
+    let ellipsoid = stamp.physics_ellipsoid;
+    let center_ecef = ellipsoid.geodetic_to_fixed(center_geo);
     let local = LocalFrame::at(center_geo);
     let project_body = |body_m: DVec3| -> Option<([f32; 2], f32)> {
         let enu = q_enu * body_m;
         let offset_ecef = local.east() * enu.x + local.north() * enu.y + local.up() * enu.z;
-        let geo = BodyEllipsoid::WGS84.fixed_to_geodetic(center_ecef + offset_ecef);
+        let geo = ellipsoid.fixed_to_geodetic(center_ecef + offset_ecef);
         project_geodetic_to_screen(stamp, &geo, stamp.geoid_undulation_m, viewport_px)
     };
     let (Some(wing_l), Some(wing_r)) = (
@@ -384,6 +385,38 @@ pub(super) fn push_segment(
     ]);
     mesh.indices
         .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+pub(super) fn push_triangle(
+    mesh: &mut OverlayMesh,
+    v0: ([f32; 2], f32),
+    v1: ([f32; 2], f32),
+    v2: ([f32; 2], f32),
+    color: [f32; 4],
+) {
+    let [r, g, bl, al] = color;
+    let premul = [r * al, g * al, bl * al, al];
+    let Ok(base) = u32::try_from(mesh.vertices.len()) else {
+        return;
+    };
+    mesh.vertices.extend_from_slice(&[
+        OverlayVertex {
+            position: v0.0,
+            depth: v0.1,
+            color: premul,
+        },
+        OverlayVertex {
+            position: v1.0,
+            depth: v1.1,
+            color: premul,
+        },
+        OverlayVertex {
+            position: v2.0,
+            depth: v2.1,
+            color: premul,
+        },
+    ]);
+    mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
 }
 
 pub(super) fn push_quad(

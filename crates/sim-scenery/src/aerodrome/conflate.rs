@@ -11,8 +11,9 @@ use sim_geo::Geodetic;
 use world_core::GeodeticPosition;
 
 use super::{AerodromeId, AirspaceControl, OsmAerodromeDiagram, RawOsmSnapshot, geojson};
-use crate::SceneryError;
+use crate::{AirportRecord, CatalogVerticalDatum, SceneryError};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_from_snapshot(
     id: AerodromeId,
     name: String,
@@ -21,14 +22,21 @@ pub(super) fn build_from_snapshot(
     default_tower: Geodetic,
     default_rwy_width_m: f64,
     raw: &RawOsmSnapshot,
+    record: Option<&AirportRecord>,
 ) -> Result<OsmAerodromeDiagram, SceneryError> {
     let facility =
         FacilityCode::parse(&raw.facility).map_err(|_| SceneryError::InvalidCatalog {
             detail: format!("invalid facility code {}", raw.facility),
         })?;
     let tower_viewpoint = detect_osm_tower(raw, field_elevation_m).unwrap_or(default_tower);
-    let runway_ends = extract_runway_ends(raw, field_elevation_m, default_rwy_width_m);
-    let reference_point = compute_arp(&runway_ends, field_elevation_m, default_tower);
+    let runway_ends = record
+        .map(|rec| record_landing_runway_ends(rec, field_elevation_m))
+        .filter(|ends| !ends.is_empty())
+        .unwrap_or_else(|| extract_runway_ends(raw, field_elevation_m, default_rwy_width_m));
+    let reference_point = record.map_or_else(
+        || compute_arp(&runway_ends, field_elevation_m, default_tower),
+        |rec| GeodeticPosition::wgs84(rec.lat_deg, rec.lon_deg, field_elevation_m),
+    );
     let (taxi_edges, mut next_node) = extract_taxi_edges(raw, id.is_towered());
     let hold_short_nodes =
         extract_hold_shorts(raw, &runway_ends, field_elevation_m, &mut next_node);
@@ -37,6 +45,7 @@ pub(super) fn build_from_snapshot(
     let portrayal_geojson = geojson::build_portrayal_geojson(
         raw,
         &runway_ends,
+        record,
         default_rwy_width_m,
         if id.is_towered() { 22.0 } else { 10.5 },
     );
@@ -57,6 +66,37 @@ pub(super) fn build_from_snapshot(
         },
         portrayal_geojson,
     })
+}
+
+fn record_landing_runway_ends(
+    record: &AirportRecord,
+    field_elevation_m: f64,
+) -> Vec<RunwayEndSpec> {
+    let mut ends = Vec::new();
+    for rwy in &record.runways {
+        for end in &rwy.ends {
+            let Ok(designator) = RunwayDesignator::parse(end.designator.as_str()) else {
+                continue;
+            };
+            if let Some(landing) = record.landing_runway(
+                end.designator.as_str(),
+                CatalogVerticalDatum::EllipsoidWgs84,
+            ) {
+                ends.push(RunwayEndSpec {
+                    designator,
+                    threshold: GeodeticPosition::wgs84(
+                        landing.threshold.lat_deg(),
+                        landing.threshold.lon_deg(),
+                        field_elevation_m,
+                    ),
+                    true_bearing_rad: landing.true_bearing_rad,
+                    length_m: landing.landing_length_m,
+                    width_m: landing.width_m,
+                });
+            }
+        }
+    }
+    ends
 }
 
 fn detect_osm_tower(raw: &RawOsmSnapshot, field_elevation_m: f64) -> Option<Geodetic> {

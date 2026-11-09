@@ -24,14 +24,20 @@ impl AirportRecord {
             return diagram.portrayal_geojson.to_string();
         }
         let mut features = Vec::new();
-        for runway in &self.runways {
-            runway_features(runway, &mut features);
-        }
+        append_record_runway_features(self, &mut features);
         json!({
             "type": "FeatureCollection",
             "features": features,
         })
         .to_string()
+    }
+}
+
+/// Appends authoritative runway pavement, stopways/turf, centrelines, displaced centrelines,
+/// and landing threshold bars for every runway in `record`.
+pub(crate) fn append_record_runway_features(record: &AirportRecord, features: &mut Vec<Value>) {
+    for runway in &record.runways {
+        runway_features(runway, features);
     }
 }
 

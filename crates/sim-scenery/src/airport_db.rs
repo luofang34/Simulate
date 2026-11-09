@@ -13,7 +13,7 @@ pub(crate) mod geometry;
 mod model;
 mod our_airports;
 mod pack;
-mod portrayal;
+pub(crate) mod portrayal;
 mod record;
 mod search;
 mod spatial;

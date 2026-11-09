@@ -171,6 +171,7 @@ impl CatalogScenery {
         ] {
             append_corridor_into(&mut catalog, &spec, &plateaus)?;
         }
+        append_coarse_umbrella(&mut catalog, 0xDE1A_3A4E, &plateaus)?;
         Ok(catalog)
     }
 
@@ -207,8 +208,57 @@ impl CatalogScenery {
         };
         let mut catalog = Self::new().with_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
         append_corridor_into(&mut catalog, &spec, &[plateau])?;
+        append_coarse_umbrella(&mut catalog, spec.seed, &[plateau])?;
         Ok(catalog)
     }
+}
+
+fn append_coarse_umbrella(
+    catalog: &mut CatalogScenery,
+    seed: u64,
+    plateaus: &[AerodromePlateau],
+) -> Result<(), SceneryError> {
+    let fine_tiles: Vec<TileId> = catalog.imagery_tiles().collect();
+    let mut umbrella = std::collections::BTreeSet::new();
+    for fine in fine_tiles {
+        for target_zoom in [5_u8, 8_u8] {
+            if fine.zoom > target_zoom {
+                let shift = fine.zoom - target_zoom;
+                let base_x = fine.x >> shift;
+                let base_y = fine.y >> shift;
+                let limit = 1_u32 << target_zoom;
+                for dy in -1_i32..=1_i32 {
+                    for dx in -1_i32..=1_i32 {
+                        let nx = i64::from(base_x) + i64::from(dx);
+                        let ny = i64::from(base_y) + i64::from(dy);
+                        if nx >= 0 && ny >= 0 && nx < i64::from(limit) && ny < i64::from(limit) {
+                            umbrella.insert(TileId {
+                                zoom: target_zoom,
+                                x: nx as u32,
+                                y: ny as u32,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let spec = SyntheticCorridorSpec {
+        south_west: Geodetic::from_degrees(0.0, 0.0, 0.0),
+        zoom: 0,
+        tiles_east: 1,
+        tiles_north: 1,
+        tile_px: 256,
+        seed,
+    };
+    for tile in umbrella {
+        if catalog.elevation_tile(tile).is_none() {
+            let (elevation, imagery) = synthetic_tile(tile, &spec, plateaus)?;
+            catalog.insert_elevation(tile, elevation)?;
+            catalog.insert_imagery(tile, imagery)?;
+        }
+    }
+    Ok(())
 }
 
 fn append_corridor_into(

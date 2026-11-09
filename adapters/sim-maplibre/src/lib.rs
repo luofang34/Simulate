@@ -77,7 +77,8 @@ pub use runtime::{
 };
 pub use scenery_loader::{
     CATALOG_DEM_URL_TEMPLATE, CATALOG_ORTHO_URL_TEMPLATE, CatalogTileLoader,
-    supply_catalog_dem_synchronously, terrarium_tile_to_rgba_image, tile_id_to_world_coords,
+    supply_catalog_dem_synchronously, supply_catalog_ortho_synchronously,
+    terrarium_tile_to_rgba_image, tile_id_to_world_coords,
 };
 pub use streaming::{
     CompanionStreamSession, InboundInteractionResult, OutboundDisplayPacket, STREAM_HEADER_BYTES,

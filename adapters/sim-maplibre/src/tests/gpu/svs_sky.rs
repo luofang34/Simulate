@@ -165,3 +165,49 @@ fn a_sixty_degree_bank_divides_sky_and_ground_along_the_banked_horizon() {
     );
     assert_ne!(level, rgba, "the bank changes the picture");
 }
+
+/// Even when horizontal GNSS wander over higher DSM terrain or degraded vertical state places
+/// the estimated pose 15 m below the rendered DEM (`305 m` vs `320 m` surface), SVS clamps the
+/// camera eye envelope above the local terrain mesh so the sky stays aviation blue above the
+/// horizon and never leaks below it, while TAWS relative-relief coloration continues to read
+/// the unadjusted `ownship_msl_m` (`305 m`) and shades the ground warning red.
+#[test]
+fn subterranean_navigation_estimate_never_flips_svs_underground_and_keeps_taws_warning() {
+    let Some(mut maps) = svs_maps() else {
+        return;
+    };
+    let safe_rgba = render(&mut maps, 1_000.0, [90.0, 0.0, 0.0]);
+    let sub_rgba = render(&mut maps, 305.0, [90.0, 0.0, 0.0]);
+    let stamp = maps
+        .get("pfd_svs")
+        .and_then(|svs| svs.last_stamp())
+        .expect("rendered stamp");
+    assert!(
+        stamp.anchor.altitude_msl_m >= 321.0,
+        "SVS eye must stay above 320 m rendered DEM + near-clip clearance: {}",
+        stamp.anchor.altitude_msl_m
+    );
+    assert_upper_quarter_blue(&sub_rgba, "subterranean estimate");
+    let lower_start = W * (3 * H / 4) * 4;
+    for (index, px) in sub_rgba[lower_start..]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        assert!(
+            !is_aviation_blue(*px) && px[3] == 255,
+            "sky leaked below the horizon at ({}, {}): {px:?}",
+            index % W,
+            3 * H / 4 + index / W
+        );
+    }
+    let safe_ground = pixel(&safe_rgba, W / 2, H - 6);
+    let warn_ground = pixel(&sub_rgba, W / 2, H - 6);
+    assert!(
+        warn_ground[0] > 200
+            && warn_ground[1] < 90
+            && warn_ground[0] > safe_ground[0].saturating_add(80),
+        "TAWS warning red must remain active on true ownship_msl_m: warn={warn_ground:?}, safe={safe_ground:?}"
+    );
+}

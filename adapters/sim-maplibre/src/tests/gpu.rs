@@ -20,6 +20,7 @@ mod aircraft;
 mod efb_map;
 mod globe_picker;
 mod instrument_maps;
+mod polar_nzsp;
 mod slots;
 mod svs_sky;
 

@@ -103,14 +103,14 @@ impl CockpitDeviceTier {
     pub const fn otw_drape_budget(self) -> DrapeBudget {
         match self {
             Self::Desktop => DrapeBudget {
+                per_frame: 6,
+                per_eye_frame: 5,
+                moving_time: Duration::from_micros(3_000),
+            },
+            Self::Browser | Self::Handheld => DrapeBudget {
                 per_frame: 4,
                 per_eye_frame: 3,
                 moving_time: Duration::from_micros(2_000),
-            },
-            Self::Browser | Self::Handheld => DrapeBudget {
-                per_frame: 2,
-                per_eye_frame: 2,
-                moving_time: Duration::from_micros(1_500),
             },
         }
     }

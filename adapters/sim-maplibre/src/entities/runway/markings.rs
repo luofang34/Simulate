@@ -2,17 +2,14 @@
 //! bars, and extended approach lead-in dashes for SVS / XVS conformal runways.
 
 use maplibre::overlay::OverlayMesh;
-use sim_geo::LocalFrame;
 use sim_scenery::{LandingRunwayGeometry, RunwaySurfaceKind};
 
 use super::{
-    CHORD_DEPTH_CLEARANCE_M, StationProjection, StripAxis, VISUAL_LIFT_M, project_with_clearance,
-    sample_station, sea_ecef,
+    CHORD_DEPTH_CLEARANCE_M, StationProjection, StripAxis, VISUAL_LIFT_M,
+    clip::{push_clipped_quad, push_clipped_segment, vertex_with_clearance},
+    sample_station, sea_globe,
 };
-use crate::{
-    entities::{push_quad, push_segment},
-    pose::ConformalFrameStamp,
-};
+use crate::pose::{ConformalFrameStamp, geodetic_zero_from_globe_vec, sphere_enu_basis};
 
 const PAVED_SURFACE_FILL: [f32; 4] = [0.12, 0.16, 0.21, 0.56];
 const DISPLACED_PAVED_FILL: [f32; 4] = [0.12, 0.16, 0.21, 0.30];
@@ -41,8 +38,9 @@ pub(super) fn append_primary_zone(
     } else {
         PAVED_SURFACE_FILL
     };
-    append_surface_fill(mesh, stations, fill);
+    append_surface_fill(mesh, stamp, viewport_px, stations, fill);
 
+    let w = if unpaved { 2.0 } else { 2.2 };
     for (idx, pair) in stations.windows(2).enumerate() {
         if unpaved && idx % 2 != 0 {
             continue;
@@ -50,32 +48,47 @@ pub(super) fn append_primary_zone(
         let [s0, s1] = pair else {
             continue;
         };
-        let w = if unpaved { 2.0 } else { 2.2 };
-        if let (Some(a), Some(b)) = (s0.left, s1.left) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, w, RUNWAY_GREEN);
-        }
-        if let (Some(a), Some(b)) = (s0.right, s1.right) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, w, RUNWAY_GREEN);
-        }
+        push_clipped_segment(mesh, stamp, viewport_px, s0.left, s1.left, w, RUNWAY_GREEN);
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            s0.right,
+            s1.right,
+            w,
+            RUNWAY_GREEN,
+        );
     }
 
-    if let Some(thr) = stations.first()
-        && let (Some(l), Some(r)) = (thr.left, thr.right)
-    {
-        push_segment(mesh, l.0, l.1, r.0, r.1, 2.8, THRESHOLD_GREEN);
+    if let Some(thr) = stations.first() {
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            thr.left,
+            thr.right,
+            2.8,
+            THRESHOLD_GREEN,
+        );
     }
-    if let Some(far) = stations.last()
-        && let (Some(l), Some(r)) = (far.left, far.right)
-    {
+    if let Some(far) = stations.last() {
         let far_w = if has_recip_displaced { 1.8 } else { 2.0 };
-        push_segment(mesh, l.0, l.1, r.0, r.1, far_w, RUNWAY_GREEN);
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            far.left,
+            far.right,
+            far_w,
+            RUNWAY_GREEN,
+        );
     }
 
     if has_recip_displaced {
         append_inward_ticks(mesh, stamp, viewport_px, axis, 1.0, sample_dem_msl);
     }
     if !unpaved {
-        append_interior_centreline(mesh, stations, primary_len_m);
+        append_interior_centreline(mesh, stamp, viewport_px, stations, primary_len_m);
         if primary_len_m >= 750.0 {
             append_aiming_point_bars(
                 mesh,
@@ -89,21 +102,31 @@ pub(super) fn append_primary_zone(
     }
 }
 
-fn append_surface_fill(mesh: &mut OverlayMesh, stations: &[StationProjection], color: [f32; 4]) {
+fn append_surface_fill(
+    mesh: &mut OverlayMesh,
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
+    stations: &[StationProjection],
+    color: [f32; 4],
+) {
     for pair in stations.windows(2) {
         let [s0, s1] = pair else {
             continue;
         };
-        let (Some(al), Some(ar), Some(br), Some(bl)) = (s0.left, s0.right, s1.right, s1.left)
-        else {
-            continue;
-        };
-        push_quad(mesh, al, ar, br, bl, color);
+        push_clipped_quad(
+            mesh,
+            stamp,
+            viewport_px,
+            [s0.left, s0.right, s1.right, s1.left],
+            color,
+        );
     }
 }
 
 fn append_interior_centreline(
     mesh: &mut OverlayMesh,
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
     stations: &[StationProjection],
     primary_len_m: f64,
 ) {
@@ -118,9 +141,15 @@ fn append_interior_centreline(
         let [s0, s1] = pair else {
             continue;
         };
-        if let (Some(a), Some(b)) = (s0.center, s1.center) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, 1.5, CENTRELINE_GREEN);
-        }
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            s0.center,
+            s1.center,
+            1.5,
+            CENTRELINE_GREEN,
+        );
     }
 }
 
@@ -138,14 +167,26 @@ fn append_aiming_point_bars(
         half_width_m: (axis.half_width_m * 0.42).max(2.0),
         ..*axis
     };
-    let s0 = sample_station(stamp, viewport_px, &aim_axis, f0, sample_dem_msl);
-    let s1 = sample_station(stamp, viewport_px, &aim_axis, f1, sample_dem_msl);
-    if let (Some(a), Some(b)) = (s0.left, s1.left) {
-        push_segment(mesh, a.0, a.1, b.0, b.1, 2.4, CENTRELINE_GREEN);
-    }
-    if let (Some(a), Some(b)) = (s0.right, s1.right) {
-        push_segment(mesh, a.0, a.1, b.0, b.1, 2.4, CENTRELINE_GREEN);
-    }
+    let s0 = sample_station(stamp, &aim_axis, f0, sample_dem_msl);
+    let s1 = sample_station(stamp, &aim_axis, f1, sample_dem_msl);
+    push_clipped_segment(
+        mesh,
+        stamp,
+        viewport_px,
+        s0.left,
+        s1.left,
+        2.4,
+        CENTRELINE_GREEN,
+    );
+    push_clipped_segment(
+        mesh,
+        stamp,
+        viewport_px,
+        s0.right,
+        s1.right,
+        2.4,
+        CENTRELINE_GREEN,
+    );
 }
 
 fn append_inward_ticks(
@@ -156,22 +197,36 @@ fn append_inward_ticks(
     frac: f64,
     sample_dem_msl: &mut dyn FnMut(f64, f64) -> Option<(f64, f64)>,
 ) {
-    let outer = sample_station(stamp, viewport_px, axis, frac, sample_dem_msl);
+    let outer = sample_station(stamp, axis, frac, sample_dem_msl);
     let inner_axis = StripAxis {
         half_width_m: axis.half_width_m * 0.55,
         ..*axis
     };
-    let inner = sample_station(stamp, viewport_px, &inner_axis, frac, sample_dem_msl);
-    if let (Some(ol), Some(il)) = (outer.left, inner.left) {
-        push_segment(mesh, ol.0, ol.1, il.0, il.1, 2.0, THRESHOLD_GREEN);
-    }
-    if let (Some(or_), Some(ir)) = (outer.right, inner.right) {
-        push_segment(mesh, or_.0, or_.1, ir.0, ir.1, 2.0, THRESHOLD_GREEN);
-    }
+    let inner = sample_station(stamp, &inner_axis, frac, sample_dem_msl);
+    push_clipped_segment(
+        mesh,
+        stamp,
+        viewport_px,
+        outer.left,
+        inner.left,
+        2.0,
+        THRESHOLD_GREEN,
+    );
+    push_clipped_segment(
+        mesh,
+        stamp,
+        viewport_px,
+        outer.right,
+        inner.right,
+        2.0,
+        THRESHOLD_GREEN,
+    );
 }
 
 pub(super) fn append_displaced_zone(
     mesh: &mut OverlayMesh,
+    stamp: &ConformalFrameStamp,
+    viewport_px: [u32; 2],
     stations: &[StationProjection],
     turf_tint: bool,
     pre_threshold: bool,
@@ -181,7 +236,7 @@ pub(super) fn append_displaced_zone(
     } else {
         DISPLACED_PAVED_FILL
     };
-    append_surface_fill(mesh, stations, fill);
+    append_surface_fill(mesh, stamp, viewport_px, stations, fill);
 
     for (idx, pair) in stations.windows(2).enumerate() {
         if idx % 2 != 0 {
@@ -190,14 +245,34 @@ pub(super) fn append_displaced_zone(
         let [s0, s1] = pair else {
             continue;
         };
-        if let (Some(a), Some(b)) = (s0.left, s1.left) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, 1.6, DISPLACED_LEAD_GREEN);
-        }
-        if let (Some(a), Some(b)) = (s0.right, s1.right) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, 1.6, DISPLACED_LEAD_GREEN);
-        }
-        if pre_threshold && let (Some(a), Some(b)) = (s0.center, s1.center) {
-            push_segment(mesh, a.0, a.1, b.0, b.1, 1.5, DISPLACED_LEAD_GREEN);
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            s0.left,
+            s1.left,
+            1.6,
+            DISPLACED_LEAD_GREEN,
+        );
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            s0.right,
+            s1.right,
+            1.6,
+            DISPLACED_LEAD_GREEN,
+        );
+        if pre_threshold {
+            push_clipped_segment(
+                mesh,
+                stamp,
+                viewport_px,
+                s0.center,
+                s1.center,
+                1.5,
+                DISPLACED_LEAD_GREEN,
+            );
         }
     }
 
@@ -206,10 +281,16 @@ pub(super) fn append_displaced_zone(
     } else {
         stations.last()
     };
-    if let Some(end) = cap
-        && let (Some(l), Some(r)) = (end.left, end.right)
-    {
-        push_segment(mesh, l.0, l.1, r.0, r.1, 1.5, DISPLACED_LEAD_GREEN);
+    if let Some(end) = cap {
+        push_clipped_segment(
+            mesh,
+            stamp,
+            viewport_px,
+            end.left,
+            end.right,
+            1.5,
+            DISPLACED_LEAD_GREEN,
+        );
     }
 }
 
@@ -219,32 +300,28 @@ pub(super) fn append_extended_lead_in(
     viewport_px: [u32; 2],
     rwy: &LandingRunwayGeometry,
 ) {
-    let body = stamp.physics_ellipsoid;
-    let origin_sea = sea_ecef(body, &rwy.pavement_start);
-    let far_sea = sea_ecef(body, &rwy.far_end);
-    let origin_zero = body.fixed_to_geodetic(origin_sea);
-    let local = LocalFrame::at(&origin_zero);
-    let up = local.up();
-    let chord = far_sea - origin_sea;
+    let render_body = stamp.render_body;
+    let origin_globe = sea_globe(render_body, &rwy.pavement_start);
+    let far_globe = sea_globe(render_body, &rwy.far_end);
+    let [east, north, up] =
+        sphere_enu_basis(rwy.pavement_start.lat_deg(), rwy.pavement_start.lon_deg());
+    let chord = far_globe - origin_globe;
     let fwd = (chord - up * chord.dot(up))
         .try_normalize()
         .unwrap_or_else(|| {
             let (sin_b, cos_b) = rwy.true_bearing_rad.sin_cos();
-            local.north() * cos_b + local.east() * sin_b
+            north * cos_b + east * sin_b
         });
-    let vis_h = rwy.threshold.height_m + VISUAL_LIFT_M;
-    let clear_h = rwy.threshold.height_m + CHORD_DEPTH_CLEARANCE_M;
+    let vis_msl = rwy.threshold_elevation_msl_m + VISUAL_LIFT_M;
+    let clear_msl = rwy.threshold_elevation_msl_m + CHORD_DEPTH_CLEARANCE_M;
 
     for k in 0..6_u32 {
         let s0 = 90.0 + f64::from(k) * 180.0;
         let s1 = s0 + 75.0;
-        let g0 = body.fixed_to_geodetic(origin_sea - fwd * s0);
-        let g1 = body.fixed_to_geodetic(origin_sea - fwd * s1);
-        if let (Some(p0), Some(p1)) = (
-            project_with_clearance(stamp, viewport_px, &g0, vis_h, clear_h),
-            project_with_clearance(stamp, viewport_px, &g1, vis_h, clear_h),
-        ) {
-            push_segment(mesh, p0.0, p0.1, p1.0, p1.1, 1.5, EXTENDED_LEAD_GREEN);
-        }
+        let g0 = geodetic_zero_from_globe_vec(origin_globe - fwd * s0);
+        let g1 = geodetic_zero_from_globe_vec(origin_globe - fwd * s1);
+        let p0 = vertex_with_clearance(stamp, &g0, vis_msl, clear_msl);
+        let p1 = vertex_with_clearance(stamp, &g1, vis_msl, clear_msl);
+        push_clipped_segment(mesh, stamp, viewport_px, p0, p1, 1.5, EXTENDED_LEAD_GREEN);
     }
 }

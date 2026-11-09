@@ -19,6 +19,7 @@ mod aerodrome;
 mod aerodrome_registry;
 mod airport_db;
 mod catalog;
+mod collision_terrain;
 mod deferred;
 mod live_dem;
 mod lunar;
@@ -42,6 +43,10 @@ pub use airport_db::{
     our_airports_us_names, parse_faa_nasr, parse_our_airports,
 };
 pub use catalog::{CatalogScenery, CatalogVerticalDatum, SyntheticCorridorSpec};
+pub use collision_terrain::{
+    CollisionGroundSample, CollisionTerrain, CollisionTerrainBody, DiscontinuousStepPatch,
+    ElevationSlab, PinnedCollisionTerrain,
+};
 pub use deferred::Deferred;
 pub use live_dem::LiveDemBridge;
 pub use lunar::{

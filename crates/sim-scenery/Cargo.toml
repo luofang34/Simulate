@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 flightbag = { workspace = true }
 sim-geo = { workspace = true }
+sim-spacetime = { workspace = true }
 world-core = { workspace = true }
 glam = { workspace = true }
 image = { workspace = true }

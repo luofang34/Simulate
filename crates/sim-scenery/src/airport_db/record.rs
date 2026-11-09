@@ -5,7 +5,8 @@ use std::f64::consts::FRAC_PI_2;
 
 use flightbag::{AirportSurfaceGraph, AuthoritySource, RunwayDesignator, RunwayEndSpec};
 use sim_geo::{
-    Geodetic, OrthometricHeightM, ecef_to_geodetic, geodetic_to_ecef, msl_egm96_to_ellipsoidal,
+    Geodetic, OrthometricHeightM, ecef_to_geodetic, egm96_undulation_m, geodetic_to_ecef,
+    msl_egm96_to_ellipsoidal,
 };
 use world_core::GeodeticPosition;
 
@@ -70,12 +71,28 @@ const ONBOARD_DEM_REJECT_M: f64 = 12.0;
 
 impl LandingRunwayGeometry {
     /// Builds unsloped, non-displaced landing geometry from a `Flightbag` [`RunwayEndSpec`]
-    /// when no full [`AirportRecord`] is present.
+    /// whose threshold height is expressed directly on the ellipsoid (`EllipsoidWgs84`).
     #[must_use]
     pub fn from_runway_end_spec(spec: &RunwayEndSpec) -> Self {
+        Self::from_runway_end_spec_in_datum(spec, CatalogVerticalDatum::EllipsoidWgs84)
+    }
+
+    /// Builds unsloped, non-displaced landing geometry from a `Flightbag` [`RunwayEndSpec`]
+    /// whose threshold height is expressed in `datum`.
+    #[must_use]
+    pub fn from_runway_end_spec_in_datum(
+        spec: &RunwayEndSpec,
+        datum: CatalogVerticalDatum,
+    ) -> Self {
         let thr_lat = spec.threshold.latitude_deg;
         let thr_lon = spec.threshold.longitude_deg;
         let thr_h = spec.threshold.ellipsoidal_height_m;
+        let thr_msl = match datum {
+            CatalogVerticalDatum::OrthometricMslEgm96 => {
+                thr_h - egm96_undulation_m(thr_lat.to_radians(), thr_lon.to_radians())
+            }
+            CatalogVerticalDatum::EllipsoidWgs84 => thr_h,
+        };
         let (far_lat, far_lon) =
             offset_deg((thr_lat, thr_lon), spec.true_bearing_rad, spec.length_m);
         let threshold = Geodetic::from_degrees(thr_lat, thr_lon, thr_h);
@@ -92,10 +109,10 @@ impl LandingRunwayGeometry {
             width_m: spec.width_m,
             true_bearing_rad: spec.true_bearing_rad,
             glidepath_rad: DEFAULT_GLIDEPATH_DEG.to_radians(),
-            start_elevation_msl_m: thr_h,
-            threshold_elevation_msl_m: thr_h,
-            far_elevation_msl_m: thr_h,
-            field_elevation_msl_m: thr_h,
+            start_elevation_msl_m: thr_msl,
+            threshold_elevation_msl_m: thr_msl,
+            far_elevation_msl_m: thr_msl,
+            field_elevation_msl_m: thr_msl,
             surface: RunwaySurfaceKind::Paved,
             authority: AuthoritySource::OpenStreetMap,
             effective_ymd: [1970, 1, 1],

@@ -112,7 +112,7 @@ pub fn belief_real_svs_style(endpoints: &SceneryEndpoints) -> Result<Style, MapA
         "version": 8,
         "name": "Indicate SVS relief",
         "projection": { "type": "vertical-perspective" },
-        "sources": { "dem": endpoints.dem_source(14) },
+        "sources": { "dem": endpoints.dem_source(15) },
         "terrain": { "source": "dem", "exaggeration": 1.0 },
         "sky": {
             "sky-color": "#0c3b75",

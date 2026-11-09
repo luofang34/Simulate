@@ -161,6 +161,10 @@ fn materialize(
     if let Some(dir) = sun_dir {
         map.set_sun_direction(Some(dir));
     }
+    if matches!(mode, InstrumentMapMode::Conformal3d { .. }) {
+        runtime
+            .with_runtime_context(|| crate::scenery_loader::seed_sea_level_root_dem(&mut map))?;
+    }
     if let Some(scenery) = catalog_dem {
         let _supplied =
             runtime.with_runtime_context(|| supply_catalog_dem_synchronously(&mut map, scenery))?;

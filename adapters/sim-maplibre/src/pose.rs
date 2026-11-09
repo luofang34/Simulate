@@ -10,7 +10,7 @@ use cgmath::{Matrix3, Matrix4, Rad};
 use glam::{DMat3, DMat4, DVec3};
 use maplibre::{
     coords::LatLon,
-    projection::{body::Body, globe::lat_lon_to_unit_sphere},
+    projection::body::Body,
     render::{
         camera::{EyeFrustum, OPENGL_TO_WGPU_MATRIX, REVERSED_Z},
         view_state::{ExternalAnchor, ExternalView},
@@ -20,6 +20,10 @@ use sim_core::{CameraMount, CameraPoseEcef, SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, SensorIntrinsics};
 
 use crate::MapAdapterError;
+
+mod globe;
+pub use globe::{anchor_enu_from_local_enu, globe_ned_between_geodetic, local_enu_from_geodetic};
+pub(crate) use globe::{geodetic_zero_from_globe_vec, sphere_enu_basis, unit_sphere_from_geodetic};
 
 /// Default far-plane clip distance in local metres (`350 km`, safely past planetary horizons).
 pub const DEFAULT_FAR_CLIP_M: f64 = 350_000.0;
@@ -353,90 +357,21 @@ pub fn project_geodetic_to_screen(
     Some(([x_px, y_px], rev_z))
 }
 
-/// Position of `point` in `stamp`'s local East-North-Up frame, measured on `stamp.render_body`
-/// exactly as `maplibre` draws its terrain; `None` past the horizon hemisphere.
-#[must_use]
-pub fn local_enu_from_geodetic(
-    stamp: &ConformalFrameStamp,
-    point: &Geodetic,
-    point_geoid_undulation_m: f64,
-) -> Option<DVec3> {
-    globe_enu_between_geodetic(
-        stamp.render_body,
-        stamp.anchor.lat_deg,
-        stamp.anchor.lon_deg,
-        stamp.anchor.altitude_msl_m,
-        point,
-        point_geoid_undulation_m,
-    )
-}
-
-/// Position of `point` in `eye`'s local North-East-Down frame on `render_body`'s sphere,
-/// matching [`TruthSceneMap`](crate::TruthSceneMap) and [`project_geodetic_to_screen`] on any
-/// celestial body with zero ellipsoid-vs-sphere anisotropy skew; `None` past the horizon
-/// hemisphere.
-#[must_use]
-pub fn globe_ned_between_geodetic(
-    render_body: Body,
-    eye: &Geodetic,
-    eye_geoid_undulation_m: f64,
-    point: &Geodetic,
-    point_geoid_undulation_m: f64,
-) -> Option<DVec3> {
-    let enu = globe_enu_between_geodetic(
-        render_body,
-        eye.lat_rad.to_degrees(),
-        eye.lon_rad.to_degrees(),
-        eye.height_m - eye_geoid_undulation_m,
-        point,
-        point_geoid_undulation_m,
-    )?;
-    Some(DVec3::new(enu.y, enu.x, -enu.z))
-}
-
-fn globe_enu_between_geodetic(
-    body: Body,
-    anchor_lat_deg: f64,
-    anchor_lon_deg: f64,
-    anchor_altitude_msl_m: f64,
-    point: &Geodetic,
-    point_geoid_undulation_m: f64,
-) -> Option<DVec3> {
-    if !body.radius_meters.is_finite() || body.radius_meters <= 0.0 {
-        return None;
+impl ConformalFrameStamp {
+    /// Returns `self` with its camera anchor raised to at least `min_altitude_msl_m` on
+    /// `self.render_body`, keeping its planetographic `(lat, lon)` and 6-DoF view rotation
+    /// unchanged so pitch, roll, heading, and horizon projection remain strictly conformal.
+    #[must_use]
+    pub fn with_min_altitude_msl(mut self, min_altitude_msl_m: f64) -> Self {
+        if !min_altitude_msl_m.is_finite() || min_altitude_msl_m <= self.anchor.altitude_msl_m {
+            return self;
+        }
+        self.anchor.altitude_msl_m = min_altitude_msl_m;
+        self.external_view.anchor.altitude_meters = min_altitude_msl_m;
+        self.projection_fingerprint =
+            fingerprint_external_view(&self.external_view, self.render_body);
+        self
     }
-    let anchor_ll = LatLon::new(anchor_lat_deg, anchor_lon_deg);
-    let point_ll = LatLon::new(point.lat_rad.to_degrees(), point.lon_rad.to_degrees());
-    let point_msl = point.height_m - point_geoid_undulation_m;
-    let anchor_u = lat_lon_to_unit_sphere(anchor_ll);
-    let point_u = lat_lon_to_unit_sphere(point_ll);
-    // `dot <= 0` lies behind the globe center.
-    if anchor_u.x * point_u.x + anchor_u.y * point_u.y + anchor_u.z * point_u.z <= 0.0 {
-        return None;
-    }
-    let r_anchor = body.radius_meters + anchor_altitude_msl_m;
-    let r_point = body.radius_meters + point_msl;
-    let delta_globe = DVec3::new(
-        point_u.x * r_point - anchor_u.x * r_anchor,
-        point_u.y * r_point - anchor_u.y * r_anchor,
-        point_u.z * r_point - anchor_u.z * r_anchor,
-    );
-    let [east, north, up] = sphere_enu_basis(anchor_lat_deg, anchor_lon_deg);
-    Some(DVec3::new(
-        delta_globe.dot(east),
-        delta_globe.dot(north),
-        delta_globe.dot(up),
-    ))
-}
-
-/// Rotation taking vectors in the sphere's ENU frame at `(lat_deg, lon_deg)` into
-/// `stamp`'s anchor ENU frame, so a model oriented locally keeps its attitude anywhere.
-#[must_use]
-pub fn anchor_enu_from_local_enu(stamp: &ConformalFrameStamp, lat_deg: f64, lon_deg: f64) -> DMat3 {
-    let [ae, an, au] = sphere_enu_basis(stamp.anchor.lat_deg, stamp.anchor.lon_deg);
-    let [pe, pn, pu] = sphere_enu_basis(lat_deg, lon_deg);
-    let anchor_from_globe = DMat3::from_cols(ae, an, au).transpose();
-    anchor_from_globe * DMat3::from_cols(pe, pn, pu)
 }
 
 /// Exact GPU clip transform of `stamp`'s anchor ENU frame: WebGPU depth range with
@@ -447,14 +382,6 @@ pub fn clip_from_anchor_enu(stamp: &ConformalFrameStamp) -> DMat4 {
     let m = REVERSED_Z * OPENGL_TO_WGPU_MATRIX * view.frustum.projection() * view.view;
     let cols: &[[f64; 4]; 4] = m.as_ref();
     DMat4::from_cols_array_2d(cols)
-}
-
-/// Sphere tangent basis `[east, north, up]` in `maplibre` globe coordinates (`+Y` polar).
-fn sphere_enu_basis(lat_deg: f64, lon_deg: f64) -> [DVec3; 3] {
-    let (lat, lon) = (lat_deg.to_radians(), lon_deg.to_radians());
-    let east = DVec3::new(lon.cos(), 0.0, -lon.sin());
-    let up = DVec3::new(lat.cos() * lon.sin(), lat.sin(), lat.cos() * lon.cos());
-    [east, up.cross(east), up]
 }
 
 fn fingerprint_external_view(view: &ExternalView, body: Body) -> u64 {

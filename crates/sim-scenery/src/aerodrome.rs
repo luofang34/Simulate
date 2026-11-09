@@ -209,6 +209,9 @@ impl OsmAerodromeDiagram {
             serde_json::from_str(json_text).map_err(|err| SceneryError::InvalidCatalog {
                 detail: format!("OSM aerodrome JSON {}: {err}", id.code()),
             })?;
+        let record = crate::AirportDatabase::builtin()
+            .by_code(id.code())
+            .map(|(_, rec)| rec);
         conflate::build_from_snapshot(
             id,
             name.to_owned(),
@@ -217,6 +220,7 @@ impl OsmAerodromeDiagram {
             default_tower,
             default_rwy_w,
             &raw,
+            record,
         )
     }
 

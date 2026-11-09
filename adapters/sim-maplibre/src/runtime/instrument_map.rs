@@ -23,7 +23,7 @@ use super::{
     SharedMapRuntime,
     pacing::interval_elapsed,
     pixel_ratio::pixel_ratio_update,
-    svs_dem::{ResidentDemSampler, sample_point_msl},
+    svs_dem::{ResidentDemSampler, sample_point_msl, svs_eye_floor_msl},
     validate_size,
 };
 use crate::{
@@ -285,10 +285,13 @@ impl InstrumentMapSurface {
             self.backend
                 .ensure_active(&runtime, self.mode, size, self.pixel_ratio)?;
         map.set_procedural_relief_reference_altitude(Some(frame.ownship_msl_m));
+        let stamp = svs_eye_floor_msl(map, &frame.stamp).map_or(frame.stamp, |floor_m| {
+            frame.stamp.with_min_altitude_msl(floor_m)
+        });
         let (mesh, probes) = {
             let mut dem = ResidentDemSampler::new(map);
             build_conformal_overlay_with_dem(
-                &frame.stamp,
+                &stamp,
                 size,
                 frame.runway,
                 frame.entities,
@@ -303,10 +306,10 @@ impl InstrumentMapSurface {
                 .set_view_slot_depth_probes(slot, probes)
                 .map_err(|source| MapAdapterError::MultiView { source })?;
         }
-        let view = SlotView::External(frame.stamp.external_view);
+        let view = SlotView::External(stamp.external_view);
         run_slot_frame(&runtime, map, slot, frame.timestamp, 1.1, view)?;
         self.render_count = self.render_count.wrapping_add(1);
-        self.last_stamp = Some(frame.stamp);
+        self.last_stamp = Some(stamp);
         self.last_conformal_timestamp = Some(frame.timestamp);
         Ok(())
     }
@@ -376,7 +379,7 @@ impl InstrumentMapSurface {
         self.backend.terrain_drape_mode(&self.runtime)
     }
 
-    /// Samples bilinear terrain elevation (metres MSL) from the surface's resident z14 DEM.
+    /// Samples rendered terrain elevation (metres MSL) from the surface's resident DEM.
     #[must_use]
     pub fn sample_resident_dem_msl(&self, lat_deg: f64, lon_deg: f64) -> Option<f64> {
         match &self.backend {

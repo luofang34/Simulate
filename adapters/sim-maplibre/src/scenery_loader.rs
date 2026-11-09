@@ -117,6 +117,19 @@ pub fn terrarium_tile_to_rgba_image(tile: &TerrariumTile) -> RgbaImage {
     RgbaImage::from_raw(width, height, raw).unwrap_or_else(|| RgbaImage::new(1, 1))
 }
 
+/// Seeds a `z = 0` (`0, 0, 0`) sea-level (`0.0 m`) Terrarium DEM tile into `map` so
+/// `TerrainCoverageIndex` has `exaggeration = 1.0` and global ancestor coverage on Frame 0
+/// (including polar-cap frustum bounds at `±85.0511°..±90°`) before regional DEM tiles arrive.
+pub(crate) fn seed_sea_level_root_dem(map: &mut HeadlessMap) -> Result<(), MapAdapterError> {
+    let [r, g, b] = encode_terrarium(0.0);
+    let raw = [r, g, b, 255].repeat(16);
+    if let Some(image) = RgbaImage::from_raw(4, 4, raw) {
+        map.load_dem_tiles(vec![(WorldTileCoords::default(), image)])
+            .map_err(|source| MapAdapterError::MapOperation { source })?;
+    }
+    Ok(())
+}
+
 /// Synchronously populates all resident DEM tiles from `scenery` into `map` so Frame 1
 /// of deterministic `30 Hz` optical evaluation has zero async tile pop-in.
 pub fn supply_catalog_dem_synchronously(
@@ -136,6 +149,38 @@ pub fn supply_catalog_dem_synchronously(
     let count = batch.len();
     if count > 0 {
         map.load_dem_tiles(batch)
+            .map_err(|source| MapAdapterError::MapOperation { source })?;
+    }
+    Ok(count)
+}
+
+/// Synchronously populates all resident orthoimagery tiles from `scenery` into `map` under
+/// `source_name` without PNG round-trip encoding so Frame 1 drapes cleanly.
+pub fn supply_catalog_ortho_synchronously(
+    map: &mut HeadlessMap,
+    scenery: &CatalogScenery,
+    source_name: &str,
+) -> Result<usize, MapAdapterError> {
+    let mut batch = Vec::new();
+    for tile in scenery.imagery_tiles() {
+        let Ok(Some(raster)) = scenery.imagery(tile) else {
+            continue;
+        };
+        let Some(coords) = tile_id_to_world_coords(tile) else {
+            continue;
+        };
+        let Some(image) = RgbaImage::from_raw(raster.width, raster.height, raster.rgba8) else {
+            continue;
+        };
+        batch.push(maplibre::raster::AvailableRasterLayerData {
+            coords,
+            source: maplibre::raster::RasterSourceId::new(Some(source_name.to_owned())),
+            image,
+        });
+    }
+    let count = batch.len();
+    if count > 0 {
+        map.render_sources(maplibre::headless::map::ProcessedLayers::default(), batch)
             .map_err(|source| MapAdapterError::MapOperation { source })?;
     }
     Ok(count)

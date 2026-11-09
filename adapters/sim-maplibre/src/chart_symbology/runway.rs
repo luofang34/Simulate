@@ -6,7 +6,7 @@ use maplibre::overlay::OverlayMesh;
 use sim_scenery::{LandingRunwayGeometry, RunwaySurfaceKind};
 
 use super::{ChartProjection, FEATHER_CYAN, FEATHER_WHITE, HALO, push_segment};
-use crate::geodesy::{METRES_PER_NM, destination};
+use crate::geodesy::{METRES_PER_NM, destination, initial_bearing_deg};
 
 const RUNWAY_PAVEMENT: [f32; 4] = [0.80, 0.85, 0.92, 0.96];
 const DISPLACED_OVERRUN: [f32; 4] = [0.44, 0.52, 0.62, 0.88];
@@ -18,8 +18,14 @@ pub(super) fn append_approach_feather(
     projection: &ChartProjection,
     runway: &LandingRunwayGeometry,
 ) {
-    let thr = [runway.threshold.lon_deg(), runway.threshold.lat_deg()];
-    let course = runway.true_bearing_rad.to_degrees().rem_euclid(360.0);
+    let [thr_lon, thr_lat] = [runway.threshold.lon_deg(), runway.threshold.lat_deg()];
+    let [far_lon, far_lat] = [runway.far_end.lon_deg(), runway.far_end.lat_deg()];
+    let thr = [thr_lon, thr_lat];
+    let course = if (thr_lon - far_lon).abs() > 1e-7 || (thr_lat - far_lat).abs() > 1e-7 {
+        initial_bearing_deg(thr, [far_lon, far_lat])
+    } else {
+        runway.true_bearing_rad.to_degrees().rem_euclid(360.0)
+    };
     let outbound = (course + 180.0).rem_euclid(360.0);
     append_runway_strip(mesh, projection, runway, thr, course);
     let s = projection.scale;

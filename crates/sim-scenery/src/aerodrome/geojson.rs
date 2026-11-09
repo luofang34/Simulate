@@ -3,19 +3,29 @@ use serde_json::{Value, json};
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
 use super::{RawOsmSnapshot, RawOsmWay};
+use crate::AirportRecord;
+use crate::airport_db::portrayal::append_record_runway_features;
 
 pub(super) fn build_portrayal_geojson(
     raw: &RawOsmSnapshot,
     runway_ends: &[RunwayEndSpec],
+    record: Option<&AirportRecord>,
     default_rwy_width_m: f64,
     default_twy_width_m: f64,
 ) -> Value {
     let mut features = Vec::new();
     for way in &raw.ways {
+        if record.is_some() && way.kind == "runway" {
+            continue;
+        }
         append_way_features(way, default_rwy_width_m, default_twy_width_m, &mut features);
     }
-    for end in runway_ends {
-        features.push(threshold_bar_feature(end));
+    if let Some(rec) = record {
+        append_record_runway_features(rec, &mut features);
+    } else {
+        for end in runway_ends {
+            features.push(threshold_bar_feature(end));
+        }
     }
     for pt in &raw.points {
         if pt.kind == "holding_position" {
@@ -52,15 +62,17 @@ fn append_way_features(
             features.push(polygon_feature(kind, &way.coords, way.r#ref.as_deref()));
         }
         "runway" => {
+            let is_displaced = way.runway.as_deref() == Some("displaced_threshold");
+            let pave_kind = if is_displaced {
+                "stopway_pavement"
+            } else {
+                "runway_pavement"
+            };
             let width_m = way.width_m.unwrap_or(default_rwy_width_m).max(8.0);
-            for poly in buffer_polyline(&way.coords, width_m * 0.5) {
-                features.push(polygon_feature(
-                    "runway_pavement",
-                    &poly,
-                    way.r#ref.as_deref(),
-                ));
+            for poly in buffer_polyline_ext(&way.coords, width_m * 0.5, false) {
+                features.push(polygon_feature(pave_kind, &poly, way.r#ref.as_deref()));
             }
-            let cl_kind = if way.runway.as_deref() == Some("displaced_threshold") {
+            let cl_kind = if is_displaced {
                 "displaced_centerline"
             } else {
                 "runway_centerline"
@@ -124,7 +136,20 @@ fn hold_short_marker(coord: [f64; 2], runway_ends: &[RunwayEndSpec]) -> Value {
 }
 
 pub(crate) fn buffer_polyline(coords: &[[f64; 2]], half_width_m: f64) -> Vec<Vec<[f64; 2]>> {
+    buffer_polyline_ext(coords, half_width_m, true)
+}
+
+fn buffer_polyline_ext(
+    coords: &[[f64; 2]],
+    half_width_m: f64,
+    overlap_ends: bool,
+) -> Vec<Vec<[f64; 2]>> {
     let mut quads = Vec::new();
+    let pad = if overlap_ends {
+        half_width_m * 0.35
+    } else {
+        0.0
+    };
     for pair in coords.windows(2) {
         let (Some(&[lon_a, lat_a]), Some(&[lon_b, lat_b])) = (pair.first(), pair.last()) else {
             continue;
@@ -139,8 +164,8 @@ pub(crate) fn buffer_polyline(coords: &[[f64; 2]], half_width_m: f64) -> Vec<Vec
         let fwd = chord / len_m;
         let mid = ecef_to_geodetic(0.5 * (a_ecef + b_ecef));
         let right = fwd.cross(LocalFrame::at(&mid).up()).normalize_or_zero();
-        let a_ext = a_ecef - fwd * (half_width_m * 0.35);
-        let b_ext = b_ecef + fwd * (half_width_m * 0.35);
+        let a_ext = a_ecef - fwd * pad;
+        let b_ext = b_ecef + fwd * pad;
         let to_lonlat = |ecef| {
             let g = ecef_to_geodetic(ecef);
             [g.lon_deg(), g.lat_deg()]

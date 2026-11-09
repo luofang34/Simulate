@@ -73,7 +73,7 @@ impl Default for TruthSceneConfig {
             stereo_otw: false,
             otw_depth_readout: false,
             sensor_size: [800, 600],
-            request_overscan: 1.05,
+            request_overscan: 1.22,
         }
     }
 }
@@ -101,7 +101,7 @@ pub struct TruthSceneFrame<'a> {
     /// Which ownship parts each slot sees; slots not listed see the whole airframe.
     pub ownship_camera_roles: &'a [(ViewSlotId, SlotCameraRole)],
     /// Optional polar runway (`|lat| > 85.05°`) rendered as a 3D groomed snow skiway.
-    pub polar_runway: Option<&'a flightbag::RunwayEndSpec>,
+    pub polar_runway: Option<&'a sim_scenery::LandingRunwayGeometry>,
 }
 
 /// Simulator-only `HeadlessMap` world serving OTW, synthetic optical sensors, and virtual cameras.
@@ -165,6 +165,8 @@ impl TruthSceneMap {
             .map_err(|source| MapAdapterError::Assemble { source })?;
         map.set_available_memory(runtime.device_tier().available_memory_bytes());
         map.set_atmosphere(true);
+        runtime
+            .with_runtime_context(|| crate::scenery_loader::seed_sea_level_root_dem(&mut map))?;
 
         let otw_slot = map.register_view_slot(ViewSlotConfig {
             size: otw_phys,
@@ -258,6 +260,16 @@ impl TruthSceneMap {
     ) -> Result<usize, MapAdapterError> {
         self.runtime
             .with_runtime_context(|| supply_catalog_dem_synchronously(&mut self.map, scenery))
+    }
+
+    /// Synchronously populates resident orthoimagery tiles from `scenery` for Frame-1 determinism.
+    pub fn supply_ortho_synchronously(
+        &mut self,
+        scenery: &CatalogScenery,
+    ) -> Result<usize, MapAdapterError> {
+        self.runtime.with_runtime_context(|| {
+            crate::supply_catalog_ortho_synchronously(&mut self.map, scenery, "ortho")
+        })
     }
 
     /// Updates the ECEF solar direction driving globe daylight, twilight, and atmosphere.
@@ -434,10 +446,10 @@ impl TruthSceneMap {
         };
         let polar_skiway = frame
             .polar_runway
-            .filter(|r| r.threshold.latitude_deg.abs() > 85.05)
+            .filter(|r| r.threshold.lat_deg().abs() > 85.05)
             .map(|r| {
                 (
-                    library.ensure_polar_skiway(PolarSkiwayKey::from_runway(r)),
+                    library.ensure_polar_skiway(PolarSkiwayKey::from_runway(r, stamp.render_body)),
                     r,
                 )
             });
