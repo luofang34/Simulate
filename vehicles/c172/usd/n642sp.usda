@@ -688,9 +688,11 @@ over "C172"
             custom token sim:partRole = "landing_light"
         }
 
-        # C14: stall-warning inlet in the left leading edge inboard of the lamps, and the
-        # pitot under the left wing at the syspack pitot_static station (body y -2.4 m), moved
-        # 0.35 m outboard to clear the strut fitting. Positions typical, not measured on N642SP.
+        # C14: stall-warning inlet in the left leading edge inboard of the lamps (typical, not
+        # measured on N642SP), and the pitot under the left wing (POH: lower surface of the
+        # left wing) with its tube tip at the syspack pitot_static station. That station sits
+        # on the strut fitting, so the mast overlaps the fitting: a known gap until a sourced
+        # wing station replaces both.
         def Cube "StallWarningInlet" (
             prepend apiSchemas = ["MaterialBindingAPI"]
         )
@@ -708,7 +710,7 @@ over "C172"
         )
         {
             double size = 1
-            double3 xformOp:translate = (-2.75, 0.3, 0.645)
+            double3 xformOp:translate = (-2.4, 0.3, 0.62)
             float3 xformOp:scale = (0.015, 0.05, 0.1)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
             rel material:binding = </C172/Materials/MatWhitePaint>
@@ -722,7 +724,7 @@ over "C172"
             uniform token axis = "Y"
             double height = 0.24
             double radius = 0.008
-            double3 xformOp:translate = (-2.75, 0.4, 0.6)
+            double3 xformOp:translate = (-2.4, 0.384, 0.585)
             uniform token[] xformOpOrder = ["xformOp:translate"]
             rel material:binding = </C172/Materials/MatWheelAlloy>
             custom token sim:partRole = "cabin_exterior"
