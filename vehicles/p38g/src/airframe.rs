@@ -9,13 +9,13 @@ use glam::{DMat4, Vec3};
 use crate::articulated::push_two_tone;
 use crate::cockpit_opening::upper_gondola_skin;
 use crate::drawing::{INCH_M, fs_to_y, y_to_fs};
+use crate::fillets::fillet_prims;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
 use crate::stations::{
     ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
     ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, GUNMETAL, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
-    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TAILPLANE_SECTIONS_BL, TIP_START_X,
-    boom_point, gondola_point, interpolate_gondola, tailplane_planform_fs, wing_station,
-    wing_surface_point,
+    PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point,
+    gondola_point, interpolate_gondola, tailplane_planform_fs, wing_surface_point,
 };
 
 pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
@@ -319,44 +319,7 @@ fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
 }
 
 fn build_wing_fillets_and_pylons(prims: &mut Vec<P38MeshPrim>) {
-    // Weathered olive-drab fuel tank access panels & Karman wing-root fillets
-    let mut panels = MeshBuilder::new();
-    let mut fillets = MeshBuilder::new();
-    for side in [-1.0_f32, 1.0] {
-        let mut rows = Vec::new();
-        for x in [side * 0.72, side * 1.32, side * 1.92] {
-            let mut r = Vec::new();
-            for i in 2..=11 {
-                let u = i as f32 / 14.0;
-                r.push(wing_surface_point(x, u, true) + Vec3::new(0.0, 0.0, 0.0018));
-            }
-            rows.push(r);
-        }
-        panels.loft_open(&rows, Inside::Point(Vec3::new(side * 1.3, -0.3, -2.0)));
-
-        // Karman aerodynamic fairing fillets at Gondola-Wing and Boom-Wing junctions
-        for jx in [side * 0.56, side * (BOOM_X - 0.44), side * (BOOM_X + 0.44)] {
-            let (ly, ty, zm, ..) = wing_station(jx);
-            fillets.ellipsoid(
-                Vec3::new(jx, 0.5 * (ly + ty), zm + 0.04),
-                Vec3::new(0.14, 0.48 * (ly - ty), 0.11),
-                12,
-                6,
-            );
-        }
-    }
-    prims.push(fixed(
-        "/P38g/Wing/FuelBayPanels",
-        P38PartRole::WingStructure,
-        OLIVE_FADED,
-        panels,
-    ));
-    prims.push(fixed(
-        "/P38g/Wing/KarmanFillets",
-        P38PartRole::WingStructure,
-        OLIVE_DRAB,
-        fillets,
-    ));
+    prims.extend(fillet_prims());
 
     // Under-wing 150-gal drop-tank shackles & L-shaped pitot static mast
     let mut pylons = MeshBuilder::new();

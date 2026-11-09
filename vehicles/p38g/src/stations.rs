@@ -61,7 +61,6 @@ pub const HTAIL_Z: f32 = 0.4698;
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
 /// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
 pub(crate) const OLIVE_DRAB: P38Material = mat([0.16, 0.165, 0.095], 0.0, 0.70);
-pub(crate) const OLIVE_FADED: P38Material = mat([0.19, 0.19, 0.12], 0.0, 0.78);
 pub(crate) const ANTI_GLARE: P38Material = mat([0.075, 0.08, 0.05], 0.0, 0.9);
 /// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);

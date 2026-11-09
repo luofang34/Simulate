@@ -26,6 +26,7 @@ mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
 pub mod drawing;
+mod fillets;
 mod gear;
 mod instrument_panel;
 mod mesh;
