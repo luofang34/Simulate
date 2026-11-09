@@ -33,6 +33,10 @@ Optional spec keys (absent, the maps are as before):
   tip_shape       "elliptical": the chord closes on a quarter ellipse from
                   tip_ellipse_start (default 0.8 R) to zero at the tip, in place
                   of the linear tip_taper
+  compressibility {"tip_mach": M, "section_data": file}: each element's section
+                  Mach number from its helical velocity at that rotational tip
+                  Mach, and its drag raised by the measured rise above M 0.4 in
+                  vehicles/tools/section_data/<file> (Clark Y: NACA TR 463)
   chord_over_diameter / thickness_over_chord may instead be a list of
                   [r/R, value] points (a measured blade-form chart), linearly
                   interpolated and held at the ends
@@ -44,9 +48,21 @@ the stalled blade's Ct comes out high and Cp low; static Cp is 35-55 % low at
 20-25 deg with every section option here, the deficit growing with blade angle.
 Low-J and static values (a fixed-pitch take-off, the P-38G's static column)
 carry this; vehicles/tools/propeller_measured.py serves measured maps instead.
+
+Compressibility is parked, not validated, also checked by propeller_check.py.
+With TR 463's measured Clark Y drag rise the 5868-9's static Ct stays flat with
+tip Mach, as TR 684 Figs. 5 and 6 measure, but its static Cp rises only 7-11 %
+from tip Mach 0.4 to 0.78-0.8 at 15-17.5 deg against the measured 27-31 %:
+the stalled and high-cl sections that carry the static power are outside
+TR 463's data (cl 0.8 at most, t/c 0.10 at most, M 0.86 at most). A
+Prandtl-Glauert lift slope with a fixed cl_max made both coefficients fall,
+and Korn's relation with Lock's quartic gave the P-38G's cruise blade an
+efficiency of 0.3-0.4 far past drag divergence; neither is used. No vehicle
+uses the option.
 """
 import json
 import math
+import os
 import sys
 
 
@@ -74,6 +90,16 @@ class Blade:
         self.du_selig = spec.get("stall_delay") == "du_selig"
         self.elliptical_from = spec.get("tip_ellipse_start", 0.8) if spec.get("tip_shape") == "elliptical" else None
         self.aspect_ratio = self.blade_aspect_ratio()
+        compressibility = spec.get("compressibility")
+        self.tip_mach = compressibility["tip_mach"] if compressibility else None
+        self.section_drag = load_section_drag(compressibility["section_data"]) if compressibility else None
+
+    def section_mach(self, va, vt):
+        """Section Mach number from the disc velocities, in the solver's units
+        where the rotational tip speed is 2 pi R; zero when incompressible."""
+        if self.tip_mach is None:
+            return 0.0
+        return math.hypot(va, vt) * self.tip_mach / (2 * math.pi * self.radius)
 
     def blade_aspect_ratio(self):
         x0 = self.hub / self.radius
@@ -145,7 +171,44 @@ def du_selig(blade, x, lam, cl, cd, cl_attached, cd0):
     return cl + fl * (cl_attached - cl), cd - fd * (cd - cd0)
 
 
-def section(blade, alpha, x, lam=1.0):
+def load_section_drag(name):
+    """Measured section drag against Mach from a vehicles/tools/section_data
+    file: {thickness: {cl: [[M, cd], ...]}}."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "section_data", name)
+    data = json.load(open(path))["cd_by_thickness_and_cl"]
+    return {float(t): {float(cl): pts for cl, pts in by_cl.items()} for t, by_cl in data.items()}
+
+
+def bracket(keys, x):
+    x = min(max(x, keys[0]), keys[-1])
+    for lo, hi in zip(keys, keys[1:]):
+        if x <= hi:
+            return lo, hi, (x - lo) / (hi - lo)
+    return keys[-1], keys[-1], 0.0
+
+
+def drag_rise(blade, cl, tc, mach):
+    """The measured rise of section drag above its value at M 0.4, interpolated
+    in thickness and lift coefficient and held at the data's edges: thickness
+    beyond the measured range takes the nearest section, lift beyond the
+    highest measured cl that cl's curve, and Mach beyond a curve's last point
+    that point's drag."""
+    if blade.section_drag is None or mach <= 0.4:
+        return 0.0
+    table = blade.section_drag
+    t0, t1, wt = bracket(sorted(table), tc)
+
+    def rise(t, c):
+        pts = table[t][c]
+        return interpolate(pts, mach) - interpolate(pts, 0.4)
+
+    def at(t):
+        c0, c1, wc = bracket(sorted(table[t]), abs(cl))
+        return (1 - wc) * rise(t, c0) + wc * rise(t, c1)
+    return max(0.0, (1 - wt) * at(t0) + wt * at(t1))
+
+
+def section(blade, alpha, x, lam=1.0, mach=0.0):
     a0 = math.radians(-3.5)
     cla = 2 * math.pi * 0.92
     tc = blade.tc(x)
@@ -153,14 +216,15 @@ def section(blade, alpha, x, lam=1.0):
     if blade.cl_max is not None:
         a_stall = min(a_stall, blade.cl_max / cla + a0)
     if abs(alpha) <= a_stall:
-        return attached(alpha, a0, cla, tc)
+        cl, cd = attached(alpha, a0, cla, tc)
+        return cl, cd + drag_rise(blade, cl, tc, mach)
     if blade.viterna:
         cl, cd = viterna(blade, alpha, a_stall, a0, cla, tc)
     else:
         cl, cd = blended_stall(alpha, a_stall, a0, cla)
     if blade.du_selig:
         cl, cd = du_selig(blade, x, lam, cl, cd, cla * (alpha - a0), attached(a0, a0, cla, tc)[1])
-    return cl, cd
+    return cl, cd + drag_rise(blade, cl, tc, mach)
 
 
 def tip_loss(blade, r, phi):
@@ -176,7 +240,7 @@ def velocity_induction(blade, beta, x, r, c, sigma, V, omega, lam):
     for _ in range(1000):
         va, vt = V + vi, omega * r * (1 - ap)
         phi = math.atan2(va, vt)
-        cl, cd = section(blade, beta - phi, x, lam)
+        cl, cd = section(blade, beta - phi, x, lam, blade.section_mach(va, vt))
         cn = cl * math.cos(phi) - cd * math.sin(phi)
         ct = cl * math.sin(phi) + cd * math.cos(phi)
         F = tip_loss(blade, r, phi)
@@ -205,7 +269,7 @@ def element(blade, J, beta75, r, dr):
         vi = 0.0
         for _ in range(200):
             phi = math.atan2(vi, omega * r)
-            cl, cd = section(blade, beta - phi, x, lam)
+            cl, cd = section(blade, beta - phi, x, lam, blade.section_mach(vi, omega * r))
             cn = cl * math.cos(phi) - cd * math.sin(phi)
             rhs = 0.5 * (vi ** 2 + (omega * r) ** 2) * blade.blades * c * cn / (4 * math.pi * r)
             new = math.sqrt(max(rhs, 0.0))
@@ -218,7 +282,7 @@ def element(blade, J, beta75, r, dr):
         for _ in range(200):
             va, vt = V * (1 + a), omega * r * (1 - ap)
             phi = math.atan2(va, vt)
-            cl, cd = section(blade, beta - phi, x, lam)
+            cl, cd = section(blade, beta - phi, x, lam, blade.section_mach(va, vt))
             cn = cl * math.cos(phi) - cd * math.sin(phi)
             ct = cl * math.sin(phi) + cd * math.cos(phi)
             sphi = max(abs(math.sin(phi)), 1e-4)
@@ -235,7 +299,7 @@ def element(blade, J, beta75, r, dr):
                 break
             a, ap = 0.6 * a + 0.4 * a_new, 0.6 * ap + 0.4 * ap_new
     phi = math.atan2(va, vt)
-    cl, cd = section(blade, beta - phi, x, lam)
+    cl, cd = section(blade, beta - phi, x, lam, blade.section_mach(va, vt))
     cn = cl * math.cos(phi) - cd * math.sin(phi)
     ct = cl * math.sin(phi) + cd * math.cos(phi)
     w2 = va ** 2 + vt ** 2

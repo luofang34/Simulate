@@ -5,7 +5,11 @@
    (Hartman & Biermann 1938) in the attached range, and still shows its known
    static power deficit; if a model change removes the deficit, this check
    fails so the documented limitation is revisited rather than left stale.
-2. Every shipped propeller table regenerates exactly from its design JSON, and
+2. The parked compressibility option (NACA TR 463 section drag rise) keeps the
+   5868-9's static Ct flat with tip Mach as TR 684 Figs. 5/6 measure, and its
+   static Cp rise stays in the documented band below TR 684's, so a model
+   change that closes the gap shows here.
+3. Every shipped propeller table regenerates exactly from its design JSON, and
    a fixed-pitch table's Ct and Cp fall with J past the static column except
    for steps its vehicle's performance/validation.json records as known.
 
@@ -48,6 +52,14 @@ ATTACHED = {15: (3, 7), 20: (4, 9), 25: (6, 10)}
 ATTACHED_TOLERANCE = 0.008
 # Known limitation: BEM static C_P is this fraction of TR 640's at 20 and 25 deg.
 STATIC_CP_RATIO = (0.40, 0.75)
+# TR 684 Figs. 5 and 6 (Hartman & Biermann 1940), 5868-9, 2 blades, V/nD = 0,
+# read from a 250 dpi scan: (Ct, Cp) at 17.5 deg against rotational tip Mach.
+TR684_17_5_DEG = {0.4: (0.1005, 0.0520), 0.78: (0.1029, 0.0663)}
+COMPRESSIBILITY = {"section_data": "clark_y_naca_tr463.json"}
+# Parked compressibility: static Ct follows TR 684 within this ratio, while the
+# static Cp rise from M 0.4 to 0.78 stays in this band against TR 684's 1.275.
+TR684_CT_RATIO_TOLERANCE = 0.05
+TR684_CP_RATIO_BAND = (1.03, 1.15)
 
 
 def load_bem():
@@ -97,6 +109,22 @@ def check_monotone(table):
             if 0.1 <= a[0] and b[1] > a[1] + 0.0005 and a[1] > 0.0]
 
 
+def check_tr684_compressibility(bem):
+    failures = []
+    ratios = {}
+    for mach in TR684_17_5_DEG:
+        spec = dict(SPEC, compressibility=dict(COMPRESSIBILITY, tip_mach=mach))
+        ratios[mach] = bem.coefficients(bem.Blade(spec), 0.0, 17.5 + FACE_OFFSET_DEG)
+    (ct_lo, cp_lo), (ct_hi, cp_hi) = ratios[0.4], ratios[0.78]
+    (mct_lo, _), (mct_hi, mcp_hi) = TR684_17_5_DEG[0.4], TR684_17_5_DEG[0.78]
+    if abs(ct_hi / ct_lo - mct_hi / mct_lo) > TR684_CT_RATIO_TOLERANCE:
+        failures.append(f"TR 684 17.5 deg Ct ratio {ct_hi / ct_lo:.3f} vs {mct_hi / mct_lo:.3f}")
+    low, high = TR684_CP_RATIO_BAND
+    if not low <= cp_hi / cp_lo <= high:
+        failures.append(f"TR 684 17.5 deg Cp ratio {cp_hi / cp_lo:.3f} left the documented {low}-{high}")
+    return failures
+
+
 def check_regeneration():
     failures = []
     steps = []
@@ -124,7 +152,8 @@ def check_regeneration():
 
 
 def main():
-    failures = check_tr640(load_bem()) + check_regeneration()
+    bem = load_bem()
+    failures = check_tr640(bem) + check_tr684_compressibility(bem) + check_regeneration()
     for failure in failures:
         print(f"propeller_check: {failure}", file=sys.stderr)
     sys.exit(1 if failures else 0)
