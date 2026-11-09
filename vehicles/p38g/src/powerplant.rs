@@ -337,7 +337,7 @@ fn build_exterior_lights(prims: &mut Vec<P38MeshPrim>) {
     let mut beacon = MeshBuilder::new();
     for side in [-1.0_f32, 1.0] {
         beacon.ellipsoid(
-            Vec3::new(side * BOOM_X, -6.90, 1.83),
+            Vec3::new(side * BOOM_X, -7.24, 1.865),
             Vec3::new(0.028, 0.055, 0.028),
             10,
             6,

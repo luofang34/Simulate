@@ -44,10 +44,10 @@ pub const BOOM_BL_IN: f32 = 96.0;
 pub const STAB_LE_FS_IN: f32 = 397.584;
 /// Tailplane span (plan view `261`), inches.
 pub const STAB_SPAN_IN: f32 = 261.0;
-/// Stabiliser chord ahead of the elevator hinge (plan view `20`), inches.
-pub const STAB_CHORD_IN: f32 = 20.0;
-/// Elevator chord aft of the hinge (plan view `25`), inches.
-pub const ELEVATOR_CHORD_IN: f32 = 25.0;
+/// Stabiliser chord ahead of the elevator hinge (plan view `25`), inches.
+pub const STAB_CHORD_IN: f32 = 25.0;
+/// Elevator chord aft of the hinge (plan view `20`), inches.
+pub const ELEVATOR_CHORD_IN: f32 = 20.0;
 /// Propeller diameter (plan view `11'-6"`), inches.
 pub const PROP_DIAMETER_IN: f32 = 138.0;
 /// Main-tyre tread (front view `198`), inches.

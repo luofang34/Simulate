@@ -40,6 +40,13 @@ fn built_mesh_measures_to_the_an01_75f_2_callouts() {
         ("nose axle", r.nose_axle_fs_in, d::NOSE_AXLE_FS_IN, 1.5),
         ("main axle", r.main_axle_fs_in, d::MAIN_AXLE_FS_IN, 1.5),
         ("fin top", r.fin_top_frl_in, drawn_fin_top_frl_in(), 1.5),
+        ("tailplane span", r.stab_span_in, d::STAB_SPAN_IN, 1.0),
+        (
+            "tailplane leading edge",
+            r.stab_le_fs_in,
+            d::STAB_LE_FS_IN,
+            1.0,
+        ),
         ("wing area m2", r.wing_area_m2, WING_AREA_M2, 0.8),
         ("dihedral deg", r.dihedral_deg, WING_DIHEDRAL_DEG, 0.15),
     ];

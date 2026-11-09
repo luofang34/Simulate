@@ -46,12 +46,16 @@ pub const PROP_BLADE_OFFSET_M: f32 = (71.3 - 61.875) * 0.0254;
 pub const PROP_HUB_Z: f32 = 0.04;
 /// Curtiss Electric `11 ft 6 in` (`3.505 m` diameter) propeller radius (`1.752 m`).
 pub const PROP_RADIUS_M: f32 = 1.752;
-/// Horizontal-tail elevator hinge line (`y = -6.92 m`).
-pub const ELEVATOR_HINGE_Y: f32 = -6.92;
-/// Twin vertical-fin rudder hinge line (`y = -6.92 m`).
-pub const RUDDER_HINGE_Y: f32 = -6.92;
-/// Horizontal tailplane vertical station (`z = +0.24 m`).
-pub const HTAIL_Z: f32 = 0.24;
+/// Elevator hinge line: `25 in` aft of the stabiliser leading edge at `FS 397.584`
+/// (AN 01-75F-2 plan view `25` + `20` chord split), `FS 422.584`.
+pub const ELEVATOR_HINGE_Y: f32 = 3.55 - 422.584 * 0.0254;
+/// Rudder hinge line: `37 in` aft of the empennage rotation point (AN 01-75F-2 side
+/// view), `FS 428.4`.
+pub const RUDDER_HINGE_Y: f32 = 3.55 - 428.4 * 0.0254;
+/// Horizontal tail chord plane, `22 in` above the fuselage reference line. AN 01-75F-2
+/// draws it `23.6 in` up on the side view and `20.2 in` up on the front view; this
+/// splits them.
+pub const HTAIL_Z: f32 = 0.4698;
 
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
 /// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
@@ -117,7 +121,9 @@ pub const GONDOLA_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
     (-2.75, 0.03, 0.04, 0.07, -0.01, 0.07, 0.04), // FS 248: Gondola tailcone tip
 ];
 
-/// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..443`, `y = +1.74..-7.69 m`):
+/// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..440`, `y = +1.74..-7.63 m`); the
+/// boom top runs level `24.5 in` above the fuselage reference line aft of the wing, as on
+/// the AN 01-75F-2 side view:
 /// `(y, z_mid, half_w, z_top, z_bot, rad_w_bulge, rad_z_bulge)`.
 pub const BOOM_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
     (1.739, 0.04, 0.33, 0.37, -0.29, 0.00, 0.00), // FS 71.3: Spinner backing bulkhead (26 in dia)
@@ -127,29 +133,73 @@ pub const BOOM_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
     (-0.387, 0.04, 0.51, 0.53, -0.50, 0.00, 0.00), // FS 155: Firewall ahead of the main beam
     (-0.768, 0.05, 0.49, 0.51, -0.48, 0.00, 0.00), // FS 170: Main gear bay & turbo well
     (-1.15, 0.05, 0.47, 0.48, -0.46, 0.00, 0.00), // FS 185: Turbosupercharger impeller center
-    (-1.85, 0.05, 0.44, 0.46, -0.42, 0.00, 0.00), // BS 198: Wing trailing-edge boom junction
-    (-2.45, 0.06, 0.41, 0.44, -0.37, 0.00, 0.00), // BS 222: Glycol radiator intake ramp start
-    (-3.25, 0.07, 0.39, 0.43, -0.34, 0.25, 0.14), // BS 253: Glycol radiator max cheek fairing
-    (-4.15, 0.08, 0.35, 0.39, -0.29, 0.06, 0.03), // BS 288: Glycol radiator exit flap end
-    (-5.35, 0.10, 0.29, 0.34, -0.21, 0.00, 0.00), // BS 336: Tailboom waist
-    (-6.55, 0.14, 0.23, 0.30, -0.13, 0.00, 0.00), // BS 383: Vertical fin root & H-tail junction
-    (-7.69, 0.16, 0.06, 0.21, 0.11, 0.00, 0.00),  // BS 420: Boom tailcone cap ahead of rudder
+    (-1.85, 0.05, 0.44, 0.50, -0.42, 0.00, 0.00), // FS 213: Wing trailing-edge boom junction
+    (-2.449, 0.070, 0.378, 0.526, -0.386, 0.000, 0.000), // FS 236: Boom ahead of the radiator
+    (-3.105, 0.112, 0.338, 0.533, -0.310, 0.000, 0.000), // FS 262: Radiator scoop lip
+    (-3.308, 0.128, 0.317, 0.533, -0.277, 0.165, 0.000), // FS 270: Radiator scoop
+    (-3.765, 0.164, 0.292, 0.533, -0.206, 0.206, 0.000), // FS 288: Radiator scoop, widest
+    (-4.146, 0.197, 0.267, 0.533, -0.140, 0.163, 0.000), // FS 303: Radiator exit flaps
+    (-4.375, 0.220, 0.254, 0.533, -0.094, 0.091, 0.000), // FS 312: Radiator scoop tail
+    (-4.578, 0.234, 0.248, 0.533, -0.066, 0.000, 0.000), // FS 320: Tail boom, top level
+    (-5.340, 0.303, 0.196, 0.533, 0.074, 0.000, 0.000), // FS 350: Tail boom
+    (-6.102, 0.371, 0.145, 0.543, 0.198, 0.000, 0.000), // FS 380: Tail boom
+    (-6.559, 0.408, 0.132, 0.559, 0.256, 0.000, 0.000), // FS 398: Fin and tailplane root
+    (-7.626, 0.510, 0.038, 0.536, 0.485, 0.000, 0.000), // FS 440: Tail cone inside the fin
 ];
 
-/// Vertical fin & rudder elliptical profile (`WL -20..+72`, `z = -0.52..+1.82 m`):
-/// `(z, leading_y, trailing_y, half_thickness)`.
+/// Fin and rudder profile digitised from the AN 01-75F-2 side view, inner outline
+/// (`WL -8.6..+76.3`): `(z, leading_y, trailing_y, half_thickness)`, 12 % thick.
 pub const FIN_PROFILE: &[(f32, f32, f32, f32)] = &[
-    (-0.52, -6.36, -7.28, 0.038),
-    (-0.34, -6.10, -7.56, 0.068),
-    (-0.10, -5.88, -7.80, 0.088),
-    (0.18, -5.75, -7.94, 0.098),
-    (0.52, -5.77, -7.98, 0.095),
-    (0.88, -5.86, -7.94, 0.086),
-    (1.22, -6.00, -7.84, 0.074),
-    (1.50, -6.20, -7.66, 0.058),
-    (1.72, -6.44, -7.40, 0.038),
-    (1.82, -6.72, -7.08, 0.018),
+    (-0.307, -7.245, -7.308, 0.004), // WL -8.6: FS 425.0..427.5
+    (-0.292, -7.189, -7.367, 0.011), // WL -8.0: FS 422.8..429.8
+    (-0.241, -7.090, -7.392, 0.018), // WL -6.0: FS 418.9..430.8
+    (-0.191, -6.981, -7.484, 0.030), // WL -4.0: FS 414.6..434.4
+    (-0.140, -6.884, -7.598, 0.043), // WL -2.0: FS 410.8..438.9
+    (-0.089, -6.823, -7.684, 0.052), // WL +0.0: FS 408.4..442.3
+    (0.013, -6.737, -7.796, 0.064),  // WL +4.0: FS 405.0..446.7
+    (0.114, -6.663, -7.862, 0.072),  // WL +8.0: FS 402.1..449.3
+    (0.216, -6.590, -7.913, 0.079),  // WL +12.0: FS 399.2..451.3
+    (0.368, -6.546, -7.946, 0.084),  // WL +18.0: FS 397.5..452.6
+    (0.521, -6.529, -7.969, 0.086),  // WL +24.0: FS 396.8..453.5
+    (0.673, -6.585, -7.977, 0.084),  // WL +30.0: FS 399.0..453.8
+    (0.927, -6.625, -7.923, 0.078),  // WL +40.0: FS 400.6..451.7
+    (1.181, -6.689, -7.837, 0.069),  // WL +50.0: FS 403.1..448.3
+    (1.435, -6.780, -7.728, 0.057),  // WL +60.0: FS 406.7..444.0
+    (1.562, -6.841, -7.667, 0.050),  // WL +65.0: FS 409.1..441.6
+    (1.689, -6.930, -7.570, 0.038),  // WL +70.0: FS 412.6..437.8
+    (1.765, -7.011, -7.486, 0.028),  // WL +73.0: FS 415.8..434.5
+    (1.816, -7.088, -7.408, 0.019),  // WL +75.0: FS 418.8..431.4
+    (1.849, -7.207, -7.270, 0.004),  // WL +76.3: FS 423.5..426.0
 ];
+
+/// Butt lines (inches) the tailplane is lofted through: the tips' arcs, the booms and
+/// the centreline.
+pub(crate) const TAILPLANE_SECTIONS_BL: [f32; 19] = [
+    -130.4, -129.5, -127.5, -124.5, -120.5, -115.0, -108.0, -100.0, -92.0, 0.0, 92.0, 100.0, 108.0,
+    115.0, 120.5, 124.5, 127.5, 129.5, 130.4,
+];
+
+/// Horizontal-tail planform at butt line `bl_in` (inches, either side): `(leading_fs,
+/// trailing_fs)`, or `None` beyond the tip. AN 01-75F-2 plan view: leading edge at
+/// `FS 397.584`, `45 in` chord, `261 in` span, and full-chord semicircular tips.
+#[must_use]
+pub fn tailplane_planform_fs(bl_in: f32) -> Option<(f32, f32)> {
+    const LE_FS: f32 = 397.584;
+    const CHORD: f32 = 45.0;
+    const HALF_SPAN: f32 = 130.5;
+    let r = 0.5 * CHORD;
+    let tip_centre = HALF_SPAN - r;
+    let bl = bl_in.abs();
+    if bl > HALF_SPAN {
+        return None;
+    }
+    let half = if bl <= tip_centre {
+        r
+    } else {
+        (r * r - (bl - tip_centre).powi(2)).max(0.0).sqrt()
+    };
+    Some((LE_FS + r - half, LE_FS + r + half))
+}
 
 /// Linearly interpolates the central gondola cross-section at longitudinal coordinate `y`.
 #[must_use]

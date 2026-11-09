@@ -7,12 +7,14 @@ use std::f32::consts::PI;
 use glam::Vec3;
 
 use crate::cockpit_opening::upper_gondola_skin;
+use crate::drawing::{INCH_M, fs_to_y, y_to_fs};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
 use crate::stations::{
     ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
     ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, GUNMETAL, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
-    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TIP_START_X, boom_point, gondola_point,
-    interpolate_gondola, wing_station, wing_surface_point,
+    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TAILPLANE_SECTIONS_BL, TIP_START_X,
+    boom_point, gondola_point, interpolate_gondola, tailplane_planform_fs, wing_station,
+    wing_surface_point,
 };
 
 pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
@@ -432,8 +434,10 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
         let bx = side * BOOM_X;
         let sections: Vec<Vec<Vec3>> = FIN_PROFILE
             .iter()
-            .map(|&(z, ly, _ty, half_t)| {
-                let fwd_chord = (RUDDER_HINGE_Y - ly).min(-0.18);
+            .map(|&(z, ly, ty, half_t)| {
+                // The fin ends at the rudder hinge, or at the trailing edge where the
+                // outline closes ahead of it near the tips.
+                let fwd_chord = (ty.max(RUDDER_HINGE_Y) - ly).min(-0.02);
                 aerofoil(
                     Vec3::new(bx, ly, z),
                     Vec3::new(0.0, fwd_chord, 0.0),
@@ -450,28 +454,21 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
         fins,
     ));
 
-    // Horizontal stabilizer spanning between twin booms + outboard mass-balance tips (±2.95 m)
+    // Stabiliser: the fixed `25 in` ahead of the elevator hinge, across both booms to the
+    // semicircular tips.
     let mut htail = MeshBuilder::new();
-    let h_sections: Vec<Vec<Vec3>> = [-2.95_f32, -2.75, -BOOM_X, 0.0, BOOM_X, 2.75, 2.95]
-        .into_iter()
-        .map(|x| {
-            let ax = x.abs();
-            let (lead_y, chord, thick) = if ax <= BOOM_X {
-                (-6.27, ELEVATOR_HINGE_Y - (-6.27), 0.068)
-            } else {
-                let t = ((ax - BOOM_X) / (2.95 - BOOM_X)).clamp(0.0, 1.0);
-                let c = (1.0 - t * t).max(0.15).sqrt();
-                (
-                    -6.27 - 0.20 * t,
-                    (ELEVATOR_HINGE_Y - (-6.27)) * c,
-                    0.056 * c,
-                )
-            };
-            aerofoil(
-                Vec3::new(x, lead_y, HTAIL_Z),
-                Vec3::new(0.0, chord, 0.0),
-                Vec3::new(0.0, 0.0, thick),
-            )
+    let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
+    let h_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
+        .iter()
+        .filter_map(|&bl| {
+            let (le, te) = tailplane_planform_fs(bl)?;
+            let chord_in = (te.min(hinge_fs) - le).max(0.3);
+            let scale = (te - le) / 45.0;
+            Some(aerofoil(
+                Vec3::new(bl * INCH_M, fs_to_y(le), HTAIL_Z),
+                Vec3::new(0.0, -chord_in * INCH_M, 0.0),
+                Vec3::new(0.0, 0.0, (0.066 * scale).max(0.004)),
+            ))
         })
         .collect();
     htail.loft(&h_sections, true, Inside::Axis);

@@ -2379,18 +2379,21 @@
   },
   {
    "name": "stab_chord",
-   "value": 20.0,
+   "value": 25.0,
    "unit": "in",
    "view": "plan",
-   "callout": "20 stabiliser chord",
-   "px": []
+   "callout": "25 stabiliser chord ahead of the elevator hinge",
+   "px": [
+    [0, 808],
+    [0, 866.5]
+   ]
   },
   {
    "name": "tailplane_chord",
    "value": 45.0,
    "unit": "in",
    "view": "plan",
-   "callout": "45 overall: 20 stabiliser + 25 elevator, at the boom",
+   "callout": "45 overall: 25 stabiliser + 20 elevator, at the boom",
    "px": [
     [0, 761],
     [0, 866.5]

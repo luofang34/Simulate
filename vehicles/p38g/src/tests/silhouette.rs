@@ -87,9 +87,9 @@ impl View {
     /// regression fails while the remaining gaps are closed.
     fn limits(self) -> (f32, f32, f32) {
         match self {
-            Self::Side => (0.68, 31.0, 20.5),
-            Self::Plan => (0.85, 26.5, 10.6),
-            Self::Front => (0.80, 13.5, 5.5),
+            Self::Side => (0.84, 15.5, 11.5),
+            Self::Plan => (0.92, 12.5, 5.0),
+            Self::Front => (0.80, 13.5, 4.0),
         }
     }
 }

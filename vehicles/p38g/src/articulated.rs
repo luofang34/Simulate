@@ -6,12 +6,13 @@ use std::f32::consts::TAU;
 
 use glam::{DMat4, DVec3, Vec3};
 
+use crate::drawing::{ELEVATOR_CHORD_IN, INCH_M, y_to_fs};
 use crate::gear::{build_main_gear, build_nose_gear};
 use crate::mesh::{Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, part};
 use crate::stations::{
     AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, INSIGNIA_RED, OLIVE_DRAB,
     PROP_BLACK, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
-    RUDDER_HINGE_Y, SPINNER_ALUMINIUM, wing_station,
+    RUDDER_HINGE_Y, SPINNER_ALUMINIUM, TAILPLANE_SECTIONS_BL, tailplane_planform_fs, wing_station,
 };
 
 pub(crate) fn articulated_prims() -> Vec<P38MeshPrim> {
@@ -285,15 +286,22 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         f64::from(ELEVATOR_HINGE_Y),
         f64::from(HTAIL_Z),
     ));
+    // The `20 in` elevator aft of the hinge, tip to tip; it narrows to nothing where the
+    // semicircular tips close ahead of the hinge.
+    let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
     let mut elev = MeshBuilder::new();
-    let e_sections: Vec<Vec<Vec3>> = [-BOOM_X + 0.14, -1.10, 0.0, 1.10, BOOM_X - 0.14]
-        .into_iter()
-        .map(|x| {
-            aerofoil(
-                Vec3::new(x, 0.0, 0.0),
-                Vec3::new(0.0, -0.50, 0.0),
-                Vec3::new(0.0, 0.0, 0.044),
-            )
+    let e_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
+        .iter()
+        .filter_map(|&bl| {
+            let (le, te) = tailplane_planform_fs(bl)?;
+            let start = le.max(hinge_fs);
+            let chord_in = (te - start).max(0.3);
+            let scale = (te - le) / 45.0;
+            Some(aerofoil(
+                Vec3::new(bl * INCH_M, -(start - hinge_fs) * INCH_M, 0.0),
+                Vec3::new(0.0, -chord_in * INCH_M, 0.0),
+                Vec3::new(0.0, 0.0, (0.045 * scale).max(0.004)),
+            ))
         })
         .collect();
     elev.loft(&e_sections, true, Inside::Axis);
@@ -305,13 +313,14 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         elev,
     ));
 
+    // One trim tab across the centre: `47.686 in` span, `5.25 in` chord (AN 01-75F-2).
     let mut elev_tabs = MeshBuilder::new();
-    for side in [-1.0_f32, 1.0] {
-        elev_tabs.cuboid(
-            Vec3::new(side * 0.85 - 0.34, -0.53, -0.014),
-            Vec3::new(side * 0.85 + 0.34, -0.44, 0.014),
-        );
-    }
+    let (half_span, chord, elev_chord) =
+        (23.843 * INCH_M, 5.25 * INCH_M, ELEVATOR_CHORD_IN * INCH_M);
+    elev_tabs.cuboid(
+        Vec3::new(-half_span, -elev_chord, -0.010),
+        Vec3::new(half_span, chord - elev_chord, 0.010),
+    );
     prims.push(part(
         "/P38g/Empennage/ElevatorTrimTab",
         P38PartRole::CabinExterior,
@@ -332,7 +341,7 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         let r_sections: Vec<Vec<Vec3>> = FIN_PROFILE
             .iter()
             .map(|&(z, _ly, ty, half_t)| {
-                let aft_c = (ty - RUDDER_HINGE_Y).min(-0.14);
+                let aft_c = (ty - RUDDER_HINGE_Y).min(-0.01);
                 aerofoil(
                     Vec3::new(0.0, 0.0, z - 0.40),
                     Vec3::new(0.0, aft_c, 0.0),
@@ -351,8 +360,8 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
 
         let mut r_tab = MeshBuilder::new();
         r_tab.cuboid(
-            Vec3::new(-0.014, -1.06, -0.18),
-            Vec3::new(0.014, -0.92, 0.22),
+            Vec3::new(-0.010, -0.60, -0.18),
+            Vec3::new(0.010, -0.48, 0.22),
         );
         prims.push(part(
             &format!("/P38g/Empennage/{name}TrimTab"),
