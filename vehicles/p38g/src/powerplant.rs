@@ -32,14 +32,14 @@ fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
         let bx = side * BOOM_X;
         // Allison V-1710 external 2:1 spur reduction gear casing collar & breather dome
         gearboxes.tube(
-            Vec3::new(bx, 2.53, 0.04),
-            Vec3::new(bx, 2.34, 0.03),
+            Vec3::new(bx, 1.747, 0.04),
+            Vec3::new(bx, 1.559, 0.03),
             0.29,
             0.34,
             18,
         );
         gearboxes.ellipsoid(
-            Vec3::new(bx, 2.28, 0.36),
+            Vec3::new(bx, 1.508, 0.36),
             Vec3::new(0.11, 0.18, 0.07),
             12,
             6,
@@ -49,7 +49,7 @@ fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
         for bank_sign in [-1.0_f32, 1.0] {
             let theta = bank_sign * 0.66;
             let out = Vec3::new(bank_sign * 0.74, 0.0, 0.67).normalize_or(Vec3::Z);
-            let shroud_ys = [1.88_f32, 1.38, 0.88, 0.38];
+            let shroud_ys = [1.264_f32, 0.756, 0.248, -0.260];
             for pair in shroud_ys.windows(2) {
                 if let &[y0, y1] = pair {
                     let p0 = boom_point(side, y0, theta) - out * 0.008;
@@ -60,15 +60,15 @@ fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
 
             // 6 individual exhaust ejector stubs per V-12 bank (12 per engine, 24 total)
             for cyl in 0..6_u32 {
-                let y = 1.78 - cyl as f32 * 0.24;
+                let y = 1.137 - cyl as f32 * 0.244;
                 let base = boom_point(side, y, theta) + out * 0.004;
                 let tip = base + Vec3::new(bank_sign * 0.044, -0.042, 0.030);
                 stacks.tube(base, tip, 0.020, 0.016, 8);
             }
 
             // Recessed dorsal collector trunk routing hot exhaust aft to the GE B-13 nozzle box
-            let p_aft = boom_point(side, 0.38, theta) - out * 0.012;
-            let p_mid = boom_point(side, -0.20, bank_sign * 0.36) - Vec3::new(0.0, 0.0, 0.010);
+            let p_aft = boom_point(side, -0.26, theta) - out * 0.012;
+            let p_mid = boom_point(side, -0.56, bank_sign * 0.36) - Vec3::new(0.0, 0.0, 0.010);
             let p_trb = boom_point(side, -0.82, bank_sign * 0.18) - Vec3::new(0.0, 0.0, 0.008);
             stacks.tube(p_aft, p_mid, 0.030, 0.028, 10);
             stacks.tube(p_mid, p_trb, 0.028, 0.025, 10);
@@ -228,10 +228,10 @@ fn build_chin_and_radiator_ducts(prims: &mut Vec<P38MeshPrim>) {
     for side in [-1.0_f32, 1.0] {
         let bx = side * BOOM_X;
         let chin_sections: Vec<Vec<Vec3>> = [
-            (2.38_f32, 0.17_f32, -0.42_f32, -0.60_f32),
-            (2.10, 0.21, -0.44, -0.66),
-            (1.62, 0.22, -0.46, -0.66),
-            (1.18, 0.18, -0.46, -0.58),
+            (1.670_f32, 0.17_f32, -0.42_f32, -0.60_f32),
+            (1.416, 0.21, -0.44, -0.66),
+            (1.010, 0.22, -0.46, -0.66),
+            (0.629, 0.18, -0.46, -0.58),
         ]
         .into_iter()
         .map(|(y, hw, z_top, z_bot)| {
@@ -247,10 +247,10 @@ fn build_chin_and_radiator_ducts(prims: &mut Vec<P38MeshPrim>) {
                 .collect()
         })
         .collect();
-        gray_scoops.loft_open(&chin_sections, Inside::Point(Vec3::new(bx, 1.80, -0.35)));
+        gray_scoops.loft_open(&chin_sections, Inside::Point(Vec3::new(bx, 1.15, -0.35)));
         cores.cuboid(
-            Vec3::new(bx - 0.14, 2.24, -0.59),
-            Vec3::new(bx + 0.14, 2.36, -0.45),
+            Vec3::new(bx - 0.14, 1.467, -0.59),
+            Vec3::new(bx + 0.14, 1.594, -0.45),
         );
 
         for out_sign in [-1.0_f32, 1.0] {
@@ -306,7 +306,7 @@ fn build_cooling_flaps(prims: &mut Vec<P38MeshPrim>) {
 
         let mut oil = MeshBuilder::new();
         oil.cuboid(Vec3::new(-0.18, -0.22, -0.014), Vec3::new(0.18, 0.0, 0.014));
-        let rest = DMat4::from_translation(DVec3::new(f64::from(bx), 1.25, -0.62));
+        let rest = DMat4::from_translation(DVec3::new(f64::from(bx), 0.578, -0.62));
         let mut oil_prim = part(
             &format!("/P38g/Cooling/OilShutter{label}"),
             P38PartRole::CabinExterior,
@@ -322,7 +322,7 @@ fn build_cooling_flaps(prims: &mut Vec<P38MeshPrim>) {
 fn build_exterior_lights(prims: &mut Vec<P38MeshPrim>) {
     let mut l_light = MeshBuilder::new();
     l_light.ellipsoid(
-        Vec3::new(-4.15, 0.68, 0.34),
+        wing_surface_point(-4.15, 0.06, false) + Vec3::new(0.0, 0.0, -0.02),
         Vec3::new(0.09, 0.05, 0.07),
         12,
         8,

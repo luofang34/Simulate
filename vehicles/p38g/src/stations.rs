@@ -23,8 +23,11 @@ pub const OVERALL_LENGTH_M: f32 = 11.530;
 pub const OVERALL_HEIGHT_M: f32 = 118.375 * 0.0254;
 /// Root chord on the ship centreline (AN 01-75F-2 `ROOT CHORD 117 NACA 23016`, `2.972 m`).
 pub const ROOT_CHORD_M: f32 = 117.0 * 0.0254;
-/// Wingtip station (`WS 288`) chord (`40.2 in` = `1.020 m`, `NACA 4412`).
-pub const TIP_CHORD_M: f32 = 1.020;
+/// Chord where the rounded tip begins, wing station 289 (`38 in` on the drawn outline,
+/// `0.965 m`, `NACA 4412`; the sheet's `36` callout is taken where the tip arc starts).
+pub const TIP_CHORD_M: f32 = 38.0 * 0.0254;
+/// Span station where the rounded wingtip begins (`WS 289` = `7.341 m`).
+pub const TIP_START_X: f32 = 289.0 * 0.0254;
 /// Reference wing area (`327.5 sq ft` = `30.43 m²`).
 pub const WING_AREA_M2: f32 = 30.43;
 /// Outer-wing geometric dihedral angle (`5° 40'` = `5.67°`).
@@ -33,10 +36,12 @@ pub const WING_DIHEDRAL_DEG: f32 = 5.67;
 pub const BOOM_X: f32 = 96.0 * 0.0254;
 /// Aft end of the GE B-13 turbosupercharger exhaust nozzle on each boom's top (`y`).
 pub const TURBO_NOZZLE_Y: f32 = -1.62;
-/// Outboard end of differential aileron (`WS 282` = `7.16 m`).
-pub const AILERON_END_X: f32 = 7.16;
-/// Curtiss Electric propeller hub station (`BS 26` = `+2.52 m`; `26 in` spinner tip at `+3.18 m`).
-pub const PROP_HUB_Y: f32 = 2.52;
+/// Outboard end of the aileron (AN 01-75F-2 plan view, `WS 289` = `7.341 m`).
+pub const AILERON_END_X: f32 = TIP_START_X;
+/// Spinner base and propeller hub frame origin, at the cowl joint (`FS 71.3` = `+1.739 m`).
+pub const PROP_HUB_Y: f32 = 3.55 - 71.3 * 0.0254;
+/// Propeller blade plane ahead of [`PROP_HUB_Y`]: blades at `FS 61.875` (AN 01-75F-2).
+pub const PROP_BLADE_OFFSET_M: f32 = (71.3 - 61.875) * 0.0254;
 /// Propeller thrust line vertical coordinate (`+0.04 m`).
 pub const PROP_HUB_Z: f32 = 0.04;
 /// Curtiss Electric `11 ft 6 in` (`3.505 m` diameter) propeller radius (`1.752 m`).
@@ -112,23 +117,23 @@ pub const GONDOLA_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
     (-2.75, 0.03, 0.04, 0.07, -0.01, 0.07, 0.04), // FS 248: Gondola tailcone tip
 ];
 
-/// Twin engine nacelle & tail-boom bulkhead station (`BS 26..420`, `y = +2.52..-7.69 m`):
+/// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..443`, `y = +1.74..-7.69 m`):
 /// `(y, z_mid, half_w, z_top, z_bot, rad_w_bulge, rad_z_bulge)`.
 pub const BOOM_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
-    (2.52, 0.04, 0.33, 0.37, -0.29, 0.00, 0.00), // BS 26: Spinner backing bulkhead (26 in dia)
-    (2.26, 0.02, 0.38, 0.41, -0.52, 0.00, 0.00), // BS 36: Reduction gear & chin scoop lip
-    (1.82, 0.00, 0.46, 0.48, -0.62, 0.00, 0.00), // BS 53: Oil cooler duct & forward V-12
-    (1.10, 0.02, 0.50, 0.52, -0.56, 0.00, 0.00), // BS 82: Allison V-1710 mid cylinder block
-    (0.30, 0.04, 0.51, 0.53, -0.50, 0.00, 0.00), // BS 113: Firewall & main wing spar
-    (-0.45, 0.05, 0.49, 0.51, -0.48, 0.00, 0.00), // BS 143: Forward GE B-13 turbo well & gear bay
-    (-1.15, 0.05, 0.47, 0.48, -0.46, 0.00, 0.00), // BS 170: Turbosupercharger impeller center
+    (1.739, 0.04, 0.33, 0.37, -0.29, 0.00, 0.00), // FS 71.3: Spinner backing bulkhead (26 in dia)
+    (1.518, 0.02, 0.38, 0.41, -0.52, 0.00, 0.00), // FS 80: Reduction gear & chin scoop lip
+    (1.086, 0.00, 0.46, 0.48, -0.62, 0.00, 0.00), // FS 97: Oil cooler duct & forward V-12
+    (0.375, 0.02, 0.50, 0.52, -0.56, 0.00, 0.00), // FS 125: Allison V-1710 mid cylinder block
+    (-0.387, 0.04, 0.51, 0.53, -0.50, 0.00, 0.00), // FS 155: Firewall ahead of the main beam
+    (-0.768, 0.05, 0.49, 0.51, -0.48, 0.00, 0.00), // FS 170: Main gear bay & turbo well
+    (-1.15, 0.05, 0.47, 0.48, -0.46, 0.00, 0.00), // FS 185: Turbosupercharger impeller center
     (-1.85, 0.05, 0.44, 0.46, -0.42, 0.00, 0.00), // BS 198: Wing trailing-edge boom junction
     (-2.45, 0.06, 0.41, 0.44, -0.37, 0.00, 0.00), // BS 222: Glycol radiator intake ramp start
     (-3.25, 0.07, 0.39, 0.43, -0.34, 0.25, 0.14), // BS 253: Glycol radiator max cheek fairing
     (-4.15, 0.08, 0.35, 0.39, -0.29, 0.06, 0.03), // BS 288: Glycol radiator exit flap end
     (-5.35, 0.10, 0.29, 0.34, -0.21, 0.00, 0.00), // BS 336: Tailboom waist
     (-6.55, 0.14, 0.23, 0.30, -0.13, 0.00, 0.00), // BS 383: Vertical fin root & H-tail junction
-    (-7.69, 0.16, 0.06, 0.21, 0.11, 0.00, 0.00), // BS 420: Boom tailcone cap ahead of rudder
+    (-7.69, 0.16, 0.06, 0.21, 0.11, 0.00, 0.00),  // BS 420: Boom tailcone cap ahead of rudder
 ];
 
 /// Vertical fin & rudder elliptical profile (`WL -20..+72`, `z = -0.52..+1.82 m`):
@@ -236,46 +241,40 @@ pub fn boom_point(side: f32, y: f32, theta: f32) -> Vec3 {
 
 /// Returns `(leading_y, trailing_y, z_mid, thickness_ratio, incidence_rad)` at span station `x`.
 ///
-/// Matches the Lockheed P-38G planform (`C_r = 2.940 m` at `WS 0`, `C_b = 2.400 m` at `WS 93`,
-/// `C_t = 1.020 m` at `WS 288`, elliptical tip rounding `WS 288..312`, `S = 30.43 m²`, `5° 40'` dihedral).
+/// AN 01-75F-2 planform: a straight taper from the `117 in` root chord on the ship
+/// centreline to `38 in` at `WS 289`, then a rounded tip to `WS 312`; the main beam at
+/// `35 %` chord is a straight line at `FS 160`. The chord plane passes through the
+/// fuselage reference line on the centreline with `5° 40'` dihedral (`30.958 in` above it at
+/// the tip), and the whole wing is rotated `2°` nose-up about the main beam. `z_mid` is the
+/// chord plane at the main beam.
 #[must_use]
 pub fn wing_station(x: f32) -> (f32, f32, f32, f32, f32) {
+    use crate::drawing::{INCH_M, frl_to_z, fs_to_y};
+    const MAIN_BEAM_FS: f32 = 160.0;
+    const BEAM_CHORD_FRACTION: f32 = 0.35;
     let ax = x.abs().min(SEMI_SPAN);
-    let (lead_y, trail_y, thick_ratio, inc_deg) = if ax <= BOOM_X {
-        let t = ax / BOOM_X;
-        (
-            1.18 - 0.22 * t,
-            -1.76 + 0.32 * t,
-            0.160 - 0.012 * t,
-            2.0 - 0.3 * t,
-        )
-    } else if ax <= 7.315 {
-        let t = (ax - BOOM_X) / (7.315 - BOOM_X);
-        (
-            0.96 - 0.54 * t,
-            -1.44 + 0.84 * t,
-            0.148 - 0.028 * t,
-            1.7 - 1.7 * t,
-        )
+    let bl = ax / INCH_M;
+    let root = ROOT_CHORD_M / INCH_M;
+    let tip_start = TIP_START_X / INCH_M;
+    let tip = TIP_CHORD_M / INCH_M;
+    let taper = root - (root - tip) * (bl.min(tip_start) / tip_start);
+    let chord_in = if bl <= tip_start {
+        taper
     } else {
-        let t = ((ax - 7.315) / (SEMI_SPAN - 7.315)).clamp(0.0, 1.0);
-        let tip_circle = (1.0 - t * t).max(0.0).sqrt();
-        let mid_y = -0.09;
-        let half_c = 0.510 * tip_circle.max(0.07);
-        (
-            mid_y + half_c,
-            mid_y - half_c,
-            0.120 * tip_circle.max(0.32),
-            -0.5 * t,
-        )
+        let t = ((bl - tip_start) / (SEMI_SPAN / INCH_M - tip_start)).clamp(0.0, 1.0);
+        (tip * (1.0 - t * t).max(0.0).powf(0.7)).max(1.5)
     };
-    // 5° 40' (5.67°) outer-wing dihedral (tan(5.67°) ≈ 0.0992)
-    let z_mid = if ax <= 0.58 {
-        0.04
-    } else {
-        0.04 + (ax - 0.58) * 0.0992
-    };
-    (lead_y, trail_y, z_mid, thick_ratio, inc_deg.to_radians())
+    let lead_fs = MAIN_BEAM_FS - BEAM_CHORD_FRACTION * chord_in;
+    let trail_fs = MAIN_BEAM_FS + (1.0 - BEAM_CHORD_FRACTION) * chord_in;
+    let thick_ratio = 0.160 - 0.040 * (bl / tip_start).min(1.0);
+    let z_mid = frl_to_z(bl * WING_DIHEDRAL_DEG.to_radians().tan());
+    (
+        fs_to_y(lead_fs),
+        fs_to_y(trail_fs),
+        z_mid,
+        thick_ratio,
+        2.0_f32.to_radians(),
+    )
 }
 
 /// Evaluates a 3D point on the cambered `NACA 23016 -> NACA 4412` wing skin.
@@ -295,7 +294,7 @@ pub fn wing_surface_point(x: f32, chord_frac: f32, upper: bool) -> Vec3 {
             ((1.0 - 2.0 * 0.30) + 2.0 * 0.30 * u - u * u) / ((1.0 - 0.30) * (1.0 - 0.30))
         };
     let sign = if upper { 1.0 } else { -1.0 };
-    let z_local = (camber + sign * yt) * chord + (0.30 - u) * chord * inc_rad.sin();
+    let z_local = (camber + sign * yt) * chord + (0.35 - u) * chord * inc_rad.sin();
     let y = lead_y - u * chord;
     Vec3::new(x, y, z_mid + z_local)
 }

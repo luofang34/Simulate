@@ -11,7 +11,7 @@ use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed
 use crate::stations::{
     ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
     ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, GUNMETAL, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
-    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, boom_point, gondola_point,
+    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TIP_START_X, boom_point, gondola_point,
     interpolate_gondola, wing_station, wing_surface_point,
 };
 
@@ -246,10 +246,31 @@ fn build_canopy_and_windscreen(prims: &mut Vec<P38MeshPrim>) {
 }
 
 fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
-    let span_xs = [
-        -SEMI_SPAN, -7.75, -7.315, -6.20, -4.80, -3.55, -BOOM_X, -1.35, -0.56, 0.0, 0.56, 1.35,
-        BOOM_X, 3.55, 4.80, 6.20, 7.315, 7.75, SEMI_SPAN,
+    // The taper is straight to the tip arc, so the rows only need to follow the arc
+    // and the junctions with the gondola and booms.
+    const HALF: [f32; 15] = [
+        0.0,
+        0.48,
+        1.35,
+        BOOM_X,
+        3.55,
+        4.80,
+        6.20,
+        TIP_START_X,
+        7.50,
+        7.62,
+        7.72,
+        7.80,
+        7.86,
+        7.90,
+        SEMI_SPAN,
     ];
+    let span_xs: Vec<f32> = HALF
+        .iter()
+        .rev()
+        .map(|x| -x)
+        .chain(HALF.iter().skip(1).copied())
+        .collect();
     const CHORD_STEPS: usize = 16;
     let mut upper_rows = Vec::with_capacity(span_xs.len());
     let mut lower_rows = Vec::with_capacity(span_xs.len());

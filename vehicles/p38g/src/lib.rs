@@ -25,6 +25,7 @@ mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
 pub mod drawing;
+mod gear;
 mod instrument_panel;
 mod mesh;
 mod package;
@@ -42,9 +43,9 @@ pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P
 pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
 pub use stations::{
     AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, HTAIL_Z,
-    OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,
-    ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TURBO_NOZZLE_Y, WING_AREA_M2,
-    WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point, interpolate_boom, interpolate_gondola,
-    three_view_boom_outline_x, three_view_gondola_outline_x, three_view_wing_leading_y,
-    three_view_wing_trailing_y, wing_station, wing_surface_point,
+    OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_BLADE_OFFSET_M, PROP_HUB_Y,
+    PROP_HUB_Z, PROP_RADIUS_M, ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TIP_START_X,
+    TURBO_NOZZLE_Y, WING_AREA_M2, WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point,
+    interpolate_boom, interpolate_gondola, three_view_boom_outline_x, three_view_gondola_outline_x,
+    three_view_wing_leading_y, three_view_wing_trailing_y, wing_station, wing_surface_point,
 };

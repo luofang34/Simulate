@@ -6,7 +6,7 @@ use glam::{DVec3, Vec3};
 use crate::drawing::{INCH_M, y_to_fs, z_to_frl};
 use crate::mesh::{P38MeshPrim, P38PartRole};
 use crate::package::p38g_mesh_prims;
-use crate::stations::{SEMI_SPAN, wing_station};
+use crate::stations::{SEMI_SPAN, TIP_START_X, wing_station};
 
 /// Dimensions read off the built mesh (`p38g_mesh_prims`), in inches unless named
 /// otherwise. Stations are fuselage stations (inches aft of the gondola nose) and
@@ -45,7 +45,7 @@ pub struct P38BlueprintCalibrationReport {
     pub stab_le_fs_in: f32,
     /// Planform wing area from the wing station function, square metres.
     pub wing_area_m2: f32,
-    /// Outer-wing dihedral from the wing station function, degrees.
+    /// Dihedral of the chord plane from the wing station function, degrees.
     pub dihedral_deg: f32,
     /// Number of authored mesh prims.
     pub prim_count: usize,
@@ -133,8 +133,8 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
     let (tail_y, nose_y) = extent(&hull, Y);
     let (fin_lo, fin_hi) = extent(&starboard_fin, X);
     let stab_x = extent(&stab, X);
-    let (_, _, z_root, ..) = wing_station(0.58);
-    let (_, _, z_tip, ..) = wing_station(7.315);
+    let (_, _, z_root, ..) = wing_station(0.0);
+    let (_, _, z_tip, ..) = wing_station(TIP_START_X);
     P38BlueprintCalibrationReport {
         span_in: (span_hi - span_lo) / INCH_M,
         length_in: (nose_y - tail_y) / INCH_M,
@@ -152,7 +152,7 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
         stab_span_in: (stab_x.1 - stab_x.0) / INCH_M,
         stab_le_fs_in: y_to_fs(extent(&stab_inner, Y).1),
         wing_area_m2: planform_wing_area(),
-        dihedral_deg: (z_tip - z_root).atan2(7.315 - 0.58).to_degrees(),
+        dihedral_deg: (z_tip - z_root).atan2(TIP_START_X).to_degrees(),
         prim_count: prims.len(),
         total_vertices: prims.iter().map(|p| p.vertices.len()).sum(),
         total_triangles: prims.iter().map(|p| p.indices.len() / 3).sum(),
