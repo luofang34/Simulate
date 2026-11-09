@@ -84,10 +84,11 @@ impl ScenarioProfile {
             | Self::CorridorSameCellLoiter
             | Self::Airport47NUncontrolledPattern
             | Self::AirportKewrToweredPattern => 1_782_864_000.0,
-            // 1969-07-20T20:30:00Z.
-            Self::Apollo11LunarLanding => -14_182_200.0,
-            // 1969-07-24T15:35:00Z.
-            Self::Apollo11CapsuleReentry => -13_854_300.0,
+            // 1969-07-20T20:14:57Z, so the approach's own touchdown, 163 s
+            // later, falls on Eagle's contact light at 20:17:40Z.
+            Self::Apollo11LunarLanding => -14_183_103.0,
+            // 1969-07-24T16:35:05Z, Columbia's entry interface (GET 195:03:06).
+            Self::Apollo11CapsuleReentry => -13_850_695.0,
         }
     }
 
