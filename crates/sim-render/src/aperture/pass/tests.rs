@@ -8,6 +8,7 @@ use sim_scenery::{
 };
 use std::num::NonZeroU32;
 
+mod microbolometer;
 mod optics;
 
 use super::*;

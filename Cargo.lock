@@ -4998,6 +4998,7 @@ dependencies = [
  "sim-core",
  "sim-devices",
  "sim-geo",
+ "sim-render",
  "sim-scenario",
  "sim-scenery",
  "thiserror 2.0.21",

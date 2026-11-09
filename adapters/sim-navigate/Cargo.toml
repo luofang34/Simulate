@@ -19,6 +19,7 @@ navigate-contract = { workspace = true }
 navigate-fusion = { workspace = true }
 navigate-geodesy = { workspace = true }
 navigate-visual = { workspace = true }
+sim-render = { workspace = true }
 sim-scenario = { workspace = true }
 sim-scenery = { workspace = true }
 sim-devices = { workspace = true }

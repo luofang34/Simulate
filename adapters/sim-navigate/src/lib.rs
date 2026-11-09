@@ -26,7 +26,9 @@
 //!
 //! [`CelestialClock`] turns a sky time mode and observer position into a
 //! [`CelestialFrame`] of Sun, Moon, eclipse, Earth-shadow, and star geometry
-//! from Navigate's analytic ephemeris.
+//! from Navigate's analytic ephemeris. [`camera_stars`] gives a
+//! [`sim_render::StarCamera`] the apparent catalogue stars of one frame on
+//! the scenario clock.
 //!
 //! [`CameraFrameLink`] lends rendered exposures to Navigate as
 //! `navigate_camera::ImageFrame`s, and [`navigate_mount`] states a simulator
@@ -50,7 +52,7 @@ mod visual_fix;
 pub use aiding::KinematicAiding;
 pub use celestial::{
     CelestialClock, CelestialFrame, EarthShadowSample, FAINTEST_STAR_V_MAGNITUDE, MoonDiscSample,
-    ReferenceBody, SkyTimeMode, StarSkySample,
+    ReferenceBody, SkyTimeMode, StarSkySample, camera_stars, star_camera_epoch,
 };
 pub use clock::{MASTER_CLOCK_DOMAIN, MasterClockBridge};
 pub use error::NavigateBridgeError;

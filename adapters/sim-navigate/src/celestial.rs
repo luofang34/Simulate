@@ -5,12 +5,14 @@
 //! Earth, IAU mean-Earth/polar-axis axes on the Moon) so the renderer needs no
 //! inertial frame of its own.
 
+mod camera_stars;
 mod earth;
 mod frame;
 mod moon;
 mod stars;
 mod time;
 
+pub use camera_stars::{camera_stars, star_camera_epoch};
 pub use frame::{CelestialFrame, EarthShadowSample, MoonDiscSample, StarSkySample};
 
 use glam::DVec3;

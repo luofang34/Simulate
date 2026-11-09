@@ -22,6 +22,8 @@ pub struct SensorAperturePass {
     scene: GlobeScene,
     visible: wgpu::RenderPipeline,
     thermal: wgpu::RenderPipeline,
+    #[cfg(not(target_arch = "wasm32"))]
+    thermal_kelvin: wgpu::RenderPipeline,
     stars: wgpu::RenderPipeline,
     overlay: wgpu::RenderPipeline,
     overlay_buffer: wgpu::Buffer,
@@ -55,6 +57,13 @@ impl SensorAperturePass {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let visible = globe_pipeline(device, &layouts, APERTURE_COLOUR_FORMAT, "fs_main");
         let thermal = globe_pipeline(device, &layouts, APERTURE_COLOUR_FORMAT, "fs_thermal");
+        #[cfg(not(target_arch = "wasm32"))]
+        let thermal_kelvin = globe_pipeline(
+            device,
+            &layouts,
+            super::THERMAL_KELVIN_FORMAT,
+            "fs_thermal_kelvin",
+        );
         let (stars, overlay) = full_frame_pipelines(device, &overlay_layout);
         if let Some(err) = scope.pop().await {
             return Err(RenderError::PipelineValidation(err));
@@ -64,6 +73,8 @@ impl SensorAperturePass {
             scene,
             visible,
             thermal,
+            #[cfg(not(target_arch = "wasm32"))]
+            thermal_kelvin,
             stars,
             overlay,
             overlay_buffer,
@@ -132,6 +143,37 @@ impl SensorAperturePass {
                 pass.set_pipeline(&self.overlay);
                 pass.draw(0..3, 0..1);
             }
+        }
+        queue.submit([encoder.finish()]);
+    }
+}
+
+// The kelvin target is read back on the CPU, which only native builds can do;
+// see `OffscreenAperture::read_blocking`.
+#[cfg(not(target_arch = "wasm32"))]
+impl SensorAperturePass {
+    /// Renders the terrain's brightness temperature at `pose` into `target`
+    /// and submits it.
+    pub fn render_scene_temperature(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &super::ThermalSceneTarget,
+        pose: &crate::CameraPose,
+    ) {
+        let params = FrameParams {
+            view_proj: target.projection().view_projection(pose),
+            sun_direction: glam::DVec3::ZERO,
+            thermal: [0.0; 4],
+        };
+        self.scene.write_frame(queue, &params, pose.position_ecef);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("thermal scene"),
+        });
+        {
+            let mut pass = target.begin_pass(&mut encoder);
+            pass.set_pipeline(&self.thermal_kelvin);
+            self.scene.draw(&mut pass);
         }
         queue.submit([encoder.finish()]);
     }

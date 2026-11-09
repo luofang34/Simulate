@@ -111,6 +111,14 @@ pub enum RenderError {
         /// What was wrong.
         detail: String,
     },
+    /// A simulated detector's configuration or input cannot produce a frame.
+    #[error("unusable {sensor} sensor: {detail}")]
+    InvalidSensor {
+        /// Which sensor model.
+        sensor: &'static str,
+        /// What was wrong.
+        detail: String,
+    },
     /// Copying a rendered frame back from the GPU failed.
     #[error("reading the sensor frame back failed: {detail}")]
     Readback {
