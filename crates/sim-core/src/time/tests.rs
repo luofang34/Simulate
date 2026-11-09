@@ -118,15 +118,13 @@ fn instants_and_spans_preserve_picosecond_precision_over_centuries() {
         (five_centuries_s, TickSpan::AGC_MCT.ticks())
     );
     assert_eq!(
-        epic.duration_since(SimInstant::from_century(five_centuries_s)),
+        epic.duration_since(instant_from_century(five_centuries_s)),
         TickSpan::AGC_MCT
     );
 }
 
-impl SimInstant {
-    const fn from_century(seconds: u64) -> Self {
-        Self::START.advanced(TickSpan::from_seconds_and_subsec_ticks(seconds, 0))
-    }
+const fn instant_from_century(seconds: u64) -> SimInstant {
+    SimInstant::START.advanced(TickSpan::from_seconds_and_subsec_ticks(seconds, 0))
 }
 
 #[test]

@@ -1,0 +1,28 @@
+[package]
+name = "sim-orbital"
+description = "Multi-body orbital dynamics, NAIF SPK/PCK ephemerides, transactional multi-vessel scheduling, and spaceflight GNC"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Routes all elementary transcendentals through pure-Rust software libm and
+# disables hardware FMA ambiguity for cross-platform bitwise replay verification.
+portable-math = ["sim-spacetime/portable-math"]
+
+[dependencies]
+glam.workspace = true
+libm.workspace = true
+mbd-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sim-atmosphere.workspace = true
+sim-geo.workspace = true
+sim-spacetime.workspace = true
+thiserror.workspace = true
+world-core.workspace = true
+
+[lints]
+workspace = true

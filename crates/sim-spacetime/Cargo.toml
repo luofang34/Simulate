@@ -1,0 +1,43 @@
+[package]
+name = "sim-spacetime"
+description = "Foundational simulation clock, astronomical time scales, coordinate frames, mounts, trajectories, provenance, and collision terrain contracts"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[features]
+default = ["world-mbd-bridges"]
+portable-math = ["dep:libm"]
+world-mbd-bridges = ["dep:mbd-core", "dep:world-core"]
+
+[dependencies]
+glam = "0.33"
+libm = { version = "0.2", optional = true }
+mbd-core = { path = "../../../mbd/crates/mbd-core", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10.9"
+sim-geo = { path = "../sim-geo" }
+thiserror = "2"
+world-core = { path = "../../../world/crates/world-core", optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "forbid"
+expect_used = "forbid"
+panic = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+get_unwrap = "forbid"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"

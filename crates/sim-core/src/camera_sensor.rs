@@ -1,5 +1,6 @@
 use glam::{DMat3, DQuat, DVec3, EulerRot};
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, SensorIntrinsics};
+use sim_spacetime::SensorMount;
 
 use crate::{Block, BlockError, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 
@@ -85,11 +86,57 @@ impl CameraMount {
     /// Where the camera is at `vehicle`, whose position is the centre of
     /// gravity at `cg_body_m` in the same axes as the mount's offset.
     pub fn pose(&self, vehicle: &VehicleState, cg_body_m: DVec3) -> CameraPoseEcef {
+        let kin = self.to_sensor_mount().evaluate_world_kinematics(
+            vehicle.position_ecef,
+            vehicle.velocity_ecef,
+            vehicle.attitude,
+            vehicle.angular_rate_body,
+            cg_body_m,
+        );
         CameraPoseEcef {
-            position_ecef: vehicle.position_ecef
-                + vehicle.attitude * (self.offset_body_m - cg_body_m),
-            orientation: (vehicle.attitude * self.body_to_camera.inverse()).normalize(),
+            position_ecef: kin.position_ecef_or_world(),
+            orientation: kin.q_mount_to_world,
         }
+    }
+
+    /// Converts this [`CameraMount`] into a unified [`sim_spacetime::SensorMount`].
+    #[must_use]
+    pub const fn to_sensor_mount(self) -> SensorMount {
+        SensorMount {
+            offset_body_m: self.offset_body_m,
+            body_to_mount: self.body_to_camera,
+        }
+    }
+
+    /// Creates a [`CameraMount`] from a unified [`sim_spacetime::SensorMount`].
+    #[must_use]
+    pub const fn from_sensor_mount(mount: SensorMount) -> Self {
+        Self {
+            offset_body_m: mount.offset_body_m,
+            body_to_camera: mount.body_to_mount,
+        }
+    }
+}
+
+impl From<CameraMount> for SensorMount {
+    fn from(mount: CameraMount) -> Self {
+        mount.to_sensor_mount()
+    }
+}
+
+impl From<SensorMount> for CameraMount {
+    fn from(mount: SensorMount) -> Self {
+        Self::from_sensor_mount(mount)
+    }
+}
+
+trait MountedKinematicsPosExt {
+    fn position_ecef_or_world(&self) -> DVec3;
+}
+
+impl MountedKinematicsPosExt for sim_spacetime::MountedKinematics {
+    fn position_ecef_or_world(&self) -> DVec3 {
+        self.position_world_m
     }
 }
 

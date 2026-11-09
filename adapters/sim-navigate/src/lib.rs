@@ -38,6 +38,7 @@
 
 mod aiding;
 mod celestial;
+mod celestial_ephemeris;
 mod clock;
 mod error;
 mod estimate;
@@ -53,6 +54,10 @@ pub use aiding::KinematicAiding;
 pub use celestial::{
     CelestialClock, CelestialFrame, EarthShadowSample, FAINTEST_STAR_V_MAGNITUDE, MoonDiscSample,
     ReferenceBody, SkyTimeMode, StarSkySample, camera_stars, star_camera_epoch,
+};
+pub use celestial_ephemeris::{
+    CelestialAdapterError, CelestialObserverAdapter, PureEphemerisNavAdapter,
+    tdb_from_hifitime_epoch, tdb_to_hifitime_epoch,
 };
 pub use clock::{MASTER_CLOCK_DOMAIN, MasterClockBridge};
 pub use error::NavigateBridgeError;

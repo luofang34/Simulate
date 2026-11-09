@@ -14,6 +14,7 @@ mod cloud;
 mod field;
 mod full_column;
 mod isa;
+mod mars;
 mod rarefied;
 mod reentry;
 mod vacuum;
@@ -25,6 +26,9 @@ pub use field::{
 };
 pub use full_column::FullColumnAtmosphere;
 pub use isa::{IsaState, geometric_to_geopotential_m, isa_at_geopotential};
+pub use mars::{
+    MARS_GAMMA, MARS_GAS_CONSTANT_J_KG_K, MarsAtmosphere, mars_geometric_to_geopotential_m,
+};
 pub use rarefied::FlowRegime;
 pub use reentry::ReentryAtmosphere;
 pub use vacuum::{COSMIC_BACKGROUND_K, VacuumAtmosphere};

@@ -1,0 +1,29 @@
+[package]
+name = "sim-raketa"
+description = "Raketa single-stage multi-body test rocket: verified retro_rocket_v4.usd asset, exact 4.0G quadratic proper-acceleration limiter, 3-axis CG RCS, reaction wheels, atmospheric fins, APAS-95 nosecone, and Earth-to-Moon/Mars GNC"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+glam = { workspace = true }
+indicate-alerts = { workspace = true }
+libm = { workspace = true }
+mbd-core = { workspace = true }
+openusd = { workspace = true }
+openusd-schemas = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-core = { workspace = true }
+sim-geo = { workspace = true }
+sim-orbital = { workspace = true }
+sim-scenery = { workspace = true }
+syspack = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

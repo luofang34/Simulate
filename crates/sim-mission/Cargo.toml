@@ -1,0 +1,26 @@
+[package]
+name = "sim-mission"
+description = "Spaceflight mission plans, independent execution state, event-driven segment propagation, solver request identity, and differential-correction targeting"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+portable-math = ["sim-spacetime/portable-math", "sim-orbital/portable-math", "sim-analysis/portable-math"]
+
+[dependencies]
+glam = { workspace = true }
+libm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sim-analysis = { workspace = true }
+sim-geo = { workspace = true }
+sim-orbital = { workspace = true }
+sim-spacetime = { workspace = true }
+thiserror = { workspace = true }
+world-core = { workspace = true }
