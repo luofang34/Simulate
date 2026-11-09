@@ -24,11 +24,8 @@ root = Path(sys.argv[1])
 
 # Repository -> why its pin is not yet on the remote default branch.
 UNPUBLISHED = {
-    "world": "the two-tier umbrella crates are not on world's main",
-    "Indicate": "the v-speed references are not on Indicate's main",
     "jsbsim-rs": "pin is a local workspace commit",
     "Aviate": "pin is a local workspace commit",
-    "Navigate": "pin was squash-merged; re-pin to main",
 }
 
 
