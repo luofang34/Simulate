@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simulate</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #02020a; overflow: hidden; }
+      canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+    </style>
+    
+<script type="module">
+import init, * as bindings from '/Simulate/simulate-app-829ffbc2ccf75ad8.js';
+const wasm = await init({ module_or_path: '/Simulate/simulate-app-829ffbc2ccf75ad8_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  <link rel="modulepreload" href="/Simulate/simulate-app-829ffbc2ccf75ad8.js" crossorigin="anonymous" integrity="sha384-iBJtQmjETAz0uxz1oWd7D9IkHIU3uAW5gPSiNPivkySrGav6StgofLtDeGgv9Xp9"><link rel="preload" href="/Simulate/simulate-app-829ffbc2ccf75ad8_bg.wasm" crossorigin="anonymous" integrity="sha384-b/QTSDH4pVc89uLdRm88cX0rY29jqgGUCrswfR0vp2D4TOHmEf5f5dTfmmnKotxJ" as="fetch" type="application/wasm"></head>
+  <body></body>
+</html>
