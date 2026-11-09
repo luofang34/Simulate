@@ -27,7 +27,10 @@ fn fail(detail: impl ToString) -> AppSimError {
 
 /// Steps the flight and draws `frames` chase frames, so tiles stream in and drain.
 fn run_frames(h: &mut VerifyHarness, frames: usize) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let sky = SkyFrame::fixed_sun(
+        h.flight.world().body(),
+        h.flight.world().sun_direction_ecef(),
+    );
     for _ in 0..frames {
         h.flight
             .advance_by(1.0 / 30.0, ControlInputs::default(), SimTimeScale::RealTime)?;

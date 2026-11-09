@@ -98,7 +98,10 @@ fn audit_airport(
     let landing = rec
         .landing_runway(designator, datum)
         .ok_or_else(|| shot_error(format!("no landing {code} {designator}")))?;
-    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let sky = SkyFrame::fixed_sun(
+        h.flight.world().body(),
+        h.flight.world().sun_direction_ecef(),
+    );
     let last = CHECKPOINTS.iter().copied().max().unwrap_or(1);
     for frame in 1..=last {
         h.flight
