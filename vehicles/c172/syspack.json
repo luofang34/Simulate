@@ -10,8 +10,8 @@
       "size_bytes": 1346
     },
     "fdm/c172_class_reference.xml": {
-      "sha256": "433ffe16b5080aa99bb3656494702f7159d8b910d3a0cc6f23ccfb4fc8483ab7",
-      "size_bytes": 24332
+      "sha256": "90bd02491b60a2135ec7db1a0d7a5fd65e046ea9264a91b732bab45399444636",
+      "size_bytes": 27608
     },
     "performance/airspeed_envelope.json": {
       "sha256": "ae29343a08ecf91d446959b8d14043933ba578a2275ed3e309908f1a82c9e898",
@@ -22,8 +22,8 @@
       "size_bytes": 1686
     },
     "performance/poh_benchmarks.json": {
-      "sha256": "35d3488080832f8a2822249197901dd5afb3eb3716b6762138c98a69dcacd7c7",
-      "size_bytes": 9360
+      "sha256": "4e89e18f7f35c2ae4e760a3733a63b28719dfa1be192b83eab0468d0372df4d5",
+      "size_bytes": 10105
     }
   },
   "components": [

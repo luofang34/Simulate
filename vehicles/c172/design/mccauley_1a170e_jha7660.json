@@ -1,0 +1,318 @@
+{
+  "name": "McCauley 1A170E/JHA7660, 2-blade fixed pitch, 76 in, 60 in pitch (Cessna 172S, Lycoming IO-360-L2A)",
+  "provenance": {
+    "sourced": {
+      "blades_diameter_pitch": "2 blades, 76 in, 60 in pitch, elliptical tip: Textron Aviation parts page 1A170E-JHA7660",
+      "blade_angle_from_pitch": "60 in at 0.75R is 18.5 deg: atan(60 / (0.75 pi 76)); used as the face angle of the measured maps, and with the 0.75 deg face offset as the blade-element blade's angle",
+      "measured": "NACA TR 640 (Hartman & Biermann 1938), 2-blade Clark-Y propeller 5868-9, 10 ft, in front of a liquid-cooled engine nacelle; C_T is effective thrust (shaft tension less the body's slipstream drag increment). Columns as digitised by the c172p-team (FlightGear) in Engines/prop_76in2f_NACA_15-25deg.xml; the static column checks against TR 640 Fig. 43 (Te D / Q = 10.0 at 20 deg, Ct/Cp 1.59)."
+    },
+    "stand_in": "The McCauley blade's section and planform are not published. Below J 0.3 the TR 640 5868-9 Clark-Y blade's measured maps stand in for it. From J 0.4 up the maps are propeller_bem.py's of a 60 in constant-pitch helix with the 5868-9 planform (TR 640 Fig. 2) scaled in chord, where TR 640 validates the blade-element model (propeller_check.py).",
+    "not_met": "The McCauley's Cp(J) is flatter than any 5868-9 blade angle gives: the blade-element blade needs about 27 % more Ct and Cp than the measured 5868-9 at cruise J while the TCDS static band holds its static Cp near the 5868-9's, so the stitched maps step up 10-13 % between J 0.3 and 0.4; recorded in performance/validation.json until McCauley data replaces the stand-in.",
+    "fitted": {
+      "chord_scale": "1.27 (peak chord/diameter 0.096 against the 5868-9's 0.076): fitted with the airframe's CD0 and induced-drag factor to the POH climbs, cruise speeds and fuel flows and the TCDS static run-up; no McCauley chord or activity factor is available",
+      "blade_angle_deg": "searched within 18.5-19.5 deg (the sourced 18.5 plus the flat-face convention), landing on the sourced 18.5"
+    },
+    "assumed": {
+      "face_offset_deg": "0.75 deg between TR 640's flat-face blade angle and the blade-element tool's reference, the offset that reproduces 5868-9 at 15, 20 and 25 deg",
+      "blend": "linear in J between 0.3 and 0.4",
+      "mach_fade": "the tip-Mach power loss fades linearly to nothing at J 0.6; TR 639 confines the loss to take-off and climb but gives no fade law in this form"
+    }
+  },
+  "blade_angle_deg": 18.5,
+  "tip_mach_correction": {
+    "source": "NACA TR 684 (Hartman & Biermann 1940) Fig. 18, 2-blade 5868-9 at V/nD = 0: (Ct/Cp)/(Ct/Cp at M 0.5) about 0.92 at 17.5 deg and 0.96 at 20 deg for tip Mach 0.7, as read by the research-takeoff review; TR 640's tables were measured at tip Mach 0.47-0.56. The JHA7660 turns 2,300-2,400 rpm static, tip Mach 0.69-0.71 at sea level.",
+    "ct_over_cp_ratio_by_blade_angle": [
+      [
+        17.5,
+        0.92
+      ],
+      [
+        20.0,
+        0.96
+      ]
+    ],
+    "fade_out_advance_ratio": 0.6
+  },
+  "measured": {
+    "source": "NACA TR 640, propeller 5868-9, 2 blades",
+    "advance_ratios": [
+      0,
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0,
+      1.1,
+      1.2,
+      1.3,
+      1.5,
+      2.0
+    ],
+    "blade_angles_deg": [
+      15,
+      20,
+      25
+    ],
+    "c_thrust": [
+      [
+        0.099,
+        0.104,
+        0.1125
+      ],
+      [
+        0.095,
+        0.104,
+        0.11
+      ],
+      [
+        0.088,
+        0.103,
+        0.1075
+      ],
+      [
+        0.078,
+        0.101,
+        0.106
+      ],
+      [
+        0.0645,
+        0.093,
+        0.1055
+      ],
+      [
+        0.0495,
+        0.082,
+        0.1045
+      ],
+      [
+        0.034,
+        0.07,
+        0.097
+      ],
+      [
+        0.0185,
+        0.055,
+        0.087
+      ],
+      [
+        0.004,
+        0.039,
+        0.075
+      ],
+      [
+        -0.016,
+        0.024,
+        0.06
+      ],
+      [
+        -0.03,
+        0.006,
+        0.045
+      ],
+      [
+        -0.04,
+        -0.014,
+        0.03
+      ],
+      [
+        -0.05,
+        -0.033,
+        0.015
+      ],
+      [
+        -0.055,
+        -0.045,
+        -0.001
+      ],
+      [
+        -0.065,
+        -0.06,
+        -0.025
+      ],
+      [
+        -0.075,
+        -0.072,
+        -0.075
+      ]
+    ],
+    "c_power": [
+      [
+        0.04,
+        0.066,
+        0.108
+      ],
+      [
+        0.0406,
+        0.065,
+        0.106
+      ],
+      [
+        0.0406,
+        0.064,
+        0.102
+      ],
+      [
+        0.04,
+        0.0625,
+        0.0975
+      ],
+      [
+        0.0366,
+        0.06,
+        0.091
+      ],
+      [
+        0.0318,
+        0.058,
+        0.086
+      ],
+      [
+        0.025,
+        0.054,
+        0.0825
+      ],
+      [
+        0.016,
+        0.0475,
+        0.079
+      ],
+      [
+        0.005,
+        0.037,
+        0.073
+      ],
+      [
+        -0.0067,
+        0.026,
+        0.064
+      ],
+      [
+        -0.015,
+        0.01,
+        0.052
+      ],
+      [
+        -0.02,
+        0,
+        0.0375
+      ],
+      [
+        -0.025,
+        -0.01,
+        0.022
+      ],
+      [
+        -0.027,
+        -0.02,
+        0.004
+      ],
+      [
+        -0.03,
+        -0.035,
+        -0.045
+      ],
+      [
+        -0.033,
+        -0.05,
+        -0.075
+      ]
+    ]
+  },
+  "bem_above": {
+    "blend_advance_ratios": [
+      0.3,
+      0.4
+    ],
+    "face_offset_deg": 0.75,
+    "spec": {
+      "blades": 2,
+      "diameter_in": 76.0,
+      "hub_fraction": 0.2,
+      "design_advance_ratio": 0.78947,
+      "chord_over_diameter": [
+        [
+          0.2,
+          0.04801
+        ],
+        [
+          0.3,
+          0.06617
+        ],
+        [
+          0.4,
+          0.08344
+        ],
+        [
+          0.5,
+          0.09614
+        ],
+        [
+          0.6,
+          0.09296
+        ],
+        [
+          0.7,
+          0.08344
+        ],
+        [
+          0.8,
+          0.07125
+        ],
+        [
+          0.9,
+          0.05842
+        ],
+        [
+          1.0,
+          0.04724
+        ]
+      ],
+      "thickness_over_chord": [
+        [
+          0.3,
+          0.377
+        ],
+        [
+          0.4,
+          0.2
+        ],
+        [
+          0.5,
+          0.14
+        ],
+        [
+          0.6,
+          0.118
+        ],
+        [
+          0.7,
+          0.102
+        ],
+        [
+          0.8,
+          0.091
+        ],
+        [
+          0.9,
+          0.085
+        ],
+        [
+          1.0,
+          0.083
+        ]
+      ],
+      "elements": 40,
+      "table_betas_deg": [
+        20
+      ],
+      "induction": "velocity",
+      "post_stall": "viterna",
+      "section_cl_max": 1.4
+    }
+  }
+}

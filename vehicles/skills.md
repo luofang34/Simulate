@@ -116,6 +116,7 @@ JSBSim piston 的增壓器以「每檔一個固定壓比 × 油門」建模，�
 
 ### 4.3 螺旋槳
 - 以 `vehicles/tools/propeller_bem.py` 從 `design/<prop>.json`（槳葉數、直徑、弦長與厚度分佈、設計進距比）生成 `C_THRUST`/`C_POWER(J, β_0.75R)` 二維表；`eta` 輸出用於檢查最高效率（WWII 金屬槳約 0.82–0.86）。
+- **定距槳**（C172）：BEM 在低進距比（J < 0.3，起飛滑跑）不可靠：對照 NACA TR 640 的 5868-9 實測，靜態 Cp 低 35–55%（`vehicles/tools/propeller_check.py` 有測試）。因此以 `vehicles/tools/propeller_measured.py` 生成表格：J < 0.3 用 TR 640 實測表並加 TR 684 Fig. 18 的槳尖馬赫功率損失（TR 640 在槳尖 M≈0.5 測得，C172 靜態約 0.7），J ≥ 0.4 用 BEM（`bem_above`），中間線性過渡。發動機先以兩點校正（Lycoming 全油門曲線：2,300 與 2,700 rpm，有測試）；滑跑時槳後被吹的機身零件另加滑流阻力（TR 640 p. 23）；試飛工具的起飛技術依 POH（機尾略低、在 VLOF 離地，有 ±1 kt 測試）。無法同時滿足的列、檢查與表格台階記在 `performance/validation.json`，測試逐項比對，而非加無來源的修正係數。
 - 試驗報告的槳葉角若在其他半徑（42-12687：42 in 處 22.7–57.7°），依扭轉換算到 0.75R（16.8–51.8°）。
 - 槳尖馬赫損失用 `CT_MACH`/`CP_MACH`；P-38G 在高空 400 mph 時槳尖馬赫約 1.05–1.1，效率約損失一成。
 - **定速調速器放在 FCS，而不是只靠 JSBSim 內建**：內建的 `pitch -= ΔRPM·dt` 在配平的 0.5 s 穩態迭代中振盪。做法：螺旋槳保留 `minrpm`/`maxrpm`（內建調速器只在「發動機運轉中」生成時的穩態求解裡起作用，那裡不執行 FCS；少了它槳葉停在細距、靜止推力數千磅），FCS 以 `propeller_bem.py ... beta` 生成的反演表 β(J, Cp) 前饋求平衡槳角（前饋功率取軸功率與「進氣壓力可提供功率」較大者，避免風車起動卡在細距）、加慢速 RPM 積分修正，輸出到 `propulsion/engine[n]/blade-angle`。**必須公開 `propulsion/engine[n]/governor-rpm-req`**，試飛工具以此判斷該機為定速槳。
@@ -182,6 +183,7 @@ JSBSim piston 的增壓器以「每檔一個固定壓比 × 油門」建模，�
 - 所有油門、混合比、螺旋槳手柄寫入**每一台發動機**（`fcs/*-cmd-norm[n]`）；JSBSim 不帶索引的名稱只作用於 0 號發動機。
 - 定速槳（JSBSim `constant-speed-mode` 或 FCS `governor-rpm-req`）以螺旋槳手柄保持 `target_rpm`、以油門保持 `target_map_inhg`；定距槳以油門保持 rpm。
 - 爬升：60 s 飛行、最後 15 s 量測，量測**能量高度** `h + V²/2g` 的變化率；速度環寬鬆、姿態環高阻尼，避免重型機在低密度下的速度／姿態振盪吃掉爬升率。
+- 平飛：以 6 s 為一段持續飛行，直到相鄰兩段平均真空速相差 < 0.05 kt（至少 30 s、最多 600 s），取最後一段；固定飛行時間會讓重型機仍在加速，結果取決於起始速度（`tests/level_speed.rs`）。
 
 ### 6.3 指令
 ```sh
@@ -195,7 +197,7 @@ cargo test -p sim-pack --test p38g_flight_test engine_operating_points -- --igno
 調參順序：先用探針對準每發功率與進氣壓力（§4.2），再看平飛速度（阻力、螺旋槳效率），最後看爬升與失速。每次修改 FDM 後先 rehash。
 
 ### 6.4 P-38G 目前結果（作為新機型的參考精度）
-失速 CAS 誤差 < 1 kt；爬升 SL–30,000 ft 誤差 −113…+272 fpm；平飛 5,000–30,000 ft 五點誤差 ≤ 3.5 kt。
+失速 CAS 誤差 < 1 kt；爬升 SL–30,000 ft 誤差 −113…+272 fpm；平飛 5,000–30,000 ft 五點誤差 ≤ 5.7 kt。
 
 ---
 

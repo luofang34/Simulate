@@ -16,6 +16,11 @@ use sim_pack::{
     STRUCTURAL_LANDMARKS_ASSET, SyspackError, builtin_c172_package, builtin_c172_source,
 };
 
+#[path = "support/c172_validation_record.rs"]
+mod c172_validation_record;
+
+use c172_validation_record::graded;
+
 const DT_S: f64 = 1.0 / 120.0;
 const FPS_PER_KT: f64 = 1.687_809_857_1;
 const POUNDS_PER_KG: f64 = 2.204_622_621_8;
@@ -399,27 +404,27 @@ fn empirical_c172_vx_and_vy_climb_match_poh() -> Result<(), Box<dyn std::error::
 
     let vx_loaded_kias = pec.kcas_to_kias(0.0, best_vx_loaded.speed_kcas);
     let vx_mtow_kias = pec.kcas_to_kias(0.0, best_vx_mtow.speed_kcas);
-    assert!(
+    graded(
+        "envelope Vx loaded",
         (59.5..=64.5).contains(&vx_loaded_kias)
             && best_vx_loaded.gamma_deg > best_vx_mtow.gamma_deg,
-        "Vx_loaded_kias={vx_loaded_kias} (kcas={})",
-        best_vx_loaded.speed_kcas
+        &format!("{vx_loaded_kias:.1} KIAS"),
     );
-    assert!(
+    graded(
+        "envelope Vx MTOW",
         (59.5..=64.5).contains(&vx_mtow_kias) && best_vx_mtow.rpm > 2_350.0,
-        "Vx_mtow_kias={vx_mtow_kias} (kcas={})",
-        best_vx_mtow.speed_kcas
+        &format!("{vx_mtow_kias:.1} KIAS at {:.0} rpm", best_vx_mtow.rpm),
     );
-    assert!(
+    graded(
+        "envelope Vy MTOW",
         (71.0..=76.5).contains(&best_vy_mtow.speed_kcas)
             && best_vy_loaded.climb_fpm > best_vy_mtow.climb_fpm,
-        "Vy={}",
-        best_vy_mtow.speed_kcas
+        &format!("{:.1} KCAS", best_vy_mtow.speed_kcas),
     );
-    assert!(
+    graded(
+        "envelope climb rate MTOW",
         (690.0..=780.0).contains(&best_vy_mtow.climb_fpm),
-        "RC_mtow={}",
-        best_vy_mtow.climb_fpm
+        &format!("{:.0} fpm", best_vy_mtow.climb_fpm),
     );
     Ok(())
 }
@@ -455,10 +460,10 @@ fn empirical_c172_glide_maneuvering_and_vmax_match_poh() -> Result<(), Box<dyn s
 
     let (static_rpm, vmax_sl_kcas, vmax_rpm) = measure_static_rpm_and_sl_vmax(&package)?;
 
-    assert!(
+    graded(
+        "envelope Vg",
         (65.0..=71.0).contains(&best_vg.speed_kcas) && best_vg.rpm > 600.0,
-        "Vg={}",
-        best_vg.speed_kcas
+        &format!("{:.1} KCAS", best_vg.speed_kcas),
     );
     assert!(
         (8.5..=10.3).contains(&best_vg.glide_ratio),
@@ -477,9 +482,10 @@ fn empirical_c172_glide_maneuvering_and_vmax_match_poh() -> Result<(), Box<dyn s
         (3.75..=3.85).contains(&load_factor_at_va),
         "nz={load_factor_at_va}"
     );
-    assert!(
+    graded(
+        "envelope static rpm",
         (2_280.0..=2_440.0).contains(&static_rpm),
-        "static_rpm={static_rpm}"
+        &format!("{static_rpm:.0} rpm"),
     );
     assert!(
         (121.0..129.0).contains(&vmax_sl_kcas) && vmax_rpm > 2_600.0,

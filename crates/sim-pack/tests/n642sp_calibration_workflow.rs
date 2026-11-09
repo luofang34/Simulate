@@ -3,11 +3,16 @@
 //! parameter identification).
 
 use sim_pack::{
-    PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource, PitotStaticCalibration,
-    build_ace_feedback_report, builtin_c172_package, builtin_c172_source, default_design_trades,
-    estimate_design_performance, evaluate_package, identify_package_sensitivities,
-    load_syspack_from_ace_vehicle_json, run_design_trade_study,
+    CalibrationReport, PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource,
+    PitotStaticCalibration, build_ace_feedback_report, builtin_c172_package, builtin_c172_source,
+    default_design_trades, estimate_design_performance, evaluate_package,
+    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
 };
+
+#[path = "support/c172_validation_record.rs"]
+mod c172_validation_record;
+
+use c172_validation_record::{graded, listed};
 
 #[test]
 fn pitot_static_calibration_round_trips_and_rejects_non_monotonic_tables()
@@ -48,22 +53,100 @@ fn pitot_static_calibration_round_trips_and_rejects_non_monotonic_tables()
     Ok(())
 }
 
+/// Every row of the card as `(name, passed)`: the static run-up, stalls and
+/// take-offs by label, climbs as `climb <alt> ft`, level points as
+/// `cruise <alt> ft <rpm> rpm`, recorded segments by id.
+#[cfg(test)]
+fn card_rows(report: &CalibrationReport) -> Vec<(String, bool)> {
+    let mut rows: Vec<(String, bool)> = report
+        .static_runup
+        .iter()
+        .map(|&(_, _, _, passed)| ("static run-up".to_owned(), passed))
+        .collect();
+    rows.extend(report.stalls.iter().map(|r| (r.label.clone(), r.passed)));
+    rows.extend(
+        report
+            .climbs
+            .iter()
+            .map(|r| (format!("climb {:.0} ft", r.pressure_alt_ft), r.passed)),
+    );
+    rows.extend(report.cruises.iter().map(|r| {
+        let name = format!(
+            "cruise {:.0} ft {:.0} rpm",
+            r.pressure_alt_ft, r.commanded_rpm
+        );
+        (name, r.passed)
+    }));
+    rows.extend(
+        report
+            .empirical_segments
+            .iter()
+            .map(|r| (r.segment_id.clone(), r.passed)),
+    );
+    rows.extend(report.takeoffs.iter().map(|r| (r.label.clone(), r.passed)));
+    rows
+}
+
+/// The card passes exactly the rows `performance/validation.json` lists as
+/// passing and fails exactly those it lists as failing, so a fix (a known
+/// failure starts passing) or a regression (a passing row fails) both show.
+#[cfg(test)]
+fn matches_the_validation_record(
+    report: &CalibrationReport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let record: serde_json::Value = serde_json::from_str(c172_validation_record::RECORD)?;
+    let rows = card_rows(report);
+    let flown = |passed: bool| -> Vec<String> {
+        let mut names: Vec<String> = rows
+            .iter()
+            .filter(|r| r.1 == passed)
+            .map(|r| r.0.clone())
+            .collect();
+        names.sort();
+        names
+    };
+    let md = report.to_markdown();
+    assert_eq!(flown(true), listed("passing"), "passing rows\n{md}");
+    assert_eq!(flown(false), listed("failing"), "failing rows\n{md}");
+    let status = record.get("status").and_then(serde_json::Value::as_str);
+    let calibrated = listed("failing").is_empty();
+    assert_eq!(
+        status == Some("calibrated"),
+        calibrated,
+        "status {status:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn n642sp_c172_passes_reusable_closed_loop_calibration() -> Result<(), Box<dyn std::error::Error>> {
     let c172 = builtin_c172_package()?;
     let report = evaluate_package(&c172)?;
-    let md = report.to_markdown();
-    assert!(report.all_passed, "C172 calibration failed:\n{md}");
+    matches_the_validation_record(&report)?;
+    // AC 23-8C ends the AFM ground run at the scheduled lift-off speed, so the
+    // roll is graded only if the airplane leaves the runway at it.
+    for takeoff in &report.takeoffs {
+        let early = takeoff.sim_lift_off_kcas - takeoff.target_lift_off_kcas;
+        assert!(
+            early.abs() <= 1.0,
+            "{}: lift-off {early:+.1} kt",
+            takeoff.label
+        );
+    }
     let tail = report.tail_profile.as_ref().ok_or("missing N642SP tail")?;
     assert_eq!(tail.registration, "N642SP");
     assert_eq!(tail.serial_number, "172S8050");
     assert_eq!(tail.home_base_icao, "N51");
     assert!(report.stall_kcas_rmse_kt < 0.5);
     assert!(report.stall_kias_rmse_kt < 0.5);
-    assert!(report.climb_rmse_fpm < 15.0);
-    assert!(report.cruise_rmse_ktas < 1.5);
-    assert!(report.cruise_rmse_gph < 0.4);
-    assert!(report.empirical_gs_rmse_kt < 1.5);
+    for (check, value, bound) in [
+        ("climb RMSE", report.climb_rmse_fpm, 15.0),
+        ("cruise KTAS RMSE", report.cruise_rmse_ktas, 1.5),
+        ("cruise GPH RMSE", report.cruise_rmse_gph, 0.4),
+        ("empirical GS RMSE", report.empirical_gs_rmse_kt, 1.5),
+    ] {
+        graded(check, value < bound, &format!("{value:.2} against {bound}"));
+    }
     Ok(())
 }
 
@@ -72,7 +155,7 @@ fn jacobian_gauss_newton_identifier_computes_physical_sensitivities()
 -> Result<(), Box<dyn std::error::Error>> {
     let c172 = builtin_c172_package()?;
     let sens = identify_package_sensitivities(&c172)?;
-    assert!(sens.baseline.all_passed);
+    matches_the_validation_record(&sens.baseline)?;
     assert!(sens.linearized_predicted_cost <= sens.baseline_cost + 1e-9);
     let ve = sens
         .adjustments
@@ -105,14 +188,21 @@ fn new_design_performance_estimator_synthesizes_vspeeds_ceiling_and_payload_rang
     let md = est.to_markdown();
     assert!(est.vs0_kcas < est.vs1_kcas, "{md}");
     assert!(est.vx_kcas <= est.vy_kcas, "{md}");
-    assert!((58.0..=66.0).contains(&est.vx_kcas), "{md}");
-    assert!((70.0..=78.0).contains(&est.vy_kcas), "{md}");
-    assert!((64.0..=72.0).contains(&est.vg_kcas), "{md}");
-    assert!((8.5..=10.5).contains(&est.max_lift_to_drag), "{md}");
-    assert!(
-        (12_500.0..=16_500.0).contains(&est.service_ceiling_ft),
-        "{md}"
-    );
+    for (check, value, low, high) in [
+        ("estimator Vx", est.vx_kcas, 58.0, 66.0),
+        ("estimator Vy", est.vy_kcas, 70.0, 78.0),
+        ("estimator Vg", est.vg_kcas, 64.0, 72.0),
+        ("estimator L/D", est.max_lift_to_drag, 8.5, 10.5),
+        (
+            "estimator ceiling",
+            est.service_ceiling_ft,
+            12_500.0,
+            16_500.0,
+        ),
+    ] {
+        let detail = format!("{value:.2} against {low}-{high}\n{md}");
+        graded(check, (low..=high).contains(&value), &detail);
+    }
     assert_eq!(est.cruise_polar.len(), 3);
     assert_eq!(est.payload_range.len(), 3);
     assert_eq!(est.mission_profiles.len(), 4, "{md}");
@@ -148,9 +238,10 @@ fn design_trade_study_and_ace_rs_codesign_bridge_evaluate_closed_loop()
     let uprated = &study.candidates[2];
     let long_tank = &study.candidates[3];
 
-    assert!(
+    graded(
+        "trade study high-AR L/D",
         high_ar.report.max_lift_to_drag > base.report.max_lift_to_drag,
-        "high-AR clean airframe should increase (L/D)_max: {study_md}"
+        &format!("high-AR clean airframe should increase (L/D)_max: {study_md}"),
     );
     assert!(
         uprated.report.sea_level_roc_fpm > base.report.sea_level_roc_fpm + 40.0,

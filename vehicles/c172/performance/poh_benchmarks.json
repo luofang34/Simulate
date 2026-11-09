@@ -1,6 +1,6 @@
 {
   "type_designator": "C172",
-  "reference_document": "Cessna 172S Information Manual, original issue 8 July 1998, revision 5 (POH 172SPHUS05: Figures 5-3 stall, 5-5 takeoff, 5-6 climb, 5-8 cruise) + N642SP (S/N 172S8050, Solberg-Hunterdon N51) recorded flights",
+  "reference_document": "Cessna 172S Information Manual, original issue 8 July 1998, revision 5 of 2004, for serials 172S8001 and on (N642SP is 172S8050) (POH 172SPHUS05: Figures 5-3 stall, 5-5 takeoff, 5-6 climb, 5-8 cruise, its standard-temperature column on pp. 5-19/5-20) + N642SP (S/N 172S8050, Solberg-Hunterdon N51) recorded flights",
   "rated_bhp": 180.0,
   "tail_profile": {
     "registration": "N642SP",
@@ -175,8 +175,8 @@
       "target_rpm": 2400.0,
       "fixed_throttle": null,
       "target_pct_bhp": 64.0,
-      "target_ktas": 111.0,
-      "target_gph": 8.9
+      "target_ktas": 110.0,
+      "target_gph": 9.0
     },
     {
       "pressure_alt_ft": 2000.0,
@@ -184,7 +184,7 @@
       "target_rpm": 2200.0,
       "fixed_throttle": null,
       "target_pct_bhp": 50.0,
-      "target_ktas": 100.0,
+      "target_ktas": 97.0,
       "target_gph": 7.3
     },
     {
@@ -193,8 +193,8 @@
       "target_rpm": 2600.0,
       "fixed_throttle": null,
       "target_pct_bhp": 77.0,
-      "target_ktas": 121.0,
-      "target_gph": 10.5
+      "target_ktas": 120.0,
+      "target_gph": 10.4
     },
     {
       "pressure_alt_ft": 4000.0,
@@ -202,7 +202,7 @@
       "target_rpm": 2400.0,
       "fixed_throttle": null,
       "target_pct_bhp": 61.0,
-      "target_ktas": 112.0,
+      "target_ktas": 109.0,
       "target_gph": 8.5
     },
     {
@@ -211,8 +211,8 @@
       "target_rpm": 2650.0,
       "fixed_throttle": null,
       "target_pct_bhp": 77.0,
-      "target_ktas": 124.0,
-      "target_gph": 10.5
+      "target_ktas": 122.0,
+      "target_gph": 10.4
     },
     {
       "pressure_alt_ft": 6000.0,
@@ -220,8 +220,8 @@
       "target_rpm": 2500.0,
       "fixed_throttle": null,
       "target_pct_bhp": 65.0,
-      "target_ktas": 117.0,
-      "target_gph": 8.9
+      "target_ktas": 114.0,
+      "target_gph": 9.0
     },
     {
       "pressure_alt_ft": 8000.0,
@@ -229,8 +229,8 @@
       "target_rpm": 2700.0,
       "fixed_throttle": null,
       "target_pct_bhp": 77.0,
-      "target_ktas": 127.0,
-      "target_gph": 10.5
+      "target_ktas": 124.0,
+      "target_gph": 10.4
     },
     {
       "pressure_alt_ft": 8000.0,
@@ -238,8 +238,8 @@
       "target_rpm": 2500.0,
       "fixed_throttle": null,
       "target_pct_bhp": 61.0,
-      "target_ktas": 116.0,
-      "target_gph": 8.4
+      "target_ktas": 112.0,
+      "target_gph": 8.6
     },
     {
       "pressure_alt_ft": 10000.0,
@@ -295,9 +295,11 @@
   "handbook_configuration": [
     { "property": "systems/wheel-fairings-installed", "value": 1.0 }
   ],
-  "empirical_segments": [
+  "empirical_segments": [],
+  "excluded_empirical_segments": [
     {
       "segment_id": "n51_delaware_cruise_4047_4055",
+      "excluded_because": "excluded: wind and rpm not established as recorded. RAP/HRRR analyses for 2021-10-31 20:18-20:28Z give a 23-25 kt tailwind (not -0.5 kt) and the clip audio gives 2,315 +/- 20 rpm (not 2,400), so TAS is 88 +/- 3 kt against about 102 from POH Fig. 5-8; the aircraft or configuration of the 2021 clips is unconfirmed",
       "source_summary": "Solberg-Hunterdon (N51) -> Delaware corridor cruise leg (IMG_4047..4055, 18.0 NM in 582 s at 3,650 ft MSL, 2,400 RPM economy cruise)",
       "mode": "LevelCruiseRpm",
       "pressure_alt_ft": 3650.0,
@@ -311,6 +313,7 @@
     },
     {
       "segment_id": "n51_return_cruise_flight005",
+      "excluded_because": "excluded: undated, so its ~5 kt headwind cannot be checked against an analysis, and a 5 kt wind error is the whole residual",
       "source_summary": "Return cruise to 0.5 NM W of Solberg-Hunterdon N51 (flight-005, 4,800 ft MSL, 2,300 RPM low-power cruise, ~5 kt headwind)",
       "mode": "LevelCruiseRpm",
       "pressure_alt_ft": 4800.0,
@@ -324,6 +327,7 @@
     },
     {
       "segment_id": "n51_climbout_flight007",
+      "excluded_because": "excluded: undated, so its 5.5 kt wind cannot be checked against an analysis",
       "source_summary": "Departure active climbout from Solberg-Hunterdon N51 (flight-007, 1,531 -> 4,433 ft MSL in 225 s, ~82 KCAS cruise-climb)",
       "mode": "FullThrottleClimbKcas",
       "pressure_alt_ft": 3000.0,

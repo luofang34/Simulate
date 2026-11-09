@@ -21,6 +21,11 @@ pub struct TakeoffResult {
     pub sim_total_ft: f64,
     /// Published total distance to 50 ft (`ft`).
     pub target_total_ft: f64,
+    /// Calibrated airspeed when the last wheel left the runway (`kt`), where
+    /// the ground roll ends.
+    pub sim_lift_off_kcas: f64,
+    /// The benchmark's scheduled lift-off speed (`kt` CAS).
+    pub target_lift_off_kcas: f64,
     /// Whether both distances lie within `tolerances.takeoff_pct`.
     pub passed: bool,
 }

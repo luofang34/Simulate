@@ -146,11 +146,14 @@ fn each_control_moves_the_aircraft_in_pilot_sense() {
 
 #[test]
 fn throttle_changes_the_speed_it_settles_at() {
+    // 100 s: hands off, the aeroplane trades speed for height in a phugoid of
+    // roughly half a minute, so a shorter run samples the oscillation rather
+    // than the speed the throttle settles it at.
     let settled = |throttle| {
         let mut block = c172(0.0);
         run(
             &mut block,
-            1_200,
+            12_000,
             ControlInputs {
                 throttle,
                 ..ControlInputs::default()

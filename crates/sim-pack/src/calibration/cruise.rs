@@ -134,20 +134,25 @@ struct CruisePower {
     governed: bool,
 }
 
+/// Frames in one averaging block (6 s).
+const CRUISE_BLOCK_STEPS: u32 = 720;
+/// Blocks flown before convergence is tested (30 s).
+const CRUISE_MIN_BLOCKS: u32 = 5;
+/// Longest a level point flies before its last block is taken as it stands (600 s).
+const CRUISE_MAX_BLOCKS: u32 = 100;
+/// Change in block-mean speed (kt) below which the speed has settled.
+const CRUISE_SETTLED_KT: f64 = 0.05;
+
+/// Flies level at the power `power` sets until the true airspeed settles, and
+/// returns the last 6 s block's mean `(KTAS, propeller RPM, engine-0 hp, GPH)`.
+/// A fixed flight time would leave a heavy aircraft still accelerating, so the
+/// result would depend on the speed it started from.
 fn integrate_cruise_hold(
     fdm: &mut Fdm,
     pressure_alt_ft: f64,
     power: CruisePower,
     mixture: f64,
 ) -> Result<(f64, f64, Option<f64>, Option<f64>), PackError> {
-    let CruisePower {
-        target_rpm,
-        fixed_throttle,
-        map_hold_inhg,
-        governed,
-    } = power;
-    let mut map_hold = ManifoldPressureHold::new(fixed_throttle.unwrap_or(0.75));
-    let mut governor = GovernorHold::new();
     let has_hp = fdm
         .node("propulsion/engine[0]/power-hp")
         .map_err(fdm_err)?
@@ -156,10 +161,67 @@ fn integrate_cruise_hold(
         .node("propulsion/engine[0]/fuel-flow-rate-gph")
         .map_err(fdm_err)?
         .is_some();
-    let mut thr_int = fixed_throttle.unwrap_or(0.75);
-    let (mut vt_sum, mut rpm_sum, mut hp_sum, mut gph_sum) = (0.0, 0.0, 0.0, 0.0);
-    let mut samples = 0_u32;
-    for step in 0..3_600_u32 {
+    let mut control = CruiseControl::new(power);
+    let mut previous_kt = f64::NAN;
+    let mut block = [0.0_f64; 4];
+    for block_index in 0..CRUISE_MAX_BLOCKS {
+        block = [0.0; 4];
+        for _ in 0..CRUISE_BLOCK_STEPS {
+            let rpm = control.step(fdm, pressure_alt_ft, mixture)?;
+            block[0] += fdm.get_property("velocities/vt-fps").map_err(fdm_err)?;
+            block[1] += rpm;
+            block[2] += get_opt(fdm, "propulsion/engine[0]/power-hp")?.unwrap_or(0.0);
+            block[3] += get_opt(fdm, "propulsion/engine[0]/fuel-flow-rate-gph")?.unwrap_or(0.0);
+        }
+        let n = f64::from(CRUISE_BLOCK_STEPS);
+        block = block.map(|sum| sum / n);
+        let kt = block[0] / FPS_PER_KT;
+        if block_index + 1 >= CRUISE_MIN_BLOCKS && (kt - previous_kt).abs() < CRUISE_SETTLED_KT {
+            break;
+        }
+        previous_kt = kt;
+    }
+    let [vt_fps, rpm, hp, gph] = block;
+    Ok((
+        vt_fps / FPS_PER_KT,
+        rpm,
+        has_hp.then_some(hp),
+        has_gph.then_some(gph),
+    ))
+}
+
+/// The pilot of a level point: pitch holds altitude, the propeller lever holds
+/// RPM on a governed propeller, and the throttle holds manifold pressure or RPM.
+struct CruiseControl {
+    power: CruisePower,
+    map_hold: ManifoldPressureHold,
+    governor: GovernorHold,
+    thr_int: f64,
+}
+
+impl CruiseControl {
+    fn new(power: CruisePower) -> Self {
+        Self {
+            power,
+            map_hold: ManifoldPressureHold::new(power.fixed_throttle.unwrap_or(0.75)),
+            governor: GovernorHold::new(),
+            thr_int: power.fixed_throttle.unwrap_or(0.75),
+        }
+    }
+
+    /// Flies one frame and returns the propeller RPM it started from.
+    fn step(
+        &mut self,
+        fdm: &mut Fdm,
+        pressure_alt_ft: f64,
+        mixture: f64,
+    ) -> Result<f64, PackError> {
+        let CruisePower {
+            target_rpm,
+            fixed_throttle,
+            map_hold_inhg,
+            governed,
+        } = self.power;
         let h_ft = fdm.get_property("position/h-sl-ft").map_err(fdm_err)?;
         let h_dot = fdm.get_property("velocities/h-dot-fps").map_err(fdm_err)?;
         let theta = fdm.get_property("attitude/theta-rad").map_err(fdm_err)?;
@@ -169,44 +231,23 @@ fn integrate_cruise_hold(
         let rpm = get_opt(fdm, "propulsion/engine[0]/propeller-rpm")?.unwrap_or(0.0);
         if governed {
             let lever = match target_rpm {
-                Some(tgt) => governor.step(fdm, tgt)?,
+                Some(tgt) => self.governor.step(fdm, tgt)?,
                 None => 1.0,
             };
             set_each_engine(fdm, "fcs/advance-cmd-norm", lever)?;
         }
         let thr = match (map_hold_inhg, target_rpm) {
-            (Some(map), _) => map_hold.step(fdm, map)?,
+            (Some(map), _) => self.map_hold.step(fdm, map)?,
             (None, Some(tgt)) if !governed => {
                 let err = tgt - rpm;
-                thr_int = (thr_int + 0.0014 * err * DT_S).clamp(0.05, 1.0);
-                (thr_int + 0.0018 * err).clamp(0.05, 1.0)
+                self.thr_int = (self.thr_int + 0.0014 * err * DT_S).clamp(0.05, 1.0);
+                (self.thr_int + 0.0018 * err).clamp(0.05, 1.0)
             }
             _ => fixed_throttle.unwrap_or(0.75).clamp(0.0, 1.0),
         };
         step_wings_level(fdm, nose_up, thr, mixture)?;
-        if step >= 2_880 {
-            vt_sum += fdm.get_property("velocities/vt-fps").map_err(fdm_err)?;
-            rpm_sum += rpm;
-            if has_hp {
-                hp_sum += fdm
-                    .get_property("propulsion/engine[0]/power-hp")
-                    .map_err(fdm_err)?;
-            }
-            if has_gph {
-                gph_sum += fdm
-                    .get_property("propulsion/engine[0]/fuel-flow-rate-gph")
-                    .map_err(fdm_err)?;
-            }
-            samples = samples.wrapping_add(1);
-        }
+        Ok(rpm)
     }
-    let n = f64::from(samples.max(1));
-    Ok((
-        (vt_sum / n) / FPS_PER_KT,
-        rpm_sum / n,
-        has_hp.then_some(hp_sum / n),
-        has_gph.then_some(gph_sum / n),
-    ))
 }
 
 pub(super) fn solve_empirical(
