@@ -8,8 +8,8 @@ use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_devices::{ImuErrorSpec, ImuGrade};
 use sim_geo::Geodetic;
 use sim_navigate::{
-    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, TruthGravity,
-    compare_with_truth, inertial_config,
+    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, compare_with_truth,
+    inertial_config,
 };
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
 
@@ -78,15 +78,9 @@ struct Drift {
 
 /// Dead-reckons over `truth`, scoring once a second.
 #[cfg(test)]
-fn dead_reckon(
-    truth: &Truth,
-    spec: ImuErrorSpec,
-    seed: u64,
-    alignment: InitialAlignment,
-    gravity: TruthGravity,
-) -> Drift {
+fn dead_reckon(truth: &Truth, spec: ImuErrorSpec, seed: u64, alignment: InitialAlignment) -> Drift {
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, seed, gravity).unwrap();
+    let mut imu = SimulatedImu::new(spec, seed).unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = truth[0];
     navigator
@@ -125,49 +119,21 @@ fn seeded_alignment([position, velocity, attitude]: [f64; 3], seed: u64) -> Init
 fn a_parked_ideal_imu_holds_position() {
     init_tracing();
     let truth = stationary_truth(60);
-    let j2 = dead_reckon(
-        &truth,
-        ImuErrorSpec::IDEAL,
-        0,
-        InitialAlignment::EXACT,
-        TruthGravity::WgsJ2,
-    );
-    let point_mass = dead_reckon(
-        &truth,
-        ImuErrorSpec::IDEAL,
-        0,
-        InitialAlignment::EXACT,
-        TruthGravity::PointMass,
-    );
+    let drift = dead_reckon(&truth, ImuErrorSpec::IDEAL, 0, InitialAlignment::EXACT);
     tracing::info!(
-        horizontal_m = j2.final_horizontal_m,
-        vertical_m = j2.final_vertical_m,
-        point_mass_horizontal_m = point_mass.final_horizontal_m,
-        point_mass_vertical_m = point_mass.final_vertical_m,
+        horizontal_m = drift.final_horizontal_m,
+        vertical_m = drift.final_vertical_m,
         "parked 60 s, ideal IMU"
     );
-    assert!(j2.final_horizontal_m < 1e-2, "{j2:?}");
-    assert!(j2.final_vertical_m < 1e-2, "{j2:?}");
-    // A world without J2 leaves the filter's J2 term as an unsensed force.
-    assert!(
-        point_mass
-            .final_horizontal_m
-            .max(point_mass.final_vertical_m)
-            > 1.0
-    );
+    assert!(drift.final_horizontal_m < 1e-2, "{drift:?}");
+    assert!(drift.final_vertical_m < 1e-2, "{drift:?}");
 }
 
 #[test]
 fn an_ideal_imu_follows_the_kinematic_cruise() {
     init_tracing();
     let truth = cruise_truth(120.0);
-    let drift = dead_reckon(
-        &truth,
-        ImuErrorSpec::IDEAL,
-        0,
-        InitialAlignment::EXACT,
-        TruthGravity::WgsJ2,
-    );
+    let drift = dead_reckon(&truth, ImuErrorSpec::IDEAL, 0, InitialAlignment::EXACT);
     tracing::info!(
         seconds = 120,
         final_horizontal_m = drift.final_horizontal_m,
@@ -191,7 +157,6 @@ fn grade_ensemble(truth: &Truth, alignment: [f64; 3], label: &str) -> [(f64, f64
                 grade.spec(),
                 0x1_0000 + seed,
                 seeded_alignment(alignment, seed),
-                TruthGravity::WgsJ2,
             );
             squares += drift.final_horizontal_m.powi(2) + drift.final_vertical_m.powi(2);
             nees_sum += drift.nees_sum;

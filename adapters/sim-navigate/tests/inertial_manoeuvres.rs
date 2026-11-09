@@ -7,7 +7,7 @@ use navigate_contract::SourceId;
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::{ImuErrorSpec, ImuGrade};
 use sim_navigate::{
-    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth, TruthGravity,
+    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth,
     compare_attitude_with_truth, compare_with_truth, inertial_config,
 };
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
@@ -75,7 +75,7 @@ fn dead_reckon(
     alignment: InitialAlignment,
 ) -> Drift {
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, seed, TruthGravity::WgsJ2).unwrap();
+    let mut imu = SimulatedImu::new(spec, seed).unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = *truth[0].get();
     navigator

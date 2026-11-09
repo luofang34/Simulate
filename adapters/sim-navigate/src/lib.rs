@@ -69,7 +69,7 @@ pub use frame_link::{
 };
 pub use image_nav::{ImageCorridorEstimator, ImageEstimatorConfig, ImageEstimatorStats};
 pub use inertial::{
-    AlignmentFix, InertialNavigator, InitialAlignment, SimulatedImu, TruthGravity, ideal_increment,
+    AlignmentFix, InertialNavigator, InitialAlignment, SimulatedImu, ideal_increment,
     inertial_config,
 };
 pub use truth::{

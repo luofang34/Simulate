@@ -1,7 +1,7 @@
 use glam::{DQuat, DVec3};
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::{ImuErrorModel, ImuErrorSpec, InertialIncrement};
-use sim_geo::{BodyEllipsoid, WGS84_J2};
+use sim_geo::BodyEllipsoid;
 
 use crate::NavigateBridgeError;
 
@@ -16,35 +16,6 @@ const QUADRATURE: [(f64, f64); 3] = [
     (0.5, 8.0 / 18.0),
     (0.887_298_334_620_741_7, 5.0 / 18.0),
 ];
-
-/// The mass attraction the simulated world exerts, which the accelerometers
-/// cannot sense and which the synthesis therefore removes from the
-/// kinematic acceleration.
-///
-/// Navigate's surface filter models WGS84 point mass plus `J2`, so
-/// [`Self::WgsJ2`] isolates mechanisation differences. Its `J2` constant
-/// differs from sim-geo's by about 3e-6 of the `J2` term, some 5e-8 m/s².
-/// [`Self::PointMass`] is what `sim_core::RigidBodyBlock` integrates; a filter
-/// fed from it carries the whole `J2` term, up to about 0.03 m/s², as
-/// unmodelled acceleration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TruthGravity {
-    /// WGS84 point mass with the second zonal harmonic.
-    WgsJ2,
-    /// WGS84 point mass alone.
-    PointMass,
-}
-
-impl TruthGravity {
-    /// Mass attraction at `position_ecef`, ECEF m/s².
-    pub fn attraction_ecef(self, position_ecef: DVec3) -> DVec3 {
-        let earth = BodyEllipsoid::WGS84;
-        match self {
-            Self::WgsJ2 => earth.gravity_fixed_j2(position_ecef, WGS84_J2),
-            Self::PointMass => earth.gravity_fixed(position_ecef),
-        }
-    }
-}
 
 /// The rotation vector of `rotation`, taking the short way round.
 ///
@@ -77,16 +48,12 @@ pub(crate) fn rotation_vector(rotation: DQuat) -> DVec3 {
 /// Navigate takes a velocity increment `Δv` whose rotation correction
 /// `Δv + ½·Δθ×Δv` is the specific-force integral in the body axes fixed at
 /// the start of the step. The synthesis forms that integral by quadrature of
-/// `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, carried from each instant's ECEF axes
+/// `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, with `g` the world's own
+/// [`BodyEllipsoid::gravity_fixed`], carried from each instant's ECEF axes
 /// into the start's inertial body axes, and inverts the rotation correction
 /// exactly. A raw `∫f_body dt` would differ from it by the sculling term,
 /// which grows with turn rate times acceleration.
-pub fn ideal_increment(
-    gravity: TruthGravity,
-    from: &VehicleState,
-    to: &VehicleState,
-    dt_s: f64,
-) -> InertialIncrement {
+pub fn ideal_increment(from: &VehicleState, to: &VehicleState, dt_s: f64) -> InertialIncrement {
     let frame_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * dt_s);
     let delta_theta_rad = rotation_vector(from.attitude.inverse() * frame_turn * to.attitude);
     let acceleration = (to.velocity_ecef - from.velocity_ecef) / dt_s;
@@ -101,7 +68,7 @@ pub fn ideal_increment(
             let specific_force = acceleration
                 + 2.0 * EARTH_RATE_ECEF.cross(velocity)
                 + EARTH_RATE_ECEF.cross(EARTH_RATE_ECEF.cross(position))
-                - gravity.attraction_ecef(position);
+                - BodyEllipsoid::WGS84.gravity_fixed(position);
             let inertial_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * t);
             start_axes * (inertial_turn * specific_force) * (weight * dt_s)
         })
@@ -128,21 +95,14 @@ fn without_rotation_correction(theta: DVec3, y: DVec3) -> DVec3 {
 /// the physics of the sensor. Only its output reaches a filter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SimulatedImu {
-    gravity: TruthGravity,
     errors: ImuErrorModel,
     previous: Option<(SimInstant, VehicleState)>,
 }
 
 impl SimulatedImu {
-    /// A unit with errors drawn from `spec` and `seed`, in a world whose
-    /// mass attraction is `gravity`.
-    pub fn new(
-        spec: ImuErrorSpec,
-        seed: u64,
-        gravity: TruthGravity,
-    ) -> Result<Self, NavigateBridgeError> {
+    /// A unit with errors drawn from `spec` and `seed`.
+    pub fn new(spec: ImuErrorSpec, seed: u64) -> Result<Self, NavigateBridgeError> {
         Ok(Self {
-            gravity,
             errors: ImuErrorModel::new(spec, seed).map_err(NavigateBridgeError::ImuModel)?,
             previous: None,
         })
@@ -168,7 +128,7 @@ impl SimulatedImu {
             return Err(NavigateBridgeError::ImuIntervalNotAdvancing { start, end: at });
         }
         let dt_s = at.duration_since(start).as_seconds();
-        let ideal = ideal_increment(self.gravity, &from, truth, dt_s);
+        let ideal = ideal_increment(&from, truth, dt_s);
         self.errors
             .sense(&ideal)
             .map(Some)

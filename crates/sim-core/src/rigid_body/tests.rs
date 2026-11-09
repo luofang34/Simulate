@@ -109,11 +109,17 @@ fn no_spin(body: BodyEllipsoid) -> BodyEllipsoid {
     }
 }
 
+/// `body` with its gravity reduced to the point mass, whose free fall and
+/// circular orbit have closed forms to check the integrator against.
+fn point_mass(body: BodyEllipsoid) -> BodyEllipsoid {
+    BodyEllipsoid { j2: 0.0, ..body }
+}
+
 #[test]
 fn free_fall_follows_central_gravity_on_any_body() {
     for (body, height_m) in [
-        (no_spin(BodyEllipsoid::WGS84), 10_000.0),
-        (no_spin(BodyEllipsoid::MOON_IAU), 15_000.0),
+        (point_mass(no_spin(BodyEllipsoid::WGS84)), 10_000.0),
+        (point_mass(no_spin(BodyEllipsoid::MOON_IAU)), 15_000.0),
     ] {
         let start = rest_at(&body, height_m);
         let mut block = vacuum_block(config(body, TEN_MS, start), vehicle(0.0));
@@ -149,7 +155,7 @@ fn a_vehicle_at_rest_on_a_rotating_body_falls_with_the_apparent_gravity() {
 
 #[test]
 fn a_circular_orbit_stays_circular_in_the_rotating_frame() {
-    let body = BodyEllipsoid::WGS84;
+    let body = point_mass(BodyEllipsoid::WGS84);
     let radius = body.semi_major_m + 400_000.0;
     let speed = (body.mu_m3_s2 / radius).sqrt();
     let position = DVec3::new(radius, 0.0, 0.0);

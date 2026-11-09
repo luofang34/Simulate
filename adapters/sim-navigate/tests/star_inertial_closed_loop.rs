@@ -28,7 +28,7 @@ use sim_core::{SimInstant, VehicleState};
 use sim_devices::ImuGrade;
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_navigate::{
-    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth, TruthGravity,
+    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth,
     compare_attitude_with_truth, compare_with_truth, imager_model, inertial_config, navigate_mount,
     solution_position_ecef,
 };
@@ -253,7 +253,7 @@ fn fly(
 ) -> Flown {
     let spec = grade.spec();
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, IMU_SEED, TruthGravity::WgsJ2).unwrap();
+    let mut imu = SimulatedImu::new(spec, IMU_SEED).unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = *truth[0].get();
     navigator

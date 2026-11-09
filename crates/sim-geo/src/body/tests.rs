@@ -52,7 +52,7 @@ fn oblate_axis_points_use_this_bodys_semi_minor_axis() {
         assert_round_trip(&mars, Geodetic::from_degrees(18.4446, 77.4509, height));
     }
     let jezero = mars.geodetic_to_fixed(&Geodetic::from_degrees(18.4446, 77.4509, 0.0));
-    let g_mars = mars.gravity_fixed_j2(jezero, crate::MARS_IAU_J2).length();
+    let g_mars = mars.gravity_fixed(jezero).length();
     assert!((g_mars - 3.72).abs() < 0.03, "{g_mars}");
 }
 
@@ -77,18 +77,20 @@ fn surface_gravity_points_down_at_the_known_strength() {
     ));
     let gravity = moon.gravity_fixed(site);
     assert!((gravity.length() - 1.625).abs() < 5e-3, "{gravity}");
-    assert!((gravity.normalize() + site.normalize()).length() < 1e-12);
+    // J2 tips the field off the radial by `1.5·J2·(a/r)²·sin 2φ`, 7e-6 here.
+    assert!((gravity.normalize() + site.normalize()).length() < 1e-5);
 
+    // Mass attraction at the equator: 9.798 from the point mass, 0.016 more
+    // from the equatorial bulge.
     let earth = BodyEllipsoid::WGS84;
     let equator = DVec3::new(WGS84_A, 0.0, 0.0);
-    assert!((earth.gravity_fixed(equator).length() - 9.798).abs() < 1e-3);
+    assert!((earth.gravity_fixed(equator).length() - 9.814).abs() < 1e-3);
 }
 
 #[test]
 fn gravity_at_the_centre_is_zero_rather_than_nan() {
     let earth = BodyEllipsoid::WGS84;
     assert_eq!(earth.gravity_fixed(DVec3::ZERO), DVec3::ZERO);
-    assert_eq!(earth.gravity_fixed_j2(DVec3::ZERO, WGS84_J2), DVec3::ZERO);
 }
 
 /// `μ/r · (1 − J2 (a/r)² (3 sin²φ − 1) / 2)`, the potential the J2 field descends from.
@@ -97,14 +99,14 @@ fn j2_potential(body: &BodyEllipsoid, fixed: DVec3) -> f64 {
     let sin_lat = fixed.z / r;
     let a_over_r = body.semi_major_m / r;
     body.mu_m3_s2 / r
-        * (1.0 - WGS84_J2 * a_over_r * a_over_r * (3.0 * sin_lat * sin_lat - 1.0) / 2.0)
+        * (1.0 - body.j2 * a_over_r * a_over_r * (3.0 * sin_lat * sin_lat - 1.0) / 2.0)
 }
 
 #[test]
 fn j2_gravity_is_the_gradient_of_its_potential() {
     let earth = BodyEllipsoid::WGS84;
     let point = DVec3::new(4_100_000.0, -3_300_000.0, 4_400_000.0);
-    let gravity = earth.gravity_fixed_j2(point, WGS84_J2);
+    let gravity = earth.gravity_fixed(point);
     let step = 10.0;
     let gradient = DVec3::AXES.map(|axis| {
         (j2_potential(&earth, point + axis * step) - j2_potential(&earth, point - axis * step))
@@ -116,7 +118,12 @@ fn j2_gravity_is_the_gradient_of_its_potential() {
 
 #[test]
 fn zero_j2_is_the_central_field() {
-    let moon = BodyEllipsoid::MOON_IAU;
+    let point_mass = BodyEllipsoid {
+        j2: 0.0,
+        ..BodyEllipsoid::MOON_IAU
+    };
     let point = DVec3::new(1_000_000.0, 900_000.0, 1_100_000.0);
-    assert_eq!(moon.gravity_fixed_j2(point, 0.0), moon.gravity_fixed(point));
+    let r = point.length();
+    let central = point * (-point_mass.mu_m3_s2 / (r * r * r));
+    assert!((point_mass.gravity_fixed(point) - central).length() < 1e-15);
 }

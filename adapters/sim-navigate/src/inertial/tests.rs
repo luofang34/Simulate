@@ -2,7 +2,7 @@ use glam::{DQuat, DVec3};
 use navigate_fusion::InertialConfig;
 use sim_core::VehicleState;
 use sim_devices::{ImuErrorSpec, ImuGrade};
-use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, ecef_to_geodetic};
 
 use super::alignment::body_to_ned;
 use super::*;
@@ -30,7 +30,7 @@ fn level_flight_points_the_body_along_its_heading_in_ned() {
 #[test]
 fn a_vehicle_at_rest_senses_earth_rate_and_the_ground_reaction() {
     let state = VehicleState::level_flight(&delaware(), 0.0, 0.0);
-    let increment = ideal_increment(TruthGravity::WgsJ2, &state, &state, DT_S);
+    let increment = ideal_increment(&state, &state, DT_S);
     let earth_rate_body = state.attitude.inverse() * DVec3::new(0.0, 0.0, 7.292_115e-5);
     assert!((increment.delta_theta_rad - earth_rate_body * DT_S).length() < 1e-15);
     // Level body axes put the ground reaction along body up, which is -Z.
@@ -47,19 +47,31 @@ fn a_body_rotation_relative_to_the_earth_adds_to_earth_rate() {
         attitude: start.attitude * DQuat::from_scaled_axis(rates * DT_S),
         ..start
     };
-    let increment = ideal_increment(TruthGravity::WgsJ2, &start, &end, DT_S);
+    let increment = ideal_increment(&start, &end, DT_S);
     let earth_rate_body = start.attitude.inverse() * DVec3::new(0.0, 0.0, 7.292_115e-5);
     let expected = (rates + earth_rate_body) * DT_S;
     // The two rotations do not commute; their product differs at second order.
     assert!((increment.delta_theta_rad - expected).length() < 1e-8);
 }
 
+/// The simulated world and Navigate's surface filter must share one gravity
+/// model: any difference reaches the filter as unmodelled acceleration and
+/// grows into dead-reckoning drift.
 #[test]
-fn point_mass_gravity_differs_from_j2_by_the_oblateness_term() {
-    let position = sim_geo::geodetic_to_ecef(&delaware());
-    let difference = TruthGravity::WgsJ2.attraction_ecef(position)
-        - TruthGravity::PointMass.attraction_ecef(position);
-    assert!(difference.length() > 5e-3 && difference.length() < 5e-2);
+fn the_world_gravity_is_navigates_gravity_model() {
+    let navigate = navigate_fusion::PlanetaryBody::EARTH_WGS84.central_gravity();
+    let points = [
+        sim_geo::geodetic_to_ecef(&delaware()),
+        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(0.0, -30.0, 0.0)),
+        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(89.0, 120.0, 12_000.0)),
+        sim_geo::geodetic_to_ecef(&Geodetic::from_degrees(-45.0, 170.0, 400_000.0)),
+    ];
+    for point in points {
+        let world = BodyEllipsoid::WGS84.gravity_fixed(point);
+        let filter = navigate.acceleration(&nalgebra::Vector3::new(point.x, point.y, point.z));
+        let difference = DVec3::new(filter.x, filter.y, filter.z) - world;
+        assert!(difference.length() < 1e-9, "{point} {difference}");
+    }
 }
 
 #[test]

@@ -10,12 +10,6 @@ mod tests;
 /// zero.
 const POLAR_AXIS_EPSILON_M: f64 = 1e-6;
 
-/// Earth's second zonal harmonic, the WGS84 dynamic form factor.
-pub const WGS84_J2: f64 = 1.082_629_821e-3;
-
-/// Mars's second zonal harmonic in the IAU body-fixed frame.
-pub const MARS_IAU_J2: f64 = 1.960_45e-3;
-
 /// A celestial body's reference ellipsoid and central gravity field.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BodyEllipsoid {
@@ -27,6 +21,10 @@ pub struct BodyEllipsoid {
     pub mu_m3_s2: f64,
     /// Sidereal rotation rate, rad/s.
     pub omega_rad_s: f64,
+    /// Unnormalised second zonal harmonic of the gravity field; `0.0` for a
+    /// point mass. Matches `Navigate`'s `PlanetaryBody::j2` for each body,
+    /// so the simulated world and the navigator share one gravity model.
+    pub j2: f64,
 }
 
 impl BodyEllipsoid {
@@ -36,6 +34,7 @@ impl BodyEllipsoid {
         flattening: WGS84_F,
         mu_m3_s2: 3.986_004_418e14,
         omega_rad_s: 7.292_115e-5,
+        j2: 1.082_626_68e-3,
     };
 
     /// The Moon as the IAU mean sphere (`1,737.4 km`, matching `Navigate`'s `MOON_ME` / `MOON_PA`).
@@ -44,6 +43,7 @@ impl BodyEllipsoid {
         flattening: 0.0,
         mu_m3_s2: 4.904_869_5e12,
         omega_rad_s: 2.661_699_5e-6,
+        j2: 2.032_3e-4,
     };
 
     /// Mars on the IAU reference spheroid (`a = 3,396,190 m`, `b = 3,376,200 m`), matching
@@ -53,6 +53,7 @@ impl BodyEllipsoid {
         flattening: 1.0 / 169.894_447_223_611_8,
         mu_m3_s2: 4.282_837_2e13,
         omega_rad_s: 7.088_218_1e-5,
+        j2: 1.960_45e-3,
     };
 
     /// Polar radius, metres.
@@ -157,28 +158,20 @@ impl BodyEllipsoid {
         }
     }
 
-    /// Central-body gravitational acceleration `-μ r / |r|³`, m/s², in the
-    /// body-fixed frame. Excludes the centrifugal term of the rotating frame;
-    /// the body's centre, where the field is singular, returns zero.
+    /// Mass attraction of the point mass and the [`Self::j2`] oblateness
+    /// term, m/s², in the body-fixed frame. Excludes the centrifugal term of
+    /// the rotating frame; the body's centre, where the field is singular,
+    /// returns zero.
     pub fn gravity_fixed(&self, fixed: DVec3) -> DVec3 {
         let r2 = fixed.length_squared();
         if r2 == 0.0 {
             return DVec3::ZERO;
         }
-        fixed * (-self.mu_m3_s2 / (r2 * r2.sqrt()))
-    }
-
-    /// [`Self::gravity_fixed`] plus the oblateness perturbation of the
-    /// second zonal harmonic `j2`, such as [`WGS84_J2`].
-    pub fn gravity_fixed_j2(&self, fixed: DVec3, j2: f64) -> DVec3 {
-        let r2 = fixed.length_squared();
-        if r2 == 0.0 {
-            return DVec3::ZERO;
-        }
-        let oblateness = 1.5 * j2 * self.semi_major_m * self.semi_major_m / r2;
+        let central = fixed * (-self.mu_m3_s2 / (r2 * r2.sqrt()));
+        let oblateness = 1.5 * self.j2 * self.semi_major_m * self.semi_major_m / r2;
         let sin2_lat = fixed.z * fixed.z / r2;
         let equatorial = 1.0 - oblateness * (5.0 * sin2_lat - 1.0);
         let axial = 1.0 - oblateness * (5.0 * sin2_lat - 3.0);
-        self.gravity_fixed(fixed) * DVec3::new(equatorial, equatorial, axial)
+        central * DVec3::new(equatorial, equatorial, axial)
     }
 }

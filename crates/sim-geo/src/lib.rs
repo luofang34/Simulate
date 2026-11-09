@@ -18,7 +18,7 @@ mod pinhole;
 mod stars;
 mod utc;
 
-pub use body::{BodyEllipsoid, MARS_IAU_J2, WGS84_J2};
+pub use body::BodyEllipsoid;
 pub use datum::{
     AglHeightM, EllipsoidalHeightM, OrthometricHeightM, VerticalDatumKind,
     ellipsoidal_to_msl_egm96, msl_egm96_to_ellipsoidal,
