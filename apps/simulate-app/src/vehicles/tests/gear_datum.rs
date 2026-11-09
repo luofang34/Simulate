@@ -117,7 +117,7 @@ fn assert_wheels_on_the_ground(
 #[test]
 #[ignore = "red: C172 mesh wheelbase 70.3 in against the flight model's 64.4 in"]
 fn c172_wheels_meet_the_fdm_gear_red_while_the_mesh_wheelbase_is_70_in() {
-    let asset = UsdAircraftAsset::embedded_c172().unwrap();
+    let asset = UsdAircraftAsset::embedded_n642sp().unwrap();
     let fdm = include_str!("../../../../../vehicles/c172/fdm/c172_class_reference.xml");
     let offsets = wheel_offsets(FreeFlightVehicle::JsbsimC172, fdm, &asset);
     assert_wheels_on_the_ground("C172", (&offsets.0, offsets.1));

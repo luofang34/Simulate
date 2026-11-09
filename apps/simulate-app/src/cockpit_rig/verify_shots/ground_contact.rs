@@ -119,7 +119,7 @@ fn assert_parked_wheels_touch(
 fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
     assert_parked_wheels_touch(
         FreeFlightVehicle::JsbsimC172,
-        &UsdAircraftAsset::embedded_c172()?,
+        &UsdAircraftAsset::embedded_n642sp()?,
     )
 }
 
