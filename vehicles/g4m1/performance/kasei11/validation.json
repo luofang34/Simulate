@@ -1,0 +1,14 @@
+{
+  "card": "performance/kasei11/poh_benchmarks.json (Navy test of G4M1 aircraft No. 1, Kasei 11)",
+  "status": "calibrated",
+  "passing": [
+    "level 7874 ft",
+    "level 13780 ft",
+    "Rated power, 9,500 kg, brake release to 3,000 m (5 min 33 s)",
+    "Rated power, 9,500 kg, brake release to 8,000 m (22 min 23 s)",
+    "Rated power, 9,500 kg, 8,000 m to the 9,520 m ceiling (42 min 57 s less 22 min 23 s)",
+    "climb rate 31234 ft"
+  ],
+  "failing": [],
+  "note": "Zero-lift drag 0.0247 (to the speeds), span efficiency 0.70 (to the ceiling band) and the climb schedule (to the climb times) are fitted to this card, so its climbs check consistency rather than predict. Span-efficiency check: with Raymer's e = 0.81 for AR 7.9 instead of the fitted 0.70, the Kasei 11 card overclimbs near its ceiling (8,000 m to ceiling -27.1 %, 172 against 98 ft/min at 9,520 m; to 3,000 m -4.1 %, to 8,000 m -3.5 %) and the Kasei 15 rows worsen (to 8,000 m -13.0 %, 8,000 m to ceiling -61.2 %, 483 against 98 ft/min), so the excess high-altitude climb is shared by both engines, not the Kasei 15 part: power lapse above the full-throttle height, propeller losses at altitude, or the Navy climb procedure."
+}

@@ -1,0 +1,67 @@
+{
+  "variant": "g4m1-kasei15",
+  "name": "G4M1 Model 11, Kasei 15 (production from about airframe No. 406, Aug 1942)",
+  "sources": {
+    "navy-test-table": "IJN test results (試験成績) tabulated by WarbirdPerformanceBlog (warbirdperformance.livedoor.blog/archives/6848816.html, table image imgs/2/e/2eb19277.png): rows 試験機体, 発動機, プロペラ, 排出管, 翼下面防弾, 爆弾倉扉",
+    "ja-wikipedia-g4m": "JA Wikipedia 一式陸上攻撃機: Kasei 15 from the 406th aircraft (Aug 1942), citing JACAR C12070526100",
+    "en-wikipedia-g4m": "EN Wikipedia Mitsubishi G4M (secondary): propeller spinners from summer 1942; cut-away tail cone from spring 1943; redesigned V-cut cone from August 1943"
+  },
+  "note": "Visual and system configuration the 3D model will select parts from, as the flight model selects engine parts. confidence: sourced (a source states it for this configuration), inferred (from dates or production ranges), unknown.",
+  "features": [
+    {
+      "feature": "engine_mark",
+      "value": "Kasei 15",
+      "confidence": "sourced",
+      "basis": "engine part pinned by this variant; Kasei 15 from the 406th aircraft",
+      "source": "ja-wikipedia-g4m"
+    },
+    {
+      "feature": "propeller",
+      "value": "Hamilton-type, 3 blades",
+      "confidence": "sourced",
+      "basis": "test table propeller row for aircraft No. 241",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "propeller_spinners",
+      "value": true,
+      "confidence": "inferred",
+      "basis": "spinners from summer 1942, the same period as the Kasei 15 change",
+      "source": "en-wikipedia-g4m"
+    },
+    {
+      "feature": "exhaust",
+      "value": "collector (non-thrust)",
+      "confidence": "sourced",
+      "basis": "test table 非推力式 for aircraft No. 241; later Model 13 production (No. 948) had thrust single exhausts",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "tail_gun_cone",
+      "value": "depends on build date: original cone before spring 1943, cut-away after",
+      "confidence": "inferred",
+      "basis": "production-range dates only",
+      "source": "en-wikipedia-g4m"
+    },
+    {
+      "feature": "wing_underside_protection",
+      "value": "depends on airframe number: from about No. 603 (some sources No. 663)",
+      "confidence": "inferred",
+      "basis": "not on test aircraft No. 241",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "bomb_bay_doors",
+      "value": false,
+      "confidence": "sourced",
+      "basis": "test table 爆弾倉扉 無し",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "cowling_details",
+      "value": null,
+      "confidence": "unknown",
+      "basis": "differences in cowling tied to the engine mark are not in the sources"
+    }
+  ]
+}

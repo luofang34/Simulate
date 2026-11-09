@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "id": "g4m1-kasei15",
+  "name": "Mitsubishi G4M1 Model 11 (Kasei 15)",
+  "version": "1.0.0",
+  "kind": "FixedWing",
+  "assets": {
+    "design/airframes.json": {
+      "sha256": "6d9537239ce9535d7070499058bced91fd4b801a671ef7de2a1f20b7e9c87735",
+      "size_bytes": 11260
+    },
+    "design/configuration/kasei15.json": {
+      "sha256": "73b96a3062008d7717e632a2c4016204b5608bb4b0474e478b66c6cb615b7350",
+      "size_bytes": 2807
+    },
+    "design/sources.json": {
+      "sha256": "24a6837735ba4436883eab94c87fc9807a166453ba4d089e3fc0f1eab553efbf",
+      "size_bytes": 6977
+    },
+    "fdm/g4m1.xml": {
+      "sha256": "4a6a25c17df740bae84136598dd64cdc57e5e89428910faefbbc50189c250911",
+      "size_bytes": 30043
+    },
+    "performance/kasei15/poh_benchmarks.json": {
+      "sha256": "533db36fc11f38492c774d378e04afd678ad6de2f7f9fba72ea9bf56780222a0",
+      "size_bytes": 4248
+    },
+    "performance/kasei15/validation.json": {
+      "sha256": "dd590f862d039cfa4c3eeefb851342ab3e8516c9939ba09efa89ecb593d9609a",
+      "size_bytes": 1628
+    }
+  },
+  "components": [
+    {
+      "key": "airframe",
+      "name": "Airframe with engines installed, oil and defensive armament (7,000 kg empty)",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 7331.123177193201,
+      "dry_inertia_body": [
+        [
+          108465.4,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          97618.9,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          203372.7
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "left_wing_integral_tanks",
+      "name": "Left wing integral tanks (No.1-No.4)",
+      "parent": "airframe",
+      "translation_m": [
+        0.2,
+        -4.2,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 823.27015155,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "right_wing_integral_tanks",
+      "name": "Right wing integral tanks (No.1-No.4)",
+      "parent": "airframe",
+      "translation_m": [
+        0.2,
+        4.2,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 823.27015155,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "payload_station",
+      "name": "Crew of 7",
+      "parent": "airframe",
+      "translation_m": [
+        0.84,
+        0.0,
+        -0.25
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 521.6312255,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "imu_mount",
+      "name": "IMU mount",
+      "parent": "airframe",
+      "translation_m": [
+        0.5,
+        0.0,
+        -0.3
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "baro_mount",
+      "name": "Barometer mount",
+      "parent": "airframe",
+      "translation_m": [
+        0.5,
+        0.0,
+        -0.3
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": {
+    "JsbsimXml": {
+      "aircraft_dir": "aircraft",
+      "model_name": "g4m1",
+      "entry_asset": "fdm/g4m1.xml",
+      "virtual_path": "aircraft/g4m1/g4m1.xml",
+      "additional_assets": []
+    }
+  },
+  "controls": {
+    "has_magnetos": true,
+    "has_starter": true,
+    "has_mixture": true,
+    "has_prop_pitch": true,
+    "has_fuel_cutoff": true,
+    "has_flaps": true,
+    "has_retractable_gear": true,
+    "has_wheel_brakes": true
+  },
+  "devices": [
+    {
+      "id": "imu",
+      "site": "imu_mount",
+      "kind": {
+        "Icm42688": {
+          "seed": 4401
+        }
+      }
+    },
+    {
+      "id": "barometer",
+      "site": "baro_mount",
+      "kind": {
+        "Bmp390": {
+          "bus_id": 0,
+          "i2c_addr": 118
+        }
+      }
+    },
+    {
+      "id": "pitot_static",
+      "site": "airframe",
+      "kind": {
+        "PitotStatic": {
+          "pitot_body_m": [
+            6.8,
+            0.0,
+            0.9
+          ],
+          "static_body_m": [
+            6.6,
+            0.0,
+            0.9
+          ],
+          "probe": "pitot_static_head_under_nose_position_estimated",
+          "total_line_tau_s": 0.2,
+          "static_line_tau_s": 0.4
+        }
+      }
+    }
+  ],
+  "parts": [
+    {
+      "role": "engine0",
+      "id": "mitsubishi-kasei-15",
+      "version": "1.0.0",
+      "manifest_sha256": "975489932b073724fbfb7d3259e11b227578b7923c85655ec6d2dcbcaff81c8d"
+    },
+    {
+      "role": "engine1",
+      "id": "mitsubishi-kasei-15",
+      "version": "1.0.0",
+      "manifest_sha256": "975489932b073724fbfb7d3259e11b227578b7923c85655ec6d2dcbcaff81c8d"
+    },
+    {
+      "role": "propeller0",
+      "id": "hamilton-standard-cs-134in-3b",
+      "version": "1.0.0",
+      "manifest_sha256": "20d8221b7900e6de2a525b669ed2e8392acb80398238e9e3a265dd41648e76c8"
+    },
+    {
+      "role": "propeller1",
+      "id": "hamilton-standard-cs-134in-3b",
+      "version": "1.0.0",
+      "manifest_sha256": "20d8221b7900e6de2a525b669ed2e8392acb80398238e9e3a265dd41648e76c8"
+    }
+  ]
+}

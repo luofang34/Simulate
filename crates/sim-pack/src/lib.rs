@@ -18,7 +18,9 @@ mod parts;
 mod pec;
 
 pub use builtin::{
-    builtin_c172_package, builtin_c172_source, builtin_p38g_package, builtin_p38g_source,
+    builtin_c172_package, builtin_c172_source, builtin_g4m1_kasei15_package,
+    builtin_g4m1_kasei15_source, builtin_g4m1_package, builtin_g4m1_source, builtin_p38g_package,
+    builtin_p38g_source,
 };
 pub use calibration::{
     AceFeedbackReport, BrakeReleaseStart, CALIBRATION_SUITE_ASSET, CalibrationReport,

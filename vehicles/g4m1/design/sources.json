@@ -1,0 +1,167 @@
+{
+  "note": "Provenance of every value the G4M1 airframe model and its cards use. Engine and propeller values are in the parts' own engine.json / propeller.json.",
+  "sources": {
+    "S1-taic-1": {
+      "document": "TAIC Manual No. 1, Japanese Aircraft Performance and Characteristics (Technical Air Intelligence Center, Dec 1944)",
+      "url": "https://archive.org/details/japanese-aircraft-performance-characteristics-taic-manual",
+      "pages": "p.850 definitions (no asterisk = from captured documents); p.861 Kasei 11/12; p.862 Kasei 13-15; Betty 22 page (4-blade propeller 11.16 ft)",
+      "kind": "Allied technical intelligence"
+    },
+    "S2-warbirdperformance": {
+      "document": "WarbirdPerformanceBlog, 「一式陸上攻撃機一一型・一三型(G4M1)の性能」 (2020-07-11), tabulating IJN test results (試験成績)",
+      "url": "https://warbirdperformance.livedoor.blog/archives/6848816.html",
+      "pages": "table image https://livedoor.blogimg.jp/warbirdperformance/imgs/2/e/2eb19277.png; speed chart https://livedoor.blogimg.jp/warbirdperformance/imgs/f/d/fd95104c.png",
+      "kind": "secondary tabulation of Navy test reports; the reports themselves were not read"
+    },
+    "S3-navy-engine-manual": {
+      "document": "海軍航空本部『火星発動機一〇型取扱説明書（火星11～15型）』, Jan 1941, as tabulated by JA Wikipedia 火星 (エンジン), citing 坂上茂樹 2021 pp.459-460 and 旧『世界の傑作機』No.60 p.42",
+      "url": "https://ja.wikipedia.org/wiki/火星_(エンジン)",
+      "pages": "specification table",
+      "kind": "encyclopedia citing the Navy manual"
+    },
+    "S4-ja-wikipedia-g4m": {
+      "document": "JA Wikipedia 一式陸上攻撃機, citing 松葉稔 2009 p.32, 『設計者の証言 下』, 世傑 No.60 pp.6, 14-18, 秋本 1995 p.293, and a Navy order (JACAR C12070526100)",
+      "url": "https://ja.wikipedia.org/wiki/一式陸上攻撃機",
+      "pages": "諸元; 設計 (wing section, taper, incidence); 型式 (Kasei 15 from aircraft No. 406; Model 22 propeller 3→4 blades)",
+      "kind": "encyclopedia citing design references"
+    },
+    "S5-lednicer": {
+      "document": "D. Lednicer, The Incomplete Guide to Airfoil Usage",
+      "url": "https://m-selig.ae.illinois.edu/ads/aircraft.html",
+      "pages": "Mitsubishi G4M entry",
+      "kind": "reference list (cross-check)"
+    },
+    "S6-francillon": {
+      "document": "R. J. Francillon, Japanese Aircraft of the Pacific War (1979) pp.378-387, read only as quoted by EN Wikipedia and Pacific Wrecks",
+      "url": "https://en.wikipedia.org/wiki/Mitsubishi_G4M",
+      "pages": "specifications (G4M1 Model 11)",
+      "kind": "secondary, cross-check only"
+    }
+  },
+  "values": [
+    {
+      "item": "wing span",
+      "value": "24.88 m",
+      "source": "S2-warbirdperformance, S4-ja-wikipedia-g4m",
+      "note": "Francillon 24.89 m"
+    },
+    {
+      "item": "length",
+      "value": "19.97 m",
+      "source": "S2-warbirdperformance, S4-ja-wikipedia-g4m"
+    },
+    {
+      "item": "wing area",
+      "value": "78.125 m2",
+      "source": "S2-warbirdperformance, S4-ja-wikipedia-g4m"
+    },
+    {
+      "item": "wing section",
+      "value": "Mitsubishi MAC118, 12.5 % root, 10 % tip",
+      "source": "S4-ja-wikipedia-g4m (松葉 2009 p.32), S5-lednicer"
+    },
+    {
+      "item": "taper",
+      "value": "1:4",
+      "source": "S4-ja-wikipedia-g4m",
+      "note": "read as tip/root 0.25; MAC 3.51 m derived"
+    },
+    {
+      "item": "incidence and washout",
+      "value": "2 deg 52 min each",
+      "source": "S4-ja-wikipedia-g4m"
+    },
+    {
+      "item": "flaps",
+      "value": "slotted, electric",
+      "source": "S4-ja-wikipedia-g4m",
+      "note": "travel 45 deg and lift increments estimated"
+    },
+    {
+      "item": "empty mass, Model 11",
+      "value": "7,000 kg",
+      "source": "S2-warbirdperformance",
+      "note": "Francillon's 6,741 kg is the Kasei 15 aircraft"
+    },
+    {
+      "item": "test mass (reconnaissance normal)",
+      "value": "9,500 kg",
+      "source": "S2-warbirdperformance"
+    },
+    {
+      "item": "fuel",
+      "value": "about 4,900 L in integral wing tanks between the spars",
+      "source": "S4-ja-wikipedia-g4m",
+      "note": "per-tank split 700/640/660/450 L a side is a forum figure, used for tank positions only"
+    },
+    {
+      "item": "propeller blades",
+      "value": "3",
+      "source": "S4-ja-wikipedia-g4m"
+    },
+    {
+      "item": "propeller type",
+      "value": "Hamilton-type constant speed",
+      "source": "S2-warbirdperformance",
+      "note": "propeller part"
+    },
+    {
+      "item": "propeller diameter",
+      "value": "11 ft 2 in ESTIMATED",
+      "source": "S1-taic-1 Betty 22 page (Model 22 4-blade 11.16 ft)",
+      "note": "propeller part"
+    },
+    {
+      "item": "engine ratings",
+      "value": "see parts/engines/*/engine.json",
+      "source": "S1-taic-1, S3-navy-engine-manual"
+    },
+    {
+      "item": "Kasei 11 card",
+      "value": "No. 1: 236.0 kt at 2,400 m, 240.0 kt at 4,200 m, 3,000 m 5'33\", 8,000 m 22'23\", ceiling 9,520 m in 42'57\" at 9,500 kg",
+      "source": "S2-warbirdperformance",
+      "note": "performance/kasei11/poh_benchmarks.json"
+    },
+    {
+      "item": "Kasei 15 card",
+      "value": "No. 241: 234.5 kt at 3,100 m, 244.0 kt at 5,900 m, 3,000 m 5'27\", 8,000 m 20'18\", ceiling 9,660 m in 40'32\" at 9,500 kg",
+      "source": "S2-warbirdperformance",
+      "note": "performance/kasei15/poh_benchmarks.json"
+    },
+    {
+      "item": "not graded",
+      "value": "bombing state (12,000 kg in parentheses, store drag unknown); Francillon's 120 km/h stall (no weight or configuration)",
+      "source": "S2-warbirdperformance, S6-francillon"
+    }
+  ],
+  "estimated": [
+    "tail areas (tail-volume coefficients)",
+    "lateral-directional derivatives",
+    "inertias (Roskam radii of gyration)",
+    "CG at 25 % MAC",
+    "landing-gear geometry and springs",
+    "pitot-static position",
+    "lift slope and clean CLmax 1.40 (thin-airfoil slope with AR correction)",
+    "mixture control (auto-rich hold)"
+  ],
+  "fitted": [
+    "zero-lift drag 0.0247 (Kasei 11 speeds)",
+    "span efficiency 0.70 (Kasei 11 ceiling band)",
+    "climb schedule 146 KCAS -0.6 kt/1,000 ft, 112 KCAS ceiling climb (Kasei 11 climb times)",
+    "engine bsfc, supercharger loss and compressor efficiency (each engine's ratings; see engine.json)"
+  ],
+  "assumed": [
+    "climb clock from brake release (take-off at 15 deg flap, lift-off 80 KCAS, 50 ft at 86 KCAS)",
+    "climbs at rated power, 2,350 rpm / 37.0 inHg",
+    "IJN service ceiling = 0.5 m/s climb"
+  ],
+  "not_found": [
+    "Allied flight test of any G4M1",
+    "TAIC Betty 11 performance page (502A, marked obsolete)",
+    "Model 11 propeller diameter and pitch range",
+    "dihedral, tail and flap areas",
+    "CG range, oil capacity",
+    "landing speed and take-off run with conditions",
+    "supercharger change altitude"
+  ]
+}

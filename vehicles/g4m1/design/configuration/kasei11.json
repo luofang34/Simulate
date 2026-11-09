@@ -1,0 +1,67 @@
+{
+  "variant": "g4m1",
+  "name": "G4M1 Model 11, Kasei 11 (early production; the configuration of test aircraft No. 1)",
+  "sources": {
+    "navy-test-table": "IJN test results (試験成績) tabulated by WarbirdPerformanceBlog (warbirdperformance.livedoor.blog/archives/6848816.html, table image imgs/2/e/2eb19277.png): rows 試験機体, 発動機, プロペラ, 排出管, 翼下面防弾, 爆弾倉扉",
+    "ja-wikipedia-g4m": "JA Wikipedia 一式陸上攻撃機: Kasei 15 from the 406th aircraft (Aug 1942), citing JACAR C12070526100",
+    "en-wikipedia-g4m": "EN Wikipedia Mitsubishi G4M (secondary): propeller spinners from summer 1942; cut-away tail cone from spring 1943; redesigned V-cut cone from August 1943"
+  },
+  "note": "Visual and system configuration the 3D model will select parts from, as the flight model selects engine parts. confidence: sourced (a source states it for this configuration), inferred (from dates or production ranges), unknown.",
+  "features": [
+    {
+      "feature": "engine_mark",
+      "value": "Kasei 11",
+      "confidence": "sourced",
+      "basis": "engine part pinned by this variant; aircraft No. 1 row of the test table",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "propeller",
+      "value": "Hamilton-type, 3 blades",
+      "confidence": "sourced",
+      "basis": "test table propeller row; Model 22 went from 3 to 4 blades",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "propeller_spinners",
+      "value": false,
+      "confidence": "inferred",
+      "basis": "spinners date from summer 1942; Kasei 11 aircraft are the earlier production",
+      "source": "en-wikipedia-g4m"
+    },
+    {
+      "feature": "exhaust",
+      "value": "collector (non-thrust)",
+      "confidence": "sourced",
+      "basis": "test table 排出管 非推力式 for aircraft No. 1",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "tail_gun_cone",
+      "value": "original glazed cone",
+      "confidence": "inferred",
+      "basis": "the cut-away cone dates from spring 1943, after Kasei 11 production",
+      "source": "en-wikipedia-g4m"
+    },
+    {
+      "feature": "wing_underside_protection",
+      "value": false,
+      "confidence": "sourced",
+      "basis": "test table 翼下面防弾 無し for aircraft No. 1 (sponge rubber came from about airframe No. 603)",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "bomb_bay_doors",
+      "value": false,
+      "confidence": "sourced",
+      "basis": "test table 爆弾倉扉 無し",
+      "source": "navy-test-table"
+    },
+    {
+      "feature": "cowling_details",
+      "value": null,
+      "confidence": "unknown",
+      "basis": "differences in cowling tied to the engine mark are not in the sources"
+    }
+  ]
+}

@@ -1,0 +1,276 @@
+{
+  "note": "Individual airframes (future liveries) and the variant each attaches to by default. default_variant is data: change it here when better evidence appears. 'known' features are documented for that airframe; 'inferred' come from its build date and production ranges.",
+  "sources": {
+    "pw-2656": "Pacific Wrecks, G4M1 Model 11 c/n 2656 https://pacificwrecks.com/aircraft/g4m/2656.html",
+    "ijn-tail-photo": "IJN photo of the T1-323 wreck tail, 1943-44: https://commons.wikimedia.org/wiki/File:Yamamoto%27s_airplane_crash.jpg (Agawa, The Reluctant Admiral, p. 204) and https://pacificwrecks.com/aircraft/g4m/2656/1943/yamamoto-shrine-tail-323.html",
+    "pw-t1-326": "Pacific Wrecks, G4M1 T1-326 https://pacificwrecks.com/aircraft/g4m/T1-326.html",
+    "model-art-2012": "Model Art, April 2012 (歴史群像 太平洋戦史 Vol.42 p.32; 丸メカニック No.22 p.72), as cited at https://beebee.air-nifty.com/momo/2021/06/post-d87b0f.html",
+    "ja-wikipedia-g4m": "JA Wikipedia 一式陸上攻撃機: Kasei 15 from the 406th aircraft (Aug 1942), citing JACAR C12070526100",
+    "en-wikipedia-g4m": "EN Wikipedia Mitsubishi G4M (secondary): propeller spinners from summer 1942; cut-away tail cone from spring 1943; redesigned V-cut cone from August 1943",
+    "arawasi-705ku": "Arawasi, Mitsubishi G4M1 Betty 705Ku http://arawasi-wildeagles.blogspot.com/2012/11/mitsubishi-g4m1-betty-705ku.html",
+    "pw-705ku": "Pacific Wrecks, 705 Kokutai https://pacificwrecks.com/aircraft/g4m/unit/705-kokutai.html",
+    "coles-1968-panels": "Cole's aircraft blog, Yamamoto's aircraft wreck history (1968 panels) http://colesaircraft.blogspot.com/2015/03/yamamotos-aircraft-wreck-history-art.html",
+    "ja-wikipedia-incident": "JA Wikipedia 海軍甲事件 https://ja.wikipedia.org/wiki/海軍甲事件",
+    "kitabatake": "http://kitabatake.world.coocan.jp/rikukaigun32.html",
+    "awm-rel01198": "Australian War Memorial REL/01198 control horn https://www.awm.gov.au/collection/C114448",
+    "j-aircraft-colours": "j-aircraft IJNAF colours FAQ (general 1944 standard, not airframe-specific) https://j-aircraft.com/faq/IJNAF_Colors.htm"
+  },
+  "airframes": [
+    {
+      "tail_code": "T1-323",
+      "construction_number": "2656",
+      "unit": "705 Kokutai",
+      "event": "Shot down over Bougainville 18 April 1943 carrying Admiral Yamamoto",
+      "built": {
+        "value": "about March 1943, Mitsubishi No. 3 Works, Nagoya",
+        "source": [
+          "pw-2656",
+          "model-art-2012"
+        ]
+      },
+      "default_variant": "g4m1-kasei15",
+      "default_variant_basis": "INFERRED from the build date: Kasei 15 from airframe No. 406 (Aug 1942); no record of this airframe's engine mark was found",
+      "known": [
+        {
+          "feature": "construction_number",
+          "value": "2656",
+          "source": "pw-2656",
+          "basis": "wreck skin stencil 三菱2656号"
+        },
+        {
+          "feature": "tail_number",
+          "value": "323 on the fin, light digits from the fin leading edge; no room for a T1- prefix on that side",
+          "source": "ijn-tail-photo",
+          "basis": "B&W photo: white consistent, yellow not excluded"
+        },
+        {
+          "feature": "wing_hinomaru",
+          "value": "thin white circular outline on green, black 'Lift Here' stencil",
+          "source": "pw-2656",
+          "basis": "1980 photo"
+        }
+      ],
+      "inferred": [
+        {
+          "feature": "engine_mark",
+          "value": "Kasei 15",
+          "basis": "build date"
+        },
+        {
+          "feature": "propeller_spinners",
+          "value": true,
+          "basis": "build date after summer 1942"
+        }
+      ],
+      "unresolved": [
+        {
+          "feature": "tail_gun_cone",
+          "basis": "built at the spring-1943 change; the wreck shows bare frame"
+        },
+        {
+          "feature": "underside_colour",
+          "basis": "conflicting: grey over red primer on 1968 panels, bare duralumin (歴史群像 Vol.42), grey (Pacific Wrecks, unsourced)"
+        },
+        {
+          "feature": "tail_code_prefix",
+          "basis": "705 Ku used T1 from about March 1943 (Arawasi) or June 1943 (EN Wikipedia)"
+        }
+      ],
+      "unit_note": {
+        "value": "Misawa Kokutai renamed 705 Kokutai on 1 Nov 1942; at Vunakanau, Rabaul",
+        "source": [
+          "pw-705ku",
+          "arawasi-705ku"
+        ]
+      },
+      "crew": {
+        "source": [
+          "pw-2656",
+          "ja-wikipedia-incident",
+          "kitabatake"
+        ],
+        "note": "readings differ between sources; names as in the Japanese sources",
+        "members": [
+          {
+            "role": "pilot, aircraft commander",
+            "name": "飛行兵曹長 小谷立 (Kotani; given name read Takeo or Takashi)"
+          },
+          {
+            "role": "co-pilot",
+            "name": "大崎明春 (also given as 大崎朋春)"
+          },
+          {
+            "role": "observer",
+            "name": "田中実"
+          },
+          {
+            "role": "radio",
+            "name": "畑信雄 (Hata; Pacific Wrecks has Hara)"
+          },
+          {
+            "role": "radio / top gunner",
+            "name": "上野光雄"
+          },
+          {
+            "role": "tail gunner",
+            "name": "小林春政"
+          },
+          {
+            "role": "engineer",
+            "name": "上田春雄 (kitabatake: 山田春雄)"
+          }
+        ],
+        "passengers": [
+          "Admiral Yamamoto Isoroku",
+          "Surgeon Rear Admiral Takata Rokurō",
+          "Commander Toibana Kurio",
+          "Commander Fukuzaki Noboru"
+        ],
+        "fate": "all 11 killed; crashed inland of Moila Point near Aku, 06°47.165′S 155°33.137′E"
+      },
+      "markings_evidence": [
+        {
+          "item": "upper surfaces green, lower grey, black upper nose and cowlings, yellow inner-wing leading-edge strip",
+          "source": "pw-2656",
+          "confidence": "unsourced secondary"
+        },
+        {
+          "item": "underside colour",
+          "confidence": "conflicting",
+          "ranking": [
+            "light grey over iron-oxide red primer on panels removed in 1968, aotake inside (coles-1968-panels; underside attribution is the seller's)",
+            "bare duralumin from the factory (歴史群像 Vol.42 p.32), bare then grey or silver (丸メカニック No.22 p.72), both via model-art-2012",
+            "grey (pw-2656, unsourced)",
+            "red primer visible on a 1970s postcard, location unspecified (https://pacificwrecks.com/aircraft/g4m/2656/1970s/postcard-yamamoto-wreckage-front.html)"
+          ]
+        },
+        {
+          "item": "IJN colour standard names (D1 upper, J3 lower) are the general 1944 standard",
+          "source": "j-aircraft-colours",
+          "confidence": "not specific to this airframe"
+        }
+      ],
+      "surviving_parts": [
+        {
+          "part": "left outer wing panel and the admiral's seat",
+          "where": "Isoroku Yamamoto Memorial Hall, Nagaoka (loan)",
+          "source": "https://pacificwrecks.com/aircraft/g4m/2656/2014/betty-wing-museum-display.html"
+        },
+        {
+          "part": "control yoke",
+          "where": "MacArthur Museum, Brisbane",
+          "source": "https://pacificwrecks.com/aircraft/g4m/2656/2014/control-yoke-wide-right45.html"
+        },
+        {
+          "part": "control horn",
+          "where": "Australian War Memorial REL/01198",
+          "source": "awm-rel01198"
+        },
+        {
+          "part": "door",
+          "where": "PNG National Museum per EN Wikipedia; unknown per Pacific Wrecks",
+          "source": "pw-2656"
+        },
+        {
+          "part": "'323' tail digits",
+          "where": "cut away, whereabouts unknown",
+          "source": "pw-2656"
+        }
+      ],
+      "photos": {
+        "note": "cited by URL only; no image is stored in the package",
+        "index": "https://pacificwrecks.com/aircraft/g4m/2656/index.html",
+        "pages": [
+          "https://pacificwrecks.com/aircraft/g4m/2656/1943/yamamoto-shrine-tail-323.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/1975/2656-piece.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/1980/betty-hinomaru.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/1980/betty-wing-hinomaru.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/1980/betty-tail.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/1980/betty-tail-gun-frame.html",
+          "https://pacificwrecks.com/aircraft/g4m/2656/2018/g4m1-2656-tail-rear45.html",
+          "https://www.abc.net.au/news/2015-05-13/historic-wwii-crash-site-opened-for-the-first-time-in-years/6466058"
+        ]
+      }
+    },
+    {
+      "tail_code": "T1-326",
+      "construction_number": null,
+      "unit": "705 Kokutai",
+      "event": "Shot down 18 April 1943 carrying Vice Admiral Ugaki; ditched off Moila Point",
+      "built": {
+        "value": null,
+        "source": [
+          "pw-t1-326"
+        ],
+        "note": "construction number unknown; Pacific Wrecks rejects 2659 for lack of a primary source"
+      },
+      "default_variant": "g4m1-kasei15",
+      "default_variant_basis": "INFERRED: same unit and date as T1-323, presumed of the same production period; no record of the airframe",
+      "known": [],
+      "inferred": [
+        {
+          "feature": "engine_mark",
+          "value": "Kasei 15",
+          "basis": "same period as T1-323"
+        },
+        {
+          "feature": "propeller_spinners",
+          "value": true,
+          "basis": "same period as T1-323"
+        }
+      ],
+      "unresolved": [
+        {
+          "feature": "markings",
+          "basis": "no photo or wreck evidence; Pacific Wrecks' marking text repeats T1-323's"
+        }
+      ],
+      "crew": {
+        "source": [
+          "pw-t1-326",
+          "ja-wikipedia-incident"
+        ],
+        "members": [
+          {
+            "role": "pilot",
+            "name": "二飛曹 林浩 (Hayashi Hiroshi)",
+            "fate": "survived"
+          },
+          {
+            "role": "observer",
+            "name": "谷本博明 (Pacific Wrecks: Tanimura)",
+            "fate": "killed"
+          },
+          {
+            "role": "crew",
+            "name": "Fujimoto Fumikatsu, Itō Sukeichi, Hachiki Isamu, Nomiyama Kaneyoshi, Kuriyama Nobuyuki",
+            "fate": "killed"
+          }
+        ],
+        "passengers": [
+          {
+            "name": "Vice Admiral Ugaki Matome",
+            "fate": "survived"
+          },
+          {
+            "name": "Kitamura Motoharu",
+            "fate": "survived"
+          },
+          {
+            "name": "Imanaka Kaoru, Muroi Sutej[i], Tomono Rinji",
+            "fate": "killed"
+          }
+        ],
+        "fate": "ditched about 100 m off Moila Point about 08:00; a 2018 side-scan sonar search found nothing",
+        "primary_sources_listed_by_pacific_wrecks": [
+          "705 Ku 行動調書, 18 Apr 1943",
+          "13th Fighter Command interception report",
+          "USAF Historical Study No. 85",
+          "Agawa 1979",
+          "Ugaki, Fading Victory",
+          "Lansdale 2004"
+        ]
+      }
+    }
+  ]
+}

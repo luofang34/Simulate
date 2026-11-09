@@ -65,7 +65,7 @@ impl LoadedSyspack {
             Some(bytes) => Some(PitotStaticCalibration::from_json_bytes(bytes)?),
             None => None,
         };
-        let calibration_suite = match verified.asset(CALIBRATION_SUITE_ASSET) {
+        let calibration_suite = match calibration_suite_bytes(&verified)? {
             Some(bytes) => Some(CalibrationSuite::from_json_bytes(bytes)?),
             None => None,
         };
@@ -109,7 +109,8 @@ impl LoadedSyspack {
     }
 
     /// Declarative POH and empirical flight-test suite when this package declares
-    /// [`CALIBRATION_SUITE_ASSET`].
+    /// [`CALIBRATION_SUITE_ASSET`], or the one `performance/<variant>/poh_benchmarks.json`
+    /// a variant sharing its vehicle's directory declares.
     #[must_use]
     pub const fn calibration_suite(&self) -> Option<&CalibrationSuite> {
         self.calibration_suite.as_ref()
@@ -205,5 +206,35 @@ impl LoadedSyspack {
             files.insert(path, bytes);
         }
         Ok(files)
+    }
+}
+
+/// The package's test card: [`CALIBRATION_SUITE_ASSET`], or, for one of several
+/// variants sharing a vehicle directory, the one `performance/<variant>/poh_benchmarks.json`
+/// its manifest declares. A manifest declaring more than one card is refused.
+fn calibration_suite_bytes(verified: &VerifiedSyspack) -> Result<Option<&[u8]>, PackError> {
+    let suffix = CALIBRATION_SUITE_ASSET
+        .rsplit('/')
+        .next()
+        .unwrap_or(CALIBRATION_SUITE_ASSET);
+    let cards: Vec<&String> = verified
+        .manifest()
+        .assets
+        .keys()
+        .filter(|path| {
+            path.as_str() == CALIBRATION_SUITE_ASSET
+                || (path.starts_with("performance/") && path.ends_with(&format!("/{suffix}")))
+        })
+        .collect();
+    match cards.as_slice() {
+        [] => Ok(None),
+        [card] => Ok(verified.asset(card)),
+        _ => Err(PackError::InvalidCalibration {
+            path: CALIBRATION_SUITE_ASSET.to_owned(),
+            detail: format!(
+                "the manifest declares {} test cards: {cards:?}",
+                cards.len()
+            ),
+        }),
     }
 }

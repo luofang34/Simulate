@@ -88,6 +88,8 @@ parts/
 
 ### 2.4 可重用零件（發動機、螺旋槳）
 發動機與螺旋槳是獨立、有版本、以 sha256 釘住的零件包（與儀表包同形）。載具 manifest 以 `parts: [{role, id, version, manifest_sha256}]` 釘住，`role` 為 `engine0`、`propeller1` 等；`sim-pack` 依 role 將零件的 JSBSim 文件放在 `engine/<role>.xml`（`<engine file="engine0">`、`<thruster file="propeller0">`）與 `systems/<role>.xml`（`<system file="engine0"/>`）。JSBSim 系統無法參數化 `propulsion/engine[n]`，故零件為每個發動機位置各帶一份 `jsbsim/system-<n>.xml`，由 role 結尾的數字選用；發動機系統須排在螺旋槳系統之前（調速器讀取發動機系統公佈的 `available-power-hp`）。修改 `engine.json`/`propeller.json` 後依序執行 `part_jsbsim.py`、零件的 rehash，再 rehash 釘住它的載具。
+
+同一機體的不同動力構型是**變體**，不是複製的 FDM：機體目錄只有一份 `fdm/<id>.xml`（以 `file=` 引用零件），預設變體為 `syspack.json`，其他變體為 `variants/<v>.json`（`DirectoryPackageSource::with_manifest`；rehash 時加上 manifest 路徑）。各變體只宣告自己用到的共用資產，並各帶 `performance/<v>/poh_benchmarks.json` 試飛卡（宣告兩張卡即拒絕載入）。範例：`vehicles/g4m1`（火星 11 型為校準基準，火星 15 型為同機體換發動機零件）；單一機身預設掛哪個變體記在 `design/airframes.json`，可隨證據修改。
 `syspack.json` 為 fail-closed：**任何資產修改後必須執行** `python3 vehicles/tools/syspack_rehash.py vehicles/<id>`，否則載入即失敗。新增資產時先在 `assets` 加入條目，再 rehash；若為 builtin 載具，同步在 `sim-pack/src/builtin.rs` 以 `include_bytes!` 掛上。
 
 `./scripts/check-structure.sh` 規則：禁止 `mod.rs`/`utils.rs`/`helpers.rs`/`common.rs`；每檔 ≤ 500 行、`lib.rs` ≤ 100 行並以 `//!` 開頭、每函式 ≤ 80 行；非測試碼不得 `+= 1`。
