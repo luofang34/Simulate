@@ -12,7 +12,7 @@ use crate::{
     scalar_math::sin,
 };
 
-use super::TdbEpoch;
+use super::{TdbEpoch, historical_utc};
 
 /// Seconds between Unix epoch (`1970-01-01T00:00:00Z`) and `J2000.0` (`2000-01-01T12:00:00Z`).
 const J2000_UNIX_SECONDS: i64 = 946_728_000;
@@ -26,8 +26,8 @@ pub enum TimeError {
     /// Malformed `DELTET/DELTA_AT` table inside an `LSK` file.
     #[error("malformed DELTET/DELTA_AT table: `{0}`")]
     MalformedLeapTable(String),
-    /// Requested epoch precedes the start of the `TAI - UTC` step table (`1972-01-01`).
-    #[error("epoch {tai_j2000_s:.3} s TAI precedes 1972-01-01 leap-second table start")]
+    /// Requested epoch precedes the `TAI - UTC` record (`1961-01-01`).
+    #[error("epoch {tai_j2000_s:.3} s TAI precedes the 1961-01-01 start of TAI - UTC")]
     BeforeLeapTable {
         /// Requested TAI seconds from J2000.
         tai_j2000_s: f64,
@@ -296,7 +296,9 @@ impl TimeScaleCatalog {
             .first()
             .ok_or_else(|| TimeError::MalformedLeapTable("empty".to_owned()))?;
         if tai_j2000_s < first.effective_tai_j2000_s {
-            return Err(TimeError::BeforeLeapTable { tai_j2000_s });
+            return historical_utc::utc_from_tai_unix_s(tai_j2000_s + J2000_UNIX_SECONDS as f64)
+                .map(UtcTime::from_unix_seconds)
+                .ok_or(TimeError::BeforeLeapTable { tai_j2000_s });
         }
         if let FutureUtcPolicy::RejectAfterExpiration {
             expires_tai_j2000_s,
@@ -326,12 +328,13 @@ impl TimeScaleCatalog {
             .steps
             .first()
             .ok_or_else(|| TimeError::MalformedLeapTable("empty".to_owned()))?;
-        if utc_unix_s < first.effective_utc_unix_s as f64 {
-            return Err(TimeError::BeforeLeapTable {
-                tai_j2000_s: utc_unix_s - (J2000_UNIX_SECONDS as f64),
-            });
-        }
         let mut dat = first.tai_minus_utc_s;
+        if utc_unix_s < first.effective_utc_unix_s as f64 {
+            dat =
+                historical_utc::tai_minus_utc_s(utc_unix_s).ok_or(TimeError::BeforeLeapTable {
+                    tai_j2000_s: utc_unix_s - (J2000_UNIX_SECONDS as f64),
+                })?;
+        }
         for step in &self.lsk.steps {
             if utc_unix_s >= step.effective_utc_unix_s as f64 {
                 dat = step.tai_minus_utc_s;

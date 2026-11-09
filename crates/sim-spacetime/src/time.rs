@@ -10,10 +10,15 @@ use crate::{
     hash::{ContentHash, DomainHasher},
 };
 
+mod builtin;
 mod coverage;
+mod epoch;
+mod historical_utc;
 mod scales;
 
+pub use builtin::{BUILTIN_LSK_BYTES, BUILTIN_LSK_SHA256};
 pub use coverage::{CoverageSet, TdbSpanNs};
+pub use epoch::SimEpoch;
 pub use scales::{
     EarthEopEntry, EarthEopTable, FutureUtcPolicy, LeapSecondEntry, LeapSecondTable,
     OutOfEopPolicy, TimeError, TimeScaleCatalog, Ut1Sample,

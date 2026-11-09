@@ -26,9 +26,6 @@ pub use hud::ConformalSurface;
 #[cfg(test)]
 pub(crate) use hud::hud_runway;
 
-const APOLLO_LM_EPOCH_UNIX_S: f64 = -14_182_200.0;
-const APOLLO_CM_EPOCH_UNIX_S: f64 = -13_854_300.0;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FeedDomain {
     EarthAircraft,
@@ -81,6 +78,9 @@ pub struct AvionicsFrameInput<'a> {
     pub profile: Option<ScenarioProfile>,
     /// Current simulation clock instant.
     pub timestamp: SimInstant,
+    /// UTC at `timestamp` on the flight's clock, which orients the Moon and
+    /// Earth under Apollo's inertial displays.
+    pub utc: Option<UtcTime>,
     /// Navigation solution the displays draw (never simulation truth).
     pub vehicle: VehicleState,
     /// Cockpit instruments as the onboard attitude and rate sensors read them.
@@ -414,18 +414,10 @@ impl AvionicsRig {
 }
 
 fn build_flight_sample(domain: FeedDomain, input: &AvionicsFrameInput<'_>) -> FlightSample {
-    let elapsed_s = input
-        .timestamp
-        .duration_since(SimInstant::START)
-        .as_seconds();
     let central_body = match domain {
         FeedDomain::EarthAircraft => None,
-        FeedDomain::ApolloLunarModule => Some(InertialTransform::moon_at(
-            UtcTime::from_unix_seconds(APOLLO_LM_EPOCH_UNIX_S + elapsed_s),
-        )),
-        FeedDomain::ApolloCommandModule => Some(InertialTransform::earth_at(
-            UtcTime::from_unix_seconds(APOLLO_CM_EPOCH_UNIX_S + elapsed_s),
-        )),
+        FeedDomain::ApolloLunarModule => input.utc.map(InertialTransform::moon_at),
+        FeedDomain::ApolloCommandModule => input.utc.map(InertialTransform::earth_at),
     };
     let air_data = match domain {
         FeedDomain::EarthAircraft => input.air_data,

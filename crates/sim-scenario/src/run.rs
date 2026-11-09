@@ -3,6 +3,7 @@ use sim_core::{
     AirframeArticulation, CameraPoseEcef, ControlInputs, SimInstant, TickSpan, VehicleState,
 };
 use sim_scenery::AerodromeId;
+use sim_spacetime::SimEpoch;
 
 use crate::{
     AirportPatternRun, CapsuleReentryRun, CorridorRun, FlightDynamics, LunarLandingConfig,
@@ -56,6 +57,7 @@ impl ScenarioSnapshot {
 /// profile fly the same bits.
 pub struct ScenarioRun {
     profile: ScenarioProfile,
+    epoch: SimEpoch,
     flight: Flight,
 }
 
@@ -86,7 +88,11 @@ impl ScenarioRun {
             )),
             corridor => Flight::Corridor(Box::new(CorridorRun::new(corridor, dynamics)?)),
         };
-        Ok(Self { profile, flight })
+        Ok(Self {
+            profile,
+            epoch: profile.sim_epoch()?,
+            flight,
+        })
     }
 
     /// Starts a continuous multi-circuit airport traffic pattern (`max_circuits = None`),
@@ -102,6 +108,7 @@ impl ScenarioRun {
         };
         Ok(Self {
             profile,
+            epoch: profile.sim_epoch()?,
             flight: Flight::Pattern(Box::new(AirportPatternRun::with_max_circuits(
                 aerodrome, dynamics, None,
             )?)),
@@ -120,6 +127,12 @@ impl ScenarioRun {
     /// The profile being flown.
     pub fn profile(&self) -> ScenarioProfile {
         self.profile
+    }
+
+    /// The run's clock: what every tick means in TDB, UTC and UT1.
+    #[must_use]
+    pub fn sim_epoch(&self) -> &SimEpoch {
+        &self.epoch
     }
 
     /// The step period.

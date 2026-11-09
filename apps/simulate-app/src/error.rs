@@ -6,6 +6,7 @@ use sim_indicate::{FeedError, PanelError};
 use sim_maplibre::MapAdapterError;
 use sim_render::RenderError;
 use sim_scenario::ScenarioError;
+use sim_spacetime::TimeError;
 
 /// Typed errors raised while initialising, stepping, or compositing the cockpit app.
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +23,9 @@ pub enum AppSimError {
     /// Tier-0 Aviate runner step or initialization failed.
     #[error("Aviate direct bridge failed")]
     Aviate(#[from] AviateBridgeError),
+    /// The flight's start time is outside the time-scale record.
+    #[error("the flight clock could not name a time")]
+    Time(#[from] TimeError),
     /// Standard atmosphere sampling failed.
     #[error("atmosphere sampling failed")]
     Atmosphere(#[from] AtmosphereError),

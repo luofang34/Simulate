@@ -1,6 +1,6 @@
 use flightbag::{AirportSurfaceGraph, FacilityCode, RunwayDesignator, RunwayEndSpec};
 use sim_core::VirtualCameraSpec;
-use sim_geo::{Geodetic, UtcTime};
+use sim_geo::Geodetic;
 use sim_scenario::{
     OperatorViewportMode, RadioBeliefPolicy, ScenarioProfile, SimSupervisor, SimTimeScale,
 };
@@ -27,8 +27,6 @@ pub const DELAWARE_RUNWAY_HEIGHT_M: f64 = 8.5;
 /// Reference Delaware (`KDOV`) Runway `09` true bearing (`85°`, aligned with the synthetic corridor).
 pub const DELAWARE_RUNWAY_BEARING_RAD: f64 = 85.0 * std::f64::consts::PI / 180.0;
 
-const EPOCH_UNIX_S: f64 = 1_782_864_000.0;
-
 /// Owns [`SimSupervisor`], OpenStreetMap airport surface diagrams (`KDOV`, `47N`, `KEWR`),
 /// the free-flight airport from the global airport database, active virtual camera
 /// channel selection, and truth-to-belief radio traffic filtering.
@@ -44,7 +42,6 @@ pub struct SupervisorRig {
     virtual_camera_index: usize,
     /// The profile whose camera suite [`Self::cycle_virtual_camera`] last stepped through.
     camera_suite: Option<ScenarioProfile>,
-    start_utc: UtcTime,
 }
 
 impl Default for SupervisorRig {
@@ -82,7 +79,6 @@ impl SupervisorRig {
             graphs: AirportGraphs::build(datum, free_airport),
             virtual_camera_index: 0,
             camera_suite: None,
-            start_utc: UtcTime::from_unix_seconds(EPOCH_UNIX_S),
         }
     }
 

@@ -28,8 +28,6 @@ const SENSOR_SEED: u64 = 0x0B5E_55ED_5EED_0001;
 const STATIC_PORT_FLOOR_PA: f64 = 50.0;
 /// Altimeter setting the air data reports, hPa.
 const STANDARD_QNH_HPA: f64 = 1_013.25;
-/// UTC instant the atmosphere is sampled at, Unix seconds.
-const AIR_DATA_EPOCH_UNIX_S: f64 = 1_782_864_000.0;
 
 /// Sensor and navigation errors at one instant.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -164,20 +162,18 @@ impl OnboardSensorBus {
         self.previous.lerp(self.current, alpha)
     }
 
-    /// Pitot-static air data sensed on `truth` at `at`: true airspeed from the velocity
-    /// through the air mass (not over the ground), or `None` where the static port reads
-    /// below the transducer floor.
+    /// Pitot-static air data sensed on `truth` at `at` (`utc` on the flight's
+    /// clock): true airspeed from the velocity through the air mass (not over
+    /// the ground), or `None` where the static port reads below the transducer floor.
     pub fn air_data(
         &self,
         at: SimInstant,
+        utc: UtcTime,
         truth: &VehicleState,
         errors: &SensorErrors,
     ) -> Option<AirDataReading> {
         let geo = ecef_to_geodetic(truth.position_ecef);
-        let air = self
-            .atmosphere
-            .sample(&geo, UtcTime::from_unix_seconds(AIR_DATA_EPOCH_UNIX_S))
-            .ok()?;
+        let air = self.atmosphere.sample(&geo, utc).ok()?;
         if air.pressure_pa < STATIC_PORT_FLOOR_PA {
             return None;
         }

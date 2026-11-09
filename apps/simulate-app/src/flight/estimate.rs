@@ -110,7 +110,12 @@ impl Flight {
             };
         };
         let estimated_vehicle = self.display_estimated_vehicle_state();
-        let mut air_data = self.sensors.air_data(self.now(), &truth, &errors);
+        let now = self.now();
+        let mut air_data = self
+            .sim_epoch()
+            .utc_at(now)
+            .ok()
+            .and_then(|utc| self.sensors.air_data(now, utc, &truth, &errors));
         if let (Some(reading), Some(pec)) = (air_data.as_mut(), self.pitot_static_calibration()) {
             let ias_m_s = pec.cas_to_ias_at_flap_deg_m_s(
                 self.articulation().flap_deg,

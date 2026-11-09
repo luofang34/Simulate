@@ -14,11 +14,6 @@ use sim_scenario::ScenarioProfile;
 use crate::esc_menu::Step;
 use crate::flight::Flight;
 
-/// Apollo 11 lunar module landing, `1969-07-20T20:17:40Z`, Unix seconds.
-const APOLLO_11_LANDING_UTC_S: f64 = -14_182_940.0;
-/// Apollo 11 command module entry interface, `1969-07-24T16:35:05Z`, Unix seconds.
-const APOLLO_11_ENTRY_UTC_S: f64 = -13_850_695.0;
-
 /// One frame's sky for the renderers.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SkyFrame<'a> {
@@ -49,6 +44,7 @@ struct CachedSkyEval {
     mode: SkyTimeMode,
     body: ReferenceBody,
     profile: Option<ScenarioProfile>,
+    base_utc_s: Option<f64>,
     observer_fixed_m: DVec3,
     elapsed_s: f64,
     live_wall_utc_s: f64,
@@ -100,11 +96,17 @@ impl SkyRig {
             ReferenceBody::Earth
         };
         let profile = flight.profile();
+        let base_utc_s = flight
+            .sim_epoch()
+            .start_utc()
+            .ok()
+            .map(|utc| utc.unix_seconds());
         let elapsed_s = flight.now().duration_since(SimInstant::START).as_seconds();
         if let Some(cached) = self.cached.as_ref().filter(|c| {
             c.mode == self.mode
                 && c.body == body
                 && c.profile == profile
+                && c.base_utc_s == base_utc_s
                 && (elapsed_s - c.elapsed_s).abs() < EPHEMERIS_MIN_DT_S
                 && (live_wall_utc_s - c.live_wall_utc_s).abs() < EPHEMERIS_MIN_DT_S
                 && observer_fixed_m.distance_squared(c.observer_fixed_m) < EPHEMERIS_MAX_MOVE_M2
@@ -119,7 +121,7 @@ impl SkyRig {
             body,
             observer_fixed_m,
             elapsed_s,
-            scenario_base_utc_s(profile),
+            base_utc_s,
             live_wall_utc_s,
         );
         let refreshed = frame.stars_update.as_deref().map(|stars| {
@@ -132,6 +134,7 @@ impl SkyRig {
             mode: self.mode,
             body,
             profile,
+            base_utc_s,
             observer_fixed_m,
             elapsed_s,
             live_wall_utc_s,
@@ -154,14 +157,6 @@ pub fn wall_clock_utc_s() -> f64 {
 }
 
 /// The scenario's historical start time, if it has one; other flights follow live UTC.
-const fn scenario_base_utc_s(profile: Option<ScenarioProfile>) -> Option<f64> {
-    match profile {
-        Some(ScenarioProfile::Apollo11LunarLanding) => Some(APOLLO_11_LANDING_UTC_S),
-        Some(ScenarioProfile::Apollo11CapsuleReentry) => Some(APOLLO_11_ENTRY_UTC_S),
-        Some(_) | None => None,
-    }
-}
-
 fn sky_input<'a>(
     frame: &CelestialFrame,
     stars: Option<&'a [CelestialStar]>,

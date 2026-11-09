@@ -69,6 +69,7 @@ fn supervisor_isolates_truth_traffic_from_operator_belief() -> Result<(), AppSim
     sup.sync(
         flight.vehicle_state().position_ecef,
         flight.now(),
+        flight.sim_epoch().start_utc()?,
         flight.profile(),
     );
 

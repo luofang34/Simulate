@@ -1,11 +1,15 @@
+use std::sync::Arc;
+
 use sim_apollo::{CockpitInstrumentPanel, EarthVehicleSources};
 use sim_core::{ControlInputs, SimInstant, SimSession, TickSpan, VehicleState};
-use sim_geo::{Geodetic, ecef_to_geodetic};
+use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
 use sim_scenario::{FlightDynamics, ScenarioProfile, ScenarioRun};
+use sim_spacetime::{SimEpoch, TimeScaleCatalog};
 
 use super::plant_block::PlantBlock;
 use super::sensors::{OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD};
 use crate::error::AppSimError;
+use crate::sky_rig::wall_clock_utc_s;
 use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
 use crate::world_surface::WorldSurfaceHandle;
 
@@ -46,6 +50,22 @@ pub(super) enum Mode {
 }
 
 impl Mode {
+    /// A scenario flies its own clock; free flight starts at the wall-clock
+    /// second it begins, so the sky matches the pilot's day and then follows
+    /// sim time.
+    pub(super) fn sim_epoch(
+        &self,
+        scales: &Arc<TimeScaleCatalog>,
+    ) -> Result<SimEpoch, AppSimError> {
+        match self {
+            Self::Scenario(run) => Ok(run.sim_epoch().clone()),
+            Self::Free { .. } => {
+                let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
+                Ok(SimEpoch::from_utc(start, Arc::clone(scales))?)
+            }
+        }
+    }
+
     pub(super) fn free(
         vehicle: FreeFlightVehicle,
         spawn: FreeSpawn,

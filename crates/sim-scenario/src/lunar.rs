@@ -14,10 +14,11 @@ use sim_core::{
     RigidBodyConfig, RigidBodyInput, SimInstant, TICKS_PER_SECOND, ThrusterWrench, TickSpan,
     VehicleState,
 };
-use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, LocalFrame, UtcTime};
+use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, LocalFrame};
 use sim_scenery::{ElevationSource, LunarTranquilityScenery, WEST_CRATER};
+use sim_spacetime::SimEpoch;
 
-use crate::ScenarioError;
+use crate::{ScenarioError, ScenarioProfile};
 
 mod guidance;
 mod sensing;
@@ -38,8 +39,6 @@ const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(STEP_HZ));
 const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(RADAR_HZ));
 const PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / STEP_HZ);
 const RADAR_PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / RADAR_HZ);
-/// 20 July 1969, 20:10 UTC, in the last minutes of the descent.
-const EPOCH_UNIX_S: f64 = -14_182_200.0;
 
 /// Where the approach begins, inside the scenery's coverage: east of the site
 /// and moving west, as Eagle did with the low Sun at its back.
@@ -143,6 +142,7 @@ pub struct LunarLandingRun {
     lpd: LpdProjector,
     panel: CockpitInstrumentPanel,
     scenery: LunarTranquilityScenery,
+    epoch: SimEpoch,
     window_towards: DVec3,
     target_east_m: f64,
     target_north_m: f64,
@@ -199,14 +199,10 @@ fn approach_target(target_fixed_m: DVec3) -> ApproachTarget {
     }
 }
 
-fn utc_at(now: SimInstant) -> UtcTime {
-    UtcTime::from_unix_seconds(EPOCH_UNIX_S)
-        .advanced_by(now.duration_since(SimInstant::START).as_seconds())
-}
-
 impl LunarLandingRun {
     /// The approach at its first instant.
     pub fn new(config: &LunarLandingConfig) -> Result<Self, ScenarioError> {
+        let epoch = ScenarioProfile::Apollo11LunarLanding.sim_epoch()?;
         let scenery = LunarTranquilityScenery::apollo_11_landing();
         let site_up = up_at(BODY.geodetic_to_fixed(&scenery.at_local(0.0, 0.0)));
         let west = -LocalFrame::at(&scenery.at_local(0.0, 0.0)).east();
@@ -227,7 +223,7 @@ impl LunarLandingRun {
             RigidBodyConfig {
                 body: BODY,
                 period: PERIOD,
-                epoch: UtcTime::from_unix_seconds(EPOCH_UNIX_S),
+                epoch: epoch.start_utc()?,
                 initial: VehicleState {
                     position_ecef,
                     velocity_ecef,
@@ -239,7 +235,7 @@ impl LunarLandingRun {
             Box::new(VacuumAero),
             Box::new(VacuumAtmosphere),
         )?;
-        let inertial = InertialTransform::moon_at(utc_at(SimInstant::START));
+        let inertial = InertialTransform::moon_at(epoch.start_utc()?);
         let imu_site = InertialSiteSample::of(&vehicle, LM_IMU, &inertial)?;
         let asa_site = InertialSiteSample::of(&vehicle, LM_ASA, &inertial)?;
         let platform = imu_site.site_to_inertial * config.navbase_to_platform.inverse();
@@ -257,6 +253,7 @@ impl LunarLandingRun {
             lpd: LpdProjector,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
             scenery,
+            epoch,
             window_towards: west,
             target_east_m: TARGET_EAST_M,
             target_north_m: TARGET_NORTH_M,
@@ -345,10 +342,10 @@ impl LunarLandingRun {
     }
 
     /// The attitude being flown, Moon-fixed, from the cockpit's active source.
-    fn sensed_attitude(&self) -> DQuat {
-        let inertial = InertialTransform::moon_at(utc_at(self.now()));
+    fn sensed_attitude(&self) -> Result<DQuat, ScenarioError> {
+        let inertial = InertialTransform::moon_at(self.epoch.utc_at(self.now())?);
         let flown = self.panel.snapshot().attitude.value;
-        (inertial.fixed_to_j2000_rotation().inverse() * flown).normalize()
+        Ok((inertial.fixed_to_j2000_rotation().inverse() * flown).normalize())
     }
 
     /// What the guidance wants of the engine and jets this step.
@@ -374,7 +371,7 @@ impl LunarLandingRun {
         };
         let mass = self.vehicle.mass_properties();
         let direction = thrust_direction(position, wanted);
-        let sensed = self.sensed_attitude();
+        let sensed = self.sensed_attitude()?;
         let thrust_n = ((wanted - BODY.gravity_fixed(position)).dot(sensed * DVec3::X)
             * mass.total_mass_kg)
             .clamp(MIN_THROTTLE * LM_DPS_THRUST_N, LM_DPS_THRUST_N);

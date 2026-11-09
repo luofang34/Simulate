@@ -196,8 +196,11 @@ def main() -> None:
     earth_path = os.path.join(out_dir, "earth_itrf93_2026_2028.bpc")
     open(earth_path, "wb").write(earth_subset)
 
-    for text_kernel in ["gm_de440.tpc", "pck00011.tpc", "moon_de440_250416.tf", "naif0012.tls"]:
+    for text_kernel in ["gm_de440.tpc", "pck00011.tpc", "moon_de440_250416.tf"]:
         shutil.copyfile(os.path.join(src_dir, text_kernel), os.path.join(out_dir, text_kernel))
+    # The leap-second kernel is shared by every flight, so it lives in sim-spacetime.
+    spacetime_data = os.path.join(out_dir, "..", "..", "sim-spacetime", "data")
+    shutil.copyfile(os.path.join(src_dir, "naif0012.tls"), os.path.join(spacetime_data, "naif0012.tls"))
 
     # Bit-for-bit granule verification against source kernels across 500 sample epochs
     _, _, _, _, sub_segs = read_daf_segments(spk_subset)

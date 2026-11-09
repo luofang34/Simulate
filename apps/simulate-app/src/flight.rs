@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use glam::DVec3;
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{
@@ -9,6 +11,7 @@ use sim_scenario::{
     AirportPatternRun, OperatorViewportMode, PatternLeg, ScenarioProfile, ScenarioWorld,
     SimTimeScale,
 };
+use sim_spacetime::{SimEpoch, TimeScaleCatalog};
 use tracing::{debug, info};
 use web_time::Instant;
 
@@ -75,6 +78,8 @@ pub struct Flight {
     surface: WorldSurfaceHandle,
     sensors: OnboardSensorBus,
     gauges: PanelGauges,
+    time_scales: Arc<TimeScaleCatalog>,
+    epoch: SimEpoch,
 }
 
 impl Flight {
@@ -89,6 +94,8 @@ impl Flight {
     pub fn with_surface(surface: WorldSurfaceHandle) -> Result<Self, AppSimError> {
         let preferred_vehicle = FreeFlightVehicle::default();
         let mode = Mode::free(preferred_vehicle, FreeSpawn::Delaware, &surface)?;
+        let time_scales = Arc::new(TimeScaleCatalog::builtin()?);
+        let epoch = mode.sim_epoch(&time_scales)?;
         let prev_vehicle = mode.vehicle();
         let mut flight = Self {
             steps: RateAdapter::new(mode.period()),
@@ -109,8 +116,10 @@ impl Flight {
             surface,
             sensors: OnboardSensorBus::new(SensorRealism::default()),
             gauges: PanelGauges::default(),
+            time_scales,
+            epoch,
         };
-        flight.begin_flight();
+        flight.begin_flight()?;
         Ok(flight)
     }
 
@@ -120,8 +129,7 @@ impl Flight {
             Some(profile) => Mode::scenario(profile)?,
             None => Mode::free(self.preferred_vehicle, self.free_spawn, &self.surface)?,
         };
-        self.begin_flight();
-        Ok(())
+        self.begin_flight()
     }
 
     /// Switches to `vehicle` in interactive free flight.
@@ -144,8 +152,7 @@ impl Flight {
             Some(profile) => Mode::scenario(profile)?,
             None => Mode::free(self.preferred_vehicle, self.free_spawn, &self.surface)?,
         };
-        self.begin_flight();
-        Ok(())
+        self.begin_flight()
     }
 
     /// Forgets the last frame's wall-clock instant, so the next frame simulates no time for the
@@ -180,13 +187,15 @@ impl Flight {
     }
 
     /// A new flight began: fresh clocks and history, one checkpoint at its start.
-    fn begin_flight(&mut self) {
+    fn begin_flight(&mut self) -> Result<(), AppSimError> {
+        self.epoch = self.mode.sim_epoch(&self.time_scales)?;
         self.sensors = OnboardSensorBus::new(self.sensors.realism());
         self.gauges = PanelGauges::for_pack(self.instrument_pack());
         self.history.clear();
         self.history
             .push(FlightCheckpoint::capture(&self.mode, &self.sensors));
         self.after_discontinuity();
+        Ok(())
     }
 
     fn after_discontinuity(&mut self) {
@@ -246,6 +255,13 @@ impl Flight {
     #[must_use]
     pub fn now(&self) -> SimInstant {
         self.mode.now()
+    }
+
+    /// What each tick of this flight means in TDB, UTC and UT1. Dynamics,
+    /// sky, air data and displays all read time from here.
+    #[must_use]
+    pub const fn sim_epoch(&self) -> &SimEpoch {
+        &self.epoch
     }
 
     /// Current true `f64` ECEF [`VehicleState`].

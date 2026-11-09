@@ -2,7 +2,7 @@
 
 use glam::{DMat3, DQuat};
 use sim_core::{SimInstant, VehicleState, VirtualCameraPlacement};
-use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, egm96_undulation_m};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime, egm96_undulation_m};
 use sim_maplibre::ViewSlotMask;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 use sim_scenery::{AerodromeId, AirportDatabase, CatalogVerticalDatum};
@@ -172,7 +172,12 @@ fn traffic_entities_follow_the_vertical_datum_around_the_airport() {
     let record = rig.active_airport_record(kewr).unwrap();
     let arp = record.arp_geodetic(rig.vertical_datum());
     let ownship = BodyEllipsoid::WGS84.geodetic_to_fixed(&arp);
-    rig.sync(ownship, SimInstant::START, kewr);
+    rig.sync(
+        ownship,
+        SimInstant::START,
+        UtcTime::from_unix_seconds(1_782_864_000.0),
+        kewr,
+    );
     let truth = rig.supervisor().truth_world();
     let tracks = truth.surveillance.tracks();
     let entities = rig.truth_entities(ViewSlotMask::ALL);

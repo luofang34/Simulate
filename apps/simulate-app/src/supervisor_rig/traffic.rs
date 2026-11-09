@@ -3,7 +3,7 @@
 
 use glam::DVec3;
 use sim_core::SimInstant;
-use sim_geo::egm96_undulation_m;
+use sim_geo::{UtcTime, egm96_undulation_m};
 use sim_maplibre::{
     AltitudeReference, DynamicEntity3D, ViewSlotMask, entities_from_surveillance_belief,
 };
@@ -23,14 +23,20 @@ use super::{
 
 impl SupervisorRig {
     /// Updates omniscient truth traffic kinematics at `now` and projects radio-visible tracks
-    /// into [`sim_scenario::SimSupervisor::operator_view`]'s `belief_world`.
-    pub fn sync(&mut self, ownship_ecef: DVec3, now: SimInstant, profile: Option<ScenarioProfile>) {
+    /// into [`sim_scenario::SimSupervisor::operator_view`]'s `belief_world`, on a flight
+    /// that began at `start_utc`.
+    pub fn sync(
+        &mut self,
+        ownship_ecef: DVec3,
+        now: SimInstant,
+        start_utc: UtcTime,
+        profile: Option<ScenarioProfile>,
+    ) {
         let t_s = now.duration_since(SimInstant::START).as_seconds().max(0.0);
         let now_us = (t_s * 1_000_000.0) as u64;
         let anchor = self.traffic_anchor(profile);
         self.ingest_truth_traffic(anchor, t_s, now_us);
-        self.supervisor
-            .sync_belief(ownship_ecef, now, self.start_utc);
+        self.supervisor.sync_belief(ownship_ecef, now, start_utc);
     }
 
     /// Current revision of the operator's `belief_world` surveillance store.
