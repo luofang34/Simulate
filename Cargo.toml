@@ -199,7 +199,7 @@ Aviate = { git = "https://github.com/luofang34/Aviate.git", rev = "6974c39b0a722
 Flightbag = { git = "https://github.com/luofang34/Flightbag.git", rev = "c837ec273f97d7abd1a1fff35968c1e6aca0007a", path = "../Flightbag", version = "0.1.0" }
 world = { git = "https://github.com/luofang34/world.git", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2", path = "../world", version = "0.1.0" }
 Indicate = { git = "https://github.com/luofang34/Indicate.git", rev = "89a0fbdeea62b1e357a0166aeaae499c3ee32014", path = "../Indicate", version = "0.1.0" }
-mbd = { git = "https://github.com/luofang34/mbd.git", rev = "32812cae9eeef161af6b502877a14be4b77e5bab", path = "../mbd", version = "0.1.0" }
+mbd = { git = "https://github.com/luofang34/mbd.git", rev = "e96726f6a09814673595424cc4a805ea62f80cb0", path = "../mbd", version = "0.1.0" }
 Navigate = { git = "https://github.com/luofang34/Navigate.git", rev = "9fe809deae3aa6bd12a5e34bf3eec801c03cd49a", path = "../Navigate", version = "0.1.0" }
 Pilotage = { git = "https://github.com/luofang34/Pilotage.git", rev = "e2714e54c480670561d2f6c91bb64e5e26b81a00", version = "0.1.0" }
 maplibre-rs-experimental = { git = "https://github.com/luofang34/maplibre-rs-experimental.git", rev = "4bb93f04947680df57dbb9b810ed3f458414df7d", path = "../maplibre-rs-experimental", version = "0.1.0" }
