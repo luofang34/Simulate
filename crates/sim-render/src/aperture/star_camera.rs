@@ -6,6 +6,7 @@ use crate::{CameraPose, PinholeProjection, RenderError};
 
 mod config;
 mod geometry;
+mod motion;
 mod psf;
 
 #[cfg(test)]
@@ -53,9 +54,15 @@ pub enum StarVisibility {
 pub struct StarTruth {
     /// The star's [`CatalogStar::id`].
     pub id: u16,
-    /// Where the star's light centres, in the intrinsics' pixel coordinates
-    /// (pixel centres on integers); `None` behind the camera.
+    /// Where the star's light centres at mid-exposure, the instant a frame
+    /// is stamped with, in the intrinsics' pixel coordinates (pixel centres
+    /// on integers); `None` behind the camera.
     pub centroid_px: Option<[f64; 2]>,
+    /// Where the star's light centres at the exposure start; the same as
+    /// `centroid_px` for a camera that does not move during the exposure.
+    pub streak_start_px: Option<[f64; 2]>,
+    /// Where the star's light centres at the exposure end.
+    pub streak_end_px: Option<[f64; 2]>,
     /// Mean signal electrons the star adds to this frame, summed over its
     /// whole point-spread function including any part beyond the image edge;
     /// zero when the Earth blocks it or it is behind the camera.
@@ -86,11 +93,16 @@ pub struct StarCameraExposure {
 /// A radiometric star camera on the CPU: deterministic, headless, and
 /// independent of any GPU.
 ///
+/// [`StarCamera::expose`] holds the camera still for the exposure;
+/// [`StarCamera::expose_moving`] smears each star along the path the camera
+/// turns through.
+///
 /// Not modelled: atmospheric extinction, scintillation and refraction along
 /// the line of sight; daylight and twilight sky gradients (the sky is one
 /// configurable brightness); stray light from the Sun, Moon, or Earth limb;
-/// motion smear during the exposure; PSF variation across the field; hot
-/// pixels and dark-current non-uniformity.
+/// rolling-shutter skew (the whole detector integrates over the same
+/// interval); PSF variation across the field; hot pixels and dark-current
+/// non-uniformity.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StarCamera {
     config: StarCameraConfig,
@@ -119,9 +131,7 @@ impl StarCamera {
     ) -> (Vec<f64>, StarCameraTruth) {
         let intrinsics = self.config.intrinsics;
         let size = [intrinsics.width, intrinsics.height];
-        let pixels = intrinsics.width as usize * intrinsics.height as usize;
-        let background = self.config.sky_electrons_per_px() + self.config.dark_electrons_per_px();
-        let mut image = vec![background; pixels];
+        let (mut image, background) = self.background_image();
         let to_camera = pose.orientation.inverse();
         let truth = stars
             .iter()
@@ -159,14 +169,8 @@ impl StarCamera {
         sequence: u64,
     ) -> StarCameraExposure {
         let (electrons, truth) = self.expected_electrons(pose, stars);
-        let intrinsics = self.config.intrinsics;
         StarCameraExposure {
-            image: SensorCounts {
-                width: intrinsics.width,
-                height: intrinsics.height,
-                significant_bits: self.config.significant_bits,
-                counts: self.read_out(&electrons, sequence),
-            },
+            image: self.counts(&electrons, sequence),
             truth,
         }
     }
@@ -197,6 +201,8 @@ impl StarCamera {
         StarTruth {
             id: star.id,
             centroid_px,
+            streak_start_px: centroid_px,
+            streak_end_px: centroid_px,
             signal_electrons: if lit {
                 self.config.star_electrons(star.v_magnitude)
             } else {
@@ -204,6 +210,23 @@ impl StarCamera {
             },
             visibility,
         }
+    }
+
+    fn counts(&self, electrons: &[f64], sequence: u64) -> SensorCounts {
+        let intrinsics = self.config.intrinsics;
+        SensorCounts {
+            width: intrinsics.width,
+            height: intrinsics.height,
+            significant_bits: self.config.significant_bits,
+            counts: self.read_out(electrons, sequence),
+        }
+    }
+
+    fn background_image(&self) -> (Vec<f64>, f64) {
+        let intrinsics = self.config.intrinsics;
+        let pixels = intrinsics.width as usize * intrinsics.height as usize;
+        let background = self.config.sky_electrons_per_px() + self.config.dark_electrons_per_px();
+        (vec![background; pixels], background)
     }
 
     fn read_out(&self, electrons: &[f64], sequence: u64) -> Vec<u16> {

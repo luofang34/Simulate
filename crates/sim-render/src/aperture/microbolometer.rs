@@ -3,12 +3,14 @@ use super::readout::{SensorCounts, digitise, full_scale};
 use crate::RenderError;
 
 mod config;
+mod lag;
 mod scene;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::{MICROBOLOMETER_BITS, MicrobolometerConfig};
+pub use lag::{SceneInterval, ThermalLag};
 pub use scene::SceneTemperature;
 
 /// One microbolometer frame: raw counts for the navigator and, separately,
@@ -30,9 +32,14 @@ pub struct MicrobolometerFrame {
 /// noise (per-pixel NETD, per-column) is drawn from the seed and the frame
 /// sequence.
 ///
+/// [`Microbolometer::capture`] reads a scene the detector has settled on;
+/// [`Microbolometer::capture_lagged`] adds the detector's thermal time
+/// constant, which smears a moving scene within a frame and makes a changing
+/// one lag across frames.
+///
 /// Not modelled: 1/f offset drift between shutter non-uniformity
-/// corrections, the ~10 ms thermal time constant's motion blur, narcissus,
-/// halo around hot objects, optics blur, atmospheric path transmission and
+/// corrections, the rolling readout (the whole array is read at one instant),
+/// narcissus, halo around hot objects, optics blur, atmospheric path transmission and
 /// emission, the non-linearity of in-band radiance in temperature (the
 /// output is linear in brightness temperature), and dead pixels.
 #[derive(Debug, Clone, PartialEq)]
@@ -61,32 +68,64 @@ impl Microbolometer {
         &self.config
     }
 
-    /// Reads out frame `sequence` of `scene`. Fails if the scene is not the
-    /// detector's size or holds a temperature that is not finite.
+    /// Reads out frame `sequence` of `scene`, a scene that has held still
+    /// long enough for the detector to settle on it. Fails if the scene is
+    /// not the detector's size or holds a temperature that is not finite.
     pub fn capture(
         &self,
         scene: &SceneTemperature,
         sequence: u64,
     ) -> Result<MicrobolometerFrame, RenderError> {
+        self.check_scene(scene)?;
+        let kelvin: Vec<f64> = scene.kelvin.iter().map(|&k| f64::from(k)).collect();
+        Ok(self.frame(&kelvin, scene, sequence))
+    }
+
+    fn check_scene(&self, scene: &SceneTemperature) -> Result<(), RenderError> {
         let config = &self.config;
-        if scene.width != config.width
-            || scene.height != config.height
-            || scene.kelvin.len() != self.gain.len()
-            || !scene.kelvin.iter().all(|kelvin| kelvin.is_finite())
+        let finite = scene.kelvin.iter().all(|kelvin| kelvin.is_finite());
+        if scene.width == config.width
+            && scene.height == config.height
+            && scene.kelvin.len() == self.gain.len()
+            && finite
         {
-            return Err(RenderError::InvalidSensor {
-                sensor: "microbolometer",
-                detail: format!(
-                    "scene of {}x{} ({} values, finite: {}) for a {}x{} detector",
-                    scene.width,
-                    scene.height,
-                    scene.kelvin.len(),
-                    scene.kelvin.iter().all(|kelvin| kelvin.is_finite()),
-                    config.width,
-                    config.height
-                ),
-            });
+            return Ok(());
         }
+        Err(RenderError::InvalidSensor {
+            sensor: "microbolometer",
+            detail: format!(
+                "scene of {}x{} ({} values, finite: {finite}) for a {}x{} detector",
+                scene.width,
+                scene.height,
+                scene.kelvin.len(),
+                config.width,
+                config.height
+            ),
+        })
+    }
+
+    /// The frame whose detector sees `detector_k` at readout, with `truth`
+    /// as the scene.
+    fn frame(
+        &self,
+        detector_k: &[f64],
+        truth: &SceneTemperature,
+        sequence: u64,
+    ) -> MicrobolometerFrame {
+        let config = &self.config;
+        MicrobolometerFrame {
+            image: SensorCounts {
+                width: config.width,
+                height: config.height,
+                significant_bits: MICROBOLOMETER_BITS,
+                counts: self.read_out(detector_k, sequence),
+            },
+            truth: truth.clone(),
+        }
+    }
+
+    fn read_out(&self, detector_k: &[f64], sequence: u64) -> Vec<u16> {
+        let config = &self.config;
         let ceiling = full_scale(MICROBOLOMETER_BITS);
         let mut column_stream = NoiseStream::new(config.seed, sequence, NoiseStreamId::Column);
         let column_noise: Vec<f64> = (0..config.width)
@@ -95,8 +134,7 @@ impl Microbolometer {
         let mut pixel_stream = NoiseStream::new(config.seed, sequence, NoiseStreamId::Temporal);
         let width = config.width as usize;
         let mut counts = Vec::with_capacity(self.gain.len());
-        let rows = scene
-            .kelvin
+        let rows = detector_k
             .chunks_exact(width)
             .zip(self.gain.chunks_exact(width))
             .zip(self.offset_k.chunks_exact(width));
@@ -107,7 +145,7 @@ impl Microbolometer {
                 .zip(offsets)
                 .zip(&column_noise)
                 .map(|(((&kelvin, gain), offset), column)| {
-                    let contrast = f64::from(kelvin) - config.reference_temperature_k;
+                    let contrast = kelvin - config.reference_temperature_k;
                     let temporal = config.netd_k * pixel_stream.gaussian();
                     let kelvin_equivalent = gain * contrast + offset + column + temporal;
                     digitise(
@@ -118,15 +156,7 @@ impl Microbolometer {
                 });
             counts.extend(row);
         }
-        Ok(MicrobolometerFrame {
-            image: SensorCounts {
-                width: config.width,
-                height: config.height,
-                significant_bits: MICROBOLOMETER_BITS,
-                counts,
-            },
-            truth: scene.clone(),
-        })
+        counts
     }
 }
 

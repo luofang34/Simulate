@@ -2,6 +2,7 @@ use sim_geo::InertialTransform;
 
 use crate::{CameraPose, SceneLighting};
 
+mod exposure_blend;
 mod microbolometer;
 mod noise;
 mod overlay;
@@ -15,8 +16,8 @@ mod target;
 mod thermal_target;
 
 pub use microbolometer::{
-    MICROBOLOMETER_BITS, Microbolometer, MicrobolometerConfig, MicrobolometerFrame,
-    SceneTemperature,
+    MICROBOLOMETER_BITS, Microbolometer, MicrobolometerConfig, MicrobolometerFrame, SceneInterval,
+    SceneTemperature, ThermalLag,
 };
 pub use overlay::{OcclusionOverlayConfig, OpticalReticle, PropellerDisk, WindowBezel};
 pub use pass::SensorAperturePass;
@@ -82,7 +83,9 @@ pub struct PresentedViewport {
     pub projection: PinholeProjection,
 }
 
-/// One exposure of a [`SensorAperturePass`].
+/// One exposure of a [`SensorAperturePass`], at one instant. For motion
+/// blur, render frames at [`CameraPose::exposure_sub_poses`] and combine them
+/// with [`ApertureImage::blend_exposure`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ApertureFrame {
     /// Where the camera is.
