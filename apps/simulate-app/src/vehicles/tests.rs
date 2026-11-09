@@ -49,3 +49,21 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
     }
 }
 mod gear_datum;
+
+/// An airborne P-38G spawns with both engines turning: its level-flight trim does not
+/// converge (the constant-speed governors), and the failed trim must leave the running
+/// engines as they were instead of stopping them.
+#[test]
+fn an_airborne_p38g_spawns_with_both_engines_turning() {
+    let spawn = Geodetic::from_degrees(40.524, -74.598, 300.0);
+    let plant = FreeFlightPlant::new_at(FreeFlightVehicle::JsbsimP38g, spawn, 0.0, 0.0).unwrap();
+    let art = plant.articulation(0.0);
+    assert!(art.engine_running, "{art:?}");
+    assert!(art.gear_pos_norm < 0.01, "gear at {}", art.gear_pos_norm);
+    assert!(
+        art.propeller_rpm > 500.0 && art.propeller_rpm_right > 500.0,
+        "propellers at {} and {} rpm",
+        art.propeller_rpm,
+        art.propeller_rpm_right
+    );
+}
