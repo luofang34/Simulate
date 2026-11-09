@@ -100,3 +100,22 @@ fn wing_root_fillets_stay_on_the_wing_skin() {
         );
     }
 }
+
+/// The rudders swing about their own vertical hinge line.
+#[test]
+fn rudders_hinge_on_their_vertical_hinge_line() {
+    let prims = p38g_mesh_prims();
+    let rudders: Vec<_> = prims
+        .iter()
+        .filter(|p| p.role == P38PartRole::Rudder)
+        .collect();
+    assert_eq!(rudders.len(), 2);
+    for rudder in rudders {
+        assert_eq!(
+            rudder.custom_hinge_axis,
+            Some(glam::DVec3::Z),
+            "{}",
+            rudder.prim_path
+        );
+    }
+}

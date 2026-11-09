@@ -400,13 +400,17 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
             })
             .collect();
         r_mesh.loft(&r_sections, true, Inside::Axis);
-        prims.push(part(
+        let mut rudder = part(
             &format!("/P38g/Empennage/{name}"),
             P38PartRole::Rudder,
             OLIVE_DRAB,
             r_rest,
             r_mesh,
-        ));
+        );
+        // The mesh hinges on a vertical line (the drawn hinge rakes only 1 deg 15 min);
+        // without an axis the renderer swings a rudder about a raked default axis.
+        rudder.custom_hinge_axis = Some(DVec3::Z);
+        prims.push(rudder);
 
         let mut r_tab = MeshBuilder::new();
         r_tab.cuboid(
