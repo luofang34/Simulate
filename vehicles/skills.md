@@ -260,6 +260,14 @@ SIMULATE_PHOTOMATCH_DIR=<images> SIMULATE_VERIFY_OUT=<dir> cargo test --release 
 ```
 截圖逐張目視；修改一機的表面時，其他機的參考截圖須像素不變（`magick compare -metric AE`）。
 
+### 7.1 逐機號 USD 覆寫層與生成塗裝（C172 N642SP）
+- 層疊：手寫的 `<tail>.usda` 以 `subLayers = [@<tail>_livery.usda@, @c172.usdc@]` 疊在通用機體上；`UsdAircraftAsset::from_usd_layers` 組合（如 `embedded_n642sp()`）。
+- 基底只放各機號共有幾何，選裝件拆成獨立 prim（`WheelFairing*`、`RoofAntenna*`）；機號層只放差異：`active = false`、改綁 `material:binding`、新增隱式 gprim（Cube/Sphere/Cylinder/Cone/Capsule；非均勻 `xformOp:scale` 由載入器烘入頂點），每個 prim 註明來源與信心。
+- 換輪胎尺寸時抬高輪軸，保持輪底 z 不變（地面接觸平面不動）。
+- 塗裝：`vehicles/tools/n642sp_livery.py <spec>.json <基底文字傾印>.usda <tail>_livery.usda`。JSON 存照片描點、三錨點相似變換配準（殘差 < 7 cm）、條帶上下緣、註冊號量測與 14 CFR 45.29 比例、字形筆畫；輸出為沿 x 投影到蒙皮、外凸 4 mm、每 5 cm 分段的條帶網格。
+- 驗證：`SIMULATE_VERIFY_OUT=… cargo test --release -p simulate-app fidelity_audit -- --ignored`，`c172_match_*` 對照同角度照片，`c172_ortho_*` 疊 POH Fig. 1-1。
+- 陷阱：基底 `.usdc` 的文字傾印與重寫依賴 macOS `/usr/bin/usdcat`；照片僅作參考、不入庫；交通機用通用基底，機號層只給本機與機庫。
+
 ---
 
 ## 8. 提交前門檻與已知陷阱

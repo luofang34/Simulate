@@ -291,7 +291,7 @@ fn n642sp_flies_bare_gear_on_the_poh_wheel_base_without_moving_the_contact_plane
     let (main_bottom, main) = rest_extremes(&tail, "/WheelLeft/Tire");
     let wheel_base_in = (nose.y - main.y) / 0.0254;
     assert!(
-        (wheel_base_in - 65.0).abs() < 1.0,
+        (wheel_base_in - 65.0).abs() < 0.1,
         "wheel base {wheel_base_in} in"
     );
     // 6.00-6 main tyre: 17.5 in outside diameter.
