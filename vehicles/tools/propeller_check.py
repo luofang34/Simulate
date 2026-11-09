@@ -76,7 +76,8 @@ def check_tr640(bem):
 
 
 def tool_output(tool, spec, what):
-    return subprocess.run([sys.executable, os.path.join(TOOLS, tool), spec, what],
+    # -B: the child imports its sibling tools, and the parent's -B does not reach it.
+    return subprocess.run([sys.executable, "-B", os.path.join(TOOLS, tool), spec, what],
                           capture_output=True, text=True, check=True).stdout
 
 

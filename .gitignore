@@ -1,3 +1,4 @@
 /target
 /apps/simulate-app/dist
 /book/build
+__pycache__/
