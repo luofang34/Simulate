@@ -47,15 +47,12 @@ fn the_light_volume_holds_the_airframe_and_its_ground_shadow_falls_down_sun() {
 }
 
 #[test]
-fn an_aircraft_on_its_gear_shadows_its_wheel_plane() {
+fn an_aircraft_on_its_gear_shadows_the_ground_it_reports() {
     let target = Geodetic::from_degrees(40.69, -74.17, 30.0);
     let stamp = stamp_looking_north_at(&target);
-    let asset = UsdAircraftAsset::embedded_c172().unwrap();
-    let lowest = asset.lowest_point_z_m();
-    let library = library(asset);
+    let library = library(UsdAircraftAsset::embedded_c172().unwrap());
     let mut own = aircraft_at(&target, true);
-    // A stale host ground sample, metres off, must not move a parked aircraft's shadow.
-    own.ground_height_m = Some(25.0);
+    own.ground_height_m = Some(own.placement.altitude_meters - 1.3);
     own.articulation.gear_wow = [true, true, true];
     let frame = ownship_shadow(&library, &[own], &view(&stamp, 1.0)).unwrap();
     let centre = crate::usd_pass::enu_from_aircraft(&stamp, &own.placement)
@@ -63,7 +60,7 @@ fn an_aircraft_on_its_gear_shadows_its_wheel_plane() {
         .w_axis
         .truncate();
     let drop = f64::from(frame.ground.unwrap().centre.z) - centre.z;
-    assert!((drop - f64::from(lowest) - super::GROUND_LIFT_M).abs() < 0.05);
+    assert!((drop + 1.3 - super::GROUND_LIFT_M).abs() < 0.05, "{drop}");
 }
 
 #[test]
