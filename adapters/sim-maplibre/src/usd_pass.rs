@@ -34,6 +34,7 @@ mod node;
 mod skiway;
 #[cfg(test)]
 mod tests;
+pub(crate) mod vertex;
 
 pub use library::OwnshipVisualKind;
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};

@@ -22,6 +22,7 @@ struct VertexIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) occlusion: f32,
 };
 
 struct VertexOut {
@@ -29,6 +30,7 @@ struct VertexOut {
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) occlusion: f32,
 };
 
 @vertex
@@ -38,25 +40,15 @@ fn vs(in: VertexIn) -> VertexOut {
     out.world = (draw.enu_from_part * vec4<f32>(in.position, 1.0)).xyz;
     out.normal = (draw.enu_from_part * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = in.uv;
+    out.occlusion = in.occlusion;
     return out;
 }
 
-const PI: f32 = 3.14159265;
 const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
 const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
+const EXPOSURE: f32 = 1.5;
 
-fn ggx(n_dot_h: f32, roughness: f32) -> f32 {
-    let a = max(roughness * roughness, 0.02);
-    let a2 = a * a;
-    let d = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    return a2 / (PI * d * d);
-}
-
-fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
-    return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - clamp(cos_theta, 0.0, 1.0), 5.0);
-}
-
-fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool) -> vec3<f32> {
+fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3<f32> {
     var n = normalize(n_in);
     if (!front) {
         n = -n;
@@ -81,14 +73,18 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool) -> vec3<f32> {
     let env = mix(GROUND * 1.35, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
     let gloss = 1.0 - roughness * 0.72;
     let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
-    let ambient = hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25 + env_spec;
+    // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
+    // view still sees open sky past a junction.
+    let ao = clamp(occlusion, 0.0, 1.0);
+    let specular_ao = mix(ao * ao, 1.0, 0.35);
+    let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
 }
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    let color = shade(in.normal, in.world, front);
-    return vec4<f32>(color / (vec3<f32>(1.0) + color * 0.18), 1.0);
+    let color = shade(in.normal, in.world, front, in.occlusion);
+    return vec4<f32>(filmic(color, EXPOSURE), 1.0);
 }
 
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {
@@ -102,7 +98,7 @@ fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     let f = 0.04 + 0.96 * pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 5.0);
     let tint = draw.base_color.rgb * 0.25;
     let alpha = clamp(draw.base_color.a + f * 0.6, 0.0, 0.92);
-    let rgb = mix(tint, sky, clamp(f * 1.6 + 0.25, 0.0, 1.0));
+    let rgb = filmic(mix(tint, sky, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE);
     return vec4<f32>(rgb * alpha, alpha);
 }
 

@@ -232,6 +232,7 @@ impl QuadAcc {
                 position,
                 normal,
                 uv,
+                occlusion: 1.0,
             });
         }
         self.indices.extend_from_slice(&[

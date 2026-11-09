@@ -39,6 +39,7 @@ impl MeshBuilder {
             position: position.to_array(),
             normal: normal.normalize_or(Vec3::Z).to_array(),
             uv: uv.to_array(),
+            occlusion: 1.0,
         });
         index
     }
@@ -127,6 +128,7 @@ impl MeshBuilder {
                 position: point.to_array(),
                 normal: [0.0; 3],
                 uv: [0.0; 2],
+                occlusion: 1.0,
             }));
         }
         let index = |ring: usize, j: usize| {
@@ -279,6 +281,7 @@ impl MeshBuilder {
                     .normalize_or(Vec3::Z)
                     .to_array(),
                 uv: v.uv,
+                occlusion: v.occlusion,
             }
         }));
         self.indices

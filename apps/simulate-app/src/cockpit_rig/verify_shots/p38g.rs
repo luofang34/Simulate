@@ -4,7 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use glam::DVec3;
 use sim_core::ControlInputs;
+use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_render::{OverlayQuad, ViewportRect};
 use sim_scenario::{OperatorViewportMode, SimTimeScale};
 use sim_scenery::AerodromeId;
@@ -79,8 +81,16 @@ fn render_p38_third_person_verification_shots() -> Result<(), AppSimError> {
         0.62,
         &dir.join("p38_04_chase_side.png"),
     )?;
+    let low_sun = sun_relative_to_nose(&h, 2.2, 10.0_f64.to_radians());
+    draw_chase_orbit_lit(
+        &mut h,
+        [2.0, -0.10, 0.62],
+        low_sun,
+        &dir.join("p38_14_low_sun_runway.png"),
+    )?;
     render_p38_airborne_and_feathered_shots(&mut h, &dir)?;
     render_p38_other_views(&mut h, &dir)?;
+    render_c172_reference(&mut h, &dir)?;
     h.gpu.check_device()?;
     Ok(())
 }
@@ -147,7 +157,30 @@ fn draw_p38_chase_orbit(
     dist_scale: f64,
     out: &Path,
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let sun = h.flight.world().sun_direction_ecef();
+    draw_chase_orbit_lit(h, [yaw_rad, pitch_rad, dist_scale], sun, out)
+}
+
+/// A low Sun `azimuth_rad` clockwise from the nose and `elevation_rad` above the local
+/// horizon, so shadows and occlusion are judged in raking light.
+fn sun_relative_to_nose(h: &VerifyHarness, azimuth_rad: f64, elevation_rad: f64) -> DVec3 {
+    let state = h.flight.display_vehicle_state();
+    let up = LocalFrame::at(&ecef_to_geodetic(state.position_ecef)).up();
+    let nose = state.attitude * DVec3::X;
+    let forward = (nose - up * nose.dot(up)).normalize_or(nose);
+    let right = forward.cross(up).normalize_or(DVec3::Y);
+    let horizontal = forward * azimuth_rad.cos() + right * azimuth_rad.sin();
+    (horizontal * elevation_rad.cos() + up * elevation_rad.sin()).normalize_or(up)
+}
+
+/// Chase orbit `[yaw_rad, pitch_rad, dist_scale]` about the aircraft, lit by `sun_ecef`.
+fn draw_chase_orbit_lit(
+    h: &mut VerifyHarness,
+    [yaw_rad, pitch_rad, dist_scale]: [f64; 3],
+    sun_ecef: DVec3,
+    out: &Path,
+) -> Result<(), AppSimError> {
+    let sky = SkyFrame::fixed_sun(sun_ecef);
     let look = LookOffset { yaw_rad, pitch_rad };
     for _ in 0..35 {
         let state = h.flight.display_vehicle_state();
@@ -248,4 +281,25 @@ fn draw_p38_cockpit_look(
     }
     let quads = h.rig.overlay_quads(h.flight.world());
     h.composite_to_png(&quads, out)
+}
+
+/// The C172 shares the aircraft pass; one parked chase shot in the same low Sun checks
+/// that shading tuned on the P-38G still suits it.
+fn render_c172_reference(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSimError> {
+    h.flight.select_vehicle(FreeFlightVehicle::JsbsimC172)?;
+    if let Some(diag) = h.rig.supervisor().diagram(AerodromeId::NewarkKewr).cloned() {
+        h.flight
+            .spawn_at_aerodrome(&diag, 0, SpawnMode::Threshold)?;
+    }
+    for _ in 0..20 {
+        h.flight
+            .advance_by(0.05, ControlInputs::default(), SimTimeScale::RealTime)?;
+    }
+    let low_sun = sun_relative_to_nose(h, 2.2, 10.0_f64.to_radians());
+    draw_chase_orbit_lit(
+        h,
+        [2.0, -0.10, 0.62],
+        low_sun,
+        &dir.join("p38_15_c172_low_sun_reference.png"),
+    )
 }

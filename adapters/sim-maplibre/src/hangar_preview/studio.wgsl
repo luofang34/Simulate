@@ -34,7 +34,6 @@ struct Draw {
 @group(0) @binding(0) var<uniform> frame: Frame;
 @group(0) @binding(1) var<uniform> draw: Draw;
 
-const PI: f32 = 3.14159265;
 const ZENITH: vec3<f32> = vec3<f32>(0.030, 0.036, 0.050);
 const HORIZON: vec3<f32> = vec3<f32>(0.200, 0.215, 0.240);
 const FLOOR: vec3<f32> = vec3<f32>(0.060, 0.063, 0.070);
@@ -42,8 +41,10 @@ const KEY_RGB: vec3<f32> = vec3<f32>(1.00, 0.88, 0.72);
 const RIM_RGB: vec3<f32> = vec3<f32>(0.55, 0.72, 1.00);
 const FILL_RGB: vec3<f32> = vec3<f32>(0.80, 0.85, 0.95);
 
+const EXPOSURE: f32 = 1.5;
+
 fn tonemap(c: vec3<f32>) -> vec4<f32> {
-    return vec4<f32>(c / (vec3<f32>(1.0) + c * 0.18), 1.0);
+    return vec4<f32>(filmic(c, EXPOSURE), 1.0);
 }
 
 // Cyclorama radiance seen along `dir`: the graded wall above, the floor tone below.
@@ -110,6 +111,7 @@ struct VertexIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) occlusion: f32,
 };
 
 struct VertexOut {
@@ -117,6 +119,7 @@ struct VertexOut {
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) occlusion: f32,
 };
 
 @vertex
@@ -126,18 +129,8 @@ fn vs(in: VertexIn) -> VertexOut {
     out.world = (draw.enu_from_part * vec4<f32>(in.position, 1.0)).xyz;
     out.normal = (draw.enu_from_part * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = in.uv;
+    out.occlusion = in.occlusion;
     return out;
-}
-
-fn ggx(n_dot_h: f32, roughness: f32) -> f32 {
-    let a = max(roughness * roughness, 0.02);
-    let a2 = a * a;
-    let d = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    return a2 / (PI * d * d);
-}
-
-fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
-    return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - clamp(cos_theta, 0.0, 1.0), 5.0);
 }
 
 fn light(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>, albedo: vec3<f32>, f0: vec3<f32>) -> vec3<f32> {
@@ -152,7 +145,7 @@ fn light(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>, albedo: 
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * radiance * n_dot_l;
 }
 
-fn studio(n_in: vec3<f32>, world: vec3<f32>, front: bool) -> vec3<f32> {
+fn studio(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3<f32> {
     var n = normalize(n_in);
     if (!front) {
         n = -n;
@@ -167,17 +160,18 @@ fn studio(n_in: vec3<f32>, world: vec3<f32>, front: bool) -> vec3<f32> {
     color += light(n, v, frame.fill.xyz, FILL_RGB * frame.fill.w, albedo, f0);
     // Studio bounce: the bright floor pool lights undersides, the dark ceiling the tops.
     let hemi = mix(FLOOR * 4.0, HORIZON * 1.6, n.z * 0.5 + 0.5);
-    color += hemi * albedo * (1.0 - 0.7 * metallic);
+    let ao = clamp(occlusion, 0.0, 1.0);
+    color += hemi * albedo * (1.0 - 0.7 * metallic) * ao;
     // Metals and gloss coats mirror the cyclorama so they never read as flat black.
     let r = reflect(-v, n);
     let gloss = 1.0 - roughness * 0.75;
-    color += environment(r) * 3.0 * fresnel(f0, dot(n, v)) * gloss;
+    color += environment(r) * 3.0 * fresnel(f0, dot(n, v)) * gloss * mix(ao * ao, 1.0, 0.35);
     return color + draw.emissive.rgb;
 }
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return tonemap(studio(in.normal, in.world, front));
+    return tonemap(studio(in.normal, in.world, front, in.occlusion));
 }
 
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {

@@ -61,6 +61,7 @@ impl UsdAircraftAsset {
                         position: v.position,
                         normal: v.normal,
                         uv: v.uv,
+                        occlusion: 1.0,
                     })
                     .collect(),
                 indices: prim.indices,
@@ -98,7 +99,7 @@ fn assemble(name: &str, parts: Vec<UsdMeshPart>) -> Result<UsdAircraftAsset, Map
             });
         }
     }
-    Ok(UsdAircraftAsset { parts })
+    Ok(UsdAircraftAsset::airframe(name, parts))
 }
 
 /// One single-sided part at `rest` in the aircraft frame.

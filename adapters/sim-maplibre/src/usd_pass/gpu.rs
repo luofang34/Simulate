@@ -12,8 +12,7 @@ use maplibre::{
 use super::{AircraftLibrary, AssetKey, DRAW_BYTES, DRAW_STRIDE, SharedAircraftLibrary, SlotDraws};
 use crate::UsdAircraftAsset;
 
-const SHADER: &str = include_str!("aircraft.wgsl");
-const VERTEX_STRIDE: u64 = 32;
+const SHADER: &str = concat!(include_str!("shading.wgsl"), include_str!("aircraft.wgsl"));
 
 /// One part's static vertex and index buffers.
 pub(super) struct PartMesh {
@@ -275,25 +274,7 @@ fn upload_mesh(
     vertices: &[crate::UsdMeshVertex],
     indices: &[u32],
 ) -> Option<PartMesh> {
-    let whole = indices.len() - indices.len() % 3;
-    let count = u32::try_from(whole).ok().filter(|count| *count > 0)?;
-    let mut vertex_bytes =
-        Vec::with_capacity(vertices.len().saturating_mul(VERTEX_STRIDE as usize));
-    for vertex in vertices {
-        for value in vertex
-            .position
-            .into_iter()
-            .chain(vertex.normal)
-            .chain(vertex.uv)
-        {
-            vertex_bytes.extend_from_slice(&value.to_le_bytes());
-        }
-    }
-    let index_bytes: Vec<u8> = indices
-        .iter()
-        .take(whole)
-        .flat_map(|index| index.to_le_bytes())
-        .collect();
+    let (index_bytes, count) = super::vertex::index_bytes(indices)?;
     let buffer = |label, contents: &[u8], usage| {
         queue.create_buffer_init(
             device,
@@ -307,7 +288,7 @@ fn upload_mesh(
     Some(PartMesh {
         vertices: buffer(
             "usd part vertices",
-            &vertex_bytes,
+            &super::vertex::vertex_bytes(vertices),
             wgpu::BufferUsages::VERTEX,
         ),
         indices: buffer("usd part indices", &index_bytes, wgpu::BufferUsages::INDEX),
@@ -332,15 +313,15 @@ fn build_pipeline(
             module,
             entry_point: Some("vs"),
             compilation_options: Default::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: VERTEX_STRIDE,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
-            })],
+            buffers: &[Some(super::vertex::vertex_layout())],
         },
         fragment: Some(wgpu::FragmentState {
             module,
-            entry_point: Some(if translucent { "fs_translucent" } else { "fs_opaque" }),
+            entry_point: Some(if translucent {
+                "fs_translucent"
+            } else {
+                "fs_opaque"
+            }),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,

@@ -16,6 +16,7 @@ use crate::MapAdapterError;
 
 mod export;
 mod loader;
+mod occlusion;
 mod procedural;
 mod roles;
 #[cfg(test)]
@@ -61,6 +62,9 @@ pub struct UsdMeshVertex {
     pub normal: [f32; 3],
     /// Texture / polar coordinate `(u, v)` from `primvars:st`.
     pub uv: [f32; 2],
+    /// Baked ambient occlusion: the cosine-weighted share of the vertex's sky hemisphere
+    /// the airframe leaves open (`1.0` fully open), scaling only sky and environment light.
+    pub occlusion: f32,
 }
 
 /// One articulated mesh part decoded from a composed OpenUSD aircraft stage.
@@ -139,6 +143,20 @@ impl UsdAircraftAsset {
     }
 
     pub(crate) fn from_parts(parts: Vec<UsdMeshPart>) -> Self {
+        Self { parts }
+    }
+
+    /// An airframe whose vertices carry ambient occlusion baked from its own rest pose.
+    pub(crate) fn airframe(name: &str, mut parts: Vec<UsdMeshPart>) -> Self {
+        let started = web_time::Instant::now();
+        occlusion::bake(&mut parts);
+        let vertices: usize = parts.iter().map(|p| p.vertices.len()).sum();
+        tracing::info!(
+            name,
+            vertices,
+            elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+            "baked airframe ambient occlusion"
+        );
         Self { parts }
     }
 

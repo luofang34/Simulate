@@ -7,11 +7,13 @@ use wgpu::util::DeviceExt;
 use super::orbit::FRAME_BYTES;
 use crate::{
     MapAdapterError, UsdMeshVertex,
-    usd_pass::{DRAW_BYTES, DRAW_STRIDE},
+    usd_pass::{DRAW_BYTES, DRAW_STRIDE, vertex},
 };
 
-const SHADER: &str = include_str!("studio.wgsl");
-const VERTEX_STRIDE: u64 = 32;
+const SHADER: &str = concat!(
+    include_str!("../usd_pass/shading.wgsl"),
+    include_str!("studio.wgsl")
+);
 /// Multisample count of the colour and depth attachments.
 pub(super) const SAMPLES: u32 = 4;
 /// Resolved, compositable output format.
@@ -190,15 +192,15 @@ fn build_part_pipeline(
             module,
             entry_point: Some("vs"),
             compilation_options: Default::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: VERTEX_STRIDE,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
-            })],
+            buffers: &[Some(vertex::vertex_layout())],
         },
         fragment: Some(wgpu::FragmentState {
             module,
-            entry_point: Some(if translucent { "fs_translucent" } else { "fs_opaque" }),
+            entry_point: Some(if translucent {
+                "fs_translucent"
+            } else {
+                "fs_opaque"
+            }),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: COLOR_FORMAT,
@@ -289,18 +291,7 @@ pub(super) fn upload_mesh(
     vertices: &[UsdMeshVertex],
     indices: &[u32],
 ) -> Option<PartMesh> {
-    let whole = indices.len() - indices.len() % 3;
-    let count = u32::try_from(whole).ok().filter(|count| *count > 0)?;
-    let vertex_bytes: Vec<u8> = vertices
-        .iter()
-        .flat_map(|v| v.position.into_iter().chain(v.normal).chain(v.uv))
-        .flat_map(f32::to_le_bytes)
-        .collect();
-    let index_bytes: Vec<u8> = indices
-        .iter()
-        .take(whole)
-        .flat_map(|index| index.to_le_bytes())
-        .collect();
+    let (index_bytes, count) = vertex::index_bytes(indices)?;
     let buffer = |label, contents: &[u8], usage| {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(label),
@@ -311,7 +302,7 @@ pub(super) fn upload_mesh(
     Some(PartMesh {
         vertices: buffer(
             "hangar part vertices",
-            &vertex_bytes,
+            &vertex::vertex_bytes(vertices),
             wgpu::BufferUsages::VERTEX,
         ),
         indices: buffer(

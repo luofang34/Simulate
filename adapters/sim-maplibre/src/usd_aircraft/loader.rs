@@ -51,7 +51,7 @@ pub(super) fn load_aircraft_from_bytes(
             detail: format!("OpenUSD stage '{identifier}' contained zero UsdGeomMesh prims"),
         });
     }
-    Ok(UsdAircraftAsset { parts })
+    Ok(UsdAircraftAsset::airframe(identifier, parts))
 }
 
 fn decode_mesh_prim(
@@ -266,6 +266,7 @@ fn triangulate_usd_mesh(
             position: [pt.x, pt.y, pt.z],
             normal: [nrm.x, nrm.y, nrm.z],
             uv: [uv.x, uv.y],
+            occlusion: 1.0,
         });
     }
 
