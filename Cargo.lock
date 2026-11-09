@@ -3034,6 +3034,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-startrack"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "navigate-camera",
+ "navigate-celestial",
+ "navigate-contract",
+ "navigate-fusion",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-visual"
 version = "0.1.0"
 dependencies = [
@@ -4883,6 +4895,7 @@ dependencies = [
  "navigate-contract",
  "navigate-fusion",
  "navigate-geodesy",
+ "navigate-startrack",
  "navigate-visual",
  "sha2 0.11.1",
  "sim-core",
