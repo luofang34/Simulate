@@ -1,0 +1,17 @@
+{
+  "source_station_offset_in": 0.0,
+  "source_frame": "The flight model's own structural frame, until the AN 01-75F-2 drawing stations are converted into it.",
+  "height": {
+    "feature": { "rule": "propeller_disc_centre" },
+    "structural_up_in": 0.0,
+    "source": "flight model thrusters on the structural z = 0 line"
+  },
+  "landmarks": [
+    {
+      "name": "propeller discs",
+      "station_in": 36.0,
+      "source": "flight model thrusters at x 36 in",
+      "feature": { "rule": "propeller_disc_centre" }
+    }
+  ]
+}

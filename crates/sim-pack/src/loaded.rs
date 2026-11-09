@@ -7,7 +7,8 @@ use crate::instruments::{pitot_static_device, resolve_pinned_pack};
 use crate::{
     AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, CalibrationSuite,
     LIVERY_CATALOG_ASSET, LiveryCatalog, PITOT_STATIC_CALIBRATION_ASSET, PackError,
-    PitotStaticCalibration, ResolvedAirspeedEnvelope,
+    PitotStaticCalibration, ResolvedAirspeedEnvelope, STRUCTURAL_LANDMARKS_ASSET,
+    StructuralLandmarks,
 };
 
 mod devices;
@@ -28,6 +29,7 @@ pub struct LoadedSyspack {
     pitot_static_calibration: Option<PitotStaticCalibration>,
     calibration_suite: Option<CalibrationSuite>,
     livery_catalog: Option<LiveryCatalog>,
+    structural_landmarks: Option<StructuralLandmarks>,
     instrument_pack: Option<VerifiedSyspack>,
 }
 
@@ -60,6 +62,10 @@ impl LoadedSyspack {
             Some(bytes) => Some(LiveryCatalog::from_verified(&verified, bytes)?),
             None => None,
         };
+        let structural_landmarks = match verified.asset(STRUCTURAL_LANDMARKS_ASSET) {
+            Some(bytes) => Some(StructuralLandmarks::from_json_bytes(bytes)?),
+            None => None,
+        };
         let instrument_pack = resolve_pinned_pack(&verified)?;
         let package = Self {
             verified,
@@ -67,6 +73,7 @@ impl LoadedSyspack {
             pitot_static_calibration,
             calibration_suite,
             livery_catalog,
+            structural_landmarks,
             instrument_pack,
         };
         package.instantiate_cots_devices()?;
@@ -100,6 +107,13 @@ impl LoadedSyspack {
     #[must_use]
     pub const fn livery_catalog(&self) -> Option<&LiveryCatalog> {
         self.livery_catalog.as_ref()
+    }
+
+    /// Sourced structural landmarks when this package declares
+    /// [`STRUCTURAL_LANDMARKS_ASSET`].
+    #[must_use]
+    pub const fn structural_landmarks(&self) -> Option<&StructuralLandmarks> {
+        self.structural_landmarks.as_ref()
     }
 
     /// The instruments of the pack this vehicle pins, verified against the pin.

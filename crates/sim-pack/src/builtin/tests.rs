@@ -22,12 +22,14 @@ fn downloaded_copy() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("fdm")).unwrap();
     std::fs::create_dir(dir.path().join("performance")).unwrap();
+    std::fs::create_dir(dir.path().join("geometry")).unwrap();
     for file in [
         MANIFEST_FILE,
         C172_FDM_PATH,
         AIRSPEED_ENVELOPE_ASSET,
         PITOT_STATIC_CALIBRATION_ASSET,
         CALIBRATION_SUITE_ASSET,
+        STRUCTURAL_LANDMARKS_ASSET,
     ] {
         std::fs::copy(c172_dir().join(file), dir.path().join(file)).unwrap();
     }

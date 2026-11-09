@@ -8,6 +8,10 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use crate::{MapAdapterError, UsdAircraftAsset};
 
+mod structural;
+
+pub use structural::StructuralDatum;
+
 /// Visual 3D airframe model rendered for ownship in external and cabin views.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum OwnshipVisualKind {
@@ -26,40 +30,6 @@ pub enum OwnshipVisualKind {
     LunarLander,
     /// Single-stage multi-body test rocket `Raketa` (`UsdAircraftAsset::embedded_raketa`).
     Raketa,
-}
-
-/// Metres per inch, the unit of JSBSim structural frames.
-const METRES_PER_INCH: f64 = 0.0254;
-
-impl OwnshipVisualKind {
-    /// Where this model's origin sits in its flight model's structural frame (inches,
-    /// `x` aft, `y` right, `z` up), for a model drawn from the airframe structure rather
-    /// than the moving centre of gravity; `None` for a model with no structural frame.
-    ///
-    /// Each origin puts the model's propeller disc on its flight model's thruster: the
-    /// C172's disc centre at `(0, 2.13, 0.055)` m (`x` right, `y` forward, `z` up) on the
-    /// thruster at `x = 41.34 in`, and the P-38G's at `(±2.3622, 2.63, 0.04)` m on the
-    /// thrusters at `(36, ±93, 0) in`. The propeller axis is a hard point both the model and
-    /// the flight model take from the airframe's drawings, independent of the gear.
-    #[must_use]
-    pub fn structural_origin_in(self) -> Option<[f64; 3]> {
-        let origin = |thruster_x_in: f64, disc_forward_m: f64, disc_up_m: f64| {
-            [
-                thruster_x_in + disc_forward_m / METRES_PER_INCH,
-                0.0,
-                -disc_up_m / METRES_PER_INCH,
-            ]
-        };
-        match self {
-            Self::C172 => Some(origin(41.3386, 2.13, 0.055)),
-            Self::P38g => Some(origin(36.0, 2.63, 0.04)),
-            Self::Hidden
-            | Self::FixedWingUav
-            | Self::QuadrotorX500
-            | Self::LunarLander
-            | Self::Raketa => None,
-        }
-    }
 }
 
 /// Which uploaded asset a draw's part index refers to.

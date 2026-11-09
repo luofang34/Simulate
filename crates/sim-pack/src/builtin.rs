@@ -1,6 +1,6 @@
 use crate::{
     AIRSPEED_ENVELOPE_ASSET, CALIBRATION_SUITE_ASSET, LIVERY_CATALOG_ASSET, LoadedSyspack,
-    MemoryPackageSource, PITOT_STATIC_CALIBRATION_ASSET, PackError,
+    MemoryPackageSource, PITOT_STATIC_CALIBRATION_ASSET, PackError, STRUCTURAL_LANDMARKS_ASSET,
 };
 
 #[cfg(test)]
@@ -15,6 +15,7 @@ const C172_PEC: &[u8] =
     include_bytes!("../../../vehicles/c172/performance/pitot_static_calibration.json");
 const C172_BENCHMARKS: &[u8] =
     include_bytes!("../../../vehicles/c172/performance/poh_benchmarks.json");
+const C172_LANDMARKS: &[u8] = include_bytes!("../../../vehicles/c172/geometry/landmarks.json");
 const P38_MANIFEST: &[u8] = include_bytes!("../../../vehicles/p38g/syspack.json");
 const P38_FDM_PATH: &str = "fdm/p38g.xml";
 const P38_FDM: &[u8] = include_bytes!("../../../vehicles/p38g/fdm/p38g.xml");
@@ -24,6 +25,7 @@ const P38_BENCHMARKS: &[u8] =
     include_bytes!("../../../vehicles/p38g/performance/poh_benchmarks.json");
 const P38_PEC: &[u8] =
     include_bytes!("../../../vehicles/p38g/performance/pitot_static_calibration.json");
+const P38_LANDMARKS: &[u8] = include_bytes!("../../../vehicles/p38g/geometry/landmarks.json");
 const P38_FG_SET_PATH: &str = "p38g-set.xml";
 const P38_FG_SET: &[u8] = include_bytes!("../../../vehicles/p38g/p38g-set.xml");
 const P38_LIVERY_CATALOG: &[u8] = include_bytes!("../../../vehicles/p38g/Liveries/catalog.json");
@@ -46,6 +48,7 @@ pub fn builtin_c172_source() -> MemoryPackageSource {
             (AIRSPEED_ENVELOPE_ASSET, C172_ENVELOPE),
             (PITOT_STATIC_CALIBRATION_ASSET, C172_PEC),
             (CALIBRATION_SUITE_ASSET, C172_BENCHMARKS),
+            (STRUCTURAL_LANDMARKS_ASSET, C172_LANDMARKS),
         ],
     )
 }
@@ -66,6 +69,7 @@ pub fn builtin_p38g_source() -> MemoryPackageSource {
             (AIRSPEED_ENVELOPE_ASSET, P38_ENVELOPE),
             (CALIBRATION_SUITE_ASSET, P38_BENCHMARKS),
             (PITOT_STATIC_CALIBRATION_ASSET, P38_PEC),
+            (STRUCTURAL_LANDMARKS_ASSET, P38_LANDMARKS),
             (P38_FG_SET_PATH, P38_FG_SET),
             (LIVERY_CATALOG_ASSET, P38_LIVERY_CATALOG),
             (P38_LIVERY_MISS_VIRGINIA_PATH, P38_LIVERY_MISS_VIRGINIA),

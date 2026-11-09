@@ -1,7 +1,7 @@
 //! A drawn airframe's wheels stand where its flight model's gear touches the ground.
 //!
 //! Each model is placed at a fixed structural datum
-//! ([`sim_maplibre::OwnshipVisualKind::structural_origin_in`]). With the aircraft parked
+//! ([`crate::vehicles::ModelOrigins`]). With the aircraft parked
 //! and settled, each gear leg's wheel bottom as drawn (the model's rest wheel raised by the
 //! leg's compression, as the renderer articulates it), in the flight model's structural
 //! frame, must meet that leg's BOGEY contact point raised by the same compression: where
@@ -68,7 +68,9 @@ fn wheel_offsets(
     asset: &UsdAircraftAsset,
 ) -> (Vec<(&'static str, DVec3)>, [f64; 3]) {
     let visual = crate::map_rig::aircraft::ownship_visual(None, Some(vehicle));
-    let origin = DVec3::from_array(visual.structural_origin_in().unwrap());
+    let origin = crate::vehicles::ModelOrigins::default()
+        .origin_in(visual)
+        .unwrap();
     let parked = Geodetic::from_degrees(40.5244, -74.5984, 30.0);
     let mut plant = FreeFlightPlant::new_on_ground(vehicle, parked, 0.0, true).unwrap();
     let world = WorldSurfaceHandle::new();
@@ -108,26 +110,27 @@ fn assert_wheels_on_the_ground(
     );
 }
 
-/// Red until the C172 model's gear matches the flight model's: drawn from its structural
-/// datum its nose wheel sits within 1.1 cm of `NOSE`, but its mains stand 14 cm aft of
-/// `LEFT_MAIN`/`RIGHT_MAIN` (a 70.3 in wheelbase against 64.4 in), 1.4 cm outboard, and
-/// all three wheels 1.0 to 1.5 cm above the ground.
+/// Red while the C172 mesh's wheelbase is 70.3 in: placed by its sourced landmarks, its
+/// nose wheel stands 11 cm ahead of the flight model's `NOSE` and its mains 4 cm aft of
+/// `LEFT_MAIN`/`RIGHT_MAIN` (the flight model's gear is 64.4 in apart, the POH's 65.2 in),
+/// 1.4 cm outboard, and all three wheels 1.0 to 1.5 cm above the ground.
 #[test]
-#[ignore = "red: C172 model mains 14 cm aft of the flight model's (wheelbase 70.3 vs 64.4 in)"]
-fn c172_wheels_meet_the_fdm_gear_red_until_the_model_wheelbase_matches() {
+#[ignore = "red: C172 mesh wheelbase 70.3 in against the flight model's 64.4 in"]
+fn c172_wheels_meet_the_fdm_gear_red_while_the_mesh_wheelbase_is_70_in() {
     let asset = UsdAircraftAsset::embedded_c172().unwrap();
     let fdm = include_str!("../../../../../vehicles/c172/fdm/c172_class_reference.xml");
     let offsets = wheel_offsets(FreeFlightVehicle::JsbsimC172, fdm, &asset);
     assert_wheels_on_the_ground("C172", (&offsets.0, offsets.1));
 }
 
-/// Red until the P-38G's model gear and flight model gear agree: drawn from its structural
-/// datum its wheels reach 22 cm below the flight model's contact points at static
-/// compression, its nose wheel stands 35 cm and its mains 27.5 cm aft of them, and its
-/// mains sit under the booms (93 in) while the flight model's stand at 98 in.
+/// Red while the P-38G flight model's gear is 8.7 in short and 5 in outboard: its BOGEY
+/// contacts 74 in below the thrust line make the aircraft 3.62 m tall against Lockheed's
+/// 12 ft 10 in (the mesh's wheels reach 22 cm lower), and its mains at 98 in stand outboard
+/// of the booms at 93 in. Fore and aft, the nose wheel sits 35 cm and the mains 27.5 cm
+/// aft of the contacts, to be judged against the AN 01-75F-2 drawing stations.
 #[test]
-#[ignore = "red: P-38G model wheels 22 cm below and 28-35 cm aft of the flight model's gear"]
-fn p38g_wheels_meet_the_fdm_gear_red_until_the_gear_geometry_agrees() {
+#[ignore = "red: P-38G flight model gear 8.7 in short and 5 in outboard of the Lockheed geometry"]
+fn p38g_wheels_meet_the_fdm_gear_red_while_the_fdm_gear_is_short_and_outboard() {
     let asset = UsdAircraftAsset::p38g().unwrap();
     let fdm = include_str!("../../../../../vehicles/p38g/fdm/p38g.xml");
     let offsets = wheel_offsets(FreeFlightVehicle::JsbsimP38g, fdm, &asset);

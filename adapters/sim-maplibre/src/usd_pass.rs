@@ -37,8 +37,8 @@ mod skiway;
 mod tests;
 pub(crate) mod vertex;
 
-pub use library::OwnshipVisualKind;
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
+pub use library::{OwnshipVisualKind, StructuralDatum};
 pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
 

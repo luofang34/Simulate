@@ -51,6 +51,23 @@ pub enum PackError {
         /// Why the calibration payload was refused.
         detail: String,
     },
+    /// The package's structural landmarks JSON could not be parsed.
+    #[error("structural landmarks {path:?} could not be parsed")]
+    LandmarksParse {
+        /// Asset path inside the package.
+        path: String,
+        /// JSON decoder error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// The package's structural landmarks are incomplete.
+    #[error("structural landmarks {path:?} are invalid: {detail}")]
+    InvalidLandmarks {
+        /// Asset path inside the package.
+        path: String,
+        /// Why the landmarks were refused.
+        detail: String,
+    },
     /// The instrument pack a vehicle pins could not be resolved, or one of its
     /// instruments reads a source the vehicle does not have.
     #[error("instrument pack {pack:?} refused: {detail}")]

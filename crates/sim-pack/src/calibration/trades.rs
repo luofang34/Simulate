@@ -10,7 +10,7 @@ use crate::calibration::design::estimate_design_performance;
 use crate::calibration::results::DesignPerformanceReport;
 use crate::{
     AIRSPEED_ENVELOPE_ASSET, CALIBRATION_SUITE_ASSET, LoadedSyspack, MemoryPackageSource,
-    PITOT_STATIC_CALIBRATION_ASSET, PackError,
+    PITOT_STATIC_CALIBRATION_ASSET, PackError, STRUCTURAL_LANDMARKS_ASSET,
 };
 
 const POUNDS_PER_KG: f64 = 2.204_622_621_8;
@@ -227,6 +227,10 @@ fn rebuild_verified_package(
         }
         let bytes = serde_json::to_vec_pretty(&suite).unwrap_or_default();
         files.insert(CALIBRATION_SUITE_ASSET.to_owned(), bytes);
+    }
+    if let Some(landmarks) = package.structural_landmarks() {
+        let bytes = serde_json::to_vec_pretty(landmarks).unwrap_or_default();
+        files.insert(STRUCTURAL_LANDMARKS_ASSET.to_owned(), bytes);
     }
     for (rel_path, bytes) in &files {
         if let Some(entry) = manifest.assets.get_mut(rel_path) {
