@@ -3,11 +3,14 @@
 
 use jsbsim::{Fdm, LoadOptions};
 
+use crate::calibration::climb_time::solve_climb_time;
 use crate::calibration::cruise::{
     apply_engine_overrides, capture_base_engine_tuning, configure_mass_and_overrides, fdm_err,
     get_opt, restore_engine_tuning, set_if_exists, solve_cruise, solve_empirical, step_wings_level,
 };
-use crate::calibration::engines::{ManifoldPressureHold, set_each_engine};
+use crate::calibration::engines::{
+    GovernorHold, ManifoldPressureHold, has_governor, set_each_engine,
+};
 use crate::calibration::mixture::{MixtureProcedure, set_mixture};
 use crate::calibration::results::{ClimbResult, RawSuiteEvaluation, StallResult};
 use crate::calibration::schema::{
@@ -73,7 +76,10 @@ pub(super) fn run_suite_with_overrides(
 }
 
 /// The model as the handbook's airplane was equipped.
-fn handbook_fdm(package: &LoadedSyspack, suite: &CalibrationSuite) -> Result<Fdm, PackError> {
+pub(super) fn handbook_fdm(
+    package: &LoadedSyspack,
+    suite: &CalibrationSuite,
+) -> Result<Fdm, PackError> {
     let mut fdm = build_fdm(package)?;
     for setting in &suite.handbook_configuration {
         fdm.set_property(&setting.property, setting.value)
@@ -99,6 +105,9 @@ fn fly_powered_points(
     let cruises = (suite.cruise_points.iter())
         .map(|cr| solve_cruise(&mut fresh()?, cr, suite.rated_bhp, tol, base_lbs, overrides))
         .collect::<Result<Vec<_>, _>>()?;
+    let climb_times = (suite.climb_time_points.iter())
+        .map(|ct| solve_climb_time(package, suite, ct, base_lbs, overrides))
+        .collect::<Result<Vec<_>, _>>()?;
     let takeoffs = (suite.takeoff_points.iter())
         .map(|t| solve_takeoff(&mut fresh()?, t, tol.takeoff_pct, base_lbs, overrides))
         .collect::<Result<Vec<_>, _>>()?;
@@ -110,6 +119,7 @@ fn fly_powered_points(
         static_rpm: None,
         stalls: Vec::new(),
         climbs,
+        climb_times,
         cruises,
         takeoffs,
         empirical,
@@ -242,7 +252,7 @@ fn solve_climb(
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
 ) -> Result<ClimbResult, PackError> {
-    let (sim_kcas, _sim_ktas, sim_fpm, sim_rpm) = fly_steady_climb_kcas(
+    let (sim_kcas, _sim_ktas, sim_fpm, sim_rpm) = fly_steady_climb_powered(
         fdm,
         bench.pressure_alt_ft,
         bench.gross_mass_kg,
@@ -250,7 +260,10 @@ fn solve_climb(
         bench.lean_best_power,
         base_non_payload_lbs,
         overrides,
-        bench.target_map_inhg,
+        ClimbPower {
+            map_hold_inhg: bench.target_map_inhg,
+            rpm_hold: bench.target_rpm,
+        },
     )?;
     let residual_fpm = sim_fpm - bench.target_fpm;
     Ok(ClimbResult {
@@ -264,6 +277,15 @@ fn solve_climb(
     })
 }
 
+/// How a climb sets power: the throttle holds `map_hold_inhg` (full throttle
+/// without one) and the propeller lever holds `rpm_hold` on a governed propeller
+/// (the governor's maximum without one).
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct ClimbPower {
+    pub map_hold_inhg: Option<f64>,
+    pub rpm_hold: Option<f64>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fly_steady_climb_kcas(
     fdm: &mut Fdm,
@@ -274,6 +296,35 @@ pub(super) fn fly_steady_climb_kcas(
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
     map_hold_inhg: Option<f64>,
+) -> Result<(f64, f64, f64, f64), PackError> {
+    let power = ClimbPower {
+        map_hold_inhg,
+        rpm_hold: None,
+    };
+    fly_steady_climb_powered(
+        fdm,
+        pressure_alt_ft,
+        gross_mass_kg,
+        climb_kcas,
+        lean_best_power,
+        base_non_payload_lbs,
+        overrides,
+        power,
+    )
+}
+
+/// A steady climb at `climb_kcas` and `power`, returning settled KCAS, KTAS, the
+/// energy-height climb rate (ft/min) and propeller RPM.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn fly_steady_climb_powered(
+    fdm: &mut Fdm,
+    pressure_alt_ft: f64,
+    gross_mass_kg: f64,
+    climb_kcas: f64,
+    lean_best_power: bool,
+    base_non_payload_lbs: f64,
+    overrides: ParameterOverrides,
+    power: ClimbPower,
 ) -> Result<(f64, f64, f64, f64), PackError> {
     let base = capture_base_engine_tuning(fdm)?;
     configure_mass_and_overrides(fdm, gross_mass_kg, base_non_payload_lbs, overrides)?;
@@ -306,7 +357,7 @@ pub(super) fn fly_steady_climb_kcas(
     let procedure = MixtureProcedure::climb(pressure_alt_ft, lean_best_power);
     let mix = set_mixture(fdm, procedure, 1.0)?;
 
-    let out = integrate_climb_hold(fdm, climb_kcas, mix, map_hold_inhg)?;
+    let out = integrate_climb_hold(fdm, climb_kcas, mix, power)?;
     restore_engine_tuning(fdm, base)?;
     Ok(out)
 }
@@ -315,9 +366,12 @@ fn integrate_climb_hold(
     fdm: &mut Fdm,
     climb_kcas: f64,
     mixture: f64,
-    map_hold_inhg: Option<f64>,
+    power: ClimbPower,
 ) -> Result<(f64, f64, f64, f64), PackError> {
     let mut map_hold = ManifoldPressureHold::new(1.0);
+    let mut governor = GovernorHold::new();
+    let governed = has_governor(fdm)?;
+    let rpm_hold = power.rpm_hold.filter(|_| governed);
     let mut prev_vc = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
     let mut int_err = 0.0_f64;
     let mut h_start = 0.0_f64;
@@ -337,10 +391,14 @@ fn integrate_climb_hold(
         let wanted_theta = (0.14 + 0.006 * err + 0.002 * int_err + 0.004 * vdot).clamp(-0.15, 0.55);
         let nose_up = (wanted_theta - theta) * 2.0 - 1.2 * q;
         set_if_exists(fdm, "fcs/flap-pos-norm", 0.0)?;
-        let throttle = match map_hold_inhg {
+        let throttle = match power.map_hold_inhg {
             Some(target) => map_hold.step(fdm, target)?,
             None => 1.0,
         };
+        if let Some(rpm) = rpm_hold {
+            let lever = governor.step(fdm, rpm)?;
+            set_each_engine(fdm, "fcs/advance-cmd-norm", lever)?;
+        }
         step_wings_level(fdm, nose_up, throttle, mixture)?;
         if step == CLIMB_WINDOW_START {
             h_start = energy_height_ft(fdm)?;

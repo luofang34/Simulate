@@ -74,6 +74,23 @@ pub struct ClimbResult {
     pub passed: bool,
 }
 
+/// Simulated outcome of a time-to-climb benchmark.
+#[derive(Debug, Clone)]
+pub struct ClimbTimeResult {
+    /// Condition label.
+    pub label: String,
+    /// Altitude band climbed `(start, end)` (`ft`).
+    pub band_ft: (f64, f64),
+    /// Simulated time (`min`).
+    pub sim_min: f64,
+    /// Reported time (`min`).
+    pub target_min: f64,
+    /// Residual as a percentage of the reported time.
+    pub residual_pct: f64,
+    /// Whether `|residual_pct| <= tolerances.climb_time_pct`.
+    pub passed: bool,
+}
+
 /// Simulated outcome of a steady level cruise benchmark.
 #[derive(Debug, Clone, Copy)]
 pub struct CruiseResult {
@@ -143,6 +160,8 @@ pub struct CalibrationReport {
     pub stalls: Vec<StallResult>,
     /// Full-throttle steady climb benchmark results.
     pub climbs: Vec<ClimbResult>,
+    /// Time-to-climb benchmark results.
+    pub climb_times: Vec<ClimbTimeResult>,
     /// Level cruise `(Alt, RPM/Throttle)` benchmark results.
     pub cruises: Vec<CruiseResult>,
     /// Replayed real-world flight segment results.
@@ -391,6 +410,7 @@ pub(super) struct RawSuiteEvaluation {
     pub static_rpm: Option<(f64, bool)>,
     pub stalls: Vec<StallResult>,
     pub climbs: Vec<ClimbResult>,
+    pub climb_times: Vec<ClimbTimeResult>,
     pub cruises: Vec<CruiseResult>,
     pub empirical: Vec<EmpiricalSegmentResult>,
     pub takeoffs: Vec<TakeoffResult>,
@@ -411,6 +431,7 @@ pub(super) fn build_report(suite: &CalibrationSuite, raw: RawSuiteEvaluation) ->
     let all_passed = static_runup.is_none_or(|(_, _, _, ok)| ok)
         && raw.stalls.iter().all(|s| s.passed)
         && raw.climbs.iter().all(|c| c.passed)
+        && raw.climb_times.iter().all(|c| c.passed)
         && raw.cruises.iter().all(|c| c.passed)
         && raw.empirical.iter().all(|e| e.passed)
         && raw.takeoffs.iter().all(|t| t.passed);
@@ -422,6 +443,7 @@ pub(super) fn build_report(suite: &CalibrationSuite, raw: RawSuiteEvaluation) ->
         static_runup,
         stalls: raw.stalls,
         climbs: raw.climbs,
+        climb_times: raw.climb_times,
         cruises: raw.cruises,
         empirical_segments: raw.empirical,
         takeoffs: raw.takeoffs,

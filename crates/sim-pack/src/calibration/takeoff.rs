@@ -33,8 +33,24 @@ const TAIL_LOW_ATTITUDE_RAD: f64 = 0.06;
 /// Pitch attitude held for lift-off: about 9 degrees, the lift coefficient a
 /// short-field lift-off near 1.15 stall speeds needs, short of a tail strike.
 const LIFT_OFF_ATTITUDE_RAD: f64 = 0.16;
+const G_FPS2: f64 = 32.174_049;
 /// The most gear units probed for the at-rest height.
 const MAX_GEAR_UNITS: usize = 16;
+
+/// A flown take-off from brake release to the obstacle.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TakeoffRun {
+    /// Distance rolled before the wheels left the runway (`ft`).
+    pub ground_roll_ft: f64,
+    /// Distance to the obstacle (`ft`).
+    pub total_ft: f64,
+    /// Calibrated airspeed as the last wheel left the runway (`kt`).
+    pub lift_off_kcas: f64,
+    /// Time from brake release to the obstacle (`s`).
+    pub elapsed_s: f64,
+    /// Energy height above the runway at the obstacle (`ft`).
+    pub energy_ft: f64,
+}
 
 /// Flies `bench` and grades both distances against `tolerance_pct` of target.
 pub(super) fn solve_takeoff(
@@ -44,6 +60,30 @@ pub(super) fn solve_takeoff(
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
 ) -> Result<TakeoffResult, PackError> {
+    let run = fly_takeoff_from_brake_release(fdm, bench, base_non_payload_lbs, overrides)?;
+    let within = |sim: f64, target: f64| (sim - target).abs() <= target * tolerance_pct / 100.0;
+    Ok(TakeoffResult {
+        label: bench.label.clone(),
+        pressure_alt_ft: bench.pressure_alt_ft,
+        sim_ground_roll_ft: run.ground_roll_ft,
+        target_ground_roll_ft: bench.target_ground_roll_ft,
+        sim_total_ft: run.total_ft,
+        target_total_ft: bench.target_total_50ft_ft,
+        sim_lift_off_kcas: run.lift_off_kcas,
+        target_lift_off_kcas: bench.lift_off_kcas,
+        passed: within(run.ground_roll_ft, bench.target_ground_roll_ft)
+            && within(run.total_ft, bench.target_total_50ft_ft),
+    })
+}
+
+/// Holds the brakes at full power, releases them and flies `bench`'s technique to
+/// the obstacle.
+pub(super) fn fly_takeoff_from_brake_release(
+    fdm: &mut Fdm,
+    bench: &TakeoffBenchmark,
+    base_non_payload_lbs: f64,
+    overrides: ParameterOverrides,
+) -> Result<TakeoffRun, PackError> {
     let base = capture_base_engine_tuning(fdm)?;
     configure_mass_and_overrides(fdm, bench.gross_mass_kg, base_non_payload_lbs, overrides)?;
     let rest_height_ft = rest_height_ft(fdm)?;
@@ -67,22 +107,9 @@ pub(super) fn solve_takeoff(
     fdm.run_ic().map_err(fdm_err)?;
     apply_engine_overrides(fdm, base, overrides)?;
     let mixture = settle_on_brakes(fdm, bench)?;
-    let (ground_roll_ft, total_ft, lift_off_kcas) = fly_takeoff(fdm, bench, mixture)?;
+    let run = fly_takeoff(fdm, bench, mixture)?;
     restore_engine_tuning(fdm, base)?;
-
-    let within = |sim: f64, target: f64| (sim - target).abs() <= target * tolerance_pct / 100.0;
-    Ok(TakeoffResult {
-        label: bench.label.clone(),
-        pressure_alt_ft: bench.pressure_alt_ft,
-        sim_ground_roll_ft: ground_roll_ft,
-        target_ground_roll_ft: bench.target_ground_roll_ft,
-        sim_total_ft: total_ft,
-        target_total_ft: bench.target_total_50ft_ft,
-        sim_lift_off_kcas: lift_off_kcas,
-        target_lift_off_kcas: bench.lift_off_kcas,
-        passed: within(ground_roll_ft, bench.target_ground_roll_ft)
-            && within(total_ft, bench.target_total_50ft_ft),
-    })
+    Ok(run)
 }
 
 /// Height of the CG above the runway with the gear just touching, from the
@@ -116,18 +143,17 @@ fn settle_on_brakes(fdm: &mut Fdm, bench: &TakeoffBenchmark) -> Result<f64, Pack
     Ok(mixture)
 }
 
-/// Returns the ground roll and total distance to the obstacle in feet and the
-/// calibrated airspeed at the step the last wheel left the runway, in knots.
+/// Flies from brake release to the obstacle.
 fn fly_takeoff(
     fdm: &mut Fdm,
     bench: &TakeoffBenchmark,
     mixture: f64,
-) -> Result<(f64, f64, f64), PackError> {
+) -> Result<TakeoffRun, PackError> {
     let h0 = fdm.get_property("position/h-agl-ft").map_err(fdm_err)?;
     let mut distance_ft = 0.0_f64;
     let mut ground_roll_ft = None;
     let mut lift_off_kcas = 0.0_f64;
-    for _ in 0..MAX_RUN_STEPS {
+    for step in 0..MAX_RUN_STEPS {
         let vc = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
         let theta = fdm.get_property("attitude/theta-rad").map_err(fdm_err)?;
         let q = fdm.get_property("velocities/q-rad_sec").map_err(fdm_err)?;
@@ -154,7 +180,14 @@ fn fly_takeoff(
         if let Some(roll) = ground_roll_ft
             && height >= OBSTACLE_FT
         {
-            return Ok((roll, distance_ft, lift_off_kcas));
+            let v_fps = fdm.get_property("velocities/vt-fps").map_err(fdm_err)?;
+            return Ok(TakeoffRun {
+                ground_roll_ft: roll,
+                total_ft: distance_ft,
+                lift_off_kcas,
+                elapsed_s: f64::from(step.wrapping_add(1)) * DT_S,
+                energy_ft: height + v_fps * v_fps / (2.0 * G_FPS2),
+            });
         }
     }
     Err(PackError::CalibrationRun {

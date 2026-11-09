@@ -174,7 +174,8 @@ JSBSim piston 的增壓器以「每檔一個固定壓比 × 油門」建模，�
 
 ### 6.1 試飛卡 `performance/poh_benchmarks.json`
 - `stalls`：`target_kcas`（試驗 CAS）、`target_kias`（水柱 IAS，與 PEC 一致）、重量、襟翼。
-- `climb_points`：高度、重量、`climb_kcas`、`target_fpm`，增壓機加 `target_map_inhg`（試驗保持的進氣壓力）。
+- `climb_points`：高度、重量、`climb_kcas`、`target_fpm`，增壓機加 `target_map_inhg`（試驗保持的進氣壓力），額定轉速低於調速器上限時加 `target_rpm`。
+- `climb_time_points`：試驗只給爬升時間時用；起訖高度、重量、空速排程（`climb_kcas` + `climb_kcas_per_1000ft`）、進氣壓力與轉速、`target_min`，可選 `from_brake_release`（由放剎車起算，先飛起飛段）。以每 1,500 ft 一階的穩定爬升對能量高度積分。
 - `cruise_points`：高度、重量、`target_rpm`（座艙轉速表讀數，即曲軸轉速）、`target_ktas`，增壓機加 `target_map_inhg`。
 - `rated_bhp` 為全機總額定功率；`reference_document` 寫明報告編號與條件。
 

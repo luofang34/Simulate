@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::PackError;
 use crate::calibration::CALIBRATION_SUITE_ASSET;
+use crate::calibration::climb_time::ClimbTimeBenchmark;
 
 /// Tail-specific airframe, powerplant, avionics, and weight-and-balance metadata
 /// anchoring a reference package to an actual certificated aircraft (for example
@@ -49,6 +50,9 @@ pub struct CalibrationTolerances {
     /// Maximum takeoff-distance error, as a percentage of each POH distance.
     #[serde(default = "default_takeoff_pct")]
     pub takeoff_pct: f64,
+    /// Maximum time-to-climb error, as a percentage of each reported time.
+    #[serde(default = "default_takeoff_pct")]
+    pub climb_time_pct: f64,
 }
 
 const fn default_takeoff_pct() -> f64 {
@@ -125,6 +129,10 @@ pub struct ClimbBenchmark {
     /// power is a regulated manifold pressure rather than full throttle.
     #[serde(default)]
     pub target_map_inhg: Option<f64>,
+    /// Crankshaft RPM the test held with the propeller governor, when the climb power
+    /// was not the governor's maximum (a rated rather than take-off RPM).
+    #[serde(default)]
+    pub target_rpm: Option<f64>,
 }
 
 /// Steady level cruise benchmark at a pressure altitude and target propeller RPM (or throttle).
@@ -216,6 +224,9 @@ pub struct CalibrationSuite {
     /// POH takeoff-distance benchmarks.
     #[serde(default)]
     pub takeoff_points: Vec<TakeoffBenchmark>,
+    /// Time-to-climb benchmarks.
+    #[serde(default)]
+    pub climb_time_points: Vec<ClimbTimeBenchmark>,
     /// Model properties set for every handbook point (not the recorded segments)
     /// where the handbook's airplane differs from this one, such as speed fairings
     /// this tail no longer carries.
@@ -256,6 +267,7 @@ impl CalibrationSuite {
             ("cruise_ktas", tol.cruise_ktas),
             ("cruise_gph", tol.cruise_gph),
             ("cruise_pct_bhp", tol.cruise_pct_bhp),
+            ("climb_time_pct", tol.climb_time_pct),
         ] {
             if !val.is_finite() || val <= 0.0 {
                 return Err(invalid(&format!("tolerance {name} must be finite and > 0")));
@@ -263,6 +275,7 @@ impl CalibrationSuite {
         }
         if self.stalls.is_empty()
             && self.climb_points.is_empty()
+            && self.climb_time_points.is_empty()
             && self.cruise_points.is_empty()
             && self.empirical_segments.is_empty()
         {
@@ -307,6 +320,15 @@ impl CalibrationSuite {
                     "climb benchmark has non-finite or non-positive fields",
                 ));
             }
+        }
+        if !self
+            .climb_time_points
+            .iter()
+            .all(ClimbTimeBenchmark::is_valid)
+        {
+            return Err(invalid(
+                "time-to-climb benchmark needs positive mass, speed and time and a rising altitude band",
+            ));
         }
         for cr in &self.cruise_points {
             if !cr.pressure_alt_ft.is_finite()

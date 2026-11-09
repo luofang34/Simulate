@@ -7,6 +7,7 @@
 //! [`identify_package_sensitivities`].
 
 mod ace_bridge;
+mod climb_time;
 mod cruise;
 mod design;
 mod engines;
@@ -24,12 +25,14 @@ pub use ace_bridge::{
     AceFeedbackReport, build_ace_feedback_report, load_syspack_from_ace_vehicle_json,
     write_syspack_with_manual_assets,
 };
+pub use climb_time::{BrakeReleaseStart, ClimbTimeBenchmark};
 pub use design::estimate_design_performance;
 pub use mission::{default_manual_mission_profiles, evaluate_mission_profile};
 pub use results::{
-    CalibrationReport, ClimbResult, CruiseResult, DesignClimbPoint, DesignCruisePoint,
-    DesignPerformanceReport, EmpiricalSegmentResult, MissionProfileResult, MissionSegmentResult,
-    ParameterAdjustment, PayloadRangePoint, SensitivityReport, StallResult, TakeoffResult,
+    CalibrationReport, ClimbResult, ClimbTimeResult, CruiseResult, DesignClimbPoint,
+    DesignCruisePoint, DesignPerformanceReport, EmpiricalSegmentResult, MissionProfileResult,
+    MissionSegmentResult, ParameterAdjustment, PayloadRangePoint, SensitivityReport, StallResult,
+    TakeoffResult,
 };
 pub use schema::{
     CalibrationSuite, CalibrationTolerances, ClimbBenchmark, CruiseBenchmark,

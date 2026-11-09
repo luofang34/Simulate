@@ -92,6 +92,7 @@ impl CalibrationReport {
             }
             out.push('\n');
         }
+        self.append_climb_times(out);
         if !self.cruises.is_empty() {
             out.push_str(
                 "## Steady Level Cruise\n| Alt (ft) | Cmd RPM | Sim %BHP | Sim KTAS | POH KTAS | ΔKTAS | Sim GPH | POH GPH | Status |\n|---:|---:|---:|---:|---:|---:|---:|---:|:---:|\n",
@@ -137,6 +138,25 @@ impl CalibrationReport {
                     pass_str(e.passed)
                 ));
             }
+        }
+    }
+
+    fn append_climb_times(&self, out: &mut String) {
+        if !self.climb_times.is_empty() {
+            out.push_str(
+                "## Time to Climb\n| Condition | Sim (min) | Reported (min) | Residual | Status |\n|---|---:|---:|---:|:---:|\n",
+            );
+            for c in &self.climb_times {
+                out.push_str(&format!(
+                    "| {} | {:.2} | {:.2} | {:+.1}% | {} |\n",
+                    c.label,
+                    c.sim_min,
+                    c.target_min,
+                    c.residual_pct,
+                    pass_str(c.passed)
+                ));
+            }
+            out.push('\n');
         }
     }
 
