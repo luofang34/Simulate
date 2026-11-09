@@ -35,8 +35,17 @@ const PERIOD: TickSpan = JSBSIM_DEFAULT_PERIOD;
 const C172_START_SPEED_M_S: f64 = 39.5;
 const C172_START_ALPHA_RAD: f64 = 0.055;
 const SEA_LEVEL_MIXTURE_NORM: f64 = 0.88;
-/// Left-seat eye in FRD body axes, matching `simulate-app`'s C172 pilot-eye mount.
-const COCKPIT_EYE_BODY_M: DVec3 = DVec3::new(0.10, -0.26, -0.45);
+/// The C172's left-seat design eye in FRD body axes, metres from the drawn airframe's
+/// origin: the one value the cockpit, SVS and pattern-scenario cameras share, and that the
+/// FDM's `EYEPOINT` repeats in structural inches.
+///
+/// Height: the cabin is 48 in floor to headliner (POH Fig. 6-4), hung from the drawn roof
+/// 3 cm above the headliner (floor at `-0.477 m`); a 10 in seat cushion compressed 3 cm
+/// (assumed: no 172S seat height is published) and the ANSUR II male median sitting eye
+/// height, 804 mm, on a 12° seat back put the eye at `+0.53 m`, the head top 3.8 in under
+/// the headliner. Seen from there the cowl hides the ground above about 9° below the
+/// horizon. Station and lateral offset sit over the left seat (POH Fig. 6-3, arm 37).
+pub const C172_PILOT_EYE_BODY_M: DVec3 = DVec3::new(0.10, -0.26, -0.53);
 const MAX_SINGLE_CIRCUIT_DURATION_S: f64 = 420.0;
 
 /// Standard rectangular airport pattern turn direction.
@@ -392,10 +401,11 @@ impl AirportPatternRun {
         self.panel.snapshot()
     }
 
-    /// Pilot eye pose in the C172 cabin (`1.36 m` AGL on gear, angled `-3.0°` over the cowling).
+    /// Pilot eye pose in the C172 cabin at [`C172_PILOT_EYE_BODY_M`], angled `-3.0°` over the
+    /// cowling.
     #[must_use]
     pub fn eye_pose(&self) -> CameraPoseEcef {
-        CameraMount::oblique(COCKPIT_EYE_BODY_M, 0.0, -3.0_f64.to_radians(), 0.0)
+        CameraMount::oblique(C172_PILOT_EYE_BODY_M, 0.0, -3.0_f64.to_radians(), 0.0)
             .pose(&self.plant.output(), DVec3::ZERO)
     }
 

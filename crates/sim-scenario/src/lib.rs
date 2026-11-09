@@ -38,7 +38,8 @@ pub use episode::{
 pub use error::ScenarioError;
 pub use lunar::{LunarLandingConfig, LunarLandingReport, LunarLandingRun};
 pub use pattern::{
-    AirportPatternRun, PatternLeg, PatternReport, TrafficDirection, pattern_virtual_cameras,
+    AirportPatternRun, C172_PILOT_EYE_BODY_M, PatternLeg, PatternReport, TrafficDirection,
+    pattern_virtual_cameras,
 };
 pub use profile::ScenarioProfile;
 pub use reentry::{CapsuleReentryReport, CapsuleReentryRun};
