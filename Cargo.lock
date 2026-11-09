@@ -3081,6 +3081,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-camera"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "navigate-contract",
+ "navigate-geodesy",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-celestial"
 version = "0.1.0"
 dependencies = [
@@ -3123,6 +3133,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "nalgebra",
+ "navigate-camera",
  "navigate-contract",
  "navigate-fusion",
  "navigate-geodesy",
@@ -4975,6 +4986,7 @@ dependencies = [
  "sim-core",
  "sim-devices",
  "sim-geo",
+ "sim-render",
  "sim-scenario",
  "sim-scenery",
  "thiserror 2.0.21",

@@ -78,6 +78,17 @@ pub enum NavigateBridgeError {
     /// A solution's position has no local tangent plane.
     #[error("solution position has no local tangent plane")]
     SolutionPlane(#[source] GeodesyError),
+    /// The ephemeris refused the epoch of a star-camera frame.
+    #[error("no star catalogue {elapsed_s} s after the scenario start at UTC {start_unix_s} s")]
+    StarEphemeris {
+        /// The scenario's start, UTC Unix seconds.
+        start_unix_s: f64,
+        /// Simulated time since the scenario start, seconds.
+        elapsed_s: f64,
+        /// The underlying refusal.
+        #[source]
+        source: navigate_celestial::AnalyticError,
+    },
     /// A solution's covariance has no Cholesky factor.
     #[error("solution position covariance is not positive definite")]
     SolutionCovariance,

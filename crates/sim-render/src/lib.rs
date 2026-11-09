@@ -26,9 +26,12 @@ mod vector_pass;
 
 pub use aperture::{
     APERTURE_COLOUR_FORMAT, APERTURE_DEPTH_FORMAT, ApertureFrame, ApertureImage, ApertureWaveband,
-    OcclusionOverlayConfig, OffscreenAperture, OpticalReticle, PinholeProjection,
-    PresentedViewport, PropellerDisk, SensorAperturePass, ThermalScale, WindowBezel,
-    padded_bytes_per_row, reversed_z_range_m,
+    CatalogStar, MICROBOLOMETER_BITS, Microbolometer, MicrobolometerConfig, MicrobolometerFrame,
+    NIGHT_SKY_V_MAG_PER_ARCSEC2, OcclusionOverlayConfig, OffscreenAperture, OpticalReticle,
+    PinholeProjection, PresentedViewport, PropellerDisk, STAR_ATMOSPHERE_HEIGHT_M,
+    SceneTemperature, SensorAperturePass, SensorCounts, StarCamera, StarCameraConfig,
+    StarCameraExposure, StarCameraTruth, StarTruth, StarVisibility, ThermalScale,
+    V_ZERO_POINT_PHOTONS_PER_M2_S, WindowBezel, padded_bytes_per_row, reversed_z_range_m,
 };
 pub use camera::{Camera, CameraPose};
 pub use compositor::{

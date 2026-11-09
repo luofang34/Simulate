@@ -2,15 +2,29 @@ use sim_geo::InertialTransform;
 
 use crate::{CameraPose, SceneLighting};
 
+mod microbolometer;
+mod noise;
 mod overlay;
 mod pass;
 mod pinhole;
+mod readout;
+mod star_camera;
 mod stars;
 mod target;
 
+pub use microbolometer::{
+    MICROBOLOMETER_BITS, Microbolometer, MicrobolometerConfig, MicrobolometerFrame,
+    SceneTemperature,
+};
 pub use overlay::{OcclusionOverlayConfig, OpticalReticle, PropellerDisk, WindowBezel};
 pub use pass::SensorAperturePass;
 pub use pinhole::{PinholeProjection, reversed_z_range_m};
+pub use readout::SensorCounts;
+pub use star_camera::{
+    CatalogStar, NIGHT_SKY_V_MAG_PER_ARCSEC2, STAR_ATMOSPHERE_HEIGHT_M, StarCamera,
+    StarCameraConfig, StarCameraExposure, StarCameraTruth, StarTruth, StarVisibility,
+    V_ZERO_POINT_PHOTONS_PER_M2_S,
+};
 pub use target::{
     APERTURE_COLOUR_FORMAT, APERTURE_DEPTH_FORMAT, ApertureImage, OffscreenAperture,
     padded_bytes_per_row,
