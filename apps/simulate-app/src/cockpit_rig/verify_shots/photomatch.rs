@@ -11,7 +11,7 @@ use serde_json::Value;
 // Shared with other photo matches under `verify_shots` (cockpit photographs).
 pub(crate) use backproject::{hit_mesh, hit_plane, ray_through, triangulate};
 use landmarks::p38g_landmarks;
-pub(crate) use resection::{PinholePose, Resection, resect};
+pub(crate) use resection::{PinholePose, Resection, cockpit_starts, resect, resect_from};
 
 #[cfg(test)]
 mod backproject;

@@ -3,7 +3,9 @@ use std::io::Write;
 use glam::{DQuat, DVec3};
 
 use super::landmarks::p38g_landmarks;
-use super::{PinholePose, hit_mesh, hit_plane, ray_through, resect, triangulate};
+use super::{
+    PinholePose, cockpit_starts, hit_mesh, hit_plane, ray_through, resect, resect_from, triangulate,
+};
 
 #[test]
 fn the_mesh_yields_every_landmark_on_its_own_side() {
@@ -217,4 +219,46 @@ fn a_spinner_pixel_back_projects_onto_the_spinner_mesh() {
         hit_mesh(&ray_through(&pose, pose.project(spinner).unwrap()), &prims).unwrap();
     assert!(path.ends_with("/PropRight/SpinnerNose"), "{path}");
     assert!(hit.distance(spinner) < 0.05, "{hit} vs {spinner}");
+}
+
+#[test]
+fn a_seat_photograph_resects_from_cockpit_starts_on_fixed_structure() {
+    // Fixed structure ahead of and around a seated eye: panel corners, armour-glass frame,
+    // canopy-frame junctions and sill edges, roughly where the P-38G has them.
+    let anchors = [
+        DVec3::new(-0.36, 1.22, 0.52),
+        DVec3::new(0.36, 1.22, 0.52),
+        DVec3::new(-0.36, 1.24, 0.24),
+        DVec3::new(0.36, 1.24, 0.24),
+        DVec3::new(-0.18, 1.17, 0.88),
+        DVec3::new(0.18, 1.17, 0.88),
+        DVec3::new(-0.45, 1.10, 0.62),
+        DVec3::new(0.45, 1.10, 0.62),
+        DVec3::new(-0.55, 0.60, 0.30),
+        DVec3::new(0.55, 0.60, 0.30),
+    ];
+    let design_eye = DVec3::new(0.0, 0.42, 0.68);
+    let truth = looking_at(
+        design_eye + DVec3::new(0.08, -0.12, 0.05),
+        DVec3::new(0.05, 1.2, 0.42),
+        900.0,
+    );
+    let observed: Vec<(DVec3, [f64; 2])> = anchors
+        .iter()
+        .filter_map(|p| Some((*p, truth.project(*p)?)))
+        .collect();
+    assert!(observed.len() >= 8, "{}", observed.len());
+    let size = [2000.0, 1500.0];
+    let solved = resect_from(&observed, false, &cockpit_starts(design_eye, size)).unwrap();
+    assert!(solved.rms_px < 0.5, "{}", solved.rms_px);
+    assert!(
+        solved.pose.eye.distance(truth.eye) < 0.01,
+        "{:?}",
+        solved.pose
+    );
+    assert!(
+        (solved.pose.focal_px / 900.0 - 1.0).abs() < 0.01,
+        "{:?}",
+        solved.pose
+    );
 }

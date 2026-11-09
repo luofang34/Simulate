@@ -50,27 +50,73 @@ const BEHIND_PENALTY_PX: f64 = 1.0e4;
 const ITERATIONS: usize = 80;
 
 /// Solves for the camera seeing `correspondences` (`mesh point`, `pixel`) in an image
-/// `size_px`, with the principal point free when `free_principal` and at the centre
-/// otherwise. Needs four landmarks more than the unknowns.
+/// `size_px` from outside the airframe, with the principal point free when
+/// `free_principal` and at the centre otherwise. Needs four landmarks more than the
+/// unknowns.
 pub(crate) fn resect(
     correspondences: &[(DVec3, [f64; 2])],
     size_px: [f64; 2],
     free_principal: bool,
 ) -> Option<Resection> {
+    let count = correspondences.len().max(1) as f64;
+    let centre = correspondences.iter().map(|(p, _)| *p).sum::<DVec3>() / count;
+    resect_from(correspondences, free_principal, &starts(centre, size_px))
+}
+
+/// [`resect`] refined from `starts`, such as [`cockpit_starts`] for a photograph taken
+/// from the seat.
+pub(crate) fn resect_from(
+    correspondences: &[(DVec3, [f64; 2])],
+    free_principal: bool,
+    starts: &[PinholePose],
+) -> Option<Resection> {
     let unknowns = if free_principal { 9 } else { 7 };
     if correspondences.len() < unknowns / 2 + 2 {
         return None;
     }
-    let centre =
-        correspondences.iter().map(|(p, _)| *p).sum::<DVec3>() / correspondences.len() as f64;
     let mut best: Option<Resection> = None;
-    for start in starts(centre, size_px) {
-        let solved = refine(start, correspondences, free_principal);
+    for start in starts {
+        let solved = refine(*start, correspondences, free_principal);
         if best.as_ref().is_none_or(|b| solved.rms_px < b.rms_px) {
             best = Some(solved);
         }
     }
     best
+}
+
+/// Half-extent of the box a seated photographer's head moves in, mesh axes, metres:
+/// leaning sideways, forward and back, and rising or slumping.
+const HEAD_BOX_M: DVec3 = DVec3::new(0.20, 0.25, 0.12);
+
+/// Viewpoints for a photograph taken from the seat: eyes spread through the head box
+/// about `design_eye`, each looking ahead and to either side and down toward the panel,
+/// at wide to normal focal lengths.
+pub(crate) fn cockpit_starts(design_eye: DVec3, [w, h]: [f64; 2]) -> Vec<PinholePose> {
+    let mut poses = Vec::new();
+    let steps = [-1.0, 0.0, 1.0];
+    let offsets: Vec<DVec3> = steps
+        .iter()
+        .flat_map(|&x| steps.iter().map(move |&y| (x, y)))
+        .flat_map(|(x, y)| steps.iter().map(move |&z| DVec3::new(x, y, z)))
+        .collect();
+    for offset in offsets {
+        let eye = design_eye + HEAD_BOX_M * offset;
+        for yaw_deg in [-40.0_f64, 0.0, 40.0] {
+            for pitch_deg in [-35.0_f64, -12.0, 5.0] {
+                let (yaw, pitch) = (yaw_deg.to_radians(), pitch_deg.to_radians());
+                let dir = DVec3::new(
+                    yaw.sin() * pitch.cos(),
+                    yaw.cos() * pitch.cos(),
+                    pitch.sin(),
+                );
+                for focal_scale in [0.45, 0.8, 1.4] {
+                    let focal_px = focal_scale * w.max(h);
+                    poses.push(look_at(eye, eye + dir, focal_px, [w, h]));
+                }
+            }
+        }
+    }
+    poses
 }
 
 /// Viewpoints all round the airframe at three ranges, looking at its centre.
