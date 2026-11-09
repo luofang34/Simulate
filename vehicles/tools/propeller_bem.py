@@ -33,10 +33,30 @@ Optional spec keys (absent, the maps are as before):
   tip_shape       "elliptical": the chord closes on a quarter ellipse from
                   tip_ellipse_start (default 0.8 R) to zero at the tip, in place
                   of the linear tip_taper
+  chord_over_diameter / thickness_over_chord may instead be a list of
+                  [r/R, value] points (a measured blade-form chart), linearly
+                  interpolated and held at the ends
+
+Known limitation, checked by propeller_check.py: against NACA TR 640's measured
+2-blade Clark-Y propeller 5868-9 the maps match within 0.008 in Ct and Cp
+where its sections are attached (J >= 0.4 at 20 deg), but at J below about 0.3
+the stalled blade's Ct comes out high and Cp low; static Cp is 35-55 % low at
+20-25 deg with every section option here, the deficit growing with blade angle.
+Low-J and static values (a fixed-pitch take-off, the P-38G's static column)
+carry this; vehicles/tools/propeller_measured.py serves measured maps instead.
 """
 import json
 import math
 import sys
+
+
+def interpolate(points, x):
+    if x <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return points[-1][1]
 
 
 class Blade:
@@ -63,6 +83,8 @@ class Blade:
 
     def chord_over_d(self, x):
         c = self.chord
+        if isinstance(c, list):
+            return interpolate(c, x)
 
         def planform(x):
             return c["base"] + c["bulge"] * math.sin(math.pi * min(1.0, (x - 0.2) / 0.85))
@@ -80,6 +102,8 @@ class Blade:
 
     def tc(self, x):
         t = self.thickness
+        if isinstance(t, list):
+            return interpolate(t, x)
         return t["root"] - (t["root"] - t["tip"]) * (x - 0.2) / 0.8
 
 
