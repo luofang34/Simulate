@@ -13,6 +13,7 @@ use sim_scenery::AerodromeId;
 use super::{SHOT_SIZE, VerifyHarness, poll_gpu};
 use crate::error::AppSimError;
 use crate::esc_menu::SpawnMode;
+use crate::gallery::save_png;
 use crate::sky_rig::SkyFrame;
 use crate::vehicles::FreeFlightVehicle;
 
@@ -136,11 +137,22 @@ pub(super) fn draw_camera_lit(
     sun_ecef: DVec3,
     out: &Path,
 ) -> Result<(), AppSimError> {
+    let rgba = capture_camera_lit(h, camera, sun_ecef)?;
+    save_png(out, SHOT_SIZE, rgba)
+}
+
+/// The frame `camera` sees lit by a Sun along `sun_ecef`, as [`SHOT_SIZE`] RGBA rows,
+/// once streamed tiles have settled.
+pub(super) fn capture_camera_lit(
+    h: &mut VerifyHarness,
+    camera: impl Fn(&VerifyHarness) -> Option<Camera>,
+    sun_ecef: DVec3,
+) -> Result<Vec<u8>, AppSimError> {
     let sky = SkyFrame::fixed_sun(h.flight.world().body(), sun_ecef);
     for _ in 0..SETTLE_FRAMES {
         let Some(cam) = camera(h) else {
             return Err(AppSimError::Screenshot {
-                detail: format!("no camera for {}", out.display()),
+                detail: "no camera for the shot".to_owned(),
             });
         };
         h.rig.invalidate_chart();
@@ -151,5 +163,5 @@ pub(super) fn draw_camera_lit(
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let quads = h.rig.overlay_quads(h.flight.world());
-    h.composite_to_png(&quads, out)
+    h.composite_rgba(&quads)
 }
