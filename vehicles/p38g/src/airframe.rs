@@ -29,7 +29,7 @@ pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
 }
 
 fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
-    const ARC_STEPS: usize = 20;
+    const ARC_STEPS: usize = 32;
     let mut lower_rows = Vec::with_capacity(GONDOLA_STATIONS.len());
     for &(y, ..) in GONDOLA_STATIONS {
         let lo = (0..=ARC_STEPS)
@@ -257,6 +257,9 @@ fn build_canopy_and_windscreen(prims: &mut Vec<P38MeshPrim>) {
     ));
 }
 
+/// Chordwise rows of the wing loft (cosine spaced, dense at the nose and tail).
+pub(crate) const WING_CHORD_STEPS: usize = 28;
+
 fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
     // The taper is straight to the tip arc, so the rows only need to follow the arc
     // and the junctions with the gondola and booms.
@@ -283,14 +286,13 @@ fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
         .map(|x| -x)
         .chain(HALF.iter().skip(1).copied())
         .collect();
-    const CHORD_STEPS: usize = 16;
     let mut upper_rows = Vec::with_capacity(span_xs.len());
     let mut lower_rows = Vec::with_capacity(span_xs.len());
     for x in span_xs {
-        let mut up = Vec::with_capacity(CHORD_STEPS + 1);
-        let mut lo = Vec::with_capacity(CHORD_STEPS + 1);
-        for i in 0..=CHORD_STEPS {
-            let u = 0.5 * (1.0 - (PI * i as f32 / CHORD_STEPS as f32).cos());
+        let mut up = Vec::with_capacity(WING_CHORD_STEPS + 1);
+        let mut lo = Vec::with_capacity(WING_CHORD_STEPS + 1);
+        for i in 0..=WING_CHORD_STEPS {
+            let u = 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos());
             up.push(wing_surface_point(x, u, true));
             lo.push(wing_surface_point(x, u, false));
         }

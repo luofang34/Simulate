@@ -10,7 +10,7 @@ use crate::drawing::{
     FRL_ABOVE_GROUND_NOSE_STATIC_IN, FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN,
     MAIN_AXLE_FS_IN, MAIN_TREAD_IN, NOSE_AXLE_FS_IN, NOSE_ROLLING_RADIUS_IN, NOSE_Y_M,
 };
-use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
+use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, circle_segments, fixed, part};
 use crate::stations::{BOOM_X, CHROME_OLEO, NEUTRAL_GRAY, TIRE_RUBBER, WHEEL_WELL_ZINC};
 
 /// Nose axle: centre of the dashed nose tyre on the AN 01-75F-2 side view.
@@ -175,6 +175,7 @@ fn append_wheel_and_hub(
     half_width: f32,
 ) {
     let mut tire = MeshBuilder::new();
+    let segs = circle_segments(radius);
     let rings: Vec<Vec<Vec3>> = [
         (-half_width, radius * 0.42),
         (-half_width * 0.92, radius * 0.86),
@@ -185,9 +186,9 @@ fn append_wheel_and_hub(
     ]
     .into_iter()
     .map(|(x, r)| {
-        (0..24)
+        (0..segs)
             .map(|i| {
-                let (s, c) = (TAU * i as f32 / 24.0).sin_cos();
+                let (s, c) = (TAU * i as f32 / segs as f32).sin_cos();
                 Vec3::new(x, c * r, s * r)
             })
             .collect()

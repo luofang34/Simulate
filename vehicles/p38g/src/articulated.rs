@@ -8,7 +8,9 @@ use glam::{DMat4, DVec3, Vec3};
 
 use crate::drawing::{ELEVATOR_CHORD_IN, INCH_M, y_to_fs};
 use crate::gear::{build_main_gear, build_nose_gear};
-use crate::mesh::{Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, part};
+use crate::mesh::{
+    Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, circle_segments, part,
+};
 use crate::stations::{
     AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
     PROP_BLACK, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
@@ -60,7 +62,7 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
             let mut m = MeshBuilder::new();
             let rings: Vec<Vec<Vec3>> = rings_spec
                 .iter()
-                .map(|&(y, r)| circle_xz(y, r, 24))
+                .map(|&(y, r)| circle_xz(y, r, circle_segments(0.33)))
                 .collect();
             m.loft(&rings, true, Inside::Axis);
             prims.push(part(

@@ -7,12 +7,13 @@ use std::f32::consts::PI;
 
 use glam::Vec3;
 
+use crate::airframe::WING_CHORD_STEPS;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{BOOM_X, OLIVE_DRAB, boom_point, gondola_point, wing_surface_point};
 
-/// Chordwise sections per fillet (the wing loft's cosine spacing, so the fillet's wing
-/// edge runs along the wing mesh's own chord lines) and points per section.
-const CHORD_STEPS: usize = 16;
+/// Chordwise sections per fillet (the wing loft's own cosine spacing, so the fillet's
+/// wing edge runs along the wing mesh's chord lines) and points per section.
+const CHORD_STEPS: usize = WING_CHORD_STEPS;
 const CURVE_STEPS: usize = 6;
 /// Fillet radius at the leading and trailing edges: the Karman fairing swells aft.
 const RADIUS_LE_M: f32 = 0.05;

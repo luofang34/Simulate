@@ -397,8 +397,20 @@ impl MeshBuilder {
     }
 }
 
+/// Segments for a full circle of radius `radius_m` whose chords sag at most
+/// [`SAGITTA_M`] from the arc, so large curves are not faceted and small ones not wasted.
+pub(crate) fn circle_segments(radius_m: f32) -> u32 {
+    let half_angle = (1.0 - SAGITTA_M / radius_m.max(SAGITTA_M))
+        .clamp(-1.0, 1.0)
+        .acos();
+    ((std::f32::consts::PI / half_angle.max(1e-3)).ceil() as u32).clamp(12, 96)
+}
+
+/// Largest gap between a curved surface and the flat facets standing in for it.
+pub(crate) const SAGITTA_M: f32 = 0.001;
+
 pub(crate) fn aerofoil(leading: Vec3, chord_vec: Vec3, half_thickness: Vec3) -> Vec<Vec3> {
-    const SAMPLES: usize = 20;
+    const SAMPLES: usize = 32;
     let thickness = |u: f32| -> f32 {
         let u = u.clamp(0.0, 1.0);
         5.0 * (0.2969 * u.sqrt() - 0.1260 * u - 0.3516 * u * u + 0.2843 * u.powi(3)
