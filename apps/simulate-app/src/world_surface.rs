@@ -1,12 +1,13 @@
 //! The one Earth surface physics, spawning, and the maps agree on, matched to
 //! the active [`ScenerySource`].
 
+use std::collections::BTreeSet;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use sim_geo::Geodetic;
 use sim_scenery::{
     AuthoritativeWorldSurface, CatalogScenery, CatalogVerticalDatum, LiveDemBridge, RunwayDatum,
-    SceneryError, WorldSurfaceQuery,
+    SceneryError, TileId, WorldSurfaceQuery,
 };
 
 use crate::map_rig::ScenerySource;
@@ -71,6 +72,26 @@ impl WorldSurfaceHandle {
         bridge.drain_into(&mut self.write())
     }
 
+    /// Keeps the live tiles in `drawn` (the DEM tiles the physical scene draws) and evicts
+    /// far from `ownship` first, letting `bridge` take evicted tiles again; returns the
+    /// drawn tiles the surface does not hold.
+    pub fn keep_live_tiles(
+        &self,
+        ownship: Geodetic,
+        drawn: BTreeSet<TileId>,
+        bridge: &LiveDemBridge,
+    ) -> BTreeSet<TileId> {
+        let mut surface = self.write();
+        let missing = drawn
+            .iter()
+            .copied()
+            .filter(|&tile| !surface.has_live_tile(tile))
+            .collect();
+        surface.set_live_dem_focus(ownship, drawn);
+        bridge.forget_evicted(&mut surface);
+        missing
+    }
+
     /// Ellipsoidal ground height under `position`, when the surface has ground there.
     pub fn ellipsoidal_ground_m(&self, position: &Geodetic) -> Option<f64> {
         let sample = self.read().sample_surface(position).ok()??;
@@ -102,6 +123,23 @@ impl WorldSurfaceHandle {
     )
 )]
 impl WorldSurfaceHandle {
+    /// Bounds the live tiles to `tiles`, to force eviction.
+    #[cfg(test)]
+    pub fn set_live_dem_capacity(&self, tiles: usize) {
+        let mut surface = self.write();
+        *surface = surface.clone().with_live_dem_capacity(tiles);
+    }
+
+    /// The finest zoom of a resident live tile covering `position`.
+    #[cfg(test)]
+    pub fn finest_live_zoom_at(&self, position: &Geodetic) -> Option<u8> {
+        let surface = self.read();
+        (0..=sim_scenery::MAX_TILE_ZOOM).rev().find(|&zoom| {
+            sim_scenery::project_to_tile(position, zoom)
+                .is_some_and(|coord| surface.has_live_tile(coord.tile))
+        })
+    }
+
     /// How many live Terrarium tiles are resident.
     #[cfg(test)]
     pub fn live_dem_len(&self) -> usize {

@@ -16,9 +16,7 @@ use sim_maplibre::{
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
-use sim_scenery::{
-    CatalogScenery, LandingRunwayGeometry, LiveDemBridge, OsmAerodromeDiagram, TileId,
-};
+use sim_scenery::{CatalogScenery, LandingRunwayGeometry, OsmAerodromeDiagram, TileId};
 
 use crate::error::AppSimError;
 use crate::sky_rig::SkyFrame;
@@ -30,6 +28,7 @@ mod aircraft;
 mod charts;
 mod efb;
 mod globe;
+mod live_ground;
 mod preset;
 mod scenery;
 mod stamps;
@@ -80,7 +79,7 @@ pub struct MapLibreRig {
     endpoints: SceneryEndpoints,
     aerodrome_geojson: Value,
     catalog: Option<CatalogScenery>,
-    live_dem: Option<LiveDemBridge>,
+    live_ground: Option<live_ground::LiveGround>,
     truth: TruthSceneMap,
     avionics: AvionicsMapSet,
     preset: AvionicsPreset,
@@ -116,7 +115,7 @@ impl MapLibreRig {
             loader,
             endpoints,
             catalog,
-            live_dem,
+            live_ground,
         } = source.loader(charts.clone())?;
         let runtime = SharedMapRuntime::new(
             gpu,
@@ -150,7 +149,7 @@ impl MapLibreRig {
             endpoints,
             aerodrome_geojson,
             catalog,
-            live_dem,
+            live_ground,
             truth,
             preset,
             window_px,
@@ -288,8 +287,9 @@ impl MapLibreRig {
         input: &MapFrameInput<'_>,
     ) -> Result<Option<LandingRunwayGeometry>, AppSimError> {
         let _ = self.aux_virtual_camera_slot;
-        if let Some(bridge) = &self.live_dem {
-            let _resident = self.surface.drain(bridge);
+        if let Some(ground) = self.live_ground.as_mut() {
+            let ownship = ecef_to_geodetic(input.vehicle.position_ecef);
+            ground.sync(&self.surface, &self.truth, &self.runtime, ownship);
         }
         self.window_px = clamp_window(input.surface_size);
         let [w, h] = self.window_px;

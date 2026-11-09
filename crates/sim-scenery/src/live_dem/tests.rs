@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::Cursor;
 
 use glam::DVec3;
@@ -234,4 +235,53 @@ fn duplicate_terrarium_fetches_across_map_views_decode_and_queue_once() {
     );
     assert_eq!(bridge.generation(), 1);
     assert_eq!(bridge.pending_len_may_be_stale(), 1);
+}
+
+/// Long sessions stream more tiles than the overlay holds. The tiles a renderer draws
+/// under the ownship are never the ones to go, far tiles go before near ones, and an
+/// evicted tile fetched again is taken again rather than dropped as already seen.
+#[test]
+fn eviction_keeps_drawn_tiles_under_the_ownship_and_lets_evicted_tiles_return() {
+    let ownship = dover();
+    let under = tile_over(&ownship, 15);
+    let flat = |height_m: f64| TerrariumTile::from_heights(4, 4, vec![height_m; 16]).unwrap();
+    let mut surface = AuthoritativeWorldSurface::earth(CatalogVerticalDatum::EllipsoidWgs84)
+        .with_live_dem_capacity(3);
+    let bridge = LiveDemBridge::new();
+    bridge.ingest_terrarium_tile(under, flat(12.0)).unwrap();
+    assert_eq!(bridge.drain_into(&mut surface), 1);
+    surface.set_live_dem_focus(ownship, [under].into());
+
+    // Far tiles (another continent) and a tile a few kilometres east arrive after it.
+    let far = |x| TileId {
+        zoom: 15,
+        x,
+        y: 100,
+    };
+    let near = TileId {
+        x: under.x + 3,
+        ..under
+    };
+    for tile in [far(1), far(2), near, far(3)] {
+        bridge.ingest_terrarium_tile(tile, flat(500.0)).unwrap();
+    }
+    assert_eq!(bridge.drain_into(&mut surface), 4);
+    let resident = surface.live_dem_tiles();
+    assert!(resident.contains(&under), "{resident:?}");
+    assert!(resident.contains(&near), "{resident:?}");
+    let ground = surface.sample_surface(&ownship).unwrap().unwrap();
+    assert_eq!(ground.source, SurfaceSampleSource::ResidentDem { zoom: 15 });
+    assert!((ground.orthometric_msl_m.0 - 12.0).abs() < 1e-6);
+
+    // Once nothing draws it, the ownship's tile may go; fetched again, it comes back.
+    surface.set_live_dem_focus(Geodetic::from_degrees(-30.0, 140.0, 0.0), BTreeSet::new());
+    for x in 4..8 {
+        bridge.ingest_terrarium_tile(far(x), flat(500.0)).unwrap();
+    }
+    bridge.drain_into(&mut surface);
+    assert!(!surface.has_live_tile(under));
+    let png = terrarium_png(12.0, 0.0);
+    assert!(bridge.ingest_terrarium_png_if_new(under, &png).unwrap());
+    bridge.drain_into(&mut surface);
+    assert!(surface.has_live_tile(under));
 }

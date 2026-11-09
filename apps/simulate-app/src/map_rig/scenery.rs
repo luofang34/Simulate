@@ -8,6 +8,7 @@ use sim_geo::Geodetic;
 use sim_maplibre::{ChartAssetStore, HybridTileLoader, SceneryEndpoints, SharedLoader};
 use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TileId};
 
+use super::live_ground::LiveGround;
 use crate::error::AppSimError;
 
 /// Everything the rig needs from a [`ScenerySource`] to load and draw tiles.
@@ -19,7 +20,7 @@ pub(super) struct SceneryLoader {
     /// The offline catalog, supplied to the maps synchronously.
     pub catalog: Option<CatalogScenery>,
     /// Terrarium tiles the transport fetched, waiting for the live Earth surface.
-    pub live_dem: Option<LiveDemBridge>,
+    pub live_ground: Option<LiveGround>,
 }
 
 /// Environment variable selecting the offline regional catalog instead of tile servers.
@@ -95,7 +96,7 @@ impl ScenerySource {
                     loader,
                     endpoints: SceneryEndpoints::catalog(max_dem, max_ortho),
                     catalog: Some(scenery),
-                    live_dem: None,
+                    live_ground: None,
                 })
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -124,14 +125,16 @@ fn catalog_transport(scenery: Arc<CatalogScenery>) -> HybridTileLoader {
 
 fn real_world_loader(transport: HybridTileLoader) -> SceneryLoader {
     let bridge = LiveDemBridge::new();
+    let transport = transport
+        .with_runway_datum(RunwayDatum::builtin())
+        .with_live_dem_bridge(bridge.clone());
+    let endpoints = SceneryEndpoints::real_world();
+    let live_ground = LiveGround::new(bridge, Some(transport.clone()), endpoints.dem_tiles.clone());
     SceneryLoader {
-        loader: transport
-            .with_runway_datum(RunwayDatum::builtin())
-            .with_live_dem_bridge(bridge.clone())
-            .into_shared_loader(),
-        endpoints: SceneryEndpoints::real_world(),
+        loader: transport.into_shared_loader(),
+        endpoints,
         catalog: None,
-        live_dem: Some(bridge),
+        live_ground: Some(live_ground),
     }
 }
 

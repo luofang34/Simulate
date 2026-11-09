@@ -17,7 +17,10 @@ use maplibre::{
 use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TerrariumTile, TileId};
 
 use crate::scenery_loader::encode_rgba_png;
-use crate::{CHART_URL_PREFIX, CatalogTileLoader, ChartAssetStore, terrarium_tile_to_rgba_image};
+use crate::{
+    CHART_URL_PREFIX, CatalogTileLoader, ChartAssetStore, SharedMapRuntime,
+    terrarium_tile_to_rgba_image,
+};
 
 mod negative_cache;
 #[cfg(test)]
@@ -92,6 +95,30 @@ impl HybridTileLoader {
     pub fn with_runway_datum(mut self, datum: RunwayDatum) -> Self {
         self.runway_datum = Some(datum);
         self
+    }
+
+    /// Fetches the Terrarium tile `tile` of `url_template` (`{z}/{x}/{y}`) again on
+    /// `runtime`'s tile workers, stamped and handed to the [`LiveDemBridge`] as any fetch
+    /// is: for a tile the simulation's ground evicted while a map still draws it. The
+    /// disk cache usually answers. Natively only; in the browser nothing is fetched.
+    pub fn refetch_terrarium(&self, runtime: &SharedMapRuntime, url_template: &str, tile: TileId) {
+        let url = url_template
+            .replace("{z}", &tile.zoom.to_string())
+            .replace("{x}", &tile.x.to_string())
+            .replace("{y}", &tile.y.to_string());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let loader = self.clone();
+            runtime.spawn_detached(async move {
+                if let Err(error) = loader.fetch(&url).await {
+                    tracing::warn!(url, %error, "Terrarium refetch for the simulation ground failed");
+                }
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _unfetched = (runtime, url);
+        }
     }
 
     /// Serves `https://sim.chart/` URLs from `charts`, a store the host shares with the
