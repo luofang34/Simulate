@@ -1,5 +1,5 @@
-//! The surface's vertical datum, runways registered at run time, and the
-//! unflattened live-DEM floor.
+//! The surface's vertical datum, runways registered at run time, and whether
+//! resident live terrain is the ground as drawn.
 
 use sim_geo::{Geodetic, egm96_undulation_m};
 
@@ -12,17 +12,18 @@ const MERCATOR_MAX_LAT_RAD: f64 = 1.484_422_229_745_332_4;
 impl AuthoritativeWorldSurface {
     /// The live-tile Earth: orthometric, as published Terrarium tiles are,
     /// with [`Self::with_unflattened_visual_dem`] on because the renderer
-    /// drapes those tiles unflattened.
+    /// drapes those tiles as they arrive.
     #[must_use]
     pub fn earth_live_dem() -> Self {
         Self::earth(CatalogVerticalDatum::OrthometricMslEgm96).with_unflattened_visual_dem(true)
     }
 
-    /// Whether the renderer draws the resident DEM unflattened under the
-    /// runways. When on, a runway strip over resident DEM matches the terrain
-    /// relief directly (while still providing surveyed runway elevation before
-    /// DEM tiles stream in), so gear neither sinks below nor floats in mid-air
-    /// above the rendered photo-draped mesh. Ignored on the Moon.
+    /// Whether the renderer draws the resident DEM exactly as it was made resident,
+    /// runway datum and all ([`crate::RunwayDatum::stamp_terrarium`]). When on, a
+    /// runway over resident DEM of a zoom the datum stamps
+    /// ([`crate::MIN_STAMP_ZOOM`] and finer) reads that DEM, so gear neither sinks
+    /// below nor floats above the drawn mesh; over coarser DEM, or before any tile
+    /// streams in, it reads the charted runway. Ignored on the Moon.
     #[must_use]
     pub fn with_unflattened_visual_dem(mut self, unflattened: bool) -> Self {
         if let Body::Earth(earth) = &mut self.body {

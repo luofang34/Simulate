@@ -322,12 +322,11 @@ impl AirportRecord {
         })
     }
 
-    /// The runway strips an [`crate::AuthoritativeWorldSurface`] read in
-    /// `datum` should hold, for
-    /// [`crate::AuthoritativeWorldSurface::set_extra_runways`]. A surface
-    /// reads its runway heights as charted — MSL in an orthometric world, the
-    /// same number taken as ellipsoidal in a synthetic one — so every strip
-    /// carries its surveyed MSL threshold elevations in either datum.
+    /// The runway strips an [`crate::AuthoritativeWorldSurface`] read in `datum` should hold
+    /// ([`crate::AuthoritativeWorldSurface::set_extra_runways`]). A surface reads runway
+    /// heights as charted — MSL in an orthometric world, the same number taken as
+    /// ellipsoidal in a synthetic one — so every strip carries its surveyed MSL threshold
+    /// elevations in either datum. Water runways are not ground and have no strip.
     #[must_use]
     pub fn runway_strips(&self, datum: CatalogVerticalDatum) -> Vec<RunwayStrip> {
         let charted = |end: &RunwayEndRecord| match datum {
@@ -338,6 +337,7 @@ impl AirportRecord {
         let ends: Vec<RunwayEndSpec> = self
             .runways
             .iter()
+            .filter(|runway| runway.surface != RunwaySurfaceKind::Water)
             .flat_map(|runway| runway.end_specs(charted))
             .flatten()
             .collect();

@@ -39,6 +39,7 @@ pub use our_airports::{
 };
 pub use record::LandingRunwayGeometry;
 pub use spatial::globe_visible_radius_deg;
+pub(crate) use spatial::{CELL_DEG, LAT_CELLS, LON_CELLS};
 
 use search::CodeIndex;
 use spatial::GlobeGrid;
@@ -155,6 +156,19 @@ impl AirportDatabase {
     #[must_use]
     pub fn runway_count(&self) -> usize {
         self.records.iter().map(|record| record.runways.len()).sum()
+    }
+
+    /// The airports whose reference point lies in grid cell `(lat_band, lon_band)` of the
+    /// 2° globe grid.
+    pub(crate) fn airports_in_cell(
+        &self,
+        lat_band: usize,
+        lon_band: usize,
+    ) -> impl Iterator<Item = &AirportRecord> + '_ {
+        self.grid
+            .cell(lat_band, lon_band)
+            .iter()
+            .filter_map(|&idx| self.get(idx))
     }
 
     /// Handles of every record, in index order.

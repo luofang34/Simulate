@@ -3,7 +3,7 @@
 
 use flightbag::RunwayEndSpec;
 use glam::DVec3;
-use sim_geo::{Geodetic, LocalFrame, geodetic_to_ecef};
+use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
 /// Graded shoulder beyond each paved edge.
 const SHOULDER_M: f64 = 15.0;
@@ -102,6 +102,23 @@ impl RunwayStrip {
         })
     }
 
+    /// The four corners of the skirt's outer edge, on the ellipsoid: every point the
+    /// strip reaches lies inside them.
+    pub(crate) fn skirt_corners(&self) -> [Geodetic; 4] {
+        let across = self.half_width_m + SHOULDER_M + SKIRT_M;
+        let behind = -(OVERRUN_M + SKIRT_M);
+        let beyond = self.length_m + OVERRUN_M + SKIRT_M;
+        [
+            (behind, -across),
+            (behind, across),
+            (beyond, across),
+            (beyond, -across),
+        ]
+        .map(|(along, right)| {
+            ecef_to_geodetic(self.origin_ecef + self.along_ecef * along + self.across_ecef * right)
+        })
+    }
+
     /// Metres along the centreline from the threshold and across it to the
     /// right, or `None` outside the strip's 3D bounding sphere.
     fn local_ecef(&self, surface_ecef: DVec3) -> Option<(f64, f64)> {
@@ -112,9 +129,10 @@ impl RunwayStrip {
         Some((delta.dot(self.along_ecef), delta.dot(self.across_ecef)))
     }
 
-    /// The strip height at `surface_ecef` and how strongly it applies: 1 on
-    /// the strip, easing to 0 across the skirt; `None` beyond the skirt.
-    fn height_and_weight_ecef(&self, surface_ecef: DVec3) -> Option<(f64, f64)> {
+    /// The strip height at `surface_ecef`, how strongly it applies (1 on the strip,
+    /// easing to 0 across the skirt) and how far the point lies off the pavement;
+    /// `None` beyond the skirt.
+    fn reach_ecef(&self, surface_ecef: DVec3) -> Option<(f64, f64, f64)> {
         let (along, across) = self.local_ecef(surface_ecef)?;
         let over_across = (across.abs() - (self.half_width_m + SHOULDER_M)).max(0.0);
         let over_along = (-OVERRUN_M - along)
@@ -128,13 +146,17 @@ impl RunwayStrip {
         let weight = t * t * (3.0 - 2.0 * t);
         let fraction = (along / self.length_m).clamp(0.0, 1.0);
         let height = self.threshold_m + (self.far_end_m - self.threshold_m) * fraction;
-        Some((height, weight))
+        let off_pavement = (across.abs() - self.half_width_m)
+            .max(0.0)
+            .hypot((-along).max(along - self.length_m).max(0.0));
+        Some((height, weight, off_pavement))
     }
 }
 
 /// The height of the strip that most strongly covers `position`, with its
-/// weight in `(0, 1]`.
-pub(super) fn strongest<'a>(
+/// weight in `(0, 1]`. Where crossing runways both cover it fully, the one whose
+/// pavement it is on, or nearest, wins.
+pub(crate) fn strongest<'a>(
     strips: impl IntoIterator<Item = &'a RunwayStrip>,
     position: &Geodetic,
 ) -> Option<(f64, f64)> {
@@ -144,7 +166,8 @@ pub(super) fn strongest<'a>(
     });
     strips
         .into_iter()
-        .filter_map(|strip| strip.height_and_weight_ecef(surface_ecef))
-        .filter(|&(_, weight)| weight > 0.0)
-        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .filter_map(|strip| strip.reach_ecef(surface_ecef))
+        .filter(|&(_, weight, _)| weight > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1).then(b.2.total_cmp(&a.2)))
+        .map(|(height, weight, _)| (height, weight))
 }
