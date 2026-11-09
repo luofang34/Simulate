@@ -31,15 +31,17 @@ newer="$(commit "$up" newer)"
 git -C "$scratch/built" fetch -q origin
 
 # Repositories in UNPUBLISHED that a case does not exercise stay plain git entries.
-others='jsbsim-rs Aviate Indicate Navigate'
+others='jsbsim-rs Aviate Navigate'
 
 write_manifest() {
-    local maplibre="$1" world="$2" omit="${3:-}"
+    local published_spec="$1" unpublished_spec="$2" omit="${3:-}"
     mkdir -p "$scratch/tree"
     {
         printf '[workspace.metadata.external_sources]\n'
-        printf 'maplibre-rs-experimental = { git = "u", %s, version = "0" }\n' "$maplibre"
-        printf 'world = { git = "u", %s, version = "0" }\n' "$world"
+        # maplibre and world are enforced; Indicate stands for an UNPUBLISHED entry.
+        printf 'maplibre-rs-experimental = { git = "u", %s, version = "0" }\n' "$published_spec"
+        printf 'world = { git = "u", %s, version = "0" }\n' "$published_spec"
+        printf 'Indicate = { git = "u", %s, version = "0" }\n' "$unpublished_spec"
         for name in $others; do
             [ "$name" = "$omit" ] || printf '%s = { git = "u", rev = "r", version = "0" }\n' "$name"
         done
