@@ -146,7 +146,8 @@ impl CameraViewSet {
         Ok(set)
     }
 
-    /// Default views for a vehicle `span_m` across: see [`derived`].
+    /// Default views for a vehicle `span_m` across: chase, wingman, profile, planform,
+    /// flyby, spotter and cockpit, sized from the span.
     #[must_use]
     pub fn derived(span_m: f64) -> Self {
         derived::views_for_span(span_m)

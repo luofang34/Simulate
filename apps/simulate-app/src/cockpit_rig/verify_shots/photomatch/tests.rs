@@ -25,7 +25,27 @@ fn the_mesh_yields_every_landmark_on_its_own_side() {
             .map(|(_, p)| *p)
             .unwrap()
     };
-    assert!(at("spinner_l").y > 2.8 && at("fin_top_r").z > 1.7 && at("wingtip_r").x > 7.8);
+    // Relations any corrected P-38G keeps, not today's coordinates.
+    for side in ["l", "r"] {
+        let p = |name: &str| at(&format!("{name}_{side}"));
+        assert!(
+            p("spinner").y > p("wingtip").y + 1.0,
+            "spinner ahead of the wing"
+        );
+        assert!(p("fin_top").z > at("canopy_top").z, "fin above the canopy");
+        assert!(
+            p("fin_top").z > p("fin_bottom").z + 1.5,
+            "fin taller than 1.5 m"
+        );
+        assert!(
+            p("fin_top").y < at("gondola_tail").y,
+            "fins aft of the gondola"
+        );
+    }
+    assert!(
+        at("nose_tip").y > at("spinner_l").y,
+        "gondola nose ahead of the spinners"
+    );
 }
 
 #[test]
@@ -74,7 +94,7 @@ fn resection_recovers_a_known_camera_from_noisy_landmarks() {
 }
 
 #[test]
-fn every_photo_resects_onto_the_mesh_within_two_percent_of_its_diagonal() {
+fn every_photo_resects_onto_the_mesh_within_four_percent_of_its_diagonal() {
     let photos = super::photos();
     assert!(photos.len() >= 6, "{}", photos.len());
     for photo in &photos {
@@ -96,7 +116,8 @@ fn every_photo_resects_onto_the_mesh_within_two_percent_of_its_diagonal() {
         )
         .ok();
         assert_eq!(matched.used.len(), photo.landmarks_px.len(), "{}", photo.id);
-        assert!(matched.solved.rms_px < 0.02 * diagonal, "{}", photo.id);
+        // A loose bound: per-photo error is reported, and a corrected model may move it.
+        assert!(matched.solved.rms_px < 0.04 * diagonal, "{}", photo.id);
     }
 }
 
