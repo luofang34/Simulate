@@ -375,12 +375,12 @@ fn verify_airport_patterns_and_virtual_cameras(
             let title_str = telemetry::title(
                 flight,
                 rig.supervisor().viewport_mode(),
-                Some(cam_spec.title),
+                Some(cam_spec.title.as_ref()),
                 Some(rig.supervisor().effective_aerodrome(Some(profile)).code()),
                 SimTimeScale::RealTime,
                 &flight.cockpit(),
             );
-            assert!(title_str.contains(cam_spec.title));
+            assert!(title_str.contains(cam_spec.title.as_ref()));
         }
     }
     let next_aero = rig.supervisor_mut().cycle_aerodrome();

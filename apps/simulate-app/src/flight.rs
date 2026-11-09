@@ -37,6 +37,7 @@ mod sensors;
 mod spawn_tests;
 #[cfg(test)]
 mod tests;
+mod views;
 
 pub use manual::SpawnMode;
 use mode::{FreeSpawn, Mode};
@@ -484,6 +485,7 @@ impl Flight {
         Ok(viewport_camera_for(
             viewport_mode,
             self.profile(),
+            self.chase_back_up_m(),
             &shown,
             aboard,
         ))

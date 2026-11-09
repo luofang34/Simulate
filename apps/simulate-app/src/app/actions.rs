@@ -184,11 +184,11 @@ impl FlightApp {
                 info!(?mode, "switched operator viewport mode");
             }
             CockpitAction::CycleVirtualCamera => {
-                let spec = rig
-                    .supervisor_mut()
-                    .cycle_virtual_camera(self.flight.profile());
+                let supervisor = rig.supervisor_mut();
+                supervisor.set_vehicle_cameras(self.flight.vehicle_cameras());
+                let spec = supervisor.cycle_virtual_camera(self.flight.profile());
                 self.look.reset();
-                info!(camera = spec.title, id = spec.id, "selected virtual camera");
+                info!(camera = %spec.title, id = %spec.id, "selected virtual camera");
             }
             CockpitAction::ToggleInstruments => {
                 let visible = rig.toggle_instruments();

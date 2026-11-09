@@ -13,7 +13,6 @@ use sim_scenario::{OperatorViewportMode, PatternLeg, ScenarioProfile, SimTimeSca
 use sim_scenery::AerodromeId;
 use tracing::info;
 
-use crate::camera_view::camera_from_virtual_spec_on;
 use crate::cockpit_rig::CockpitRig;
 use crate::error::AppSimError;
 use crate::flight::Flight;
@@ -312,8 +311,7 @@ fn settle_and_composite(
         .supervisor()
         .active_virtual_camera_on_body(flight.profile());
     if mode == OperatorViewportMode::SensorAperture
-        && let Some(vcam) =
-            camera_from_virtual_spec_on(body, &spec, &flight.display_vehicle_state())
+        && let Some(vcam) = flight.virtual_camera(body, &spec)
     {
         camera = vcam;
     }

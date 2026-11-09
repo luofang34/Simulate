@@ -1,6 +1,6 @@
 //! Camera cycling, global airports, vertical datum, and traffic heights.
 
-use glam::{DMat3, DQuat};
+use glam::{DMat3, DQuat, DVec3};
 use sim_core::{SimInstant, VehicleState, VirtualCameraPlacement};
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime, egm96_undulation_m};
 use sim_maplibre::ViewSlotMask;
@@ -40,6 +40,39 @@ fn six_presses_visit_every_camera_then_return_to_the_cockpit() {
 }
 
 #[test]
+fn the_cycle_walks_the_p38s_own_views_after_the_suite_with_their_airframe_roles() {
+    use crate::camera_view::vehicle_camera_suite;
+    use crate::vehicles::FreeFlightVehicle;
+    use sim_core::AirframeVisibility;
+
+    let own = &vehicle_camera_suite(FreeFlightVehicle::JsbsimP38g).cameras;
+    let mut rig = SupervisorRig::new();
+    rig.set_vehicle_cameras(own);
+    rig.set_viewport_mode(OperatorViewportMode::Cockpit);
+    let mut seen = Vec::new();
+    for _ in 0..5_usize.saturating_add(own.len()) {
+        seen.push(rig.cycle_virtual_camera(None));
+    }
+    assert_eq!(rig.viewport_mode(), OperatorViewportMode::SensorAperture);
+    let tail: Vec<&str> = seen.iter().skip(5).map(|s| s.id.as_ref()).collect();
+    let declared: Vec<&str> = own.iter().map(|s| s.id.as_ref()).collect();
+    assert_eq!(tail, declared);
+    let role = |id: &str| seen.iter().find(|s| s.id == id).map(|s| s.airframe);
+    assert_eq!(role("wingtip_left"), Some(AirframeVisibility::External));
+    assert_eq!(
+        role("cockpit_over_shoulder"),
+        Some(AirframeVisibility::PilotEye)
+    );
+    rig.cycle_virtual_camera(None);
+    assert_eq!(rig.viewport_mode(), OperatorViewportMode::Cockpit);
+
+    // A smaller suite pulls a selection past its end back to the first camera.
+    rig.set_virtual_camera_index(5_usize.saturating_add(own.len()).saturating_sub(1));
+    rig.set_vehicle_cameras(&[]);
+    assert_eq!(rig.active_virtual_camera(None).id, "nose_nav");
+}
+
+#[test]
 fn a_new_profile_starts_its_camera_suite_from_the_first_camera() {
     let mut rig = SupervisorRig::new();
     let kewr = Some(ScenarioProfile::AirportKewrToweredPattern);
@@ -71,7 +104,8 @@ fn lunar_landing_cameras_stand_on_the_moon() {
         let spec = rig.cycle_virtual_camera(profile);
         let (body, active) = rig.active_virtual_camera_on_body(profile);
         assert_eq!(active.id, spec.id);
-        let camera = camera_from_virtual_spec_on(body, &spec, &lm).expect("lunar camera pose");
+        let camera =
+            camera_from_virtual_spec_on(body, &spec, &lm, DVec3::ZERO).expect("lunar camera pose");
         let position = camera.pose.position_ecef;
         assert!(
             position.is_finite() && camera.fov_y_rad.is_finite(),

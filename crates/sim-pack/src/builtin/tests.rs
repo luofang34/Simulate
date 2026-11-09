@@ -23,6 +23,7 @@ fn downloaded_copy() -> tempfile::TempDir {
     std::fs::create_dir(dir.path().join("fdm")).unwrap();
     std::fs::create_dir(dir.path().join("performance")).unwrap();
     std::fs::create_dir(dir.path().join("geometry")).unwrap();
+    std::fs::create_dir(dir.path().join("views")).unwrap();
     for file in [
         MANIFEST_FILE,
         C172_FDM_PATH,
@@ -30,6 +31,7 @@ fn downloaded_copy() -> tempfile::TempDir {
         PITOT_STATIC_CALIBRATION_ASSET,
         CALIBRATION_SUITE_ASSET,
         STRUCTURAL_LANDMARKS_ASSET,
+        CAMERA_VIEWS_ASSET,
     ] {
         std::fs::copy(c172_dir().join(file), dir.path().join(file)).unwrap();
     }

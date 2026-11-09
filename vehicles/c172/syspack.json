@@ -24,6 +24,10 @@
     "performance/poh_benchmarks.json": {
       "sha256": "4e89e18f7f35c2ae4e760a3733a63b28719dfa1be192b83eab0468d0372df4d5",
       "size_bytes": 10105
+    },
+    "views/cameras.json": {
+      "sha256": "da546cfee2798a34d9e95fa0669841cc85c5940a2317547ff3a8e4a9a9bb5442",
+      "size_bytes": 2567
     }
   },
   "components": [

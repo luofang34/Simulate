@@ -74,7 +74,7 @@ fn lunar_chase_frames_the_lander_from_behind_its_windows() {
     use sim_geo::{BodyEllipsoid, LocalFrame};
     use sim_scenario::ScenarioProfile;
 
-    use super::viewport_camera_for;
+    use super::{DEFAULT_CHASE_BACK_UP_M, viewport_camera_for};
 
     let moon = BodyEllipsoid::MOON_IAU;
     let site = Geodetic::from_degrees(0.674, 23.473, 150.0);
@@ -91,7 +91,7 @@ fn lunar_chase_frames_the_lander_from_behind_its_windows() {
         (OperatorViewportMode::Chase, 22.0, 6.5),
         (OperatorViewportMode::VolumetricScene, 140.0, 85.0),
     ] {
-        let camera = viewport_camera_for(mode, profile, &lm, aboard);
+        let camera = viewport_camera_for(mode, profile, DEFAULT_CHASE_BACK_UP_M, &lm, aboard);
         let offset = camera.pose.position_ecef - lm.position_ecef;
         assert!(
             (offset.dot(frame.north()) + back_m).abs() < 1e-6,
@@ -106,7 +106,13 @@ fn lunar_chase_frames_the_lander_from_behind_its_windows() {
         let height = moon.fixed_to_geodetic(camera.pose.position_ecef).height_m;
         assert!(height > site.height_m, "{mode:?} at {height} m");
     }
-    let chart = viewport_camera_for(OperatorViewportMode::ChartMap, profile, &lm, aboard);
+    let chart = viewport_camera_for(
+        OperatorViewportMode::ChartMap,
+        profile,
+        DEFAULT_CHASE_BACK_UP_M,
+        &lm,
+        aboard,
+    );
     let above = (chart.pose.position_ecef - lm.position_ecef).dot(frame.up());
     assert!((above - 4_500.0).abs() < 1e-6);
 }

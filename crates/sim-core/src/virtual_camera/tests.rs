@@ -15,8 +15,8 @@ fn tower_auto_track_points_optical_axis_at_aircraft_with_level_horizon_and_zoom(
     let ac_far = Geodetic::from_degrees(40.718_000, -74.182_761, 320.0);
 
     let spec = VirtualCameraSpec {
-        id: "tower_ptz",
-        title: "Tower PTZ",
+        id: "tower_ptz".into(),
+        title: "Tower PTZ".into(),
         placement: VirtualCameraPlacement::WorldAutoTrack {
             position: tower_geo,
             lead_time_s: 0.0,
@@ -24,6 +24,7 @@ fn tower_auto_track_points_optical_axis_at_aircraft_with_level_horizon_and_zoom(
             min_fov_y_rad: 5.0_f64.to_radians(),
             max_fov_y_rad: 55.0_f64.to_radians(),
         },
+        airframe: crate::AirframeVisibility::External,
         base_intrinsics: VirtualCameraSpec::pinhole_800x600(FRAC_PI_3),
         period: CAMERA_DEFAULT_PERIOD,
         depth_readout: true,
@@ -59,24 +60,26 @@ fn virtual_camera_rig_snapshots_and_replays_bit_identically() {
     let anchor = EnuAnchor::new(&BodyEllipsoid::WGS84, &origin);
     let specs = vec![
         VirtualCameraSpec {
-            id: "nose_nav",
-            title: "Nose Nav",
+            id: "nose_nav".into(),
+            title: "Nose Nav".into(),
             placement: VirtualCameraPlacement::BodyMounted(CameraMount::forward_nose(DVec3::new(
                 1.5, 0.0, 0.0,
             ))),
+            airframe: crate::AirframeVisibility::Hidden,
             base_intrinsics: VirtualCameraSpec::pinhole_800x600(50.0_f64.to_radians()),
             period: CAMERA_DEFAULT_PERIOD,
             depth_readout: true,
         },
         VirtualCameraSpec {
-            id: "threshold_final",
-            title: "Threshold Final",
+            id: "threshold_final".into(),
+            title: "Threshold Final".into(),
             placement: VirtualCameraPlacement::WorldFixed {
                 position: origin,
                 azimuth_rad: 232.0_f64.to_radians(),
                 elevation_rad: 3.0_f64.to_radians(),
                 roll_rad: 0.0,
             },
+            airframe: crate::AirframeVisibility::External,
             base_intrinsics: VirtualCameraSpec::pinhole_800x600(40.0_f64.to_radians()),
             period: CAMERA_DEFAULT_PERIOD,
             depth_readout: true,

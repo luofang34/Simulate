@@ -232,6 +232,14 @@ fn rebuild_verified_package(
         let bytes = serde_json::to_vec_pretty(landmarks).unwrap_or_default();
         files.insert(STRUCTURAL_LANDMARKS_ASSET.to_owned(), bytes);
     }
+    // Assets the trade does not touch, such as camera views and liveries, carry over as is.
+    for rel_path in manifest.assets.keys() {
+        if !files.contains_key(rel_path)
+            && let Some(bytes) = package.asset(rel_path)
+        {
+            files.insert(rel_path.clone(), bytes.to_vec());
+        }
+    }
     for (rel_path, bytes) in &files {
         if let Some(entry) = manifest.assets.get_mut(rel_path) {
             entry.sha256 = hex_sha256(bytes);

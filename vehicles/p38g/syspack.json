@@ -44,6 +44,10 @@
     "Models/Liveries/glacier-girl.xml": {
       "sha256": "8ebdcf4773b5cf4f64cda3f2c3a1bf2e5986900e93562e72c841f2b8ce39063f",
       "size_bytes": 1237
+    },
+    "views/cameras.json": {
+      "sha256": "47ec6796b135b67fff86ce3b1f857e08241dea5bfb4f2205437da744f8833785",
+      "size_bytes": 4040
     }
   },
   "components": [

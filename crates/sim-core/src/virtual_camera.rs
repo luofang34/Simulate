@@ -1,6 +1,8 @@
 //! Configurable airframe-mounted, chase, fixed-ground, and auto-tracking PTZ
 //! virtual cameras stepped deterministically on the master clock.
 
+use std::borrow::Cow;
+
 use glam::DVec3;
 use sim_geo::{BodyEllipsoid, Geodetic, SensorIntrinsics};
 
@@ -89,15 +91,32 @@ pub enum VirtualCameraPlacement {
     },
 }
 
+/// Which of the camera's own airframe it sees: a renderer hides the parts the
+/// camera sits inside or looks past.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AirframeVisibility {
+    /// Outside the airframe, seeing all of it.
+    #[default]
+    External,
+    /// A pilot's eye under an open-view canopy: everything but the pilot.
+    PilotEye,
+    /// Behind a cabin side window: the wing, strut and gear outside, not the cabin.
+    CabinWindow,
+    /// A boresighted sensor that looks past the whole airframe.
+    Hidden,
+}
+
 /// Complete specification of one virtual camera channel.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VirtualCameraSpec {
     /// Stable machine identifier (e.g. `"nose_nav"`, `"tower_ptz"`, `"threshold_final"`).
-    pub id: &'static str,
+    pub id: Cow<'static, str>,
     /// Human-readable display label.
-    pub title: &'static str,
+    pub title: Cow<'static, str>,
     /// Mounting or world-space tracking rule.
     pub placement: VirtualCameraPlacement,
+    /// How much of its own airframe the camera sees.
+    pub airframe: AirframeVisibility,
     /// Base pinhole intrinsics (`fx`/`fy` are scaled dynamically only in `WorldAutoTrack` with zoom).
     pub base_intrinsics: SensorIntrinsics,
     /// Exposure period on the master clock (typically [`CAMERA_DEFAULT_PERIOD`]).
@@ -302,8 +321,8 @@ impl VirtualCameraRigBlock {
             if !spec.base_intrinsics.is_usable() {
                 return Err(BlockError::InputOutOfRange {
                     block: BLOCK,
-                    input: spec.id,
-                    detail: "unusable intrinsics".to_owned(),
+                    input: "base_intrinsics",
+                    detail: format!("camera {:?} has unusable intrinsics", spec.id),
                 });
             }
         }

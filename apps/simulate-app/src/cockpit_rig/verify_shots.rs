@@ -34,6 +34,7 @@ mod n51_audit;
 mod p38g;
 mod polar;
 mod runway_datum;
+mod vehicle_views;
 
 const SHOT_SIZE: [u32; 2] = [1280, 720];
 

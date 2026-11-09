@@ -2,7 +2,7 @@
 //! parts each camera sees.
 
 use glam::{DMat3, DQuat, DVec3};
-use sim_core::{AirframeArticulation, VehicleState, VirtualCameraSpec};
+use sim_core::{AirframeArticulation, AirframeVisibility, VehicleState, VirtualCameraSpec};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_maplibre::{
     AircraftInstance, AltitudeReference, DynamicEntity3D, DynamicEntityKind, LatLon,
@@ -99,14 +99,13 @@ pub const fn window_camera_role(
     }
 }
 
-/// Which ownship parts a virtual camera sees: body-mounted cameras look past the airframe.
+/// Which ownship parts a virtual camera sees, as its spec declares.
 pub fn virtual_camera_role(spec: &VirtualCameraSpec) -> SlotCameraRole {
-    match spec.placement {
-        sim_core::VirtualCameraPlacement::BodyMounted(_) if spec.id.contains("window") => {
-            SlotCameraRole::LeftCabinWindow
-        }
-        sim_core::VirtualCameraPlacement::BodyMounted(_) => SlotCameraRole::BellyNadir,
-        _ => SlotCameraRole::External,
+    match spec.airframe {
+        AirframeVisibility::External => SlotCameraRole::External,
+        AirframeVisibility::PilotEye => SlotCameraRole::PilotEye,
+        AirframeVisibility::CabinWindow => SlotCameraRole::LeftCabinWindow,
+        AirframeVisibility::Hidden => SlotCameraRole::BellyNadir,
     }
 }
 

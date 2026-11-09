@@ -26,10 +26,11 @@ const COCKPIT_STICK_SLEW_PER_S: f64 = 12.0;
 
 #[cfg(test)]
 mod tests;
+mod vehicle_suite;
+
+pub use vehicle_suite::{DEFAULT_CHASE_BACK_UP_M, vehicle_camera_suite};
 
 const COCKPIT_NEAR_M: f64 = 0.05;
-const CHASE_BACK_M: f64 = 22.0;
-const CHASE_UP_M: f64 = 6.5;
 const VOLUMETRIC_BACK_M: f64 = 140.0;
 const VOLUMETRIC_UP_M: f64 = 85.0;
 /// How far the reference axis may lean toward the vertical before the external cameras
@@ -116,14 +117,16 @@ pub fn scenario_camera(pose: CameraPoseEcef) -> Camera {
 }
 
 /// Converts a [`VirtualCameraSpec`] evaluated against `state` over `body` into a
-/// `sim_render` [`Camera`].
+/// `sim_render` [`Camera`], its body-mounted offsets measured from the drawn airframe's
+/// origin `model_origin_from_cg_frd_m` ahead of the centre of gravity.
 pub fn camera_from_virtual_spec_on(
     body: BodyEllipsoid,
     spec: &VirtualCameraSpec,
     state: &VehicleState,
+    model_origin_from_cg_frd_m: DVec3,
 ) -> Option<Camera> {
     let (pose, intrinsics) = spec
-        .pose_and_intrinsics_on(&body, state, DVec3::ZERO)
+        .pose_and_intrinsics_on(&body, state, -model_origin_from_cg_frd_m)
         .ok()?;
     Some(Camera {
         pose: CameraPose {
@@ -143,14 +146,16 @@ pub fn viewport_camera(
     state: &VehicleState,
     aboard: CameraPoseEcef,
 ) -> Camera {
-    viewport_camera_for(mode, None, state, aboard)
+    viewport_camera_for(mode, None, DEFAULT_CHASE_BACK_UP_M, state, aboard)
 }
 
 /// Camera placed according to `mode` around `state` flying `profile` (with `aboard` used
-/// for `Cockpit`), the external views levelled on the body `profile` flies over.
+/// for `Cockpit`), the external views levelled on the body `profile` flies over and the
+/// chase `chase_back_up_m` behind and above the vehicle.
 pub fn viewport_camera_for(
     mode: OperatorViewportMode,
     profile: Option<ScenarioProfile>,
+    (chase_back_m, chase_up_m): (f64, f64),
     state: &VehicleState,
     aboard: CameraPoseEcef,
 ) -> Camera {
@@ -168,7 +173,7 @@ pub fn viewport_camera_for(
                 near_m: COCKPIT_NEAR_M,
             }
         }
-        OperatorViewportMode::Chase => frame.offset_camera(state, CHASE_BACK_M, CHASE_UP_M),
+        OperatorViewportMode::Chase => frame.offset_camera(state, chase_back_m, chase_up_m),
         OperatorViewportMode::VolumetricScene => {
             frame.offset_camera(state, VOLUMETRIC_BACK_M, VOLUMETRIC_UP_M)
         }

@@ -68,6 +68,23 @@ pub enum PackError {
         /// Why the landmarks were refused.
         detail: String,
     },
+    /// A package's camera views document could not be parsed.
+    #[error("camera views {path:?} could not be parsed")]
+    CameraViewsParse {
+        /// Asset path inside the package.
+        path: String,
+        /// JSON decoder error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A package's camera views document declared an unusable view.
+    #[error("camera views {path:?} are invalid: {detail}")]
+    InvalidCameraViews {
+        /// Asset path inside the package.
+        path: String,
+        /// Which view was refused and why.
+        detail: String,
+    },
     /// The instrument pack a vehicle pins could not be resolved, or one of its
     /// instruments reads a source the vehicle does not have.
     #[error("instrument pack {pack:?} refused: {detail}")]
