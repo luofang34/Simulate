@@ -82,13 +82,13 @@ pub fn belly_sensor_mount() -> CameraMount {
     )
 }
 
-/// Centerline-boresighted PFD `ConformalSvs3D` camera mount at the C172 cockpit eyepoint
-/// height (`0°` angular offset so the PFD zero-pitch horizon line matches aircraft nose `+X`).
+/// Centerline-boresighted PFD `ConformalSvs3D` camera mount `0.12 m` above the C172 body
+/// origin (`0°` angular offset so the PFD zero-pitch horizon line matches aircraft nose `+X`).
 pub fn svs_nose_mount() -> CameraMount {
     CameraMount::forward_nose(DVec3::new(0.10, 0.0, -0.12))
 }
 
-/// Centerline-boresighted PFD `ConformalSvs3D` mount at `vehicle`'s cockpit eyepoint height.
+/// Centerline-boresighted PFD `ConformalSvs3D` mount for `vehicle`'s cockpit.
 #[must_use]
 pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
     match vehicle {
