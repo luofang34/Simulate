@@ -227,3 +227,92 @@ fn a_snapshot_taken_mid_start_replays_every_bit_with_its_switches() {
     assert_eq!(first, second);
     assert!(first.1.running);
 }
+
+/// The shipped FDM with its propeller's power coefficient replaced by a flat
+/// `cp`, so full throttle on the brakes settles the engine wherever that load
+/// balances it.
+#[cfg(test)]
+fn fdm_loaded_by_flat_cp(cp: f64) -> jsbsim::Fdm {
+    const FDM_XML: &str = include_str!("../../../vehicles/c172/fdm/c172_class_reference.xml");
+    const VIRTUAL_PATH: &str = "aircraft/c172_class_reference/c172_class_reference.xml";
+    let table = FDM_XML.find(r#"<table name="C_POWER""#).unwrap();
+    let open = table + FDM_XML[table..].find("<tableData>").unwrap() + "<tableData>".len();
+    let close = open + FDM_XML[open..].find("</tableData>").unwrap();
+    let xml = format!(
+        "{}\n0.0 {cp}\n2.0 {cp}\n{}",
+        &FDM_XML[..open],
+        &FDM_XML[close..]
+    );
+    let package = builtin_c172_package().unwrap();
+    let mut files = package.build_jsbsim_resolver().unwrap();
+    files.insert(VIRTUAL_PATH, xml.into_bytes());
+    let (aircraft_path, model) = package.jsbsim_model().unwrap();
+    let mut fdm = jsbsim::Fdm::new().unwrap();
+    fdm.load_model(&files, aircraft_path, model).unwrap();
+    fdm
+}
+
+/// `(rpm, brake horsepower)` at full throttle and full rich on the brakes at
+/// sea level, standard day, against a flat power coefficient `cp`.
+#[cfg(test)]
+fn static_full_throttle(cp: f64) -> (f64, f64) {
+    let mut fdm = fdm_loaded_by_flat_cp(cp);
+    fdm.run_ic().unwrap();
+    let cg_z_in = fdm.get_property("inertia/cg-z-in").unwrap();
+    let wheels_z_in = (0..3)
+        .map(|n| {
+            fdm.get_property(&format!("gear/unit[{n}]/z-position"))
+                .unwrap()
+        })
+        .fold(f64::INFINITY, f64::min);
+    for (property, value) in [
+        ("ic/terrain-elevation-ft", 0.0),
+        ("ic/h-sl-ft", (cg_z_in - wheels_z_in) / 12.0),
+        ("ic/vt-fps", 0.0),
+        ("ic/theta-deg", 0.0),
+        ("fcs/throttle-cmd-norm", 1.0),
+        ("fcs/mixture-cmd-norm", 1.0),
+        ("propulsion/magneto_cmd", 3.0),
+        ("propulsion/set-running", -1.0),
+    ] {
+        fdm.set_property(property, value).unwrap();
+    }
+    fdm.run_ic().unwrap();
+    for _ in 0..30 * STEPS_PER_SECOND {
+        fdm.set_property("fcs/left-brake-cmd-norm", 1.0).unwrap();
+        fdm.set_property("fcs/right-brake-cmd-norm", 1.0).unwrap();
+        fdm.run().unwrap();
+    }
+    (
+        fdm.get_property("propulsion/engine[0]/engine-rpm").unwrap(),
+        fdm.get_property("propulsion/engine[0]/power-hp").unwrap(),
+    )
+}
+
+/// Full-throttle power at `rpm`, interpolated between two flat loads that
+/// settle the engine either side of it.
+#[cfg(test)]
+fn full_throttle_hp_at(rpm: f64, heavy_cp: f64, light_cp: f64) -> f64 {
+    let (rpm_low, hp_low) = static_full_throttle(heavy_cp);
+    let (rpm_high, hp_high) = static_full_throttle(light_cp);
+    assert!(rpm_low < rpm && rpm < rpm_high, "{rpm_low} {rpm_high}");
+    hp_low + (hp_high - hp_low) * (rpm - rpm_low) / (rpm_high - rpm_low)
+}
+
+/// The Lycoming IO-360-L2A is rated 180 BHP at 2,700 rpm at sea level,
+/// standard day, full throttle and full rich; the engine model must make
+/// that within 1% before any propeller is fitted against it.
+#[test]
+fn full_throttle_sea_level_power_is_the_lycoming_rating() {
+    let hp = full_throttle_hp_at(2_700.0, 0.0460, 0.0440);
+    assert!((hp - 180.0).abs() <= 1.8, "{hp:.1} hp at 2,700 rpm");
+}
+
+/// Lycoming 60297-12 Fig. 3-25 puts the same full-throttle line at about
+/// 155 BHP at 2,300 rpm (midway between its 151 hp at 2,200 and 160 hp at
+/// 2,400), the static run-up's power; pinned within 2%.
+#[test]
+fn full_throttle_power_at_the_static_run_up_follows_the_lycoming_curve() {
+    let hp = full_throttle_hp_at(2_300.0, 0.0660, 0.0610);
+    assert!((hp - 155.0).abs() <= 3.1, "{hp:.1} hp at 2,300 rpm");
+}

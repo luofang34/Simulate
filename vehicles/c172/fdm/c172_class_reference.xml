@@ -133,8 +133,19 @@
         <maxthrottle> 1 </maxthrottle>
         <minthrottle> 0.0 </minthrottle>
         <sparkfaildrop> 0.1 </sparkfaildrop>
-        <volumetric-efficiency> 0.825 </volumetric-efficiency>
-        <bsfc unit="LBS/HP*HR"> 0.391 </bsfc>
+        <!-- Full throttle, full rich, sea level standard: the IO-360-L2A's rated 180 BHP
+             at 2,700 rpm and 155 BHP at 2,300 rpm, read from Lycoming operator's
+             manual 60297-12 Fig. 3-25 (curve 13516-A: 151 hp at 2,200 rpm and 160 hp
+             at 2,400 rpm on the full-throttle line). Volumetric efficiency and the
+             static and dynamic friction MEP are set to pass both points (asserted by
+             the c172_engine tests). JSBSim prices fuel as indicated power times
+             bsfc, so moving friction moves cruise fuel flow: bsfc is set to keep
+             the Figure 5-8 fuel flows, which put it near the IO-360's best-power
+             0.43 lb/hp/hr. -->
+        <volumetric-efficiency> 0.808 </volumetric-efficiency>
+        <static-fmep unit="PA"> 85000 </static-fmep>
+        <dynamic-fmep unit="PA"> 5000 </dynamic-fmep>
+        <bsfc unit="LBS/HP*HR"> 0.434 </bsfc>
         <compression-ratio> 8.5 </compression-ratio>
         <!-- MIXTURE: JSBSim prices power as fuel flow / isfc x this table, so each
              entry is 0.0906 x P/(F/A), with P the brake power relative to best power:
