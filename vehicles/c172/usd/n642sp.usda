@@ -62,6 +62,110 @@ over "C172"
             }
         }
 
+        # Antenna radomes and blades: off-white/beige (IMG_6025/6031/6058).
+        def Material "MatAntennaBeige"
+        {
+            token outputs:surface.connect = </C172/Materials/MatAntennaBeige/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.86, 0.83, 0.71)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.45
+                token outputs:surface
+            }
+        }
+
+        def Material "MatAntennaWhite"
+        {
+            token outputs:surface.connect = </C172/Materials/MatAntennaWhite/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.88, 0.89, 0.9)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        # Position and anti-collision lenses (POH equipment list; colours by regulation).
+        def Material "MatNavRed"
+        {
+            token outputs:surface.connect = </C172/Materials/MatNavRed/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.8, 0.05, 0.04)
+                color3f inputs:emissiveColor = (1, 0.06, 0.04)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.15
+                token outputs:surface
+            }
+        }
+
+        def Material "MatNavGreen"
+        {
+            token outputs:surface.connect = </C172/Materials/MatNavGreen/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.05, 0.7, 0.2)
+                color3f inputs:emissiveColor = (0.05, 1, 0.3)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.15
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLensClear"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLensClear/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.9, 0.9, 0.88)
+                color3f inputs:emissiveColor = (0.6, 0.6, 0.58)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.1
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLandingLens"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLandingLens/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.92, 0.92, 0.9)
+                color3f inputs:emissiveColor = (1, 0.97, 0.9)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.08
+                token outputs:surface
+            }
+        }
+
+        def Material "MatInletDark"
+        {
+            token outputs:surface.connect = </C172/Materials/MatInletDark/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.04, 0.04, 0.045)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
         # Light grey cabin headliner (172S interior, generic).
         def Material "MatHeadliner"
         {
@@ -123,6 +227,19 @@ over "C172"
         over "WingStruts"
         {
             rel material:binding = </C172/Materials/MatExhaustSteel>
+        }
+
+        # N642SP's COM whips replace the generic pair (see Com1Whip, Com2Whip).
+        over "RoofAntennaLeft" (
+            active = false
+        )
+        {
+        }
+
+        over "RoofAntennaRight" (
+            active = false
+        )
+        {
         }
 
         # No wheel fairings since at least 2017 (IMG_6058, FlightAware 2020-2021, IMG_7156).
@@ -201,6 +318,358 @@ over "C172"
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX", "xformOp:scale"]
             rel material:binding = </C172/Materials/MatHeadliner>
             custom token sim:partRole = "cabin_interior"
+        }
+
+        # C5 antennas, from the BSAA labelled photos of 2017-11-13 (IMG_6025/6030/6031/6058).
+        # Avionics were renewed later (G3X 2023), so blades may have moved; medium confidence.
+        # Sizes are typical installations (Comant CI-121/CI-122 VHF whips about 22 in, CI-158
+        # VOR dipole elements about 22 in), checked against the photos.
+        # COM 1: straight whip on the right cabin roof at the flap-root station (IMG_6031).
+        def Cone "Com1WhipBase" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.1
+            double radius = 0.022
+            double3 xformOp:translate = (0.4, -0.95, 0.672)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "Com1Whip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.55
+            double radius = 0.0035
+            double3 xformOp:translate = (0.4, -0.95, 0.997)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # COM 2: bent-back whip on the left cabin roof, swept 40 deg aft and 12 deg outboard (IMG_6031).
+        def Cone "Com2WhipBase" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.1
+            double radius = 0.022
+            double3 xformOp:translate = (-0.4, -0.95, 0.672)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "Com2Whip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.5
+            double radius = 0.0035
+            double3 xformOp:translate = (-0.439, -1.11, 0.909)
+            float xformOp:rotateY = -11.6
+            float xformOp:rotateX = 39.8
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # GPS puck right of the roof centre, with the OAT probe beside it (IMG_6025).
+        def Cylinder "GpsAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.02
+            double radius = 0.05
+            double3 xformOp:translate = (0.15, -0.2, 0.747)
+            float xformOp:rotateX = 6.56
+            float3 xformOp:scale = (1, 1.25, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "OatProbe" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.06
+            double radius = 0.005
+            double3 xformOp:translate = (0.05, -0.15, 0.773)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # ELT blade on the tailcone just aft of the rear window (IMG_6031).
+        def Cube "EltAntennaBase" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, -1.95, 0.231)
+            float xformOp:rotateX = 8.9
+            float3 xformOp:scale = (0.07, 0.17, 0.012)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "EltAntennaBlade" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, -1.955, 0.285)
+            float xformOp:rotateX = 8.9
+            float3 xformOp:scale = (0.012, 0.13, 0.1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # VOR "cat whisker" V dipole through the fin below the cap; elements spread outboard,
+        # forward and slightly down (IMG_6030).
+        def Cube "VorMountRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0.035, -5.27, 1.33)
+            float3 xformOp:scale = (0.02, 0.04, 0.03)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "VorElementRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.56
+            double radius = 0.004
+            double3 xformOp:translate = (0.254, -5.116, 1.263)
+            float xformOp:rotateY = 106.7
+            float xformOp:rotateX = -33.4
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "VorMountLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-0.035, -5.27, 1.33)
+            float3 xformOp:scale = (0.02, 0.04, 0.03)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "VorElementLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.56
+            double radius = 0.004
+            double3 xformOp:translate = (-0.254, -5.116, 1.263)
+            float xformOp:rotateY = -106.7
+            float xformOp:rotateX = -33.4
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # Belly, nose to tail as labelled in IMG_6058: transponder blade aft of the firewall,
+        # flat ADF housing between the gear legs, the unused "Traffic Scope" blade aft of the
+        # left main leg, the marker-beacon boat (POH arm about 131 in) and the ADS-B blade
+        # under the registration. Stations from the photo; low-medium confidence.
+        def Cube "TransponderAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, 0.55, -0.84)
+            float3 xformOp:scale = (0.008, 0.05, 0.075)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "AdfAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (0, 0.05, -0.81)
+            float3 xformOp:scale = (0.13, 0.3, 0.035)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "TrafficAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-0.15, -0.85, -0.82)
+            float3 xformOp:scale = (0.008, 0.06, 0.06)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "MarkerBeaconAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (0, -2.3, -0.68)
+            float3 xformOp:scale = (0.04, 0.14, 0.022)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "AdsbAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, -3.5, -0.66)
+            float3 xformOp:scale = (0.008, 0.06, 0.07)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        # C6 lights. Wingtip position lights (red left, green right) with white strobes aft of
+        # them in the same tip; the strobes were fitted in 2026 and their make is unknown, so
+        # they are generic lenses that flash with the beacon. Landing and taxi lamps in the
+        # left wing leading edge outboard of the strut (POH 33-06, Fig. 1-1 front view).
+        def Sphere "NavLightLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-5.44, 0.27, 0.8)
+            float3 xformOp:scale = (0.022, 0.035, 0.02)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatNavRed>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "StrobeLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-5.44, 0.2, 0.8)
+            float3 xformOp:scale = (0.02, 0.03, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLensClear>
+            custom token sim:partRole = "beacon_light"
+        }
+
+        def Sphere "NavLightRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (5.4, 0.27, 0.8)
+            float3 xformOp:scale = (0.022, 0.035, 0.02)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatNavGreen>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "StrobeRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (5.4, 0.2, 0.8)
+            float3 xformOp:scale = (0.02, 0.03, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLensClear>
+            custom token sim:partRole = "beacon_light"
+        }
+
+        def Sphere "LandingLight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-2.95, 0.432, 0.735)
+            float3 xformOp:scale = (0.08, 0.018, 0.04)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLandingLens>
+            custom token sim:partRole = "landing_light"
+        }
+
+        def Sphere "TaxiLight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-3.17, 0.402, 0.735)
+            float3 xformOp:scale = (0.08, 0.018, 0.04)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLandingLens>
+            custom token sim:partRole = "landing_light"
+        }
+
+        # C14: stall-warning inlet in the left leading edge inboard of the lamps, and the
+        # pitot under the left wing at the syspack pitot_static station (body y -2.4 m), moved
+        # 0.35 m outboard to clear the strut fitting. Positions typical, not measured on N642SP.
+        def Cube "StallWarningInlet" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-1.9, 0.458, 0.722)
+            float3 xformOp:scale = (0.05, 0.012, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatInletDark>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "PitotMast" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-2.75, 0.3, 0.645)
+            float3 xformOp:scale = (0.015, 0.05, 0.1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatWhitePaint>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "PitotTube" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Y"
+            double height = 0.24
+            double radius = 0.008
+            double3 xformOp:translate = (-2.75, 0.4, 0.6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "cabin_exterior"
         }
 
         # Bare nose gear (IMG_7156/7157): painted oleo cylinder, polished piston and a
@@ -282,6 +751,142 @@ over "C172"
             custom token sim:partRole = "gear_struts"
         }
     }
+
+    over "ControlSurfaces"
+    {
+        # C14 static wicks on the aileron, elevator and rudder trailing edges (typical 172S fit, two per
+        # aileron and elevator half, one on the rudder; not counted on N642SP photos).
+        over "AileronLeft"
+        {
+            def Cylinder "StaticWickOuter" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.95, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_left"
+            }
+
+            def Cylinder "StaticWickInner" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.55, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_left"
+            }
+        }
+
+        over "AileronRight"
+        {
+            def Cylinder "StaticWickOuter" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (0.95, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_right"
+            }
+
+            def Cylinder "StaticWickInner" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (0.55, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_right"
+            }
+        }
+
+        over "Elevator"
+        {
+            # Trim tab on the right elevator inboard trailing edge (172S); it moves with the
+            # elevator, but trim deflection is not drawn.
+            def Cube "TrimTab" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double size = 1
+                double3 xformOp:translate = (0.375, -0.535, 0)
+                float3 xformOp:scale = (0.45, 0.06, 0.012)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                rel material:binding = </C172/Materials/MatWhitePaint>
+                custom token sim:partRole = "elevator"
+            }
+
+            def Cylinder "StaticWickLeft" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-1.3, -0.45, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "elevator"
+            }
+
+            def Cylinder "StaticWickRight" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (1.3, -0.45, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "elevator"
+            }
+        }
+
+        over "Rudder"
+        {
+            # C6: white tail position light at the rudder lower trailing edge.
+            def Sphere "TailLight" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double radius = 1
+                double3 xformOp:translate = (-0.015, -0.625, 0.12)
+                float3 xformOp:scale = (0.016, 0.025, 0.016)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                rel material:binding = </C172/Materials/MatLensClear>
+                custom token sim:partRole = "rudder"
+            }
+
+            def Cylinder "StaticWick" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.005, -1.16, 1.62)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "rudder"
+            }
+        }
+    }
+
 
     over "Powerplant"
     {

@@ -306,3 +306,45 @@ fn n642sp_flies_bare_gear_on_the_poh_wheel_base_without_moving_the_contact_plane
             .any(|p| p.prim_path.ends_with("/WheelLeft/BrakeDisc"))
     );
 }
+
+#[test]
+fn n642sp_carries_its_antennas_lights_and_flight_control_details() {
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    let role_of = |suffix: &str| {
+        tail.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with(suffix))
+            .map(|p| p.role)
+    };
+    for antenna in [
+        "/Com1Whip",
+        "/Com2Whip",
+        "/GpsAntenna",
+        "/VorElementLeft",
+        "/VorElementRight",
+        "/EltAntennaBlade",
+        "/TransponderAntenna",
+        "/AdfAntenna",
+        "/MarkerBeaconAntenna",
+        "/AdsbAntenna",
+        "/PitotTube",
+        "/StallWarningInlet",
+    ] {
+        assert_eq!(role_of(antenna), Some(PartRole::CabinExterior), "{antenna}");
+    }
+    assert_eq!(role_of("/RoofAntennaLeft"), None);
+    assert_eq!(role_of("/LandingLight"), Some(PartRole::LandingLight));
+    assert_eq!(role_of("/StrobeLeft"), Some(PartRole::BeaconLight));
+    assert_eq!(role_of("/Rudder/TailLight"), Some(PartRole::Rudder));
+    assert_eq!(role_of("/Elevator/TrimTab"), Some(PartRole::Elevator));
+    assert_eq!(
+        role_of("/AileronLeft/StaticWickOuter"),
+        Some(PartRole::AileronLeft)
+    );
+    let red = tail
+        .parts()
+        .iter()
+        .find(|p| p.prim_path.ends_with("/NavLightLeft"))
+        .map(|p| p.material.emissive_rgb);
+    assert_eq!(red, Some([1.0, 0.06, 0.04]));
+}
