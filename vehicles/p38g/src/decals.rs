@@ -298,7 +298,11 @@ fn build_nose_147_and_miss_virginia(prims: &mut Vec<P38MeshPrim>) {
     let mut nose_yellow = MeshBuilder::new();
 
     for side in [-1.0_f32, 1.0] {
-        // White "147" tactical fighter number on forward gondola cheeks (y = 2.04..2.64)
+        // White "147" tactical fighter number on forward gondola cheeks (y = 2.04..2.64),
+        // laid out as read from port (nose to the left). Seen from starboard the nose is
+        // to the right, so that side reflects the layout about the number's centre to
+        // keep "1" first and every glyph unmirrored.
+        const CENTRE_Y: f32 = 2.34;
         for (y0, y1, t0, t1) in [
             (2.58_f32, 2.64_f32, 0.34 * PI, 0.56 * PI),
             (2.42, 2.47, 0.34 * PI, 0.46 * PI),
@@ -307,6 +311,11 @@ fn build_nose_147_and_miss_virginia(prims: &mut Vec<P38MeshPrim>) {
             (2.04, 2.22, 0.34 * PI, 0.39 * PI),
             (2.04, 2.10, 0.34 * PI, 0.56 * PI),
         ] {
+            let (y0, y1) = if side > 0.0 {
+                (2.0 * CENTRE_Y - y1, 2.0 * CENTRE_Y - y0)
+            } else {
+                (y0, y1)
+            };
             project_gondola_quad(&mut white_num, side, y0, y1, t0, t1, 0.0026);
         }
 
