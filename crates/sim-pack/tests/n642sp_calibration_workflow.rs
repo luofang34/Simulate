@@ -3,10 +3,10 @@
 //! parameter identification).
 
 use sim_pack::{
-    CalibrationReport, PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource,
-    PitotStaticCalibration, build_ace_feedback_report, builtin_c172_package, builtin_c172_source,
-    default_design_trades, estimate_design_performance, evaluate_package,
-    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
+    AceFeedbackReport, AceVehicleInputs, CalibrationReport, PITOT_STATIC_CALIBRATION_ASSET,
+    PackError, PackageSource, PitotStaticCalibration, build_ace_feedback_report,
+    builtin_c172_package, builtin_c172_source, default_design_trades, estimate_design_performance,
+    evaluate_package, identify_package_sensitivities, run_design_trade_study,
 };
 
 #[path = "support/c172_validation_record.rs"]
@@ -254,26 +254,85 @@ fn design_trade_study_and_ace_rs_codesign_bridge_evaluate_closed_loop()
 
     let ace_sample = br#"{
       "schema_version": 1,
-      "id": "ace_c172_variant",
-      "name": "ACE Synthesized C172 Variant",
+      "id": "c172_class_reference",
+      "name": "ACE C172 design",
       "domain": "fixed_wing",
       "parameters": {
-        "wing.area": { "value": { "value": 16.5, "unit": "m^2" } },
-        "wing.span": { "value": { "value": 11.4, "unit": "m" } },
+        "engine.count": { "value": { "value": 1, "unit": "1" } },
+        "wing.area": { "value": { "value": 16.17, "unit": "m^2" } },
+        "wing.span": { "value": { "value": 36.083, "unit": "ft" } },
         "aero.cd0": { "value": { "value": 0.030, "unit": "1" } },
         "aero.oswald": { "value": { "value": 0.82, "unit": "1" } },
-        "weight.oew": { "value": { "value": 775.0, "unit": "kg" } },
-        "weight.maximum_fuel": { "value": { "value": 155.0, "unit": "kg" } },
-        "engine.rated_power": { "value": { "value": 145000.0, "unit": "W" } },
-        "engine.sizing_factor": { "value": { "value": 1.0, "unit": "1" } },
         "engine.bsfc": { "value": { "value": 0.240, "unit": "kg/kWh" } },
         "propeller.efficiency": { "value": { "value": 0.81, "unit": "1" } }
       }
     }"#;
-    let ace_pack = load_syspack_from_ace_vehicle_json(ace_sample)?;
-    let ace_report = estimate_design_performance(&ace_pack)?;
-    let feedback = build_ace_feedback_report(&ace_pack, &ace_report, Some(ace_sample));
-    assert!(feedback.aex_cli_command.contains("aex -- synthesize"));
-    assert!(feedback.hi_lo_drop_action_radius_nm > 200.0);
+    let inputs = AceVehicleInputs::from_vehicle_json("vehicle.json", ace_sample)?;
+    inputs.check_package(&c172)?;
+    let report = estimate_design_performance(&c172)?;
+    let feedback =
+        build_ace_feedback_report(&inputs, std::path::Path::new("vehicle.json"), &report)?;
+    let md = feedback.to_markdown();
+    let flown = |name: &str| {
+        feedback
+            .rows
+            .iter()
+            .find(|r| r.parameter == name && r.feeds_back)
+            .and_then(|r| r.flown)
+    };
+    let area = flown_reference(&feedback, "wing.area");
+    assert!((area - 174.0 * 0.092_903_04).abs() < 1e-6, "{md}");
+    let eta = flown("propeller.efficiency").ok_or("propeller efficiency not measured")?;
+    assert!((0.5..0.95).contains(&eta), "{md}");
+    let bsfc = flown("engine.bsfc").ok_or("BSFC not measured")?;
+    assert!((0.2..0.45).contains(&bsfc), "{md}");
+    let model_e = drag_polar_oswald(&c172)?;
+    let e = flown("aero.oswald").ok_or("Oswald efficiency not measured")?;
+    assert!(
+        (e / model_e - 1.0).abs() < 0.10,
+        "fed-back e {e:.3} vs flight-model polar e {model_e:.3}: {md}"
+    );
+    assert!(
+        flown("aero.cd0").is_none(),
+        "no flown CD0 is clean parasite drag: {md}"
+    );
+    let command = feedback
+        .aex_edit_command
+        .as_deref()
+        .ok_or("no aex command")?;
+    assert!(command.starts_with("aex edit vehicle.json"), "{command}");
+    assert!(command.contains("--set 'engine.bsfc="), "{command}");
     Ok(())
+}
+
+fn flown_reference(feedback: &AceFeedbackReport, name: &str) -> f64 {
+    feedback
+        .rows
+        .iter()
+        .find(|r| r.parameter == name)
+        .and_then(|r| r.flown)
+        .unwrap_or(f64::NAN)
+}
+
+/// Oswald efficiency of the flight model's own drag polar: the coefficient of
+/// `aero/cl-squared` in its drag function, over the reference aspect ratio.
+fn drag_polar_oswald(package: &sim_pack::LoadedSyspack) -> Result<f64, Box<dyn std::error::Error>> {
+    let xml = std::str::from_utf8(
+        package
+            .asset("fdm/c172_class_reference.xml")
+            .ok_or("no C172 flight model")?,
+    )?;
+    let at = xml
+        .find("<property>aero/cl-squared</property>")
+        .ok_or("no induced drag term")?;
+    let head = xml.get(..at).ok_or("bad offset")?;
+    let value = head.rsplit("<value>").next().ok_or("no coefficient")?;
+    let k: f64 = value
+        .split("</value>")
+        .next()
+        .ok_or("no coefficient")?
+        .trim()
+        .parse()?;
+    let aspect = 36.083_f64.powi(2) / 174.0;
+    Ok(1.0 / (std::f64::consts::PI * aspect * k))
 }

@@ -10,6 +10,7 @@ mod ace_bridge;
 mod cruise;
 mod design;
 mod engines;
+mod glide;
 mod markdown;
 mod mission;
 mod mixture;
@@ -21,15 +22,16 @@ mod takeoff;
 mod trades;
 
 pub use ace_bridge::{
-    AceFeedbackReport, build_ace_feedback_report, load_syspack_from_ace_vehicle_json,
+    AceBridgeError, AceFeedbackReport, AceFeedbackRow, AceVehicleInputs, build_ace_feedback_report,
     write_syspack_with_manual_assets,
 };
 pub use design::estimate_design_performance;
 pub use mission::{default_manual_mission_profiles, evaluate_mission_profile};
 pub use results::{
     CalibrationReport, ClimbResult, CruiseResult, DesignClimbPoint, DesignCruisePoint,
-    DesignPerformanceReport, EmpiricalSegmentResult, MissionProfileResult, MissionSegmentResult,
-    ParameterAdjustment, PayloadRangePoint, SensitivityReport, StallResult, TakeoffResult,
+    DesignPerformanceReport, EmpiricalSegmentResult, GlideSample, MissionProfileResult,
+    MissionSegmentResult, ParameterAdjustment, PayloadRangePoint, ReferenceGeometry,
+    SensitivityReport, StallResult, TakeoffResult,
 };
 pub use schema::{
     CalibrationSuite, CalibrationTolerances, ClimbBenchmark, CruiseBenchmark,

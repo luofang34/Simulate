@@ -243,6 +243,12 @@ pub struct DesignCruisePoint {
     pub range_45min_res_nm: f64,
     /// Dry-tanks still-air range (`NM`, zero reserve).
     pub range_no_res_nm: f64,
+    /// Brake power summed over every engine (`kW`), when the model publishes it.
+    #[serde(default)]
+    pub shaft_power_kw: Option<f64>,
+    /// Thrust summed over every engine (`N`).
+    #[serde(default)]
+    pub thrust_n: f64,
 }
 
 /// One corner of the aircraft's payload–range trade-off envelope.
@@ -385,6 +391,32 @@ pub struct DesignPerformanceReport {
     pub mission_profiles: Vec<MissionProfileResult>,
     /// Auto-synthesized [`AirspeedEnvelope`] ready for `performance/airspeed_envelope.json`.
     pub synthesized_envelope: AirspeedEnvelope,
+    /// Every idle-power glide point flown, from which `vg_kcas` was picked.
+    #[serde(default)]
+    pub glide_polar: Vec<GlideSample>,
+    /// The flight model's reference geometry and engine count.
+    #[serde(default)]
+    pub reference: ReferenceGeometry,
+}
+
+/// One steady idle-power glide.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlideSample {
+    /// Mean calibrated airspeed (`KCAS`).
+    pub kcas: f64,
+    /// Lift-to-drag ratio from the measured flight-path angle.
+    pub lift_to_drag: f64,
+}
+
+/// What a flight model normalises its coefficients with, read from it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReferenceGeometry {
+    /// Wing reference area (`m^2`, JSBSim `metrics/Sw-sqft`).
+    pub wing_area_m2: f64,
+    /// Wing span (`m`, JSBSim `metrics/bw-ft`).
+    pub wing_span_m: f64,
+    /// Engines the model declares.
+    pub engine_count: usize,
 }
 
 pub(super) struct RawSuiteEvaluation {

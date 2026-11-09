@@ -450,15 +450,4 @@ fn cli_supports_directory_tier0_and_design_estimation() {
         }
         other => panic!("expected TradeStudy outcome, got {other:?}"),
     }
-
-    let ace_args = parse_args(["--mode", "ace-bridge"]).unwrap();
-    assert_eq!(ace_args.mode, CliMode::AceBridge);
-    match execute_cli(&ace_args).unwrap() {
-        CliOutcome::AceCoDesign(_, fb) => {
-            assert_eq!(fb.vehicle_id, "c172_class_reference");
-            assert!(fb.trimmed_6dof_cd0 > 0.015);
-            assert!(fb.aex_cli_command.contains("--bin aex -- synthesize"));
-        }
-        other => panic!("expected AceCoDesign outcome, got {other:?}"),
-    }
 }

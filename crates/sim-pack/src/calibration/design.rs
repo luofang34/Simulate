@@ -4,14 +4,15 @@
 use jsbsim::Fdm;
 
 use crate::calibration::cruise::{
-    configure_mass_and_overrides, fdm_err, fly_level_cruise, set_if_exists, step_wings_level,
+    configure_mass_and_overrides, fdm_err, fly_level_cruise, set_if_exists,
 };
+use crate::calibration::glide::{best_glide, measure_reference_geometry, sweep_glide_polar};
 use crate::calibration::mission::{default_manual_mission_profiles, evaluate_mission_profile};
 use crate::calibration::results::{
     DesignClimbPoint, DesignCruisePoint, DesignPerformanceReport, PayloadRangePoint,
 };
 use crate::calibration::solver::{
-    DT_S, FPS_PER_KT, POUNDS_PER_KG, ParameterOverrides, build_fdm, fly_steady_climb_kcas,
+    FPS_PER_KT, POUNDS_PER_KG, ParameterOverrides, build_fdm, fly_steady_climb_kcas,
     probe_non_payload_lbs,
 };
 use crate::{AirspeedEnvelope, LoadedSyspack, PackError};
@@ -19,6 +20,8 @@ use crate::{AirspeedEnvelope, LoadedSyspack, PackError};
 const KG_PER_US_GAL_100LL: f64 = 2.721_554_22;
 const FPM_PER_KT: f64 = 101.268_591_4;
 const FT_PER_NM: f64 = 6_076.115_486;
+const KW_PER_HP: f64 = 0.745_699_872;
+const N_PER_LBF: f64 = 4.448_221_615;
 
 /// Evaluates a fixed-wing [`LoadedSyspack`] in closed-loop 6-DoF JSBSim simulation
 /// to estimate its V-speed schedule, climb ceiling, glide ratio, cruise specific range,
@@ -35,20 +38,12 @@ pub fn estimate_design_performance(
     let vs0_kcas = measure_stall_kcas(&mut fdm, ref_mass_kg, 1.0, base_lbs)?.min(vs1_kcas - 0.5);
     let (vx_kcas, max_climb_angle_deg, vy_kcas, sea_level_roc_fpm) =
         sweep_sea_level_vx_vy(&mut fdm, ref_mass_kg, vs1_kcas, base_lbs)?;
-    let (vg_kcas, max_lift_to_drag) = sweep_best_glide(&mut fdm, ref_mass_kg, vs1_kcas, base_lbs)?;
+    let glide_polar = sweep_glide_polar(&mut fdm, ref_mass_kg, vs1_kcas, base_lbs)?;
+    let (vg_kcas, max_lift_to_drag) = best_glide(&glide_polar, vs1_kcas);
+    let reference = measure_reference_geometry(&mut fdm)?;
     let climb_profile = build_climb_profile(&mut fdm, ref_mass_kg, vy_kcas, base_lbs)?;
     let (service_ceiling_ft, absolute_ceiling_ft) = estimate_ceilings(&climb_profile);
-    let (v_max_sl, _, _, _) = fly_level_cruise(
-        &mut fdm,
-        0.0,
-        ref_mass_kg,
-        None,
-        Some(1.0),
-        (vy_kcas * 1.45).max(95.0),
-        base_lbs,
-        ParameterOverrides::default(),
-        None,
-    )?;
+    let v_max_sl = max_level_speed_sl(&mut fdm, ref_mass_kg, vy_kcas, base_lbs)?;
     let cruise_polar =
         build_cruise_polar(&mut fdm, ref_mass_kg, usable_fuel_gal, v_max_sl, base_lbs)?;
     let payload_range = build_payload_range(
@@ -95,6 +90,8 @@ pub fn estimate_design_performance(
         payload_range,
         mission_profiles: Vec::new(),
         synthesized_envelope,
+        glide_polar,
+        reference,
     };
     for spec in default_manual_mission_profiles(empty_mass_kg, usable_fuel_kg, nominal_payload_kg) {
         report
@@ -209,82 +206,6 @@ fn sweep_sea_level_vx_vy(
     Ok((vx, best_angle.1, best_roc.0, best_roc.1))
 }
 
-fn sweep_best_glide(
-    fdm: &mut Fdm,
-    gross_mass_kg: f64,
-    vs1_kcas: f64,
-    base_non_payload_lbs: f64,
-) -> Result<(f64, f64), PackError> {
-    configure_mass_and_overrides(
-        fdm,
-        gross_mass_kg,
-        base_non_payload_lbs,
-        ParameterOverrides::default(),
-    )?;
-    let ratios = [1.21, 1.28, 1.35, 1.43];
-    let mut best = (vs1_kcas * 1.28, 1.0_f64);
-    for ratio in ratios {
-        let target_kcas = (vs1_kcas * ratio).max(45.0);
-        let (sim_kcas, ld) = fly_glide_point(fdm, target_kcas)?;
-        if ld > best.1 {
-            best = (sim_kcas, ld);
-        }
-    }
-    Ok(best)
-}
-
-fn fly_glide_point(fdm: &mut Fdm, target_kcas: f64) -> Result<(f64, f64), PackError> {
-    for (prop, val) in [
-        ("ic/h-sl-ft", 1_500.0),
-        ("ic/terrain-elevation-ft", -1_000.0),
-        ("ic/vt-fps", target_kcas * FPS_PER_KT),
-        ("ic/alpha-deg", 4.5),
-        ("ic/theta-deg", -2.0),
-        ("ic/beta-deg", 0.0),
-        ("fcs/throttle-cmd-norm", 0.0),
-    ] {
-        fdm.set_property(prop, val).map_err(fdm_err)?;
-    }
-    set_if_exists(fdm, "fcs/flap-cmd-norm", 0.0)?;
-    set_if_exists(fdm, "fcs/flap-pos-norm", 0.0)?;
-    set_if_exists(fdm, "propulsion/magneto_cmd", 3.0)?;
-    set_if_exists(fdm, "propulsion/set-running", -1.0)?;
-    fdm.run_ic().map_err(fdm_err)?;
-    let mut prev_vc = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
-    let mut int_err = 0.0_f64;
-    let mut h_start = 1_500.0_f64;
-    let (mut vc_sum, mut vt_sum) = (0.0, 0.0);
-    let mut samples = 0_u32;
-    for step in 0..3_600_u32 {
-        let vc = fdm.get_property("velocities/vc-kts").map_err(fdm_err)?;
-        let vdot = (vc - prev_vc) / DT_S;
-        prev_vc = vc;
-        let err = vc - target_kcas;
-        int_err = (int_err + err * DT_S).clamp(-35.0, 35.0);
-        let theta = fdm.get_property("attitude/theta-rad").map_err(fdm_err)?;
-        let q = fdm.get_property("velocities/q-rad_sec").map_err(fdm_err)?;
-        let wanted = (-0.06 + 0.018 * err + 0.012 * int_err + 0.008 * vdot).clamp(-0.30, 0.25);
-        let nose_up = (wanted - theta) * 2.5 - 0.55 * q;
-        set_if_exists(fdm, "fcs/flap-pos-norm", 0.0)?;
-        step_wings_level(fdm, nose_up, 0.0, 1.0)?;
-        if step == 2_880 {
-            h_start = fdm.get_property("position/h-sl-ft").map_err(fdm_err)?;
-        }
-        if step > 2_880 {
-            vc_sum += vc;
-            vt_sum += fdm.get_property("velocities/vt-fps").map_err(fdm_err)?;
-            samples = samples.wrapping_add(1);
-        }
-    }
-    let h_end = fdm.get_property("position/h-sl-ft").map_err(fdm_err)?;
-    let n = f64::from(samples.max(1));
-    let h_dot_fps = (h_end - h_start) / (n * DT_S);
-    let mean_vt_fps = (vt_sum / n).max(30.0);
-    let gamma_rad = (h_dot_fps / mean_vt_fps).clamp(-0.8, -1e-4).asin();
-    let ld = (-gamma_rad).cos() / (-gamma_rad).sin();
-    Ok((vc_sum / n, ld))
-}
-
 fn build_climb_profile(
     fdm: &mut Fdm,
     gross_mass_kg: f64,
@@ -340,6 +261,27 @@ fn estimate_ceilings(profile: &[DesignClimbPoint]) -> (f64, f64) {
     (service, absolute)
 }
 
+/// Sea-level true airspeed at full throttle (`KTAS`).
+fn max_level_speed_sl(
+    fdm: &mut Fdm,
+    gross_mass_kg: f64,
+    vy_kcas: f64,
+    base_non_payload_lbs: f64,
+) -> Result<f64, PackError> {
+    Ok(fly_level_cruise(
+        fdm,
+        0.0,
+        gross_mass_kg,
+        None,
+        Some(1.0),
+        (vy_kcas * 1.45).max(95.0),
+        base_non_payload_lbs,
+        ParameterOverrides::default(),
+        None,
+    )?
+    .ktas)
+}
+
 fn build_cruise_polar(
     fdm: &mut Fdm,
     gross_mass_kg: f64,
@@ -354,7 +296,7 @@ fn build_cruise_polar(
     ];
     let mut out = Vec::with_capacity(settings.len());
     for (label, alt_ft, thr) in settings {
-        let (ktas, rpm, hp_opt, gph_opt) = fly_level_cruise(
+        let point = fly_level_cruise(
             fdm,
             alt_ft,
             gross_mass_kg,
@@ -365,7 +307,8 @@ fn build_cruise_polar(
             ParameterOverrides::default(),
             None,
         )?;
-        let (fuel_flow_gph, direct) = match gph_opt {
+        let (ktas, rpm, hp_opt) = (point.ktas, point.rpm, point.total_hp);
+        let (fuel_flow_gph, direct) = match point.total_gph {
             Some(g) if g > 0.2 => (g, true),
             _ => {
                 let est_hp = hp_opt.unwrap_or_else(|| 0.000_07 * ktas.powi(3));
@@ -391,6 +334,8 @@ fn build_cruise_polar(
             endurance_45min_res_hr,
             range_45min_res_nm: ktas * endurance_45min_res_hr,
             range_no_res_nm: ktas * total_hr,
+            shaft_power_kw: hp_opt.map(|hp| hp * KW_PER_HP),
+            thrust_n: point.total_thrust_lbf * N_PER_LBF,
         });
     }
     Ok(out)

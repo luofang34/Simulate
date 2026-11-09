@@ -21,17 +21,17 @@ pub use builtin::{
     builtin_c172_package, builtin_c172_source, builtin_p38g_package, builtin_p38g_source,
 };
 pub use calibration::{
-    AceFeedbackReport, CALIBRATION_SUITE_ASSET, CalibrationReport, CalibrationSuite,
-    CalibrationTolerances, ClimbBenchmark, CruiseBenchmark, DesignClimbPoint, DesignCruisePoint,
-    DesignPerformanceReport, DesignTradeCandidateResult, DesignTradeSpec, DesignTradeStudyReport,
-    EmpiricalFlightSegment, EmpiricalSegmentMode, HandbookProperty, MissionProfileResult,
-    MissionProfileSpec, MissionSegmentKind, MissionSegmentResult, MissionSegmentSpec,
-    PayloadRangePoint, SensitivityReport, StallBenchmark, StaticRunupBenchmark, TailProfile,
-    TakeoffBenchmark, TakeoffResult, apply_design_trade, build_ace_feedback_report,
-    default_design_trades, default_manual_mission_profiles, estimate_design_performance,
-    evaluate_mission_profile, evaluate_package, evaluate_package_against,
-    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
-    write_syspack_with_manual_assets,
+    AceBridgeError, AceFeedbackReport, AceFeedbackRow, AceVehicleInputs, CALIBRATION_SUITE_ASSET,
+    CalibrationReport, CalibrationSuite, CalibrationTolerances, ClimbBenchmark, CruiseBenchmark,
+    DesignClimbPoint, DesignCruisePoint, DesignPerformanceReport, DesignTradeCandidateResult,
+    DesignTradeSpec, DesignTradeStudyReport, EmpiricalFlightSegment, EmpiricalSegmentMode,
+    GlideSample, HandbookProperty, MissionProfileResult, MissionProfileSpec, MissionSegmentKind,
+    MissionSegmentResult, MissionSegmentSpec, PayloadRangePoint, ReferenceGeometry,
+    SensitivityReport, StallBenchmark, StaticRunupBenchmark, TailProfile, TakeoffBenchmark,
+    TakeoffResult, apply_design_trade, build_ace_feedback_report, default_design_trades,
+    default_manual_mission_profiles, estimate_design_performance, evaluate_mission_profile,
+    evaluate_package, evaluate_package_against, identify_package_sensitivities,
+    run_design_trade_study, write_syspack_with_manual_assets,
 };
 pub use envelope::{AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, ResolvedAirspeedEnvelope};
 pub use error::PackError;
