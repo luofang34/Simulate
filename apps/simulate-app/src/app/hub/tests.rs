@@ -1,6 +1,7 @@
-use super::shown_layout;
+use super::{default_overlays, shown_layout};
 use crate::esc_menu::AvionicsLayout;
 use crate::map_rig::AvionicsPreset;
+use crate::vehicles::FreeFlightVehicle;
 
 #[test]
 fn hotkey_fits_map_onto_the_hub_layout() {
@@ -53,4 +54,21 @@ fn every_listed_runway_end_of_a_database_airport_resolves_in_its_surface_graph()
             }
         }
     }
+}
+
+#[test]
+fn a_period_fighter_opens_without_hud_or_glass_and_the_c172_gets_them_back() {
+    use AvionicsLayout::{FullGlass, HudOnly};
+    assert_eq!(
+        default_overlays(FreeFlightVehicle::JsbsimP38g, FullGlass),
+        [false, false]
+    );
+    assert_eq!(
+        default_overlays(FreeFlightVehicle::JsbsimC172, FullGlass),
+        [true, true]
+    );
+    assert_eq!(
+        default_overlays(FreeFlightVehicle::JsbsimC172, HudOnly),
+        [false, true]
+    );
 }

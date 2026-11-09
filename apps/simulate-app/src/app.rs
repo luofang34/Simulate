@@ -200,6 +200,7 @@ impl FlightApp {
                     .ok();
                 info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
                 self.cockpit_rig = Some(rig);
+                self.apply_vehicle_overlays();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
                 self.renderer = Some(renderer);
             }

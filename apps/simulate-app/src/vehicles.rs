@@ -53,6 +53,13 @@ pub enum FreeFlightVehicle {
 }
 
 impl FreeFlightVehicle {
+    /// Whether the airframe predates head-up and glass displays, so its cockpit
+    /// opens on its own panel with the conformal HUD and glass dock hidden.
+    #[must_use]
+    pub const fn period_cockpit(self) -> bool {
+        matches!(self, Self::JsbsimP38g)
+    }
+
     /// Cycles to the previous free-flight vehicle.
     #[must_use]
     pub const fn prev(self) -> Self {

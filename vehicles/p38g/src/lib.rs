@@ -17,6 +17,8 @@
 
 mod airframe;
 mod articulated;
+mod canopy_frames;
+mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
 mod mesh;

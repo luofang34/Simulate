@@ -54,16 +54,20 @@ pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
-        FreeFlightVehicle::JsbsimP38g => CameraMount::oblique(
-            DVec3::new(0.25, 0.0, -0.82),
-            0.0,
-            -2.5_f64.to_radians(),
-            0.0,
-        ),
+        FreeFlightVehicle::JsbsimP38g => {
+            CameraMount::oblique(p38g_eye_frd_m(), 0.0, -2.5_f64.to_radians(), 0.0)
+        }
         FreeFlightVehicle::AviateX500Direct => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }
     }
+}
+
+/// The P-38G design eyepoint in FRD body axes; the airframe mesh's `(x right,
+/// y forward, z up)` origin is the body origin.
+fn p38g_eye_frd_m() -> DVec3 {
+    let [x_right, y_fwd, z_up] = sim_p38g::p38g_cockpit_contract().design_eyepoint_m;
+    DVec3::new(f64::from(y_fwd), f64::from(x_right), -f64::from(z_up))
 }
 
 /// Belly optical/EVS sensor mount pitched downward by `22°` in FRD body axes.
@@ -92,9 +96,7 @@ pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
             | FreeFlightVehicle::Kinematic,
         )
         | None => svs_nose_mount(),
-        Some(FreeFlightVehicle::JsbsimP38g) => {
-            CameraMount::forward_nose(DVec3::new(0.25, 0.0, -0.82))
-        }
+        Some(FreeFlightVehicle::JsbsimP38g) => CameraMount::forward_nose(p38g_eye_frd_m()),
         Some(FreeFlightVehicle::AviateX500Direct) => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }

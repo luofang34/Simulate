@@ -8,6 +8,7 @@
 
 use glam::Vec3;
 
+use crate::canopy_frames::canopy_frame_prims;
 use crate::mesh::{MeshBuilder, P38Material, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
     ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
@@ -143,6 +144,7 @@ pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
     build_cockpit_tub_and_bulkheads(&mut prims);
     build_instrument_panel_and_gunsight(&mut prims);
     build_controls_and_pilot(&mut prims);
+    prims.extend(canopy_frame_prims());
     prims
 }
 
@@ -201,7 +203,7 @@ fn build_instrument_panel_and_gunsight(prims: &mut Vec<P38MeshPrim>) {
     let mut panel = MeshBuilder::new();
     // Main instrument panel board at FS 86 (y = 1.24) + anti-glare coaming hood
     panel.cuboid(Vec3::new(-0.36, 1.21, 0.18), Vec3::new(0.36, 1.26, 0.54));
-    panel.cuboid(Vec3::new(-0.38, 1.14, 0.51), Vec3::new(0.38, 1.48, 0.56));
+    panel.cuboid(Vec3::new(-0.38, 1.14, 0.51), Vec3::new(0.38, 1.62, 0.545));
     // Primary flight six-pack + twin engine manifold/RPM/coolant gauge bezels
     for gx in [-0.26_f32, -0.16, -0.06, 0.06, 0.16, 0.26] {
         for gz in [0.27_f32, 0.37, 0.46] {
@@ -249,8 +251,11 @@ fn build_instrument_panel_and_gunsight(prims: &mut Vec<P38MeshPrim>) {
 
 fn build_controls_and_pilot(prims: &mut Vec<P38MeshPrim>) {
     let mut hardware = MeshBuilder::new();
-    // FS 154 3/8-in pilot dorsal armor plate & headrest support
-    hardware.cuboid(Vec3::new(-0.30, -0.40, -0.10), Vec3::new(0.30, -0.35, 0.78));
+    // 3/8-in seat-back armor plate & headrest support, directly behind the pilot
+    hardware.cuboid(
+        Vec3::new(-0.30, SEAT_SHIFT_Y - 0.40, -0.10),
+        Vec3::new(0.30, SEAT_SHIFT_Y - 0.35, 0.78),
+    );
     // Lockheed spectacles control column & twin-horn yoke wheel
     hardware.tube(
         Vec3::new(0.0, 0.94, -0.24),
@@ -322,11 +327,22 @@ fn build_controls_and_pilot(prims: &mut Vec<P38MeshPrim>) {
     build_seat_and_pilot_bust(prims);
 }
 
+/// Fore-aft offset of the seat, its armour and the pilot figure, which puts the
+/// seated pilot's eyes on the contract's design eyepoint.
+const SEAT_SHIFT_Y: f32 = 0.42;
+
 fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
     // Metal bucket seat, leather headrest pad, and pilot figure
     let mut seat = MeshBuilder::new();
-    seat.cuboid(Vec3::new(-0.24, -0.34, -0.12), Vec3::new(0.24, 0.14, -0.06));
-    seat.cuboid(Vec3::new(-0.24, -0.35, -0.10), Vec3::new(0.24, -0.29, 0.52));
+    let fwd = Vec3::new(0.0, SEAT_SHIFT_Y, 0.0);
+    seat.cuboid(
+        Vec3::new(-0.24, -0.34, -0.12) + fwd,
+        Vec3::new(0.24, 0.14, -0.06) + fwd,
+    );
+    seat.cuboid(
+        Vec3::new(-0.24, -0.35, -0.10) + fwd,
+        Vec3::new(0.24, -0.29, 0.52) + fwd,
+    );
     prims.push(fixed(
         "/P38g/CockpitInterior/BucketSeat",
         P38PartRole::CabinInterior,
@@ -336,7 +352,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
 
     let mut pilot = MeshBuilder::new();
     pilot.ellipsoid(
-        Vec3::new(0.0, -0.06, 0.22),
+        Vec3::new(0.0, -0.06, 0.22) + fwd,
         Vec3::new(0.21, 0.15, 0.28),
         14,
         8,
@@ -350,12 +366,15 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
 
     let mut head = MeshBuilder::new();
     head.ellipsoid(
-        Vec3::new(0.0, -0.08, 0.62),
+        Vec3::new(0.0, -0.08, 0.62) + fwd,
         Vec3::new(0.11, 0.12, 0.13),
         14,
         8,
     );
-    head.cuboid(Vec3::new(-0.11, -0.35, 0.56), Vec3::new(0.11, -0.29, 0.72));
+    head.cuboid(
+        Vec3::new(-0.11, -0.35, 0.56) + fwd,
+        Vec3::new(0.11, -0.29, 0.72) + fwd,
+    );
     prims.push(fixed(
         "/P38g/CockpitInterior/PilotHelmet",
         P38PartRole::PilotFigure,
@@ -365,7 +384,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
 
     let mut vest = MeshBuilder::new();
     vest.ellipsoid(
-        Vec3::new(0.0, -0.02, 0.28),
+        Vec3::new(0.0, -0.02, 0.28) + fwd,
         Vec3::new(0.17, 0.13, 0.18),
         12,
         6,

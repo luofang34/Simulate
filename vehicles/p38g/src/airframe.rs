@@ -6,6 +6,7 @@ use std::f32::consts::PI;
 
 use glam::Vec3;
 
+use crate::cockpit_opening::upper_gondola_skin;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
 use crate::stations::{
     ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
@@ -26,29 +27,14 @@ pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
 
 fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
     const ARC_STEPS: usize = 20;
-    let mut upper_rows = Vec::with_capacity(GONDOLA_STATIONS.len());
     let mut lower_rows = Vec::with_capacity(GONDOLA_STATIONS.len());
     for &(y, ..) in GONDOLA_STATIONS {
-        let mut up = Vec::with_capacity(ARC_STEPS + 1);
-        let mut lo = Vec::with_capacity(ARC_STEPS + 1);
-        for i in 0..=ARC_STEPS {
-            let frac = i as f32 / ARC_STEPS as f32;
-            let theta_up = -0.54 * PI + frac * (1.08 * PI);
-            let theta_lo = 0.54 * PI + frac * (0.92 * PI);
-            up.push(gondola_point(y, theta_up));
-            lo.push(gondola_point(y, theta_lo));
-        }
-        upper_rows.push(up);
+        let lo = (0..=ARC_STEPS)
+            .map(|i| gondola_point(y, 0.54 * PI + (i as f32 / ARC_STEPS as f32) * (0.92 * PI)))
+            .collect();
         lower_rows.push(lo);
     }
-    let mut upper = MeshBuilder::new();
-    upper.loft_open(&upper_rows, Inside::Axis);
-    prims.push(fixed(
-        "/P38g/Gondola/UpperOlive",
-        P38PartRole::CabinExterior,
-        OLIVE_DRAB,
-        upper,
-    ));
+    upper_gondola_skin(prims);
 
     let mut lower = MeshBuilder::new();
     lower.loft_open(&lower_rows, Inside::Axis);
@@ -203,12 +189,15 @@ fn build_canopy_and_windscreen(prims: &mut Vec<P38MeshPrim>) {
     }
     let mut glass = MeshBuilder::new();
     glass.loft_open(&glass_rows, Inside::Point(Vec3::new(0.0, 0.42, 0.46)));
-    prims.push(fixed(
+    // The pilot looks out through the back faces.
+    let mut glazing = fixed(
         "/P38g/Canopy/Glazing",
         P38PartRole::CabinGlass,
         CANOPY_GLASS,
         glass,
-    ));
+    );
+    glazing.double_sided = true;
+    prims.push(glazing);
 
     // Internal 1.5-in flat optically-ground bulletproof windshield pane (FS 78..94)
     let mut armor_pane = MeshBuilder::new();

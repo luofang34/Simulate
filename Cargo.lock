@@ -5202,6 +5202,7 @@ dependencies = [
  "sim-input",
  "sim-maplibre",
  "sim-navigate",
+ "sim-p38g",
  "sim-pack",
  "sim-render",
  "sim-scenario",

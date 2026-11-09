@@ -206,9 +206,46 @@ fn render_p38_other_views(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
         h.settle_and_draw_flight(&dir.join(name))?;
     }
     h.rig.set_show_instruments(false);
+    h.rig.set_show_conformal_hud(false);
+    h.rig
+        .supervisor_mut()
+        .set_viewport_mode(OperatorViewportMode::Cockpit);
+    for (yaw_deg, pitch_deg, name) in [
+        (-80.0, -8.0, "p38_11_cockpit_look_left.png"),
+        (80.0, -8.0, "p38_12_cockpit_look_right.png"),
+        (0.0, -30.0, "p38_13_cockpit_panel.png"),
+    ] {
+        draw_p38_cockpit_look(h, yaw_deg, pitch_deg, &dir.join(name))?;
+    }
     h.rig.set_show_conformal_hud(true);
     h.rig
         .supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Chase);
     Ok(())
+}
+
+/// The seated pilot's view turned `yaw_deg` right and `pitch_deg` up.
+fn draw_p38_cockpit_look(
+    h: &mut VerifyHarness,
+    yaw_deg: f64,
+    pitch_deg: f64,
+    out: &Path,
+) -> Result<(), AppSimError> {
+    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let look = LookOffset {
+        yaw_rad: yaw_deg.to_radians(),
+        pitch_rad: pitch_deg.to_radians(),
+    };
+    for _ in 0..35 {
+        let state = h.flight.display_vehicle_state();
+        let base_cam = h.flight.display_camera(OperatorViewportMode::Cockpit)?;
+        let cam = look.apply(OperatorViewportMode::Cockpit, base_cam, &state);
+        let _globe = h
+            .rig
+            .prepare_frame(&h.gpu.queue, SHOT_SIZE, &h.flight, &cam, &sky, &[])?;
+        poll_gpu(&h.gpu)?;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let quads = h.rig.overlay_quads(h.flight.world());
+    h.composite_to_png(&quads, out)
 }
