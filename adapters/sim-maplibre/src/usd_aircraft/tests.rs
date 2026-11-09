@@ -348,3 +348,40 @@ fn n642sp_carries_its_antennas_lights_and_flight_control_details() {
         .map(|p| p.material.emissive_rgb);
     assert_eq!(red, Some([1.0, 0.06, 0.04]));
 }
+
+#[test]
+fn n642sp_wears_its_swoosh_and_12_inch_registration_on_both_sides() {
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    let part = |suffix: &str| {
+        tail.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with(suffix))
+            .unwrap_or_else(|| panic!("no part {suffix}"))
+    };
+    for (suffix, side) in [
+        ("/LiveryRegistrationPort", -1.0_f32),
+        ("/LiveryRegistrationStarboard", 1.0),
+    ] {
+        let reg = part(suffix);
+        assert!(
+            reg.vertices
+                .iter()
+                .all(|v| (0.04..0.6).contains(&(v.position[0] * side)))
+        );
+        let (lo, hi) = reg
+            .vertices
+            .iter()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v.position[2]), hi.max(v.position[2]))
+            });
+        // 12-inch marks, measured on the projected glyphs.
+        assert!(((hi - lo) - 0.3048).abs() < 0.01, "{suffix}: {}", hi - lo);
+        assert_eq!(reg.material, part("/LiveryRegistrationPort").material);
+    }
+    for stripe in ["/LiverySwooshRedPort", "/LiverySwooshNavyStarboard"] {
+        assert!(part(stripe).indices.len() >= 3 * 50, "{stripe}");
+    }
+    let white = part("/CabinWhite").material;
+    assert_eq!(part("/CabinStripe").material, white);
+    assert_eq!(part("/NoseCowlingStripe").material, white);
+}

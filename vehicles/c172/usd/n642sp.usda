@@ -8,7 +8,7 @@ Photos: blueskyaa.com antenna post 2017-11-13 (IMG_6025/6030/6031/6058) and 2024
 (IMG_7150-7157); airport-data.com 024252 (2006), 820598 (2012); FlightAware 2020-2021.
 Dimensions: Cessna 172S Information Manual rev 5 (2004), Fig. 1-1 and Fig. 6-1."""
     metersPerUnit = 1
-    subLayers = [@c172.usdc@]
+    subLayers = [@n642sp_livery.usda@, @c172.usdc@]
     upAxis = "Z"
 )
 
@@ -18,6 +18,50 @@ over "C172"
 
     over "Materials"
     {
+        # Livery colours, from the photos under daylight: maroon-red upper swoosh and
+        # pinstripe, darker maroon lower swoosh, navy stripe and registration.
+        def Material "MatLiveryRed"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLiveryRed/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.4, 0.03, 0.05)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.3
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLiveryMaroon"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLiveryMaroon/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.22, 0.02, 0.04)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.3
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLiveryNavy"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLiveryNavy/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.018, 0.022, 0.075)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.3
+                token outputs:surface
+            }
+        }
+
         # McCauley 1C235 blades: satin black faces with white tips (airport-data 024252).
         def Material "MatPropBladeSatinBlack"
         {
@@ -215,6 +259,18 @@ over "C172"
     {
         # The wing, roof, stabilizer and struts are white paint in every photo.
         over "HighWingTrim"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        # The generic crimson cheatlines are skin patches, so they are repainted white;
+        # N642SP's scheme is laid over the skin by n642sp_livery.usda.
+        over "CabinStripe"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        over "NoseCowlingStripe"
         {
             rel material:binding = </C172/Materials/MatWhitePaint>
         }
