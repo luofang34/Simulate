@@ -33,6 +33,8 @@ pub use aperture::{
     StarCameraExposure, StarCameraTruth, StarTruth, StarVisibility, ThermalScale,
     V_ZERO_POINT_PHOTONS_PER_M2_S, WindowBezel, padded_bytes_per_row, reversed_z_range_m,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use aperture::{THERMAL_KELVIN_FORMAT, ThermalSceneTarget};
 pub use camera::{Camera, CameraPose};
 pub use compositor::{
     ColorTransfer, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS, OverlayQuad, QuadFilter,

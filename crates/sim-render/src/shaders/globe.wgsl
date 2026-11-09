@@ -128,3 +128,14 @@ fn fs_thermal(in: VertexOut) -> @location(0) vec4<f32> {
     let grey = srgb_to_linear(clamp(level, 0.0, 1.0));
     return vec4<f32>(grey, grey, grey, 1.0);
 }
+
+// Brightness temperature in kelvin for a float target, with no display
+// mapping or noise; -1 where the ground has no radiometry.
+@fragment
+fn fs_thermal_kelvin(in: VertexOut) -> @location(0) vec4<f32> {
+    let exitance = in.radiometry.y;
+    if exitance < 0.0 {
+        return vec4<f32>(-1.0, 0.0, 0.0, 1.0);
+    }
+    return vec4<f32>(pow(exitance / SIGMA, 0.25), 0.0, 0.0, 1.0);
+}

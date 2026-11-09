@@ -11,6 +11,8 @@ mod readout;
 mod star_camera;
 mod stars;
 mod target;
+#[cfg(not(target_arch = "wasm32"))]
+mod thermal_target;
 
 pub use microbolometer::{
     MICROBOLOMETER_BITS, Microbolometer, MicrobolometerConfig, MicrobolometerFrame,
@@ -29,6 +31,8 @@ pub use target::{
     APERTURE_COLOUR_FORMAT, APERTURE_DEPTH_FORMAT, ApertureImage, OffscreenAperture,
     padded_bytes_per_row,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use thermal_target::{THERMAL_KELVIN_FORMAT, ThermalSceneTarget};
 
 /// How a thermal camera maps ground temperature to image level.
 #[derive(Debug, Clone, Copy, PartialEq)]

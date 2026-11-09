@@ -41,7 +41,9 @@ impl SceneTemperature {
     /// That frame stores black-body exitance in eight bits, so each kelvin
     /// here is quantised to one of 256 levels: a step of
     /// `(σ white⁴ − σ black⁴) / (255 · 4σT³)`, about 0.4 K at 300 K for a
-    /// 250–350 K scale, which is coarser than a microbolometer's NETD.
+    /// 250–350 K scale, which is coarser than a microbolometer's NETD. A
+    /// native build reads the scene unquantised from a
+    /// `ThermalSceneTarget` instead.
     /// Ground below `black_k`, open sky and ground without radiometry all
     /// read `black_k`, and ground above `white_k` reads `white_k`.
     pub fn from_thermal_image(

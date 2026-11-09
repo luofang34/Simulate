@@ -23,7 +23,7 @@ pub fn padded_bytes_per_row(width: u32, bytes_per_pixel: u32) -> Option<u32> {
 
 /// Removes the row padding of a buffer texture copy.
 #[cfg(not(target_arch = "wasm32"))]
-fn strip_row_padding(padded: &[u8], padded_row: usize, tight_row: usize) -> Vec<u8> {
+pub(super) fn strip_row_padding(padded: &[u8], padded_row: usize, tight_row: usize) -> Vec<u8> {
     padded
         .chunks_exact(padded_row)
         .flat_map(|row| row.iter().take(tight_row))
@@ -144,7 +144,7 @@ impl OffscreenAperture {
     }
 }
 
-fn target_texture(
+pub(super) fn target_texture(
     device: &wgpu::Device,
     label: &'static str,
     width: u32,
@@ -216,7 +216,7 @@ impl OffscreenAperture {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn staging_buffer(
+pub(super) fn staging_buffer(
     device: &wgpu::Device,
     label: &'static str,
     width: u32,
@@ -232,14 +232,14 @@ fn staging_buffer(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn readback_row(width: u32) -> Result<u32, RenderError> {
+pub(super) fn readback_row(width: u32) -> Result<u32, RenderError> {
     padded_bytes_per_row(width, READBACK_BYTES_PER_PIXEL).ok_or_else(|| RenderError::Readback {
         detail: format!("{width} pixel rows overflow"),
     })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn copy_to_staging(
+pub(super) fn copy_to_staging(
     encoder: &mut wgpu::CommandEncoder,
     texture: &wgpu::Texture,
     aspect: wgpu::TextureAspect,
@@ -266,7 +266,7 @@ fn copy_to_staging(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_staging_blocking(
+pub(super) fn read_staging_blocking(
     device: &wgpu::Device,
     staging: &wgpu::Buffer,
 ) -> Result<Vec<u8>, RenderError> {
