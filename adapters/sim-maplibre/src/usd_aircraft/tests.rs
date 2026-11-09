@@ -385,3 +385,19 @@ fn n642sp_wears_its_swoosh_and_12_inch_registration_on_both_sides() {
     assert_eq!(part("/CabinStripe").material, white);
     assert_eq!(part("/NoseCowlingStripe").material, white);
 }
+
+#[test]
+fn the_c172_lift_struts_stay_in_the_cabin_window_view() {
+    let asset = UsdAircraftAsset::embedded_c172().unwrap();
+    let art = AirframeArticulation::default();
+    let window = asset.evaluate_draws(&art, SlotCameraRole::LeftCabinWindow);
+    for side in ["/LiftStrutLeft", "/LiftStrutRight"] {
+        let index = asset
+            .parts()
+            .iter()
+            .position(|p| p.prim_path.ends_with(side))
+            .unwrap_or_else(|| panic!("no {side}"));
+        assert_eq!(asset.parts()[index].role, PartRole::WingStrut);
+        assert!(window.iter().any(|d| d.part_index == index), "{side}");
+    }
+}
