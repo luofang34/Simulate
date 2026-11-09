@@ -68,6 +68,11 @@ pub(super) fn star_frames(
     let config = StarCameraConfig::star_tracker_1024();
     let camera = StarCamera::new(StarCameraConfig { seed: 7, ..config }).unwrap();
     let length = exposure_steps(&config);
+    // The gain is a datasheet value of the sensor, not simulator truth.
+    let detect = DetectConfig {
+        electrons_per_count: config.gain_e_per_dn,
+        ..DetectConfig::default()
+    };
     let (mount, cg_body_m) = sim_mount();
     let start = UtcTime::from_unix_seconds(START_UNIX_S);
     let pose_at = |step: usize| {
@@ -108,7 +113,7 @@ pub(super) fn star_frames(
                 end_step,
                 mid,
                 streak_px: Truth::new(streak_px),
-                centroids: detect_stars(&view, &DetectConfig::default()).unwrap_or_default(),
+                centroids: detect_stars(&view, &detect).unwrap_or_default(),
                 catalogue: catalogue_ecef(star_camera_epoch(start, mid), CATALOGUE_FAINTEST_V)
                     .unwrap(),
             }

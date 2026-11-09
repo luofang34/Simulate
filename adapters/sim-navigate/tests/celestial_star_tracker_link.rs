@@ -152,7 +152,12 @@ fn sight_stars(counts: &SensorCounts, now: SimInstant, mode: IdentifyMode<'_>) -
         significant_bits: counts.significant_bits,
     };
     let view = ImageView::new(counts.width, counts.height, pixels).unwrap();
-    let centroids = detect_stars(&view, &DetectConfig::default()).unwrap();
+    // The gain is a datasheet value of the sensor, not simulator truth.
+    let detect = DetectConfig {
+        electrons_per_count: StarCameraConfig::star_tracker_1024().gain_e_per_dn,
+        ..DetectConfig::default()
+    };
+    let centroids = detect_stars(&view, &detect).unwrap();
     let epoch = star_camera_epoch(UtcTime::from_unix_seconds(START_UNIX_S), now);
     let catalogue = catalogue_ecef(epoch, CATALOGUE_FAINTEST_V).unwrap();
     let identify = IdentifyConfig::default();
@@ -198,9 +203,9 @@ fn ingest_sightings(
             now,
         )
         .unwrap();
-    let variance = solution.direction_sigma_rad.powi(2) + MOUNT_ALIGNMENT_RAD.powi(2);
     let frame = navigator.filter().frame();
-    let observations = line_of_sight_observations(solution, stamp, frame, variance).unwrap();
+    let mount_variance = MOUNT_ALIGNMENT_RAD.powi(2);
+    let observations = line_of_sight_observations(solution, stamp, frame, mount_variance).unwrap();
     observations
         .iter()
         .map(|observation| navigator.observe(observation, now).unwrap())

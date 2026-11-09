@@ -230,10 +230,10 @@ impl<'a> StarTracker<'a> {
         let stamp = clock
             .stamp(STAR_SOURCE, SourceEpoch::new(0), self.next, frame.mid)
             .unwrap();
-        let variance = sighting.direction_sigma_rad.powi(2) + MOUNT_ALIGNMENT_RAD.powi(2);
         let frame_id = navigator.filter().frame();
+        let mount_variance = MOUNT_ALIGNMENT_RAD.powi(2);
         let observations =
-            line_of_sight_observations(&sighting, stamp, frame_id, variance).unwrap();
+            line_of_sight_observations(&sighting, stamp, frame_id, mount_variance).unwrap();
         for observation in &observations {
             self.next = self.next.next();
             match navigator.observe(observation, now).unwrap() {
