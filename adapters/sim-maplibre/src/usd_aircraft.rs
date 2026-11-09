@@ -126,6 +126,7 @@ pub const EMBEDDED_RAKETA_USD: &[u8] =
 pub struct UsdAircraftAsset {
     parts: Vec<UsdMeshPart>,
     radius_m: f32,
+    lowest_z_m: f32,
 }
 
 impl UsdAircraftAsset {
@@ -149,9 +150,11 @@ impl UsdAircraftAsset {
 
     pub(crate) fn from_parts(parts: Vec<UsdMeshPart>) -> Self {
         let radius_m = occlusion::bounding_radius(&parts);
+        let lowest_z_m = occlusion::lowest_point_z(&parts);
         Self {
             parts,
             radius_m,
+            lowest_z_m,
         }
     }
 
@@ -167,6 +170,13 @@ impl UsdAircraftAsset {
             "baked airframe ambient occlusion"
         );
         Self::from_parts(parts)
+    }
+
+    /// Height of the lowest rest-pose vertex (wheel bottoms on a landplane) on the aircraft
+    /// `+Z` axis, in metres; ground contact on level gear.
+    #[must_use]
+    pub fn lowest_point_z_m(&self) -> f32 {
+        self.lowest_z_m
     }
 
     /// Radius about the aircraft origin enclosing every rest-pose vertex, in metres.

@@ -61,6 +61,21 @@ pub(super) fn bounding_radius(parts: &[UsdMeshPart]) -> f32 {
         .fold(0.0, f32::max)
 }
 
+/// Lowest rest-pose height on the aircraft `+Z` axis, ignoring the propeller blur disc.
+pub(super) fn lowest_point_z(parts: &[UsdMeshPart]) -> f32 {
+    let lowest = parts
+        .iter()
+        .filter(|part| receives(part))
+        .flat_map(|part| {
+            let rest = part.rest_to_aircraft.as_mat4();
+            part.vertices
+                .iter()
+                .map(move |v| rest.transform_point3(Vec3::from_array(v.position)).z)
+        })
+        .fold(f32::INFINITY, f32::min);
+    if lowest.is_finite() { lowest } else { 0.0 }
+}
+
 /// Opaque, static-looking skins occlude; glass, spinning blades and the blur disc do not.
 fn occludes(part: &UsdMeshPart) -> bool {
     part.material.opacity >= 0.999
