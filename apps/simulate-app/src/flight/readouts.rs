@@ -10,6 +10,7 @@ use sim_pack::{
     builtin_c172_package, builtin_p38g_package,
 };
 use sim_scenario::ScenarioProfile;
+use syspack::InstrumentPackDocument;
 
 use super::Flight;
 use super::mode::Mode;
@@ -19,6 +20,7 @@ use crate::vehicles::FreeFlightVehicle;
 struct CachedAeroSpecs {
     envelope: Option<(AirspeedEnvelope, f64)>,
     pec: Option<PitotStaticCalibration>,
+    instruments: Option<InstrumentPackDocument>,
 }
 
 static C172_SPECS: OnceLock<CachedAeroSpecs> = OnceLock::new();
@@ -29,6 +31,7 @@ fn package_aero_specs(pkg: Result<LoadedSyspack, sim_pack::PackError>) -> Cached
         return CachedAeroSpecs {
             envelope: None,
             pec: None,
+            instruments: None,
         };
     };
     let envelope = pkg.airspeed_envelope().cloned().map(|env| {
@@ -39,7 +42,12 @@ fn package_aero_specs(pkg: Result<LoadedSyspack, sim_pack::PackError>) -> Cached
         (env, mass_kg)
     });
     let pec = pkg.pitot_static_calibration().cloned();
-    CachedAeroSpecs { envelope, pec }
+    let instruments = pkg.instrument_pack().cloned();
+    CachedAeroSpecs {
+        envelope,
+        pec,
+        instruments,
+    }
 }
 
 fn cached_c172_specs() -> &'static CachedAeroSpecs {
@@ -79,6 +87,12 @@ impl Flight {
     #[must_use]
     pub fn pitot_static_calibration(&self) -> Option<&'static PitotStaticCalibration> {
         self.active_aero_specs()?.pec.as_ref()
+    }
+
+    /// The instrument pack the active aircraft package pins.
+    #[must_use]
+    pub fn instrument_pack(&self) -> Option<&'static InstrumentPackDocument> {
+        self.active_aero_specs()?.instruments.as_ref()
     }
 
     /// Active fixed-wing [`ResolvedAirspeedEnvelope`] scaled to live gross mass (`kg`)

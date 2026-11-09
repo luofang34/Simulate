@@ -47,6 +47,9 @@ pub enum P38PartRole {
     WheelLeft,
     /// Right main-gear tire and hubcap.
     WheelRight,
+    /// An instrument needle turning about its dial-local `+Y` axis by the angle of
+    /// its prim's `needle_channel`.
+    InstrumentNeedle,
 }
 
 impl P38PartRole {
@@ -76,6 +79,7 @@ impl P38PartRole {
             Self::NoseWheel => "nose_wheel",
             Self::WheelLeft => "wheel_left",
             Self::WheelRight => "wheel_right",
+            Self::InstrumentNeedle => "instrument_needle",
         }
     }
 }

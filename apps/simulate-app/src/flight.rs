@@ -24,6 +24,7 @@ mod estimate;
 mod manual;
 mod mode;
 mod pacing;
+mod panel_gauges;
 mod plant_block;
 mod readouts;
 mod rewind;
@@ -38,6 +39,7 @@ mod tests;
 pub use manual::SpawnMode;
 use mode::{FreeSpawn, Mode};
 pub use pacing::{PacingMonitor, PacingSession, PacingStats};
+use panel_gauges::{GaugeInputs, PanelGauges};
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
 
@@ -72,6 +74,7 @@ pub struct Flight {
     exposures_emitted: u64,
     surface: WorldSurfaceHandle,
     sensors: OnboardSensorBus,
+    gauges: PanelGauges,
 }
 
 impl Flight {
@@ -105,6 +108,7 @@ impl Flight {
             exposures_emitted: 0,
             surface,
             sensors: OnboardSensorBus::new(SensorRealism::default()),
+            gauges: PanelGauges::default(),
         };
         flight.begin_flight();
         Ok(flight)
@@ -178,6 +182,7 @@ impl Flight {
     /// A new flight began: fresh clocks and history, one checkpoint at its start.
     fn begin_flight(&mut self) {
         self.sensors = OnboardSensorBus::new(self.sensors.realism());
+        self.gauges = PanelGauges::for_pack(self.instrument_pack());
         self.history.clear();
         self.history
             .push(FlightCheckpoint::capture(&self.mode, &self.sensors));
@@ -194,6 +199,13 @@ impl Flight {
         self.last_submitted = None;
         self.scenario_sensor.rephase();
         self.exposures.clear();
+        let inputs = self.gauge_inputs();
+        self.gauges.settle(&inputs);
+    }
+
+    fn gauge_inputs(&self) -> GaugeInputs {
+        let air = self.onboard_sensors().air_data.map(|reading| reading.value);
+        GaugeInputs::sense(air.as_ref(), &self.articulation())
     }
 
     /// Active scripted scenario profile, or `None` in free flight.
@@ -323,6 +335,11 @@ impl Flight {
             );
         }
         if steps > 0 {
+            let inputs = self.gauge_inputs();
+            let step_s = self.mode.period().as_seconds();
+            for _ in 0..steps {
+                self.gauges.step(step_s, &inputs);
+            }
             self.commit_live_branch();
         }
         if steps > 0 && self.history.due(self.now()) {
@@ -400,11 +417,13 @@ impl Flight {
     /// Articulation with the propeller advanced smoothly through the current sub-tick phase.
     #[must_use]
     pub fn display_articulation(&self) -> AirframeArticulation {
-        display::advance_propeller(
+        let mut art = display::advance_propeller(
             self.articulation(),
             self.display_phase(),
             self.mode.period().as_seconds(),
-        )
+        );
+        art.instrument_needles = self.gauges.needles();
+        art
     }
 
     /// Cockpit instrument snapshot as of the latest simulation step.

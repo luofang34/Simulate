@@ -7,6 +7,10 @@ use glam::{DMat4, DVec3, Vec2, Vec3};
 
 pub use crate::role::P38PartRole;
 
+/// Needle hands one instrument layout slot may carry; channels run
+/// `slot * NEEDLE_HANDS_PER_SLOT + hand`.
+pub const NEEDLE_HANDS_PER_SLOT: usize = 3;
+
 /// PBR `UsdPreviewSurface` material parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct P38Material {
@@ -68,6 +72,9 @@ pub struct P38MeshPrim {
     pub rest_to_aircraft: DMat4,
     /// Optional custom hinge axis (`sim:hingeAxis`).
     pub custom_hinge_axis: Option<DVec3>,
+    /// The panel needle channel an [`P38PartRole::InstrumentNeedle`] follows
+    /// (`sim:needleChannel`): layout slot times [`NEEDLE_HANDS_PER_SLOT`] plus hand.
+    pub needle_channel: Option<usize>,
     /// Triangulated vertex buffer.
     pub vertices: Vec<P38MeshVertex>,
     /// Triangle index buffer (`0..vertices.len()`).
@@ -89,6 +96,7 @@ pub(crate) fn part(
         double_sided: false,
         rest_to_aircraft: rest,
         custom_hinge_axis: None,
+        needle_channel: None,
         vertices,
         indices,
     }

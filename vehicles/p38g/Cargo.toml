@@ -10,10 +10,10 @@ workspace = true
 
 [dependencies]
 glam = { workspace = true }
+syspack = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }
 openusd = { workspace = true }
 openusd-schemas = { workspace = true }
-syspack = { workspace = true }
 thiserror = { workspace = true }

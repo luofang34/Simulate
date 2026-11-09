@@ -72,6 +72,11 @@ pub enum PartRole {
     WheelLeft,
     /// Right main-gear tire and hubcap.
     WheelRight,
+    /// An instrument needle turning about its part-local `+Y` (the dial normal,
+    /// into the panel) by the angle of its [`UsdMeshPart::needle_channel`].
+    ///
+    /// [`UsdMeshPart::needle_channel`]: super::UsdMeshPart::needle_channel
+    InstrumentNeedle,
 }
 
 impl PartRole {
@@ -100,6 +105,7 @@ impl PartRole {
             "nose_wheel" => Self::NoseWheel,
             "wheel_left" => Self::WheelLeft,
             "wheel_right" => Self::WheelRight,
+            "instrument_needle" => Self::InstrumentNeedle,
             _ => Self::CabinExterior,
         }
     }

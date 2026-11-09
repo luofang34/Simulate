@@ -335,3 +335,30 @@ fn p38g_curtiss_electric_blades_feather_and_fowler_and_coolant_flaps_articulate(
         "opening hydraulic glycol radiator exit flaps must swing trailing edge outward: {coolant_shift:?}"
     );
 }
+
+#[test]
+fn p38g_panel_needles_turn_by_their_channel_angle() {
+    use sim_core::{InstrumentNeedles, NEEDLE_HANDS_PER_SLOT};
+    assert_eq!(NEEDLE_HANDS_PER_SLOT, sim_p38g::NEEDLE_HANDS_PER_SLOT);
+    let p38 = UsdAircraftAsset::p38g().unwrap();
+    let (index, part) = p38
+        .parts()
+        .iter()
+        .enumerate()
+        .find(|(_, p)| p.prim_path.ends_with("/Needles/airspeed_0"))
+        .unwrap();
+    assert_eq!(part.role, PartRole::InstrumentNeedle);
+    let channel = part.needle_channel.unwrap();
+    assert_eq!(InstrumentNeedles::channel(0, 0), Some(channel));
+    let tip_at = |angle: f64| {
+        let mut art = AirframeArticulation::default();
+        art.instrument_needles.set(0, 0, angle);
+        let draws = p38.evaluate_draws(&art, SlotCameraRole::PilotEye);
+        let draw = draws.iter().find(|d| d.part_index == index).unwrap();
+        draw.part_to_aircraft.transform_vector3(DVec3::Z)
+    };
+    let (rest, quarter) = (tip_at(0.0), tip_at(std::f64::consts::FRAC_PI_2));
+    assert!(rest.dot(quarter).abs() < 1e-6, "{rest} {quarter}");
+    // Seen from the seat (looking +Y), a positive angle turns the needle clockwise.
+    assert!(rest.cross(quarter).y > 0.9, "{rest} {quarter}");
+}

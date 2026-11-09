@@ -78,6 +78,9 @@ pub struct UsdMeshPart {
     pub rest_to_aircraft: DMat4,
     /// Optional custom hinge axis (`sim:hingeAxis`, e.g. swept rudder hinge).
     pub custom_hinge_axis: Option<DVec3>,
+    /// The [`sim_core::InstrumentNeedles`] channel a [`PartRole::InstrumentNeedle`]
+    /// follows (`sim:needleChannel`).
+    pub needle_channel: Option<usize>,
     /// Triangulated vertex buffer.
     pub vertices: Vec<UsdMeshVertex>,
     /// Triangle index buffer (`0..vertices.len()`).
@@ -333,6 +336,10 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
             let t = DVec3::new(0.0, -retract * 0.78, comp + retract * 1.22);
             DMat4::from_translation(t) * DMat4::from_rotation_x(-retract * 1.35 - spin)
         }
+        PartRole::InstrumentNeedle => DMat4::from_rotation_y(
+            part.needle_channel
+                .map_or(0.0, |ch| art.instrument_needles.angle_rad(ch)),
+        ),
         _ => articulate_auxiliary_part(part, art),
     }
 }

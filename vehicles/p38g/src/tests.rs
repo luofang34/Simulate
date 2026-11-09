@@ -88,9 +88,9 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
         "/P38g/Powerplant/ChinOilCoolerScoops",
         "/P38g/Powerplant/CoolerMatrixCores",
         "/P38g/CockpitInterior/TubAndBulkheads",
-        "/P38g/CockpitInterior/MainInstrumentPanel",
+        "/P38g/CockpitInterior/InstrumentPanel/Board",
         "/P38g/CockpitInterior/GunsightReflector",
-        "/P38g/CockpitInterior/ArmorAndControls",
+        "/P38g/CockpitInterior/ControlWheel",
     ] {
         assert!(
             prims.iter().any(|p| p.prim_path == expected),
@@ -121,7 +121,7 @@ fn openusd_stage_and_package_manifest_export_cleanly() {
     assert!(usda.starts_with("#usda 1.0"));
     assert!(usda.contains("defaultPrim = \"P38g\""));
     assert!(usda.contains("Powerplant_ExhaustEjectorStacks24"));
-    assert!(usda.contains("CockpitInterior_MainInstrumentPanel"));
+    assert!(usda.contains("CockpitInterior_InstrumentPanel_Board"));
 }
 
 #[test]

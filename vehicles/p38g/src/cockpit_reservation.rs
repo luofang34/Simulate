@@ -9,6 +9,8 @@
 use glam::Vec3;
 
 use crate::canopy_frames::canopy_frame_prims;
+use crate::cockpit_controls::cockpit_control_prims;
+use crate::instrument_panel::instrument_panel_prims;
 use crate::mesh::{MeshBuilder, P38Material, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
     ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
@@ -56,7 +58,8 @@ pub struct CockpitInteriorContract {
     pub left_throttle_quadrant: PanelMountFrame,
     /// Right side-console shelf (`x = +0.42 m`: 4-position Fowler flap lever & cooling controls).
     pub right_flap_cooling_console: PanelMountFrame,
-    /// Floor socket `(x, y, z)` for the Lockheed spectacles control column.
+    /// Pivot `(x, y, z)` of the control girder on the starboard cockpit wall,
+    /// which swings the bow-tie control wheel in front of the pilot.
     pub control_column_floor_socket_m: [f32; 3],
     /// Structural fuselage bulkheads bounding the armament, wheel well, cockpit, and radio bays.
     pub bulkheads: &'static [StationBulkheadSpec],
@@ -107,10 +110,10 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
     CockpitInteriorContract {
         design_eyepoint_m: [0.0, 0.42, 0.68],
         main_instrument_panel: PanelMountFrame {
-            prim_path: "/P38g/CockpitInterior/MainInstrumentPanel",
-            center_m: [0.0, 1.24, 0.40],
+            prim_path: "/P38g/CockpitInterior/InstrumentPanel/Board",
+            center_m: [0.0, 1.22, 0.38],
             width_m: 0.72,
-            height_m: 0.36,
+            height_m: 0.28,
             tilt_deg: 8.0,
         },
         reflector_gunsight_mount: PanelMountFrame {
@@ -134,7 +137,7 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
             height_m: 0.64,
             tilt_deg: 0.0,
         },
-        control_column_floor_socket_m: [0.0, 0.94, -0.26],
+        control_column_floor_socket_m: [0.36, 0.86, -0.06],
         bulkheads: P38G_BULKHEADS,
     }
 }
@@ -145,6 +148,8 @@ pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
     build_instrument_panel_and_gunsight(&mut prims);
     build_controls_and_pilot(&mut prims);
     prims.extend(canopy_frame_prims());
+    prims.extend(instrument_panel_prims());
+    prims.extend(cockpit_control_prims());
     prims
 }
 
@@ -201,21 +206,8 @@ fn build_cockpit_tub_and_bulkheads(prims: &mut Vec<P38MeshPrim>) {
 
 fn build_instrument_panel_and_gunsight(prims: &mut Vec<P38MeshPrim>) {
     let mut panel = MeshBuilder::new();
-    // Main instrument panel board at FS 86 (y = 1.24) + anti-glare coaming hood
-    panel.cuboid(Vec3::new(-0.36, 1.21, 0.18), Vec3::new(0.36, 1.26, 0.54));
+    // Anti-glare coaming hood from the panel top to the windscreen base
     panel.cuboid(Vec3::new(-0.38, 1.14, 0.51), Vec3::new(0.38, 1.62, 0.545));
-    // Primary flight six-pack + twin engine manifold/RPM/coolant gauge bezels
-    for gx in [-0.26_f32, -0.16, -0.06, 0.06, 0.16, 0.26] {
-        for gz in [0.27_f32, 0.37, 0.46] {
-            panel.tube(
-                Vec3::new(gx, 1.21, gz),
-                Vec3::new(gx, 1.185, gz),
-                0.036,
-                0.036,
-                12,
-            );
-        }
-    }
     // Lynn N-3A optical reflector gunsight body above the coaming
     panel.tube(
         Vec3::new(0.0, 1.24, 0.55),
@@ -232,7 +224,7 @@ fn build_instrument_panel_and_gunsight(prims: &mut Vec<P38MeshPrim>) {
         );
     }
     prims.push(fixed(
-        "/P38g/CockpitInterior/MainInstrumentPanel",
+        "/P38g/CockpitInterior/CoamingGunsightAndRadios",
         P38PartRole::CabinInterior,
         PANEL_BLACK,
         panel,
@@ -256,55 +248,8 @@ fn build_controls_and_pilot(prims: &mut Vec<P38MeshPrim>) {
         Vec3::new(-0.30, SEAT_SHIFT_Y - 0.40, -0.10),
         Vec3::new(0.30, SEAT_SHIFT_Y - 0.35, 0.78),
     );
-    // Lockheed spectacles control column & twin-horn yoke wheel
-    hardware.tube(
-        Vec3::new(0.0, 0.94, -0.24),
-        Vec3::new(0.0, 0.84, 0.34),
-        0.022,
-        0.018,
-        10,
-    );
-    hardware.tube(
-        Vec3::new(-0.15, 0.82, 0.34),
-        Vec3::new(0.15, 0.82, 0.34),
-        0.015,
-        0.015,
-        10,
-    );
-    for side in [-1.0_f32, 1.0] {
-        hardware.tube(
-            Vec3::new(side * 0.14, 0.82, 0.30),
-            Vec3::new(side * 0.14, 0.82, 0.42),
-            0.014,
-            0.014,
-            8,
-        );
-    }
-    // Left console twin-engine throttle, propeller RPM, and mixture levers
-    for (ly, lz) in [
-        (0.82_f32, 0.25_f32),
-        (0.76, 0.24),
-        (0.70, 0.23),
-        (0.64, 0.23),
-    ] {
-        hardware.tube(
-            Vec3::new(-0.37, ly, 0.17),
-            Vec3::new(-0.35, ly + 0.02, lz),
-            0.008,
-            0.012,
-            8,
-        );
-    }
-    // Right console 4-position Fowler maneuver flap lever
-    hardware.tube(
-        Vec3::new(0.37, 0.78, 0.17),
-        Vec3::new(0.35, 0.80, 0.26),
-        0.009,
-        0.014,
-        8,
-    );
     prims.push(fixed(
-        "/P38g/CockpitInterior/ArmorAndControls",
+        "/P38g/CockpitInterior/SeatArmor",
         P38PartRole::CabinInterior,
         GUNMETAL,
         hardware,

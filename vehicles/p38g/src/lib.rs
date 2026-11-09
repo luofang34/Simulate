@@ -18,9 +18,11 @@
 mod airframe;
 mod articulated;
 mod canopy_frames;
+mod cockpit_controls;
 mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
+mod instrument_panel;
 mod mesh;
 mod package;
 mod powerplant;
@@ -32,7 +34,7 @@ mod tests;
 pub use cockpit_reservation::{
     CockpitInteriorContract, PanelMountFrame, StationBulkheadSpec, p38g_cockpit_contract,
 };
-pub use mesh::{P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
+pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
 pub use package::{
     P38BlueprintCalibrationReport, P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda,
     verify_p38g_three_view_and_stations,

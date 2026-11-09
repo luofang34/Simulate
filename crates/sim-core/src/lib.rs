@@ -16,6 +16,7 @@ mod controls;
 mod crew_port;
 mod hitl_bridge;
 mod instrument;
+mod instrument_panel;
 mod jsbsim_fdm;
 mod kinematic;
 mod rigid_body;
@@ -41,6 +42,9 @@ pub use hitl_bridge::{
     ExternalNodeBridge, HitlSyncMode, StampedResponse,
 };
 pub use instrument::{SourceValidity, StampedReading};
+pub use instrument_panel::{
+    InstrumentNeedles, NEEDLE_HANDS_PER_SLOT, NEEDLE_SLOTS, SecondEngineGauges,
+};
 pub use jsbsim_fdm::{
     AirframeArticulation, EngineStartMode, EngineStatus, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock,
     JsbsimFdmConfig, JsbsimFdmSnapshot, MagnetoSwitch, PropellerVisualState, SystemControls,

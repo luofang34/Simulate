@@ -265,6 +265,7 @@ impl QuadAcc {
             double_sided,
             rest_to_aircraft: DMat4::IDENTITY,
             custom_hinge_axis: None,
+            needle_channel: None,
             vertices: self.vertices,
             indices: self.indices,
         }

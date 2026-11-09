@@ -16,6 +16,7 @@ gilrs = { workspace = true }
 glam = { workspace = true }
 indicate-instrument-glyphs = { workspace = true }
 indicate-instrument-scene = { workspace = true }
+mbd-airdata = { workspace = true }
 mbd-core = { workspace = true }
 sim-apollo = { workspace = true }
 sim-atmosphere = { workspace = true }
@@ -32,6 +33,7 @@ sim-render = { workspace = true }
 sim-scenario = { workspace = true, default-features = true }
 sim-scenery = { workspace = true }
 serde_json = { workspace = true }
+syspack = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 web-time = { workspace = true }

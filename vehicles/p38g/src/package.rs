@@ -216,6 +216,9 @@ fn write_usda_prim(out: &mut String, idx: usize, prim: &P38MeshPrim) -> fmt::Res
         "        custom string sim:primPath = \"{}\"",
         prim.prim_path
     )?;
+    if let Some(channel) = prim.needle_channel {
+        writeln!(out, "        custom int sim:needleChannel = {channel}")?;
+    }
     if let Some(axis) = prim.custom_hinge_axis {
         writeln!(
             out,

@@ -95,6 +95,12 @@ fn decode_mesh_prim(
         .map_or_else(String::new, |t| t.as_str().to_owned());
     let mut role = PartRole::from_token(&role_tok);
     let custom_hinge_axis = resolve_hinge_axis(stage, path);
+    let needle_channel = prim
+        .attribute("sim:needleChannel")
+        .get::<i32>()
+        .ok()
+        .flatten()
+        .and_then(|ch| usize::try_from(ch).ok());
     let material = resolve_material(stage, path, prim)?;
     if role == PartRole::CabinExterior && material.opacity < 0.99 {
         role = PartRole::CabinGlass;
@@ -111,6 +117,7 @@ fn decode_mesh_prim(
         double_sided,
         rest_to_aircraft,
         custom_hinge_axis,
+        needle_channel,
         vertices,
         indices,
     }))

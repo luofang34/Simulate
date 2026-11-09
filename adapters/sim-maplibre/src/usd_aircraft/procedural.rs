@@ -53,6 +53,7 @@ impl UsdAircraftAsset {
                 double_sided: prim.double_sided,
                 rest_to_aircraft: prim.rest_to_aircraft,
                 custom_hinge_axis: prim.custom_hinge_axis,
+                needle_channel: prim.needle_channel,
                 vertices: prim
                     .vertices
                     .into_iter()
@@ -116,6 +117,7 @@ fn part(
         double_sided: false,
         rest_to_aircraft: rest,
         custom_hinge_axis: None,
+        needle_channel: None,
         vertices,
         indices,
     }
