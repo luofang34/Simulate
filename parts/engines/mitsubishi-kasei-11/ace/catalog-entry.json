@@ -1,0 +1,38 @@
+{
+  "kind": "piston_engine",
+  "version": 1,
+  "source": {
+    "kind": "reference",
+    "reference": "Simulate part mitsubishi-kasei-11 (parts/engines/mitsubishi-kasei-11/engine.json): Navy manual / TAIC ratings",
+    "revision": null
+  },
+  "document": {
+    "id": "engine.mitsubishi_kasei_11",
+    "version": 1,
+    "type": "piston_engine",
+    "model": "propulsion.piston_prop_simple",
+    "metadata": {
+      "display_name": "Mitsubishi Kasei 11 (MK4A-11, 火星一一型)",
+      "source": "Navy engine manual (Jan 1941) and TAIC Manual No. 1; see the part's engine.json",
+      "confidence": "medium",
+      "approximation": "Two-speed supercharger approximated by its second-speed rating held flat to 4100 m (1460 hp in first speed at 2200 m is not representable). BSFC is the JSBSim model's auto-rich value at rated power, used for every mode; not sourced. Dry mass: engine.json dry mass."
+    },
+    "parameters": {
+      "rated_power": "1014 kW",
+      "rated_altitude": "4100 m",
+      "rated_speed": "2350 rpm",
+      "dry_mass": "725 kg",
+      "power_lapse": {
+        "model": "critical_altitude",
+        "critical_altitude": "4100 m",
+        "exponent_below": 0.0,
+        "exponent_above": 1.0
+      },
+      "bsfc": {
+        "takeoff": "0.261 kg/kWh",
+        "cruise": "0.261 kg/kWh",
+        "economy": "0.261 kg/kWh"
+      }
+    }
+  }
+}

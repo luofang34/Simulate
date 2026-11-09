@@ -1,0 +1,234 @@
+{
+  "id": "mitsubishi-kasei-11",
+  "name": "Mitsubishi Kasei 11 (MK4A-11, 火星一一型)",
+  "sources": {
+    "navy-manual-1941": "海軍航空本部『火星発動機一〇型取扱説明書（火星11～15型）』, Jan 1941, as tabulated by JA Wikipedia 火星 (エンジン) with 坂上茂樹 2021 pp.459-460 and 旧『世界の傑作機』No.60 p.42; and by WarbirdPerformanceBlog (warbirdperformance.livedoor.blog/archives/6848816.html)",
+    "taic-1": "TAIC Manual No. 1, Japanese Aircraft Performance and Characteristics, Dec 1944, engine sheets pp.861-862 (ratings without an asterisk are from captured documents; p.850)"
+  },
+  "installed_in": "G4M1 Model 11 from the prototypes to about airframe No. 405 (Kasei 15 from No. 406, Aug 1942, per JA Wikipedia 一式陸上攻撃機 citing a Navy order, JACAR C12070526100)",
+  "geometry": {
+    "layout": {
+      "value": "14-cylinder two-row air-cooled radial, four-stroke",
+      "unit": null,
+      "source": "navy-manual-1941"
+    },
+    "bore": {
+      "value": 150.0,
+      "unit": "mm",
+      "source": "navy-manual-1941"
+    },
+    "stroke": {
+      "value": 170.0,
+      "unit": "mm",
+      "source": "navy-manual-1941"
+    },
+    "cylinders": {
+      "value": 14,
+      "unit": null,
+      "source": "navy-manual-1941"
+    },
+    "displacement": {
+      "value": 42.1,
+      "unit": "L",
+      "source": "navy-manual-1941"
+    },
+    "compression_ratio": {
+      "value": 6.5,
+      "unit": null,
+      "source": "navy-manual-1941"
+    },
+    "reduction_gear": {
+      "value": 0.684,
+      "unit": "propeller/crankshaft",
+      "source": "navy-manual-1941",
+      "note": "Kasei 12 is 0.500"
+    },
+    "diameter": {
+      "value": 1340.0,
+      "unit": "mm",
+      "source": "navy-manual-1941"
+    },
+    "length": {
+      "value": 1705.0,
+      "unit": "mm",
+      "source": "navy-manual-1941"
+    }
+  },
+  "dry_mass": {
+    "value": 725.0,
+    "unit": "kg",
+    "source": "navy-manual-1941",
+    "note": "TAIC 1,595 lb without starter and accessories. Informational: a vehicle's own empty mass already counts its engines, so the part's mass is not added to it."
+  },
+  "supercharger": {
+    "type": {
+      "value": "single-stage, two-speed, gear-driven",
+      "unit": null,
+      "source": "navy-manual-1941"
+    },
+    "gear_ratios": {
+      "value": [
+        7.4,
+        9.118
+      ],
+      "unit": "impeller/crankshaft",
+      "source": "navy-manual-1941"
+    },
+    "impeller_diameter": {
+      "value": 280.0,
+      "unit": "mm",
+      "source": "navy-manual-1941"
+    },
+    "change_altitude": {
+      "value": 3230.0,
+      "unit": "m",
+      "source": null,
+      "note": "Not in the sources. The JSBSim model changes speed at the first-speed rated altitude + 1,000 ft (jsbsim-rs set_switch)."
+    }
+  },
+  "carburettor": {
+    "value": "4-barrel downdraft float carburettor",
+    "unit": null,
+    "source": "navy-manual-1941",
+    "note": "Mixture control not described; the model holds an auto-rich mixture."
+  },
+  "fuel": {
+    "value": "92 octane",
+    "unit": null,
+    "source": "navy-manual-1941"
+  },
+  "ratings": [
+    {
+      "name": "take-off (1 min)",
+      "power_hp": 1505.0,
+      "power_ps": 1530.0,
+      "rpm": 2450.0,
+      "boost_mmhg": 250,
+      "manifold_inhg": 39.76,
+      "altitude_m": 0.0,
+      "altitude_ft": 0.0,
+      "supercharger_speed": 1,
+      "source": [
+        "taic-1",
+        "navy-manual-1941"
+      ]
+    },
+    {
+      "name": "rated, first speed",
+      "power_hp": 1460.0,
+      "power_ps": 1480.0,
+      "rpm": 2350.0,
+      "boost_mmhg": 180,
+      "manifold_inhg": 37.01,
+      "altitude_m": 2200.0,
+      "altitude_ft": 7200.0,
+      "supercharger_speed": 1,
+      "source": [
+        "taic-1",
+        "navy-manual-1941"
+      ]
+    },
+    {
+      "name": "rated, second speed",
+      "power_hp": 1360.0,
+      "power_ps": 1380.0,
+      "rpm": 2350.0,
+      "boost_mmhg": 180,
+      "manifold_inhg": 37.01,
+      "altitude_m": 4100.0,
+      "altitude_ft": 13500.0,
+      "supercharger_speed": 2,
+      "source": [
+        "taic-1",
+        "navy-manual-1941"
+      ]
+    },
+    {
+      "name": "military, sea level",
+      "power_hp": 1340.0,
+      "power_ps": null,
+      "rpm": 2350.0,
+      "boost_mmhg": 180,
+      "manifold_inhg": 37.01,
+      "altitude_m": 0.0,
+      "altitude_ft": 0.0,
+      "supercharger_speed": 1,
+      "source": [
+        "taic-1"
+      ],
+      "note": "TAIC only"
+    }
+  ],
+  "conflicts": "世傑 No.60 p.42 and EN Wikipedia give +270 mmHg take-off and 1,410 PS at 2,000 m / 1,340 PS at 4,000 m; rejected for the Navy manual, which TAIC corroborates independently.",
+  "jsbsim_model": {
+    "note": "Values the JSBSim piston model needs that no source gives. 'fitted' values are fitted to the ratings above by vehicles/tools/part_jsbsim.py's engine probe (crates/sim-pack tests), never to aircraft performance.",
+    "bsfc_indicated": {
+      "value": 0.3337,
+      "unit": "lb/hp/hr",
+      "source": "fitted",
+      "note": "overall power scale, fitted to the rated first-speed power"
+    },
+    "boost_loss_factor": {
+      "value": 3.0,
+      "unit": null,
+      "source": "fitted",
+      "note": "supercharger drive power, fitted with compressor_efficiency to the fall from 1,460 to 1,360 hp between speeds"
+    },
+    "compressor_efficiency": {
+      "value": 0.56,
+      "unit": null,
+      "source": "fitted",
+      "note": "charge heating T_amb*(1+(PR^0.2857-1)/eta), no intercooler"
+    },
+    "volumetric_efficiency": {
+      "value": 0.85,
+      "unit": null,
+      "source": "estimated"
+    },
+    "ram_air_factor": {
+      "value": 0.3,
+      "unit": null,
+      "source": "estimated",
+      "note": "the G4M1 No. 1 speed peaks sit only ~200 m above the static rated altitudes"
+    },
+    "mixture_phi_run": {
+      "value": 1.25,
+      "unit": null,
+      "source": "estimated",
+      "note": "auto-rich equivalence ratio, as the P-38G model"
+    },
+    "idle_rpm": {
+      "value": 600.0,
+      "unit": "rpm",
+      "source": "estimated"
+    },
+    "min_manifold_inhg": {
+      "value": 10.0,
+      "unit": "inHg",
+      "source": "estimated"
+    },
+    "cylinder_head_mass": {
+      "value": 30.0,
+      "unit": "lb",
+      "source": "estimated"
+    },
+    "feedforward_hp_per_inhg": {
+      "value": 74.0,
+      "unit": "hp/inHg",
+      "source": "derived",
+      "note": "rated first-speed power over (37.0 - 12) inHg of charge-corrected boost"
+    },
+    "bsfc_brake_rated": {
+      "value": 0.261,
+      "unit": "kg/kWh",
+      "source": "derived",
+      "note": "fuel flow over brake power of the JSBSim model at the rated first-speed point, for the ace-rs catalog entry; not sourced"
+    },
+    "fit_residuals": {
+      "value": "take-off +1.9 %, sea-level military -2.2 %, first speed +0.3 %, second speed +0.4 %",
+      "unit": null,
+      "source": "crates/sim-pack/tests/g4m1_probes.rs engine_operating_points",
+      "note": "model power at each rating point against the rating"
+    }
+  }
+}

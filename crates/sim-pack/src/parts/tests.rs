@@ -205,3 +205,37 @@ fn role_indices_are_the_trailing_digits() {
     assert_eq!(role_index("propeller12"), Some("12"));
     assert_eq!(role_index("engine"), None);
 }
+
+#[test]
+fn every_shipped_part_loads_against_its_own_pin_with_its_documents() {
+    for id in builtin_part_ids() {
+        let source = builtin_part_source(id).unwrap();
+        let pin = pin(&source, "engine0");
+        let part = VerifiedSyspack::load_part(&source, &pin).unwrap();
+        let kind = part.manifest().kind;
+        let document = kind.part_document().unwrap();
+        let parsed: Value = serde_json::from_slice(part.asset(document).unwrap()).unwrap();
+        assert_eq!(parsed["id"], id);
+        let catalog: Value =
+            serde_json::from_slice(part.asset("ace/catalog-entry.json").unwrap()).unwrap();
+        assert_eq!(catalog["document"]["type"], catalog["kind"], "{id}");
+        let fragment = fragment_asset(kind).unwrap();
+        let root = if kind == SystemKind::Engine {
+            "<piston_engine"
+        } else {
+            "<propeller"
+        };
+        let text = std::str::from_utf8(part.asset(fragment).unwrap()).unwrap();
+        assert!(text.contains(root), "{id}");
+        for n in 0..4 {
+            let system =
+                std::str::from_utf8(part.asset(&format!("jsbsim/system-{n}.xml")).unwrap())
+                    .unwrap();
+            assert!(
+                system.contains(&format!("propulsion/engine[{n}]")),
+                "{id} {n}"
+            );
+        }
+    }
+    assert_eq!(builtin_part_ids().len(), 3);
+}

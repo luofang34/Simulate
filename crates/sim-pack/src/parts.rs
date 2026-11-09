@@ -31,7 +31,126 @@ struct BuiltinPart {
     assets: &'static [(&'static str, &'static [u8])],
 }
 
-const BUILTIN: &[BuiltinPart] = &[];
+const BUILTIN: &[BuiltinPart] = &[
+    BuiltinPart {
+        id: "mitsubishi-kasei-11",
+        manifest: include_bytes!("../../../parts/engines/mitsubishi-kasei-11/syspack.json"),
+        assets: &[
+            (
+                "engine.json",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/engine.json"),
+            ),
+            (
+                "ace/catalog-entry.json",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/ace/catalog-entry.json"),
+            ),
+            (
+                "jsbsim/engine.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/jsbsim/engine.xml"),
+            ),
+            (
+                "jsbsim/system-0.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/jsbsim/system-0.xml"),
+            ),
+            (
+                "jsbsim/system-1.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/jsbsim/system-1.xml"),
+            ),
+            (
+                "jsbsim/system-2.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/jsbsim/system-2.xml"),
+            ),
+            (
+                "jsbsim/system-3.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-11/jsbsim/system-3.xml"),
+            ),
+        ],
+    },
+    BuiltinPart {
+        id: "mitsubishi-kasei-15",
+        manifest: include_bytes!("../../../parts/engines/mitsubishi-kasei-15/syspack.json"),
+        assets: &[
+            (
+                "engine.json",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/engine.json"),
+            ),
+            (
+                "ace/catalog-entry.json",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/ace/catalog-entry.json"),
+            ),
+            (
+                "jsbsim/engine.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/jsbsim/engine.xml"),
+            ),
+            (
+                "jsbsim/system-0.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/jsbsim/system-0.xml"),
+            ),
+            (
+                "jsbsim/system-1.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/jsbsim/system-1.xml"),
+            ),
+            (
+                "jsbsim/system-2.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/jsbsim/system-2.xml"),
+            ),
+            (
+                "jsbsim/system-3.xml",
+                include_bytes!("../../../parts/engines/mitsubishi-kasei-15/jsbsim/system-3.xml"),
+            ),
+        ],
+    },
+    BuiltinPart {
+        id: "hamilton-standard-cs-134in-3b",
+        manifest: include_bytes!(
+            "../../../parts/propellers/hamilton-standard-cs-134in-3b/syspack.json"
+        ),
+        assets: &[
+            (
+                "propeller.json",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/propeller.json"
+                ),
+            ),
+            (
+                "ace/catalog-entry.json",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/ace/catalog-entry.json"
+                ),
+            ),
+            (
+                "jsbsim/propeller.xml",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/jsbsim/propeller.xml"
+                ),
+            ),
+            (
+                "jsbsim/system-0.xml",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/jsbsim/system-0.xml"
+                ),
+            ),
+            (
+                "jsbsim/system-1.xml",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/jsbsim/system-1.xml"
+                ),
+            ),
+            (
+                "jsbsim/system-2.xml",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/jsbsim/system-2.xml"
+                ),
+            ),
+            (
+                "jsbsim/system-3.xml",
+                include_bytes!(
+                    "../../../parts/propellers/hamilton-standard-cs-134in-3b/jsbsim/system-3.xml"
+                ),
+            ),
+        ],
+    },
+];
 
 /// Ids of the parts shipped in the binary.
 #[must_use]

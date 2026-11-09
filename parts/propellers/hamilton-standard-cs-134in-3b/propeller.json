@@ -1,0 +1,105 @@
+{
+  "id": "hamilton-standard-cs-134in-3b",
+  "name": "Hamilton Standard-type constant-speed propeller, 3 blades, 11 ft 2 in (licence-built, G4M1 Model 11)",
+  "sources": {
+    "ja-wikipedia-g4m": "JA Wikipedia 一式陸上攻撃機: the Model 22 changed the propeller from 3 to 4 blades (「3翅から4翅」)",
+    "navy-test-table": "IJN test results of G4M1 aircraft No. 1 and No. 241 as tabulated by WarbirdPerformanceBlog: propeller row 「ハミルトン」",
+    "taic-1-betty-22": "TAIC Manual No. 1 (Dec 1944), Betty 22 page: 4-blade propeller, 11.16 ft"
+  },
+  "blades": {
+    "value": 3,
+    "unit": null,
+    "source": "ja-wikipedia-g4m"
+  },
+  "type": {
+    "value": "Hamilton Standard-type constant-speed (counterweight hub assumed)",
+    "unit": null,
+    "source": "navy-test-table",
+    "note": "the Sumitomo licence-build attribution appears only in EN Wikipedia"
+  },
+  "diameter": {
+    "value": 3.404,
+    "unit": "m",
+    "source": "estimated",
+    "note": "Not found for the Model 11. The Model 22's 4-blade propeller is 11.16 ft (taic-1-betty-22) on a Kasei of the same family in the same nacelle-to-fuselage clearance, so 11 ft 2 in (134 in) is used; at 240 kt / 4,200 m it gives helical tip Mach 0.96, which WWII metal blades did run at."
+  },
+  "governing_range_075R": {
+    "value": [
+      16.0,
+      36.0
+    ],
+    "unit": "deg",
+    "source": "estimated",
+    "note": "A 20 deg range, typical of the Hamilton counterweight hub, placed over the static and maximum-speed operating points."
+  },
+  "feathering": {
+    "value": false,
+    "unit": null,
+    "source": "estimated",
+    "note": "Not documented for the Model 11."
+  },
+  "governor_rpm_range": {
+    "value": [
+      1600.0,
+      2450.0
+    ],
+    "unit": "engine rpm",
+    "source": "estimated",
+    "note": "Lever range; 2,450 is the Kasei take-off rpm."
+  },
+  "installation_reduction_gear": {
+    "value": 0.684,
+    "unit": "propeller/crankshaft",
+    "source": "navy-manual-1941 (Kasei 11 and 15)",
+    "note": "JSBSim keeps the reduction gear in the propeller, so this part is the propeller as installed behind a 0.684 Kasei."
+  },
+  "bem_design": {
+    "blades": 3,
+    "diameter_in": 134.0,
+    "hub_fraction": 0.18,
+    "design_advance_ratio": 1.6,
+    "chord_over_diameter": {
+      "base": 0.055,
+      "bulge": 0.03,
+      "tip_taper": 0.02
+    },
+    "thickness_over_chord": {
+      "root": 0.3,
+      "tip": 0.07
+    },
+    "elements": 40,
+    "table_betas_deg": [
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50,
+      55,
+      60,
+      70
+    ],
+    "governing_stops_deg": [
+      16.0,
+      36.0
+    ],
+    "governor_cp_columns": [
+      0.0,
+      0.02,
+      0.05,
+      0.08,
+      0.12,
+      0.16,
+      0.2,
+      0.25,
+      0.3,
+      0.4,
+      0.55
+    ]
+  },
+  "bem_design_note": "Blade planform and section are ESTIMATED (generic Clark-Y-family blade, as vehicles/p38g/design/curtiss_electric_3b.json); vehicles/tools/propeller_bem.py turns them into the JSBSim tables.",
+  "tip_mach_losses": "CT_MACH/CP_MACH as the P-38G's thin metal tips (estimated)."
+}

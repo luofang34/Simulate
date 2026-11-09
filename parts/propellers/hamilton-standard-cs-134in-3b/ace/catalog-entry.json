@@ -1,0 +1,29 @@
+{
+  "kind": "propeller",
+  "version": 1,
+  "source": {
+    "kind": "reference",
+    "reference": "Simulate part hamilton-standard-cs-134in-3b (parts/propellers/hamilton-standard-cs-134in-3b/propeller.json)",
+    "revision": null
+  },
+  "document": {
+    "id": "propeller.hamilton_standard_cs_134in_3b",
+    "version": 1,
+    "type": "propeller",
+    "model": "propulsion.propeller_efficiency_simple",
+    "metadata": {
+      "display_name": "Hamilton Standard-type constant-speed propeller, 3 blades, 11 ft 2 in (licence-built, G4M1 Model 11)",
+      "source": "blade count sourced; diameter, pitch range and blade design estimated (propeller.json); efficiencies from the BEM tables",
+      "confidence": "low"
+    },
+    "parameters": {
+      "diameter": "3.404 m",
+      "blade_count": 3,
+      "static_efficiency": 0.343,
+      "cruise_efficiency": 0.835,
+      "maximum_efficiency": 0.835,
+      "climb_installation_factor": 0.857,
+      "tip_mach_limit": 0.85
+    }
+  }
+}

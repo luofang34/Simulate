@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "mitsubishi-kasei-11",
+  "name": "Mitsubishi Kasei 11 two-speed supercharged radial",
+  "version": "1.0.0",
+  "kind": "Engine",
+  "assets": {
+    "ace/catalog-entry.json": {
+      "sha256": "5e1053058b6628669e670a7c457a727814ddabea682d21b4fd0da8e706080cae",
+      "size_bytes": 1361
+    },
+    "engine.json": {
+      "sha256": "e0ee732ec99032027302f670a5ef77aeff58b6501e6ec60bb5884c97c030b2df",
+      "size_bytes": 6990
+    },
+    "jsbsim/engine.xml": {
+      "sha256": "fc309b86bfd02a9ae1fb276ffe4144cc333e6e40a70ca6e54dcbfd562cca751e",
+      "size_bytes": 2303
+    },
+    "jsbsim/system-0.xml": {
+      "sha256": "6ec47221155c25aa27450c22b0005ae09f181604c849388046fc2a51818fe34a",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-1.xml": {
+      "sha256": "07d5d696b58eeea34caf5779dc079466b83a381ef7becea6dc407ddb5df0d809",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-2.xml": {
+      "sha256": "998647a54997176eb8be86833b4bb9de97df2b3dd136d6ee39bc438255a144f8",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-3.xml": {
+      "sha256": "e23a9ba9a6a86e582b8f745b785b4c69be8f6258ea6dd476b99ec02cfa93bf2e",
+      "size_bytes": 5437
+    }
+  },
+  "components": [
+    {
+      "key": "engine",
+      "name": "Kasei 11, dry (Navy manual 725 kg)",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 725.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "None",
+  "devices": []
+}

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "mitsubishi-kasei-15",
+  "name": "Mitsubishi Kasei 15 two-speed supercharged radial",
+  "version": "1.0.0",
+  "kind": "Engine",
+  "assets": {
+    "ace/catalog-entry.json": {
+      "sha256": "958302fb77c08a942b43aa6a0008ac7ad3afba1b05dc1b8c345b73eb29d96af3",
+      "size_bytes": 1383
+    },
+    "engine.json": {
+      "sha256": "8642c97bca84756d5b69eb4b26bc2427c6e2e7dcda7d20866a6664741fe8e00f",
+      "size_bytes": 6620
+    },
+    "jsbsim/engine.xml": {
+      "sha256": "2f6bc4fe625c393b8ca133a458235fd75cdf9f5fbe3ada44b859898f57a14d0d",
+      "size_bytes": 2293
+    },
+    "jsbsim/system-0.xml": {
+      "sha256": "20241795e389bd08bafc5a78cc1f4a2fea40622aeb0720bd56fef323436e4fe6",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-1.xml": {
+      "sha256": "04d4d5df065aa79bdc5d42e30e97e2e6e69981fd1010a5d731ac0c86264cf0b0",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-2.xml": {
+      "sha256": "839dae1e13b9d2f9318bcc290b8071644485a96178fe60b5601f76c54acad28f",
+      "size_bytes": 5437
+    },
+    "jsbsim/system-3.xml": {
+      "sha256": "f7e3697dc6ae8d6761385e463dbc51ea8910bac7097e20c2e35f0f9f594a8006",
+      "size_bytes": 5437
+    }
+  },
+  "components": [
+    {
+      "key": "engine",
+      "name": "Kasei 15, dry mass not found (Kasei 11's 725 kg assumed)",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 725.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "None",
+  "devices": []
+}

@@ -10,6 +10,9 @@
    static Cp rise stays in the documented band below TR 684's, so a model
    change that closes the gap shows here.
 3. Every shipped propeller table regenerates exactly from its design JSON, and
+   every part package's derived assets (JSBSim fragments, per-engine systems,
+   ace-rs catalog entry) regenerate exactly from its engine.json or
+   propeller.json through part_jsbsim.py, and
    a fixed-pitch table's Ct and Cp fall with J past the static column except
    for steps its vehicle's performance/validation.json records as known.
 
@@ -18,9 +21,13 @@ Usage: propeller_check.py   (exit status 1 on any failure)
 import importlib.util
 import json
 import os
+import filecmp
+import glob
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOLS = os.path.join(ROOT, "vehicles", "tools")
@@ -152,9 +159,25 @@ def check_regeneration():
     return failures
 
 
+def check_parts():
+    """Each part's derived assets are what part_jsbsim.py makes from its document."""
+    failures = []
+    for part in sorted(glob.glob(os.path.join(ROOT, "parts", "*", "*"))):
+        with tempfile.TemporaryDirectory() as scratch:
+            copy = os.path.join(scratch, os.path.basename(part))
+            shutil.copytree(part, copy)
+            subprocess.run([sys.executable, "-B", os.path.join(TOOLS, "part_jsbsim.py"), copy],
+                           capture_output=True, text=True, check=True)
+            for derived in glob.glob(os.path.join(copy, "jsbsim", "*")) + glob.glob(os.path.join(copy, "ace", "*")):
+                shipped = os.path.join(part, os.path.relpath(derived, copy))
+                if not os.path.exists(shipped) or not filecmp.cmp(derived, shipped, shallow=False):
+                    failures.append(f"{os.path.relpath(shipped, ROOT)} does not regenerate from its part document")
+    return failures
+
+
 def main():
     bem = load_bem()
-    failures = check_tr640(bem) + check_tr684_compressibility(bem) + check_regeneration()
+    failures = check_tr640(bem) + check_tr684_compressibility(bem) + check_regeneration() + check_parts()
     for failure in failures:
         print(f"propeller_check: {failure}", file=sys.stderr)
     sys.exit(1 if failures else 0)

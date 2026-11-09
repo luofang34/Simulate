@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "hamilton-standard-cs-134in-3b",
+  "name": "Hamilton Standard-type constant-speed propeller, 3 blades, 11 ft 2 in",
+  "version": "1.0.0",
+  "kind": "Propeller",
+  "assets": {
+    "ace/catalog-entry.json": {
+      "sha256": "52dd95a6fc32a8825bdbb5a30dffb340d8dd604b4633c1956c3b76fc899c54b6",
+      "size_bytes": 977
+    },
+    "jsbsim/propeller.xml": {
+      "sha256": "18b29fa57590d1248408198abd438ddbb5e65e951cb3c298fec0b6e1e024441a",
+      "size_bytes": 8025
+    },
+    "jsbsim/system-0.xml": {
+      "sha256": "8f0dd2ea36fb92575eba8f5abf8e43932f8a41bd18f9db8bec169cd3e04eb557",
+      "size_bytes": 6370
+    },
+    "jsbsim/system-1.xml": {
+      "sha256": "c81a18360608292aa71b9cbbdea69284534a6735f0730c1b61c0a5fbec71c892",
+      "size_bytes": 6370
+    },
+    "jsbsim/system-2.xml": {
+      "sha256": "3def62932eae56798760c7ad378b10c368a90bae6f96e3bbb4a50620022a6969",
+      "size_bytes": 6370
+    },
+    "jsbsim/system-3.xml": {
+      "sha256": "5fd789660c74d3a1145e9b50f3bbb08050ec4c791629313ab5acfbbcfdc1fb55",
+      "size_bytes": 6370
+    },
+    "propeller.json": {
+      "sha256": "bf17e5789379fe415719dace99d127e69deaae5a71eaa8d65d3d81ad6d4ae89a",
+      "size_bytes": 3123
+    }
+  },
+  "components": [
+    {
+      "key": "propeller",
+      "name": "Propeller and hub, mass not found",
+      "parent": null,
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": "None",
+  "devices": []
+}
