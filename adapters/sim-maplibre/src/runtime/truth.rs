@@ -35,7 +35,7 @@ use crate::{
     entity_depth_probes, supply_catalog_dem_synchronously,
     usd_pass::{
         AircraftLibrary, AircraftSlotView, PolarSkiwayKey, SharedAircraftLibrary, SlotDraws,
-        UsdScene3dPlugin, pack_slot_draws, sun_in_anchor_enu,
+        SlotScene, UsdScene3dPlugin, ownship_shadow, pack_slot_draws, sun_in_anchor_enu,
     },
 };
 
@@ -434,7 +434,7 @@ impl TruthSceneMap {
         slot: ViewSlotId,
         stamp: &ConformalFrameStamp,
         frame: &TruthSceneFrame<'_>,
-    ) -> Vec<crate::usd_pass::PackedDraw> {
+    ) -> SlotScene {
         let ownship_role = frame
             .ownship_camera_roles
             .iter()
@@ -442,7 +442,7 @@ impl TruthSceneMap {
             .map_or(SlotCameraRole::External, |(_, role)| *role);
         let (sun_enu, daylight) = sun_in_anchor_enu(stamp, self.sun_ecef);
         let Ok(mut library) = self.aircraft_library.try_borrow_mut() else {
-            return Vec::new();
+            return SlotScene::default();
         };
         let polar_skiway = frame
             .polar_runway
@@ -453,18 +453,17 @@ impl TruthSceneMap {
                     r,
                 )
             });
-        pack_slot_draws(
-            &library,
-            frame.aircraft,
-            polar_skiway,
-            &AircraftSlotView {
-                stamp,
-                sun_enu,
-                daylight,
-                ownship_role,
-                slot,
-            },
-        )
+        let view = AircraftSlotView {
+            stamp,
+            sun_enu,
+            daylight,
+            ownship_role,
+            slot,
+        };
+        SlotScene {
+            draws: pack_slot_draws(&library, frame.aircraft, polar_skiway, &view),
+            shadow: ownship_shadow(&library, frame.aircraft, &view),
+        }
     }
 
     fn submit_probes(

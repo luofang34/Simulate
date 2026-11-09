@@ -56,6 +56,8 @@ pub struct MapFrameInput<'a> {
     pub active_vehicle: Option<FreeFlightVehicle>,
     /// Display-interpolated truth: the physical scene's ownship.
     pub vehicle: VehicleState,
+    /// Ellipsoidal ground height under ownship, which receives its sun shadow.
+    pub ground_m: Option<f64>,
     /// Display-interpolated navigation solution: the instrument maps' ownship.
     pub estimated_vehicle: VehicleState,
     /// `30 Hz` optical sensor exposures since the previous frame, oldest first; the sensor
@@ -381,6 +383,7 @@ impl MapLibreRig {
             &input.vehicle,
             input.articulation,
             undulation_m,
+            input.ground_m,
         ));
         let sensor_role = aircraft::virtual_camera_role(&cam_spec);
         let window_role = if mode == OperatorViewportMode::SensorAperture {

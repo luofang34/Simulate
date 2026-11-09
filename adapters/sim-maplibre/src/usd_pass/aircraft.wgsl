@@ -1,5 +1,6 @@
 // OpenUSD aircraft parts over maplibre terrain: UsdPreviewSurface-style PBR for opaque
-// parts, Fresnel glass, and a shutter-blurred two-blade propeller disc. Positions and
+// parts with ownship's sun shadow (shadow.wgsl), Fresnel glass, and a shutter-blurred
+// two-blade propeller disc. Positions and
 // lighting are in the view slot's camera-anchored ENU frame (camera at the origin), and
 // clip depth is reversed-Z so terrain occludes aircraft with GreaterEqual testing.
 
@@ -48,7 +49,7 @@ const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
 const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
 const EXPOSURE: f32 = 1.5;
 
-fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3<f32> {
+fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32, pixel: vec2<f32>) -> vec3<f32> {
     var n = normalize(n_in);
     if (!front) {
         n = -n;
@@ -66,7 +67,7 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3
     let f = fresnel(f0, dot(h, v));
     let spec = f * ggx(max(dot(n, h), 0.0), roughness) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
     let diffuse = (vec3<f32>(1.0) - f) * (1.0 - metallic) * albedo / PI;
-    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight;
+    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, n, pixel);
     // Sky above and sunlit ground below both light the airframe, so undersides never go black.
     let hemi = mix(GROUND * 1.6, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
     let r = reflect(-v, n);
@@ -83,7 +84,7 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    let color = shade(in.normal, in.world, front, in.occlusion);
+    let color = shade(in.normal, in.world, front, in.occlusion, in.clip.xy);
     return vec4<f32>(filmic(color, EXPOSURE), 1.0);
 }
 

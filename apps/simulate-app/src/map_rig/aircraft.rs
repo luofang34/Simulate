@@ -17,11 +17,14 @@ const TRAFFIC_PROP_RPM: f64 = 2_350.0;
 
 /// Ownship at its true state, with its own articulation. The placement is `AboveMsl`, so
 /// the WGS84 ellipsoidal height becomes orthometric by subtracting `undulation_m`
-/// (`H = h − N`); without it a real-world airframe sits `N` metres off its runway.
+/// (`H = h − N`); without it a real-world airframe sits `N` metres off its runway. The
+/// ellipsoidal `ground_m` beneath, when known, takes the same correction and receives the
+/// airframe's sun shadow.
 pub fn ownship_aircraft(
     vehicle: &VehicleState,
     articulation: AirframeArticulation,
     undulation_m: f64,
+    ground_m: Option<f64>,
 ) -> AircraftInstance {
     let geo = ecef_to_geodetic(vehicle.position_ecef);
     let ecef_to_ned = LocalFrame::at(&geo).ned_to_ecef().transpose();
@@ -37,6 +40,7 @@ pub fn ownship_aircraft(
         },
         articulation,
         ownship: true,
+        ground_height_m: ground_m.map(|h| h - undulation_m),
     }
 }
 
@@ -58,6 +62,7 @@ pub fn traffic_aircraft(entities: &[DynamicEntity3D], elapsed_s: f64) -> Vec<Air
                 ..AirframeArticulation::default()
             },
             ownship: false,
+            ground_height_m: None,
         })
         .collect()
 }

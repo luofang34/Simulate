@@ -9,10 +9,18 @@ use maplibre::{
     render::{Renderer, eye_covering::CurrentViewSlot, settings::Msaa, upload_queue::UploadQueue},
 };
 
+use super::shadow::{
+    ShadowFrame,
+    gpu::{Attachments, ShadowGpu, SlotShadow},
+};
 use super::{AircraftLibrary, AssetKey, DRAW_BYTES, DRAW_STRIDE, SharedAircraftLibrary, SlotDraws};
 use crate::UsdAircraftAsset;
 
-const SHADER: &str = concat!(include_str!("shading.wgsl"), include_str!("aircraft.wgsl"));
+const SHADER: &str = concat!(
+    include_str!("shading.wgsl"),
+    include_str!("aircraft.wgsl"),
+    include_str!("shadow.wgsl")
+);
 
 /// One part's static vertex and index buffers.
 pub(super) struct PartMesh {
@@ -27,6 +35,7 @@ pub(super) struct DrawCommand {
     pub(super) part_index: usize,
     pub(super) pipeline: PipelineKind,
     pub(super) offset: u32,
+    pub(super) casts_shadow: bool,
 }
 
 /// Pipeline variants of the pass.
@@ -43,6 +52,11 @@ pub(super) struct SlotGpu {
     capacity: u64,
     pub(super) bind_group: wgpu::BindGroup,
     pub(super) commands: Vec<DrawCommand>,
+    pub(super) shadow: SlotShadow,
+    /// Whether this frame's slot has a light volume, so its casters fill the map.
+    pub(super) shadowed: bool,
+    /// Whether the ground receiver under ownship is drawn.
+    pub(super) ground_shadow: bool,
 }
 
 /// Pipelines, layouts, and meshes, built once the render target exists.
@@ -50,6 +64,7 @@ pub(super) struct UsdPassGpu {
     pub(super) opaque: wgpu::RenderPipeline,
     pub(super) opaque_double_sided: wgpu::RenderPipeline,
     pub(super) translucent: wgpu::RenderPipeline,
+    pub(super) shadow: ShadowGpu,
     layout: wgpu::BindGroupLayout,
     pub(super) meshes: BTreeMap<AssetKey, Vec<Option<PartMesh>>>,
     pub(super) slots: BTreeMap<ViewSlotId, SlotGpu>,
@@ -101,8 +116,10 @@ pub(super) fn prepare(ctx: &mut MapContext, library: &SharedAircraftLibrary, dra
     let Ok(frames) = draws.try_borrow() else {
         return;
     };
-    let slot_draws = frames.get(&slot).map_or(&[][..], Vec::as_slice);
-    gpu.upload_slot(device, queue, slot, slot_draws);
+    let scene = frames.get(&slot);
+    let slot_draws = scene.map_or(&[][..], |scene| scene.draws.as_slice());
+    let shadow = scene.and_then(|scene| scene.shadow.as_ref());
+    gpu.upload_slot(device, queue, slot, slot_draws, shadow);
 }
 
 impl UsdPassGpu {
@@ -125,14 +142,24 @@ impl UsdPassGpu {
                 count: None,
             }],
         });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("usd aircraft"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("usd aircraft"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+        });
+        let shadow = ShadowGpu::new(
+            device,
+            &layout,
+            &module,
+            Attachments {
+                color: format,
+                depth: depth_format,
+                samples,
+            },
+        );
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("usd aircraft"),
+            bind_group_layouts: &[Some(&layout), Some(&shadow.receiver_layout)],
+            immediate_size: 0,
         });
         let build = |kind| {
             build_pipeline(
@@ -149,6 +176,7 @@ impl UsdPassGpu {
             opaque: build(PipelineKind::Opaque),
             opaque_double_sided: build(PipelineKind::OpaqueDoubleSided),
             translucent: build(PipelineKind::Translucent),
+            shadow,
             meshes: BTreeMap::new(),
             layout,
             slots: BTreeMap::new(),
@@ -175,43 +203,21 @@ impl UsdPassGpu {
         queue: &UploadQueue,
         slot: ViewSlotId,
         draws: &[super::PackedDraw],
+        shadow: Option<&ShadowFrame>,
     ) {
         let needed = (draws.len() as u64).max(1).saturating_mul(DRAW_STRIDE);
         let stale = self.slots.get(&slot).is_none_or(|s| s.capacity < needed);
         if stale {
-            let capacity = needed.next_power_of_two().max(DRAW_STRIDE * 8);
-            let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("usd aircraft slot uniforms"),
-                size: capacity,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("usd aircraft slot"),
-                layout: &self.layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniforms,
-                        offset: 0,
-                        size: NonZeroU64::new(DRAW_BYTES as u64),
-                    }),
-                }],
-            });
-            self.slots.insert(
-                slot,
-                SlotGpu {
-                    uniforms,
-                    capacity,
-                    bind_group,
-                    commands: Vec::new(),
-                },
-            );
+            let fresh = self.new_slot(device, needed);
+            self.slots.insert(slot, fresh);
         }
         let Some(slot_gpu) = self.slots.get_mut(&slot) else {
             return;
         };
         slot_gpu.commands.clear();
+        queue.write_buffer(&slot_gpu.shadow.block, 0, &ShadowFrame::block(shadow));
+        slot_gpu.shadowed = shadow.is_some() && draws.iter().any(|d| d.casts_shadow);
+        slot_gpu.ground_shadow = slot_gpu.shadowed && shadow.is_some_and(|s| s.ground.is_some());
         if draws.is_empty() {
             return;
         }
@@ -242,9 +248,42 @@ impl UsdPassGpu {
                 part_index: draw.part_index,
                 pipeline,
                 offset,
+                casts_shadow: draw.casts_shadow,
             });
         }
         queue.write_buffer(&slot_gpu.uniforms, 0, &bytes);
+    }
+
+    /// A slot's uniform buffer, sized for at least `needed` bytes of draws, and its groups.
+    fn new_slot(&self, device: &wgpu::Device, needed: u64) -> SlotGpu {
+        let capacity = needed.next_power_of_two().max(DRAW_STRIDE * 8);
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("usd aircraft slot uniforms"),
+            size: capacity,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("usd aircraft slot"),
+            layout: &self.layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniforms,
+                    offset: 0,
+                    size: NonZeroU64::new(DRAW_BYTES as u64),
+                }),
+            }],
+        });
+        SlotGpu {
+            uniforms,
+            capacity,
+            bind_group,
+            commands: Vec::new(),
+            shadow: self.shadow.slot(device),
+            shadowed: false,
+            ground_shadow: false,
+        }
     }
 
     pub(super) fn pipeline(&self, kind: PipelineKind) -> &wgpu::RenderPipeline {

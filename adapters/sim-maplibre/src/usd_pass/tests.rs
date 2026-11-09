@@ -11,12 +11,12 @@ use crate::{
     UsdAircraftAsset, conformal_stamp_from_pose, orientation_from_ned_body_quat, symmetric_frustum,
 };
 
-fn slot(index: u32) -> ViewSlotId {
+pub(super) fn slot(index: u32) -> ViewSlotId {
     ViewSlotId::from_raw(index)
 }
 
 /// A camera 40 m south of `target`, level, looking north.
-fn stamp_looking_north_at(target: &Geodetic) -> ConformalFrameStamp {
+pub(super) fn stamp_looking_north_at(target: &Geodetic) -> ConformalFrameStamp {
     let local = LocalFrame::at(target);
     let target_ecef = BodyEllipsoid::WGS84.geodetic_to_fixed(target);
     let eye = target_ecef - local.north() * 40.0;
@@ -35,11 +35,11 @@ fn stamp_looking_north_at(target: &Geodetic) -> ConformalFrameStamp {
     .unwrap()
 }
 
-fn library(asset: UsdAircraftAsset) -> AircraftLibrary {
+pub(super) fn library(asset: UsdAircraftAsset) -> AircraftLibrary {
     AircraftLibrary::new(std::sync::Arc::new(asset))
 }
 
-fn aircraft_at(target: &Geodetic, ownship: bool) -> AircraftInstance {
+pub(super) fn aircraft_at(target: &Geodetic, ownship: bool) -> AircraftInstance {
     AircraftInstance {
         placement: Placement3d {
             position: LatLon::new(target.lat_rad.to_degrees(), target.lon_rad.to_degrees()),
@@ -50,6 +50,7 @@ fn aircraft_at(target: &Geodetic, ownship: bool) -> AircraftInstance {
         },
         articulation: AirframeArticulation::default(),
         ownship,
+        ground_height_m: None,
     }
 }
 

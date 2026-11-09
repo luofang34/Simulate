@@ -12,7 +12,8 @@ use maplibre::{
 };
 
 use super::USD_AIRCRAFT_PASS;
-use super::gpu::UsdPassState;
+use super::gpu::{SlotGpu, UsdPassGpu, UsdPassState};
+use super::shadow::gpu::begin_caster_pass;
 
 /// Loads the slot's colour and depth and draws its aircraft parts into them.
 pub(super) struct UsdAircraftPassNode;
@@ -48,12 +49,21 @@ impl Node for UsdAircraftPassNode {
         else {
             return;
         };
+        if slot_gpu.shadowed {
+            draw_casters(&mut render_context.command_encoder, gpu, slot_gpu);
+        }
         let mut pass = begin_pass(
             &mut render_context.command_encoder,
             render_target,
             multisampling_texture.as_ref(),
             depth_texture,
         );
+        pass.set_bind_group(1, &slot_gpu.shadow.receiver_group, &[]);
+        if slot_gpu.ground_shadow {
+            pass.set_pipeline(&gpu.shadow.ground);
+            pass.set_bind_group(0, &slot_gpu.bind_group, &[0]);
+            pass.draw(0..4, 0..1);
+        }
         let mut bound = None;
         for command in &slot_gpu.commands {
             let Some(Some(mesh)) = gpu
@@ -72,6 +82,26 @@ impl Node for UsdAircraftPassNode {
             pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.count, 0, 0..1);
         }
+    }
+}
+
+/// Refills the shared shadow map with ownship's opaque parts seen from this slot's Sun.
+fn draw_casters(encoder: &mut wgpu::CommandEncoder, gpu: &UsdPassGpu, slot_gpu: &SlotGpu) {
+    let mut pass = begin_caster_pass(encoder, &gpu.shadow.map);
+    pass.set_pipeline(&gpu.shadow.caster);
+    pass.set_bind_group(1, &slot_gpu.shadow.caster_group, &[]);
+    for command in slot_gpu.commands.iter().filter(|c| c.casts_shadow) {
+        let Some(Some(mesh)) = gpu
+            .meshes
+            .get(&command.asset)
+            .and_then(|meshes| meshes.get(command.part_index))
+        else {
+            continue;
+        };
+        pass.set_bind_group(0, &slot_gpu.bind_group, &[command.offset]);
+        pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+        pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(0..mesh.count, 0, 0..1);
     }
 }
 

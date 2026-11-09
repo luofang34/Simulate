@@ -397,6 +397,15 @@ impl Flight {
         }
     }
 
+    /// Ellipsoidal height of the ground under the displayed vehicle, where the surface
+    /// knows it.
+    #[must_use]
+    pub fn display_ground_height_m(&self) -> Option<f64> {
+        let position = self.display_vehicle_state().position_ecef;
+        self.surface
+            .ellipsoidal_ground_m(&sim_geo::ecef_to_geodetic(position))
+    }
+
     /// Sub-step display phase in `[0, 1)`: how far the master clock has run past the last
     /// completed physics step, in plant periods.
     fn display_phase(&self) -> f64 {

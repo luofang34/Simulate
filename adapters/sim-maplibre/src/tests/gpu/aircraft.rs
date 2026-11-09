@@ -99,6 +99,7 @@ fn aircraft_over(threshold: LatLon, view_mask: ViewSlotMask, ownship: bool) -> A
         },
         articulation: AirframeArticulation::default(),
         ownship,
+        ground_height_m: None,
     }
 }
 

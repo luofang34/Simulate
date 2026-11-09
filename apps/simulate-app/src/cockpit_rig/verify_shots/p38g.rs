@@ -81,7 +81,7 @@ fn render_p38_third_person_verification_shots() -> Result<(), AppSimError> {
         0.62,
         &dir.join("p38_04_chase_side.png"),
     )?;
-    let low_sun = sun_relative_to_nose(&h, 2.2, 10.0_f64.to_radians());
+    let low_sun = sun_relative_to_nose(&h, 1.3, 10.0_f64.to_radians());
     draw_chase_orbit_lit(
         &mut h,
         [2.0, -0.10, 0.62],
@@ -295,7 +295,7 @@ fn render_c172_reference(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSim
         h.flight
             .advance_by(0.05, ControlInputs::default(), SimTimeScale::RealTime)?;
     }
-    let low_sun = sun_relative_to_nose(h, 2.2, 10.0_f64.to_radians());
+    let low_sun = sun_relative_to_nose(h, 1.3, 10.0_f64.to_radians());
     draw_chase_orbit_lit(
         h,
         [2.0, -0.10, 0.62],

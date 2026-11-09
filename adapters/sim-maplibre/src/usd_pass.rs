@@ -31,6 +31,7 @@ use crate::{
 mod gpu;
 mod library;
 mod node;
+mod shadow;
 mod skiway;
 #[cfg(test)]
 mod tests;
@@ -38,6 +39,7 @@ pub(crate) mod vertex;
 
 pub use library::OwnshipVisualKind;
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
+pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
 
 /// Draw-graph node label of the aircraft pass.
@@ -59,6 +61,10 @@ pub struct AircraftInstance {
     /// Whether this is the vehicle the cameras ride on; its parts follow each slot's
     /// [`SlotCameraRole`], while traffic is always seen whole.
     pub ownship: bool,
+    /// Height of the ground beneath, in the same mean-sea-level reference as
+    /// `placement.altitude_meters`; ownship's sun shadow falls on it, and `None` (unknown
+    /// ground) leaves the shadow on the airframe only.
+    pub ground_height_m: Option<f64>,
 }
 
 /// One packed draw of one part in one slot.
@@ -68,11 +74,21 @@ pub(crate) struct PackedDraw {
     pub(crate) part_index: usize,
     pub(crate) translucent: bool,
     pub(crate) double_sided: bool,
+    /// Ownship's opaque parts fill the slot's shadow map.
+    pub(crate) casts_shadow: bool,
     pub(crate) uniform: [u8; DRAW_BYTES],
 }
 
-/// Draws each slot will issue this frame, opaque before translucent, far before near.
-pub(crate) type SlotDraws = Rc<RefCell<BTreeMap<ViewSlotId, Vec<PackedDraw>>>>;
+/// One slot's aircraft this frame: its draws, opaque before translucent and far before
+/// near, and ownship's sun shadow.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SlotScene {
+    pub(crate) draws: Vec<PackedDraw>,
+    pub(crate) shadow: Option<ShadowFrame>,
+}
+
+/// Every slot's aircraft scene this frame.
+pub(crate) type SlotDraws = Rc<RefCell<BTreeMap<ViewSlotId, SlotScene>>>;
 
 /// Registers the aircraft pass and its prepare system on a truth-scene map.
 pub(crate) struct UsdScene3dPlugin {
@@ -167,14 +183,16 @@ pub(crate) fn pack_slot_draws(
                 continue;
             };
             let enu_from_part = enu_from_aircraft * part_draw.part_to_aircraft;
-            packed.push(pack_part(
+            let (distance, mut draw) = pack_part(
                 asset_key,
                 part,
                 &part_draw,
                 enu_from_part,
                 clip_from_enu,
                 view,
-            ));
+            );
+            draw.casts_shadow = instance.ownship && !draw.translucent;
+            packed.push((distance, draw));
         }
     }
     // Opaque first; translucent back to front so blending composes correctly.
@@ -243,6 +261,7 @@ fn pack_part(
             part_index: part_draw.part_index,
             translucent,
             double_sided: part.double_sided || translucent,
+            casts_shadow: false,
             uniform: block.to_le_bytes(),
         },
     )
@@ -254,7 +273,10 @@ fn emissive(rgb: [f32; 3], scale: f32, metallic: f32) -> [f32; 4] {
 }
 
 /// Model transform from the aircraft's USD axes into the slot's anchor ENU frame.
-fn enu_from_aircraft(stamp: &ConformalFrameStamp, placement: &Placement3d) -> Option<DMat4> {
+pub(super) fn enu_from_aircraft(
+    stamp: &ConformalFrameStamp,
+    placement: &Placement3d,
+) -> Option<DMat4> {
     let geodetic = Geodetic {
         lat_rad: placement.position.latitude.to_radians(),
         lon_rad: placement.position.longitude.to_radians(),
