@@ -9,7 +9,7 @@ use sim_devices::WhiteNoise;
 use sim_geo::{Geodetic, LocalFrame, geodetic_to_ecef};
 
 use super::*;
-use crate::{KinematicAiding, compare_with_truth};
+use crate::{Estimate, KinematicAiding, compare_with_truth};
 
 const HOLD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / 10 * 3);
 const SPEED_M_S: f64 = 55.0;
@@ -67,7 +67,11 @@ fn a_delayed_fix_lands_at_its_acquisition_time_not_the_present() {
     let mut solution = None;
     for millis in (0..2_000).step_by(50) {
         let (_, truth) = eastbound(millis);
-        navigation.offer(aiding.observe(after(millis), truth, east).unwrap());
+        navigation.offer(
+            aiding
+                .observe(after(millis), &Estimate::new(truth), east)
+                .unwrap(),
+        );
         // The anchor taken at 1 s arrives 300 ms later, behind 6 velocity fixes.
         if millis == 1_300 {
             let (_, at_exposure) = eastbound(1_000);
@@ -138,7 +142,11 @@ fn the_default_velocity_prior_refuses_an_aircraft_and_the_airborne_one_admits_it
             0.1,
         );
         navigation.offer(position_fix(0, after(0), &start));
-        navigation.offer(aiding.observe(after(10), truth, east).unwrap());
+        navigation.offer(
+            aiding
+                .observe(after(10), &Estimate::new(truth), east)
+                .unwrap(),
+        );
         navigation.advance(after(10)).unwrap();
         navigation.filter().rejections().innovation_gate
     };
@@ -175,7 +183,11 @@ fn a_turn_keeps_its_velocity_aiding_under_the_airborne_process_noise() {
             let velocity = (frame.north() * angle.cos() + frame.east() * angle.sin()) * SPEED
                 + noise.next_vec3(DVec3::splat(SIGMA_M_S));
             let truth = geodetic_to_ecef(&start);
-            navigation.offer(aiding.observe(after(millis), truth, velocity).unwrap());
+            navigation.offer(
+                aiding
+                    .observe(after(millis), &Estimate::new(truth), velocity)
+                    .unwrap(),
+            );
             navigation.advance(after(millis)).unwrap();
         }
         navigation.filter().rejections().innovation_gate

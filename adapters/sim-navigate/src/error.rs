@@ -1,3 +1,4 @@
+use navigate_camera::CameraError;
 use navigate_contract::DurationNanos;
 use navigate_geodesy::GeodesyError;
 use navigate_visual::VisualError;
@@ -81,4 +82,35 @@ pub enum NavigateBridgeError {
     /// A solution's covariance has no Cholesky factor.
     #[error("solution position covariance is not positive definite")]
     SolutionCovariance,
+    /// The camera model refused a sensor description or a frame.
+    #[error("camera model refused {what}")]
+    Camera {
+        /// What was being converted.
+        what: &'static str,
+        /// The underlying refusal.
+        #[source]
+        source: CameraError,
+    },
+    /// A rendered buffer does not hold the pixels its size needs.
+    #[error("{what} holds {actual} values; a {width} x {height} frame needs {needed}")]
+    FrameSize {
+        /// Which buffer.
+        what: &'static str,
+        /// Frame width, pixels.
+        width: u32,
+        /// Frame height, pixels.
+        height: u32,
+        /// Values the frame needs.
+        needed: usize,
+        /// Values the buffer holds.
+        actual: usize,
+    },
+    /// A score paired an output with truth from another instant.
+    #[error("truth at {truth_at:?} scored against an output valid at {valid_at:?}")]
+    TruthInstantMismatch {
+        /// The truth's instant.
+        truth_at: SimInstant,
+        /// The instant the output describes.
+        valid_at: SimInstant,
+    },
 }

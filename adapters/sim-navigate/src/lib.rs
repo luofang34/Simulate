@@ -23,13 +23,21 @@
 //! [`CelestialClock`] turns a sky time mode and observer position into a
 //! [`CelestialFrame`] of Sun, Moon, eclipse, Earth-shadow, and star geometry
 //! from Navigate's analytic ephemeris.
+//!
+//! [`CameraFrameLink`] lends rendered exposures to Navigate as
+//! `navigate_camera::ImageFrame`s, and [`navigate_mount`] states a simulator
+//! camera mount in Navigate's axes. [`AblationEvaluation`] scores
+//! [`Estimate`]s of each means, alone and fused, against [`Truth`], and
+//! [`ComputeMeter`] reports their host cost beside the scores.
 
 mod aiding;
 mod celestial;
 mod clock;
 mod error;
 mod estimate;
+mod evaluation;
 mod filter_loop;
+mod frame_link;
 mod image_nav;
 mod truth;
 mod visual_fix;
@@ -42,7 +50,16 @@ pub use celestial::{
 pub use clock::{MASTER_CLOCK_DOMAIN, MasterClockBridge};
 pub use error::NavigateBridgeError;
 pub use estimate::CorridorFrame;
+pub use evaluation::{
+    AblationEvaluation, AblationSet, AblationSummary, CameraTruth, ComputeMeter, ComputeSample,
+    ComputeStats, Estimate, EvaluationSummary, ImageTruth, MeansEvaluation, NavMeans,
+    NavigationOrigin, NavigationOutput, Percentiles, PositionScore, SensorTruth, SensorTruthRecord,
+    SimTruth, StarFieldTruth, StarTruth, ThermalTruth, Truth, score_position,
+};
 pub use filter_loop::{NavigationLoop, airborne_fusion_config};
+pub use frame_link::{
+    CameraFrameLink, FramePixelFormat, OwnedCameraFrame, imager_model, navigate_mount,
+};
 pub use image_nav::{ImageCorridorEstimator, ImageEstimatorConfig, ImageEstimatorStats};
 pub use truth::{TruthComparison, compare_with_truth, solution_position_ecef};
 pub use visual_fix::{FixDisposition, VisualFixAdapter, VisualFixConfig};

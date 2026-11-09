@@ -16,7 +16,11 @@ fn a_northbound_climb_reads_north_and_negative_down() {
         0.5,
     );
     let observation = aiding
-        .observe(SimInstant::START, geodetic_to_ecef(&position), velocity)
+        .observe(
+            SimInstant::START,
+            &Estimate::new(geodetic_to_ecef(&position)),
+            velocity,
+        )
         .unwrap();
     let ObservationValue::VelocityFix {
         velocity,
@@ -43,10 +47,18 @@ fn each_observation_takes_the_next_sequence() {
         0.5,
     );
     let first = aiding
-        .observe(SimInstant::START, state.position_ecef, state.velocity_ecef)
+        .observe(
+            SimInstant::START,
+            &Estimate::new(state.position_ecef),
+            state.velocity_ecef,
+        )
         .unwrap();
     let second = aiding
-        .observe(SimInstant::START, state.position_ecef, state.velocity_ecef)
+        .observe(
+            SimInstant::START,
+            &Estimate::new(state.position_ecef),
+            state.velocity_ecef,
+        )
         .unwrap();
     assert!(first.stamp.sequence.admits(second.stamp.sequence));
 }

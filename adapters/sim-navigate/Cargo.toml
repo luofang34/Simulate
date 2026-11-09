@@ -13,6 +13,7 @@ sim-geo = { workspace = true }
 sim-core = { workspace = true }
 glam = { workspace = true }
 nalgebra = { workspace = true }
+navigate-camera = { workspace = true }
 navigate-celestial = { workspace = true }
 navigate-contract = { workspace = true }
 navigate-fusion = { workspace = true }
@@ -22,6 +23,11 @@ sim-scenario = { workspace = true }
 sim-scenery = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+# Resident memory of the host process, for compute metering; the browser build
+# has no process to read.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memory-stats = { workspace = true }
 
 [dev-dependencies]
 sim-devices = { workspace = true }

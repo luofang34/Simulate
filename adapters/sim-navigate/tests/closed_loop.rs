@@ -20,9 +20,9 @@ use sim_core::{
     TickSpan, VehicleState, VisualFix,
 };
 use sim_devices::WhiteNoise;
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_geo::{LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use sim_navigate::{
-    FixDisposition, KinematicAiding, MasterClockBridge, NavigationLoop, VisualFixAdapter,
+    Estimate, FixDisposition, KinematicAiding, MasterClockBridge, NavigationLoop, VisualFixAdapter,
     VisualFixConfig, airborne_fusion_config, compare_with_truth, solution_position_ecef,
 };
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
@@ -235,6 +235,11 @@ fn fly(profile: ScenarioProfile, dynamics: FlightDynamics) -> FlightResult {
     let mut attitudes: BTreeMap<SimInstant, DQuat> = BTreeMap::new();
     let mut result = FlightResult::default();
     let mut navigated = None;
+    // Aiding is resolved at each filter's own position, never the truth: the
+    // planned corridor origin until a filter publishes, then its solution.
+    let planned_origin_ecef = geodetic_to_ecef(&SyntheticCorridorSpec::delaware().south_west);
+    let mut estimated_ecef = planned_origin_ecef;
+    let mut naive_estimated_ecef = planned_origin_ecef;
     let mut step = 0u32;
 
     while !run.finished() {
@@ -267,17 +272,25 @@ fn fly(profile: ScenarioProfile, dynamics: FlightDynamics) -> FlightResult {
             let measured =
                 truth.velocity_ecef + velocity_noise.next_vec3(DVec3::splat(AIDING_SIGMA_M_S));
             let at = run.now();
-            navigation.offer(aiding.observe(at, truth.position_ecef, measured).unwrap());
+            navigation.offer(
+                aiding
+                    .observe(at, &Estimate::new(estimated_ecef), measured)
+                    .unwrap(),
+            );
             naive.filter.offer(
                 naive_aiding
-                    .observe(at, truth.position_ecef, measured)
+                    .observe(at, &Estimate::new(naive_estimated_ecef), measured)
                     .unwrap(),
             );
         }
         let Some(solution) = navigation.advance(run.now()).unwrap() else {
             continue;
         };
+        estimated_ecef = solution_position_ecef(&solution);
         let naive_solution = naive.filter.advance(run.now()).unwrap();
+        if let Some(naive_solution) = &naive_solution {
+            naive_estimated_ecef = solution_position_ecef(naive_solution);
+        }
         score(&mut result, &solution, naive_solution.as_ref(), truth);
         navigated = Some(navigated_state(truth, &solution));
     }
