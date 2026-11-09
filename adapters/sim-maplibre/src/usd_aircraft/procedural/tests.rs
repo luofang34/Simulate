@@ -109,24 +109,24 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     ] {
         assert_eq!(count(&uav, role), 1, "{role:?}");
     }
+    for role in [PartRole::CabinGlass, PartRole::LandingLight] {
+        assert_eq!(count(&p38, role), 1, "{role:?}");
+    }
+    // The P-38's ailerons, elevator and flaps are olive drab over a neutral-gray
+    // underside part that deflects with them.
     for role in [
         PartRole::AileronLeft,
         PartRole::AileronRight,
         PartRole::Elevator,
-        PartRole::CabinGlass,
-        PartRole::LandingLight,
-    ] {
-        assert_eq!(count(&p38, role), 1, "{role:?}");
-    }
-    for role in [
-        PartRole::FlapLeft,
-        PartRole::FlapRight,
         PartRole::Rudder,
         PartRole::NoseWheel,
         PartRole::WheelLeft,
         PartRole::WheelRight,
     ] {
         assert_eq!(count(&p38, role), 2, "{role:?}");
+    }
+    for role in [PartRole::FlapLeft, PartRole::FlapRight] {
+        assert_eq!(count(&p38, role), 4, "{role:?}");
     }
     assert!(count(&p38, PartRole::GearStruts) >= 4);
     assert!(count(&lander, PartRole::GearStruts) >= 1);

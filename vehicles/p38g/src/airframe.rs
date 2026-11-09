@@ -4,8 +4,9 @@
 
 use std::f32::consts::PI;
 
-use glam::Vec3;
+use glam::{DMat4, Vec3};
 
+use crate::articulated::push_two_tone;
 use crate::cockpit_opening::upper_gondola_skin;
 use crate::drawing::{INCH_M, fs_to_y, y_to_fs};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
@@ -456,7 +457,6 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
 
     // Stabiliser: the fixed `25 in` ahead of the elevator hinge, across both booms to the
     // semicircular tips.
-    let mut htail = MeshBuilder::new();
     let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
     let h_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
         .iter()
@@ -471,11 +471,12 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
             ))
         })
         .collect();
-    htail.loft(&h_sections, true, Inside::Axis);
-    prims.push(fixed(
+    push_two_tone(
+        prims,
         "/P38g/Empennage/HorizontalTail",
         P38PartRole::CabinExterior,
-        OLIVE_DRAB,
-        htail,
-    ));
+        DMat4::IDENTITY,
+        &h_sections,
+        None,
+    );
 }

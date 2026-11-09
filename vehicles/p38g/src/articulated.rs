@@ -10,7 +10,7 @@ use crate::drawing::{ELEVATOR_CHORD_IN, INCH_M, y_to_fs};
 use crate::gear::{build_main_gear, build_nose_gear};
 use crate::mesh::{Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, part};
 use crate::stations::{
-    AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, INSIGNIA_RED, OLIVE_DRAB,
+    AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
     PROP_BLACK, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
     RUDDER_HINGE_Y, SPINNER_ALUMINIUM, TAILPLANE_SECTIONS_BL, tailplane_planform_fs, wing_station,
 };
@@ -183,7 +183,6 @@ fn build_fowler_flaps(prims: &mut Vec<P38MeshPrim>) {
         let xm = 0.5 * (x0 + x1);
         let (_, ty_m, zm_m, ..) = wing_station(xm);
         let (hy, hz) = (ty_m + FLAP_CHORD_M, zm_m - 0.025);
-        let mut mesh = MeshBuilder::new();
         let sections: Vec<Vec<Vec3>> = [x0, xm, x1]
             .into_iter()
             .map(|x| {
@@ -195,15 +194,59 @@ fn build_fowler_flaps(prims: &mut Vec<P38MeshPrim>) {
                 )
             })
             .collect();
-        mesh.loft(&sections, true, Inside::Axis);
         let rest = DMat4::from_translation(DVec3::new(f64::from(xm), f64::from(hy), f64::from(hz)));
-        prims.push(part(
+        push_two_tone(
+            prims,
             &format!("/P38g/Wing/{name}"),
             role,
-            OLIVE_DRAB,
             rest,
-            mesh,
-        ));
+            &sections,
+            None,
+        );
+    }
+}
+
+/// A control surface lofted through closed `aerofoil` sections (ordered by increasing
+/// `x`), painted like the wing: olive drab on top and on the end ribs, neutral gray
+/// underneath. Both halves share the role and rest frame so they deflect together.
+pub(crate) fn push_two_tone(
+    prims: &mut Vec<P38MeshPrim>,
+    path: &str,
+    role: P38PartRole,
+    rest: DMat4,
+    sections: &[Vec<Vec3>],
+    hinge_axis: Option<DVec3>,
+) {
+    // `aerofoil` rings run leading edge (index 0) over the top to the trailing edge
+    // (index half) and back underneath.
+    let half = sections.first().map_or(0, |r| r.len() / 2);
+    let upper_rows: Vec<Vec<Vec3>> = sections
+        .iter()
+        .map(|r| r.iter().take(half + 1).copied().collect())
+        .collect();
+    let lower_rows: Vec<Vec<Vec3>> = sections
+        .iter()
+        .map(|r| {
+            r.iter()
+                .skip(half)
+                .chain(r.iter().take(1))
+                .copied()
+                .collect()
+        })
+        .collect();
+    let mut upper = MeshBuilder::new();
+    upper.loft_open(&upper_rows, Inside::Point(Vec3::new(0.0, 0.0, -10.0)));
+    for (ring, outward) in [(sections.first(), Vec3::NEG_X), (sections.last(), Vec3::X)] {
+        if let Some(ring) = ring {
+            upper.polygon(ring, outward);
+        }
+    }
+    let mut lower = MeshBuilder::new();
+    lower.loft_open(&lower_rows, Inside::Point(Vec3::new(0.0, 0.0, 10.0)));
+    for (sub, mat, mesh) in [("", OLIVE_DRAB, upper), ("Underside", NEUTRAL_GRAY, lower)] {
+        let mut prim = part(&format!("{path}{sub}"), role, mat, rest, mesh);
+        prim.custom_hinge_axis = hinge_axis;
+        prims.push(prim);
     }
 }
 
@@ -244,7 +287,6 @@ fn build_ailerons_and_trims(prims: &mut Vec<P38MeshPrim>) {
         )
         .normalize_or(DVec3::X);
 
-        let mut mesh = MeshBuilder::new();
         let sections: Vec<Vec<Vec3>> = [x0, xm, x1]
             .into_iter()
             .map(|x| {
@@ -256,12 +298,15 @@ fn build_ailerons_and_trims(prims: &mut Vec<P38MeshPrim>) {
                 )
             })
             .collect();
-        mesh.loft(&sections, true, Inside::Axis);
-
         let rest = DMat4::from_translation(DVec3::new(f64::from(xm), f64::from(hy), f64::from(hz)));
-        let mut prim = part(&format!("/P38g/Wing/{name}"), role, OLIVE_DRAB, rest, mesh);
-        prim.custom_hinge_axis = Some(axis);
-        prims.push(prim);
+        push_two_tone(
+            prims,
+            &format!("/P38g/Wing/{name}"),
+            role,
+            rest,
+            &sections,
+            Some(axis),
+        );
 
         let mut tab = MeshBuilder::new();
         tab.cuboid(
@@ -271,7 +316,7 @@ fn build_ailerons_and_trims(prims: &mut Vec<P38MeshPrim>) {
         let mut tab_prim = part(
             &format!("/P38g/Wing/{trim_name}"),
             P38PartRole::CabinExterior,
-            INSIGNIA_RED,
+            OLIVE_DRAB,
             rest,
             tab,
         );
@@ -289,7 +334,6 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
     // The `20 in` elevator aft of the hinge, tip to tip; it narrows to nothing where the
     // semicircular tips close ahead of the hinge.
     let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
-    let mut elev = MeshBuilder::new();
     let e_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
         .iter()
         .filter_map(|&bl| {
@@ -304,14 +348,14 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
             ))
         })
         .collect();
-    elev.loft(&e_sections, true, Inside::Axis);
-    prims.push(part(
+    push_two_tone(
+        prims,
         "/P38g/Empennage/Elevator",
         P38PartRole::Elevator,
-        OLIVE_DRAB,
         elev_rest,
-        elev,
-    ));
+        &e_sections,
+        None,
+    );
 
     // One trim tab across the centre: `47.686 in` span, `5.25 in` chord (AN 01-75F-2).
     let mut elev_tabs = MeshBuilder::new();
@@ -324,7 +368,7 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
     prims.push(part(
         "/P38g/Empennage/ElevatorTrimTab",
         P38PartRole::CabinExterior,
-        INSIGNIA_RED,
+        OLIVE_DRAB,
         elev_rest,
         elev_tabs,
     ));
@@ -366,7 +410,7 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         prims.push(part(
             &format!("/P38g/Empennage/{name}TrimTab"),
             P38PartRole::CabinExterior,
-            INSIGNIA_RED,
+            OLIVE_DRAB,
             r_rest,
             r_tab,
         ));

@@ -440,3 +440,36 @@ fn the_nose_number_reads_the_same_from_either_side() {
         }
     }
 }
+
+/// Flaps, ailerons, elevator and stabiliser carry the factory scheme like the wing: olive
+/// drab on top, neutral gray underneath. Trim tabs are painted with their surface (no
+/// source shows red tabs on a P-38G-13).
+#[test]
+fn control_surfaces_are_olive_drab_over_neutral_gray() {
+    let prims = p38g_mesh_prims();
+    let colour = |path: &str| {
+        prims
+            .iter()
+            .find(|p| p.prim_path == path)
+            .map(|p| p.material.diffuse_rgb)
+            .unwrap_or_else(|| panic!("no prim {path}"))
+    };
+    let (olive, gray) = (
+        colour("/P38g/Wing/UpperOlive"),
+        colour("/P38g/Wing/LowerGray"),
+    );
+    for surface in [
+        "/P38g/Wing/FlapInboardLeft",
+        "/P38g/Wing/FlapOutboardRight",
+        "/P38g/Wing/AileronLeft",
+        "/P38g/Wing/AileronRight",
+        "/P38g/Empennage/Elevator",
+        "/P38g/Empennage/HorizontalTail",
+    ] {
+        assert_eq!(colour(surface), olive, "{surface}");
+        assert_eq!(colour(&format!("{surface}Underside")), gray, "{surface}");
+    }
+    for tab in prims.iter().filter(|p| p.prim_path.contains("TrimTab")) {
+        assert_eq!(tab.material.diffuse_rgb, olive, "{}", tab.prim_path);
+    }
+}
