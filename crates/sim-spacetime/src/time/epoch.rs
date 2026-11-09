@@ -8,6 +8,9 @@ use super::{SimClockAdapter, TdbEpoch, TimeError, TimeScaleCatalog, Ut1Sample};
 use crate::clock::SimInstant;
 use crate::hash::{ContentHash, DomainHasher};
 
+/// `TT - TAI`, seconds (exact by definition).
+const TT_MINUS_TAI_S: f64 = 32.184;
+
 /// Where a run's [`SimInstant::START`] sits in absolute time, and the
 /// time-scale record that names it in UTC and UT1.
 ///
@@ -59,6 +62,14 @@ impl SimEpoch {
     #[must_use]
     pub fn tdb_at(&self, instant: SimInstant) -> TdbEpoch {
         self.clock.instant_to_tdb(instant)
+    }
+
+    /// Terrestrial Time at `instant`, seconds past `J2000.0 TT`: the scale
+    /// clock rates near Earth are referred to, which departs from TDB by an
+    /// annual term of up to 1.7 ms.
+    #[must_use]
+    pub fn tt_j2000_seconds_at(&self, instant: SimInstant) -> f64 {
+        self.scales.tdb_to_tai_j2000_seconds(self.tdb_at(instant)) + TT_MINUS_TAI_S
     }
 
     /// UTC at `instant`.

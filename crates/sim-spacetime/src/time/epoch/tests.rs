@@ -86,3 +86,28 @@ fn epochs_compare_by_anchor_and_record() {
     assert_ne!(a, c);
     assert_ne!(a.content_hash(), c.content_hash());
 }
+
+#[test]
+fn tt_runs_with_tdb_to_within_its_annual_term() {
+    let epoch = SimEpoch::builtin_from_utc(UtcTime::from_unix_seconds(MID_2026_UTC_UNIX_S));
+    let Ok(epoch) = epoch else {
+        panic!("builtin epoch: {epoch:?}");
+    };
+    let start_tt = epoch.tt_j2000_seconds_at(SimInstant::START);
+    let start_tdb = epoch.tdb_at(SimInstant::START).as_j2000_seconds_f64();
+    assert!(
+        (start_tdb - start_tt).abs() < 1.7e-3,
+        "TDB - TT {}",
+        start_tdb - start_tt
+    );
+    let day_tt = epoch.tt_j2000_seconds_at(after_seconds(86_400)) - start_tt;
+    // TDB - TT changes by at most 2π·1.657 ms/yr ≈ 28.5 µs a day.
+    assert!(
+        (day_tt - 86_400.0).abs() < 3e-5,
+        "one TDB day is {day_tt} s of TT"
+    );
+    assert!(
+        (day_tt - 86_400.0).abs() > 0.0,
+        "TT must not simply copy TDB"
+    );
+}

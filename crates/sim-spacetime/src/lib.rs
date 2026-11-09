@@ -1,5 +1,6 @@
 //! Spacetime foundation for `Simulate`: master simulation clock (`SimInstant`, `TickSpan`),
-//! astronomical time scales (`TdbEpoch`, `TimeScaleCatalog`, `SimClockAdapter`),
+//! astronomical time scales (`TdbEpoch`, `TimeScaleCatalog`, `SimClockAdapter`, `SimEpoch`),
+//! relativistic proper time of moving clocks (`ClockPotential`, `ProperTimeClock`),
 //! coordinate frame identities and transforms (`FramedState`, `SynodicFrame`, `SensorMount`),
 //! propagator-agnostic trajectory query contracts (`TranslationalTrajectorySource`,
 //! `AttitudeTrajectorySource`, `VehicleInternalStateSource`), dataset provenance
@@ -13,6 +14,7 @@ mod ids;
 mod kpl;
 mod mount;
 mod provenance;
+mod relativity;
 mod scalar_math;
 mod synodic;
 mod terrain;
@@ -41,6 +43,9 @@ pub use mount::{MountedKinematics, SensorMount};
 pub use provenance::{DataProvenance, ValidEpochInterval};
 #[cfg(feature = "world-mbd-bridges")]
 pub use provenance::{DataProvenanceWorldExt, ValidEpochIntervalWorldExt};
+pub use relativity::{
+    ClockPotential, L_G, ProperTimeClock, SPEED_OF_LIGHT_M_S, orbit_periodic_clock_term_s,
+};
 pub use scalar_math::{
     acos_clamped, asin_clamped, atan2, body_ellipsoid_serde, clamp_vec_norm, cos, exp, ln,
     mul_add_unfused, powf, quat_from_wire_xyzw, quat_geodesic_angle_rad, quat_normalize_portable,
