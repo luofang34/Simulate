@@ -363,6 +363,25 @@
         </pow>
       </product>
     </function>
+    <function name="aero/function/qbar-slip-psf">
+      <description>Mean dynamic pressure over the parts in the slipstream: free stream
+        plus 1.5 times the disk's induced velocity, between the disk (1) and the
+        far wake (2)</description>
+      <product>
+        <value> 0.5 </value>
+        <property>atmosphere/rho-slugs_ft3</property>
+        <pow>
+          <sum>
+            <property>velocities/u-aero-fps</property>
+            <product>
+              <value> 1.5 </value>
+              <property>propulsion/engine[0]/prop-induced-velocity_fps</property>
+            </product>
+          </sum>
+          <value> 2 </value>
+        </pow>
+      </product>
+    </function>
     <axis name="LIFT">
       <function name="aero/force/lift">
         <description>NACA 2412 wing-body lift through stall plus single-slotted flap
@@ -460,6 +479,23 @@
             </table>
             <product> <value> 0.160000 </value> <property>aero/beta-rad</property> <property>aero/beta-rad</property> </product>
           </sum>
+        </product>
+      </function>
+      <function name="aero/force/drag_slipstream">
+        <description>Added drag of the parts washed by the slipstream (NACA TR 640
+          p. 23, TR 684 p. 10): their drag area times the slipstream's dynamic
+          pressure in excess of the free stream. Drag area 2.9 ft2 from a component
+          build-up: fuselage and cowl 1.4, nose gear and the mains' washed share 0.6,
+          wing roots 0.3, strut roots 0.05, tail 0.3, cooling 0.3.</description>
+        <product>
+          <value> 2.9 </value>
+          <max>
+            <value> 0 </value>
+            <difference>
+              <property>aero/function/qbar-slip-psf</property>
+              <property>aero/qbar-psf</property>
+            </difference>
+          </max>
         </product>
       </function>
     </axis>
