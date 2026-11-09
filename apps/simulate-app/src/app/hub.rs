@@ -22,6 +22,7 @@ use crate::map_rig::{AvionicsPreset, ScenerySource};
 use crate::vehicles::FreeFlightVehicle;
 
 mod globe;
+mod overlay_defaults;
 mod spawn;
 #[cfg(test)]
 mod tests;
@@ -49,7 +50,7 @@ pub struct HubSettings {
     /// What a held left button is dragging.
     pub drag: Option<super::pointer::PointerDrag>,
     /// The airframe whose default overlays the cockpit last took.
-    pub overlays_for: Option<FreeFlightVehicle>,
+    pub overlays: overlay_defaults::OverlayDefaults,
 }
 
 impl HubSettings {
@@ -66,19 +67,8 @@ impl HubSettings {
             command: false,
             hint_s: 0.0,
             drag: None,
-            overlays_for: None,
+            overlays: overlay_defaults::OverlayDefaults::default(),
         }
-    }
-}
-
-/// `[glass dock, conformal HUD]` a cockpit opens with on `vehicle` fitted with
-/// `layout`: a period airframe shows neither.
-#[must_use]
-pub const fn default_overlays(vehicle: FreeFlightVehicle, layout: AvionicsLayout) -> [bool; 2] {
-    if vehicle.period_cockpit() {
-        [false, false]
-    } else {
-        [!matches!(layout, AvionicsLayout::HudOnly), true]
     }
 }
 
@@ -145,17 +135,18 @@ impl FlightApp {
     /// Gives the cockpit the flown airframe's default overlays when the airframe
     /// changes; toggles made since are kept until the next change.
     pub(super) fn apply_vehicle_overlays(&mut self) {
-        let (Some(vehicle), Some(rig)) = (self.flight.free_vehicle(), self.cockpit_rig.as_mut())
-        else {
+        let Some(rig) = self.cockpit_rig.as_mut() else {
             return;
         };
-        if self.hub.overlays_for == Some(vehicle) {
-            return;
+        let airframe = self.flight.free_vehicle();
+        if let Some([dock, hud]) = self
+            .hub
+            .overlays
+            .on_airframe(airframe, &mut self.hub.layout)
+        {
+            rig.set_show_instruments(dock);
+            rig.set_show_conformal_hud(hud);
         }
-        self.hub.overlays_for = Some(vehicle);
-        let [dock, hud] = default_overlays(vehicle, self.hub.layout);
-        rig.set_show_instruments(dock);
-        rig.set_show_conformal_hud(hud);
     }
 
     pub(super) fn after_spawn(&mut self) {

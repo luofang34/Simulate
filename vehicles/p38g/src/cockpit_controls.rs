@@ -55,7 +55,7 @@ pub(crate) fn cockpit_control_prims() -> Vec<P38MeshPrim> {
 /// The girder rises from its starboard pivot, turns inboard above the pilot's
 /// knee and carries the bow-tie wheel: a grip loop either side of the hub.
 fn control_wheel(steel: &mut MeshBuilder, grips: &mut MeshBuilder) {
-    let pivot = Vec3::from_array(p38g_cockpit_contract().control_column_floor_socket_m);
+    let pivot = Vec3::from_array(p38g_cockpit_contract().control_girder_pivot_m);
     let elbow = Vec3::new(pivot.x - 0.04, WHEEL_HUB.y + 0.02, WHEEL_HUB.z - 0.06);
     polyline(
         steel,

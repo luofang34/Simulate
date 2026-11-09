@@ -7,7 +7,7 @@
 //!   (`FS 0..248` central gondola, `BS 0..428` twin booms, `WS 0..312` cambered `NACA 23016 -> 4412`
 //!   wing, and `WL -14..+62` vertical fins),
 //! - [`cockpit_reservation`]: Reserved 3D cockpit station contract (`FS 86` instrument panel mount,
-//!   optical reflector gunsight mount, spectacles control column socket, left engine/feathering
+//!   optical reflector gunsight mount, starboard control-girder pivot, left engine/feathering
 //!   quadrant, right flap/cooling console, `FS 154` pilot armor bulkhead, and `FS 182` radio bay),
 //! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, 24 individual
 //!   exhaust ejector stacks, recessed dorsal GE B-13 turbosuperchargers, wing leading-edge

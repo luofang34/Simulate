@@ -1,10 +1,10 @@
 //! Reserved 3D cockpit station architecture (`FS 86..182`) and interior geometry
 //! for the Lockheed P-38G-13-LO Lightning (`T.O. 01-75F-1`).
 //!
-//! While full clickable 3D gauge needles are deferred, this module defines the exact
-//! structural bulkheads, instrument panel projection quad, gunsight mount, control
-//! column socket, and side-console envelopes so a high-detail cockpit sub-stage or
-//! `Indicate` 3D panel texture can bind directly without altering the exterior airframe.
+//! The contract fixes the structural bulkheads, the design eyepoint, the instrument
+//! panel plane the gauges mount on, the gunsight mount, the control-girder pivot and
+//! the side-console envelopes, so interior detail binds to them without altering the
+//! exterior airframe.
 
 use glam::Vec3;
 
@@ -60,7 +60,7 @@ pub struct CockpitInteriorContract {
     pub right_flap_cooling_console: PanelMountFrame,
     /// Pivot `(x, y, z)` of the control girder on the starboard cockpit wall,
     /// which swings the bow-tie control wheel in front of the pilot.
-    pub control_column_floor_socket_m: [f32; 3],
+    pub control_girder_pivot_m: [f32; 3],
     /// Structural fuselage bulkheads bounding the armament, wheel well, cockpit, and radio bays.
     pub bulkheads: &'static [StationBulkheadSpec],
 }
@@ -137,7 +137,7 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
             height_m: 0.64,
             tilt_deg: 0.0,
         },
-        control_column_floor_socket_m: [0.36, 0.86, -0.06],
+        control_girder_pivot_m: [0.36, 0.86, -0.06],
         bulkheads: P38G_BULKHEADS,
     }
 }

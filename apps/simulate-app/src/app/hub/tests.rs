@@ -1,4 +1,5 @@
-use super::{default_overlays, shown_layout};
+use super::overlay_defaults::OverlayDefaults;
+use super::shown_layout;
 use crate::esc_menu::AvionicsLayout;
 use crate::map_rig::AvionicsPreset;
 use crate::vehicles::FreeFlightVehicle;
@@ -57,18 +58,32 @@ fn every_listed_runway_end_of_a_database_airport_resolves_in_its_surface_graph()
 }
 
 #[test]
-fn a_period_fighter_opens_without_hud_or_glass_and_the_c172_gets_them_back() {
+fn a_period_fighter_opens_without_hud_or_glass_and_leaving_it_restores_the_fit() {
     use AvionicsLayout::{FullGlass, HudOnly};
+    use FreeFlightVehicle::{JsbsimC172, JsbsimP38g};
+    let mut defaults = OverlayDefaults::default();
+    let mut layout = FullGlass;
     assert_eq!(
-        default_overlays(FreeFlightVehicle::JsbsimP38g, FullGlass),
-        [false, false]
+        defaults.on_airframe(Some(JsbsimC172), &mut layout),
+        Some([true, true])
     );
+    assert_eq!(defaults.on_airframe(Some(JsbsimC172), &mut layout), None);
     assert_eq!(
-        default_overlays(FreeFlightVehicle::JsbsimC172, FullGlass),
-        [true, true]
+        defaults.on_airframe(Some(JsbsimP38g), &mut layout),
+        Some([false, false])
     );
+    // A hotkey in the P-38 mirrors its hidden dock into the hub as HUD only.
+    layout = HudOnly;
     assert_eq!(
-        default_overlays(FreeFlightVehicle::JsbsimC172, HudOnly),
-        [false, true]
+        defaults.on_airframe(None, &mut layout),
+        Some([true, true]),
+        "a scenario after the P-38 gets the fit flown before it"
+    );
+    assert_eq!(layout, FullGlass);
+    layout = HudOnly;
+    assert_eq!(
+        defaults.on_airframe(Some(JsbsimC172), &mut layout),
+        None,
+        "a pilot's own fit carries between modern airframes"
     );
 }
