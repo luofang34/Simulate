@@ -21,8 +21,8 @@ use navigate_camera::{CameraMount as NavigateMount, ImagerModel};
 use navigate_contract::{NavigationSolution, SourceEpoch, SourceId, WrappingSequence};
 use navigate_fusion::IngestOutcome;
 use navigate_startrack::{
-    AttitudePrior, IdentifyConfig, IdentifyMode, PairCatalogue, SolveConfig, identify_stars,
-    line_of_sight_observations, solve_attitude,
+    AttitudePrior, IdentifyConfig, IdentifyMode, PairCatalogue, SolveConfig, StarTracker,
+    TrackerConfig, identify_stars, line_of_sight_observations, solve_attitude,
 };
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::ImuGrade;
@@ -144,20 +144,21 @@ impl Flown {
 }
 
 /// The navigator side of the star camera: the declared camera models, the
-/// lost-in-space table, and the prior held from mid-exposure until the image
-/// is read out.
+/// lost-in-space table, the prior held from mid-exposure until the image is
+/// read out, and Navigate's tracker, which chooses between that prior and
+/// lost-in-space.
 #[cfg(test)]
-struct StarTracker<'a> {
+struct StarSighting<'a> {
     imager: ImagerModel,
     mount: NavigateMount,
     pairs: &'a PairCatalogue,
     next: WrappingSequence,
     held_prior: Option<AttitudePrior>,
-    locked: bool,
+    tracker: StarTracker,
 }
 
 #[cfg(test)]
-impl<'a> StarTracker<'a> {
+impl<'a> StarSighting<'a> {
     fn new(pairs: &'a PairCatalogue) -> Self {
         let (mount, cg_body_m) = sim_mount();
         Self {
@@ -166,19 +167,17 @@ impl<'a> StarTracker<'a> {
             pairs,
             next: WrappingSequence::new(0),
             held_prior: None,
-            locked: false,
+            tracker: StarTracker::new(TrackerConfig::default()).unwrap(),
         }
     }
 
-    /// At mid-exposure: the navigator's own attitude belief, once a frame
-    /// has locked the tracker onto the sky; before that there is none.
+    /// At mid-exposure: the navigator's own attitude belief. The tracker
+    /// uses it only while it holds a lock and the belief is narrow.
     fn hold_prior(&mut self, navigator: &mut InertialNavigator, at: SimInstant) {
-        self.held_prior = self
-            .locked
-            .then(|| own_prior(&navigator.solution(at).unwrap().unwrap()));
+        self.held_prior = Some(own_prior(&navigator.solution(at).unwrap().unwrap()));
     }
 
-    /// At readout: sights `frame`, lost in space while unlocked, and offers
+    /// At readout: sights `frame` in the mode the tracker chooses, and offers
     /// every line of sight stamped at mid-exposure.
     fn aid(
         &mut self,
@@ -188,14 +187,9 @@ impl<'a> StarTracker<'a> {
         flown: &mut Flown,
     ) {
         let first = flown.frames_solved + flown.frames_unsolved == 0;
-        let mode = match self.held_prior.take() {
-            Some(prior) => IdentifyMode::Prior(prior),
-            None => {
-                flown.lost_in_space_tried += 1;
-                IdentifyMode::LostInSpace(self.pairs)
-            }
-        };
+        let mode = self.tracker.mode(self.held_prior.take(), self.pairs);
         let lost = matches!(mode, IdentifyMode::LostInSpace(_));
+        flown.lost_in_space_tried += u64::from(lost);
         let solved = identify_stars(
             &frame.centroids,
             &self.imager,
@@ -215,6 +209,7 @@ impl<'a> StarTracker<'a> {
             )
         });
         let streak_px = *frame.streak_px.get();
+        self.tracker.record(solved.is_ok());
         let Ok(sighting) = solved else {
             flown.frames_unsolved += 1;
             let shortest = flown.shortest_unsolved_streak_px.get_or_insert(streak_px);
@@ -225,7 +220,6 @@ impl<'a> StarTracker<'a> {
         flown.frames_solved += 1;
         flown.lost_in_space_solved += u64::from(lost);
         flown.first_frame_solved |= first;
-        self.locked = true;
         let clock = MasterClockBridge::default();
         let stamp = clock
             .stamp(STAR_SOURCE, SourceEpoch::new(0), self.next, frame.mid)
@@ -261,7 +255,7 @@ fn fly(
         .unwrap();
     assert!(imu.sense(start, &initial).unwrap().is_none());
     let (frames, pairs) = frames.map_or((&[][..], None), |(f, p)| (f, Some(p)));
-    let mut tracker = pairs.map(StarTracker::new);
+    let mut tracker = pairs.map(StarSighting::new);
     let mut opening = frames.iter().peekable();
     let mut reading = frames.iter().peekable();
     let mut flown = Flown::default();
@@ -385,6 +379,12 @@ fn stars_bound_attitude_through_the_aggressive_bank() {
     );
     // The bank turns the camera fast enough to smear most frames away.
     assert!(aided.iter().all(|flown| flown.frames_unsolved > 0));
+    // After each run of smeared frames the tracker drops the inertial prior
+    // and finds the sky again by lost-in-space, not only at the start.
+    assert!(
+        aided.iter().all(|flown| flown.lost_in_space_solved > 1),
+        "{aided:?}"
+    );
 }
 
 /// The same bank with the camera held at its mid-exposure pose, to show
