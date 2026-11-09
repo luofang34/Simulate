@@ -46,8 +46,10 @@
     </pointmass>
   </mass_balance>
   <ground_reactions>
-    <!-- Wheelbase 65 in (POH Figure 1-1): nose axle FS -6.8, main axles FS 57.6.
-         The nose wheel steers 10 degrees through the rudder pedals. -->
+    <!-- Wheel contacts at the POH Figure 6-9 equipment arms: nose wheel and tire
+         FS -6.8 (item 32-02-R), main wheel and tire FS 58.2 (item 32-01-R), the
+         65.0 in wheelbase of Figure 1-1 note 2. The nose wheel steers 10 degrees
+         through the rudder pedals. -->
     <contact type="BOGEY" name="NOSE">
       <location unit="IN"> <x> 72.08 </x> <y> 0.0000 </y> <z> -51.1811 </z> </location>
       <static_friction> 0.8 </static_friction>
@@ -61,7 +63,7 @@
       <retractable> 0 </retractable>
     </contact>
     <contact type="BOGEY" name="LEFT_MAIN">
-      <location unit="IN"> <x> 136.48 </x> <y> -50.2500 </y> <z> -51.1811 </z> </location>
+      <location unit="IN"> <x> 137.08 </x> <y> -50.2500 </y> <z> -51.1811 </z> </location>
       <static_friction> 0.8 </static_friction>
       <dynamic_friction> 0.5 </dynamic_friction>
       <rolling_friction> 0.02 </rolling_friction>
@@ -73,7 +75,7 @@
       <retractable> 0 </retractable>
     </contact>
     <contact type="BOGEY" name="RIGHT_MAIN">
-      <location unit="IN"> <x> 136.48 </x> <y> 50.2500 </y> <z> -51.1811 </z> </location>
+      <location unit="IN"> <x> 137.08 </x> <y> 50.2500 </y> <z> -51.1811 </z> </location>
       <static_friction> 0.8 </static_friction>
       <dynamic_friction> 0.5 </dynamic_friction>
       <rolling_friction> 0.02 </rolling_friction>
@@ -450,19 +452,22 @@
     </axis>
     <axis name="DRAG">
       <function name="aero/force/drag">
-        <description>Parasite (with speed fairings 0.0294; their removal adds 0.0018,
+        <description>Parasite (with speed fairings 0.0295; their removal adds 0.0018,
           the POH's 2 kt), induced (reduced in ground effect), post-stall, flap
-          and sideslip drag</description>
+          and sideslip drag. Parasite and induced factor (0.0631, e 0.67) are fitted
+          with the propeller's blade angle to the POH climbs, cruise speeds and
+          fuel flows; Lowry's sawtooth and glide tests give e 0.72 for a C172P,
+          for reference.</description>
         <product>
           <property>aero/qbar-psf</property>
           <property>metrics/Sw-sqft</property>
           <sum>
-            <value> 0.029400 </value>
+            <value> 0.029500 </value>
             <product>
               <value> 0.0018 </value>
               <difference> <value> 1 </value> <property>systems/wheel-fairings-installed</property> </difference>
             </product>
-            <product> <value> 0.059500 </value> <property>aero/cl-squared</property> <property>aero/function/kCDge</property> </product>
+            <product> <value> 0.063100 </value> <property>aero/cl-squared</property> <property>aero/function/kCDge</property> </product>
             <table>
               <independentVar lookup="row">aero/alpha-rad</independentVar>
               <tableData>

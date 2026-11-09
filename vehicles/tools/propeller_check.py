@@ -5,11 +5,14 @@
    (Hartman & Biermann 1938) in the attached range, and still shows its known
    static power deficit; if a model change removes the deficit, this check
    fails so the documented limitation is revisited rather than left stale.
-2. Every shipped propeller table regenerates exactly from its design JSON.
+2. Every shipped propeller table regenerates exactly from its design JSON, and
+   a fixed-pitch table's Ct and Cp fall with J past the static column except
+   for steps its vehicle's performance/validation.json records as known.
 
 Usage: propeller_check.py   (exit status 1 on any failure)
 """
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -86,8 +89,29 @@ def normalised(text):
     return [line.split() for line in text.strip().splitlines()]
 
 
+def check_monotone(table):
+    """A fixed-pitch blade's Ct and Cp fall with J once past the static column;
+    a table edit or correction must not add a step up."""
+    rows = [tuple(map(float, row)) for row in table]
+    return [f"rises from J {a[0]:.2f} to {b[0]:.2f}" for a, b in zip(rows, rows[1:])
+            if 0.1 <= a[0] and b[1] > a[1] + 0.0005 and a[1] > 0.0]
+
+
 def check_regeneration():
     failures = []
+    steps = []
+    c172 = os.path.join(ROOT, "vehicles", "c172")
+    xml = open(os.path.join(c172, "fdm", "c172_class_reference.xml")).read()
+    spec = os.path.join(c172, "design", "mccauley_1a170e_jha7660.json")
+    for what, name in (("ct1", "C_THRUST"), ("cp1", "C_POWER")):
+        table = normalised(tool_output("propeller_measured.py", spec, what))
+        if table != normalised(table_body(xml, name, 0)):
+            failures.append(f"c172 {name} does not regenerate from {spec}")
+        steps += [f"c172 {name} {step}" for step in check_monotone(table)]
+    record = json.load(open(os.path.join(c172, "performance", "validation.json")))
+    known = sorted(record.get("known_table_steps", []))
+    if sorted(steps) != known:
+        failures.append(f"c172 table steps {sorted(steps)} differ from the recorded {known}")
     p38g = os.path.join(ROOT, "vehicles", "p38g")
     xml = open(os.path.join(p38g, "fdm", "p38g.xml")).read()
     spec = os.path.join(p38g, "design", "curtiss_electric_3b.json")
