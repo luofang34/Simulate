@@ -5,7 +5,10 @@ use std::f32::consts::TAU;
 
 use glam::{DMat4, DVec3, Vec3};
 
-use crate::drawing::{INCH_M, MAIN_AXLE_FS_IN, MAIN_TREAD_IN, NOSE_AXLE_FS_IN, NOSE_Y_M};
+use crate::drawing::{
+    FRL_ABOVE_GROUND_NOSE_STATIC_IN, FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN,
+    MAIN_AXLE_FS_IN, MAIN_TREAD_IN, NOSE_AXLE_FS_IN, NOSE_ROLLING_RADIUS_IN, NOSE_Y_M,
+};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
 use crate::stations::{BOOM_X, CHROME_OLEO, NEUTRAL_GRAY, TIRE_RUBBER, WHEEL_WELL_ZINC};
 
@@ -13,6 +16,20 @@ use crate::stations::{BOOM_X, CHROME_OLEO, NEUTRAL_GRAY, TIRE_RUBBER, WHEEL_WELL
 const NOSE_AXLE_Y: f32 = NOSE_Y_M - NOSE_AXLE_FS_IN * INCH_M;
 /// Main axle: centre of the dashed main tyre on the AN 01-75F-2 side view.
 const MAIN_AXLE_Y: f32 = NOSE_Y_M - MAIN_AXLE_FS_IN * INCH_M;
+/// Main axle height at the static oleo: `54.575 in` below the fuselage reference line
+/// (AN 01-75F-2 front view), so the `15.3 in` static rolling radius puts the ground `69.9 in`
+/// below it.
+const MAIN_AXLE_Z: f32 = FRL_Z_M - MAIN_AXLE_BELOW_FRL_STATIC_IN * INCH_M;
+/// Nose axle height at the static oleo: the reference line is `69.970 in` above the ground
+/// at the nose gear (AN 01-75F-2 side view), less the `11.6 in` static rolling radius. The
+/// two gear give the same reference-line height, so the airframe sits level.
+const NOSE_AXLE_Z: f32 =
+    FRL_Z_M - (FRL_ABOVE_GROUND_NOSE_STATIC_IN - NOSE_ROLLING_RADIUS_IN) * INCH_M;
+/// Main and nose tyres: `36 in` and `27 in` (AN 01-75F-2).
+const MAIN_TYRE_DIAMETER_IN: f32 = 36.0;
+const NOSE_TYRE_DIAMETER_IN: f32 = 27.0;
+/// Where the oleo struts leave the gear wells.
+const STRUT_TOP_Z: f32 = -0.36;
 /// Main tyre centre off the ship centreline: half the `198 in` tread.
 const MAIN_HALF_TREAD_M: f32 = 0.5 * MAIN_TREAD_IN * INCH_M;
 
@@ -36,12 +53,16 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
         wells,
     ));
 
-    let nose_rest = DMat4::from_translation(DVec3::new(0.0, f64::from(NOSE_AXLE_Y - 0.08), -0.36));
+    let nose_rest = DMat4::from_translation(DVec3::new(
+        0.0,
+        f64::from(NOSE_AXLE_Y - 0.08),
+        f64::from(STRUT_TOP_Z),
+    ));
     let mut n_strut = MeshBuilder::new();
     n_strut.tube(Vec3::ZERO, Vec3::new(0.0, 0.06, -0.82), 0.044, 0.036, 12);
     n_strut.tube(
         Vec3::new(0.0, 0.06, -0.82),
-        Vec3::new(0.06, 0.08, -1.36),
+        Vec3::new(0.06, 0.08, NOSE_AXLE_Z - STRUT_TOP_Z),
         0.032,
         0.028,
         12,
@@ -67,8 +88,8 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
         prims,
         "/P38g/Gear/NoseWheel",
         P38PartRole::NoseWheel,
-        DVec3::new(0.0, f64::from(NOSE_AXLE_Y), -1.72),
-        0.34,
+        DVec3::new(0.0, f64::from(NOSE_AXLE_Y), f64::from(NOSE_AXLE_Z)),
+        0.5 * NOSE_TYRE_DIAMETER_IN * INCH_M,
         0.10,
     );
 }
@@ -95,7 +116,13 @@ pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
             -0.36,
         ));
         let mut m_strut = MeshBuilder::new();
-        m_strut.tube(Vec3::ZERO, Vec3::new(0.0, -0.04, -1.24), 0.056, 0.044, 14);
+        m_strut.tube(
+            Vec3::ZERO,
+            Vec3::new(0.0, -0.04, MAIN_AXLE_Z - STRUT_TOP_Z),
+            0.056,
+            0.044,
+            14,
+        );
         m_strut.tube(
             Vec3::new(0.0, -0.58, -0.06),
             Vec3::new(0.0, -0.02, -0.78),
@@ -118,8 +145,12 @@ pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
             prims,
             &format!("/P38g/Gear/{w_name}"),
             w_role,
-            DVec3::new(f64::from(bx), f64::from(MAIN_AXLE_Y), -1.60),
-            0.46,
+            DVec3::new(
+                f64::from(bx),
+                f64::from(MAIN_AXLE_Y),
+                f64::from(MAIN_AXLE_Z),
+            ),
+            0.5 * MAIN_TYRE_DIAMETER_IN * INCH_M,
             0.15,
         );
     }

@@ -84,11 +84,15 @@
     </mass_balance>
 
     <ground_reactions>
+        <!-- Bogey z: AN 01-75F-2 puts the fuselage reference line 69.97 in above the ground
+             at the nose gear and 54.575 + 15.300 in at the mains with the oleos static, so the
+             airframe sits level with this reference point (the visual model's origin, 1.57 in
+             below the thrust line) 73.4 in up: -76.5 less the 3.1 in static compression. -->
         <contact type="BOGEY" name="NOSE">
             <location unit="IN">
                 <x>  34.0 </x>
                 <y>   0.0 </y>
-                <z> -74.0 </z>
+                <z> -76.5 </z>
             </location>
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>
@@ -104,7 +108,7 @@
             <location unit="IN">
                 <x> 148.0 </x>
                 <y> -98.0 </y>
-                <z> -74.0 </z>
+                <z> -76.5 </z>
             </location>
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>
@@ -120,7 +124,7 @@
             <location unit="IN">
                 <x> 148.0 </x>
                 <y>  98.0 </y>
-                <z> -74.0 </z>
+                <z> -76.5 </z>
             </location>
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>

@@ -24,6 +24,7 @@ fn drawn_fin_top_frl_in() -> f32 {
 #[test]
 fn built_mesh_measures_to_the_an01_75f_2_callouts() {
     let r = verify_p38g_three_view_and_stations();
+    let ground = -(d::MAIN_AXLE_BELOW_FRL_STATIC_IN + d::MAIN_ROLLING_RADIUS_IN);
     let checks = [
         ("span", r.span_in, d::SPAN_IN, 1.0),
         ("length", r.length_in, d::OVERALL_LENGTH_IN, 1.5),
@@ -39,6 +40,20 @@ fn built_mesh_measures_to_the_an01_75f_2_callouts() {
         ("main tread", r.main_tread_in, d::MAIN_TREAD_IN, 1.0),
         ("nose axle", r.nose_axle_fs_in, d::NOSE_AXLE_FS_IN, 1.5),
         ("main axle", r.main_axle_fs_in, d::MAIN_AXLE_FS_IN, 1.5),
+        (
+            "main axle height",
+            r.main_axle_frl_in,
+            -d::MAIN_AXLE_BELOW_FRL_STATIC_IN,
+            0.5,
+        ),
+        // The round 36 in tyre reaches 2.7 in below the static ground: the deflection
+        // the drawing's 15.3 in rolling radius implies.
+        (
+            "tyre static deflection",
+            ground - r.tyre_bottom_frl_in,
+            18.0 - d::MAIN_ROLLING_RADIUS_IN,
+            0.5,
+        ),
         ("fin top", r.fin_top_frl_in, drawn_fin_top_frl_in(), 1.5),
         ("tailplane span", r.stab_span_in, d::STAB_SPAN_IN, 1.0),
         (
