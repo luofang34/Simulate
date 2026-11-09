@@ -41,6 +41,21 @@ impl NavMeans {
         Self::Gnss,
     ];
 
+    /// The smallest set of means that can be evaluated as `self` on its own.
+    ///
+    /// Every means is its own unit except [`Self::Celestial`], which comes
+    /// with [`Self::DeadReckoning`]. A star sighting measures a direction
+    /// only: it fixes attitude, heading included, and nothing of position,
+    /// so without an inertial propagator there is no navigation solution to
+    /// score. Celestial-alone therefore means star sightings aiding an INS,
+    /// and its gain is read against dead reckoning alone.
+    pub const fn minimal_unit(self) -> AblationSet {
+        match self {
+            Self::Celestial => AblationSet::only(Self::DeadReckoning).with(Self::Celestial),
+            other => AblationSet::only(other),
+        }
+    }
+
     const fn bit(self) -> u16 {
         1 << self as u16
     }
@@ -62,6 +77,12 @@ impl AblationSet {
     /// `means` alone.
     pub const fn only(means: NavMeans) -> Self {
         Self(means.bit())
+    }
+
+    /// The set that evaluates `means` on its own: its
+    /// [`NavMeans::minimal_unit`].
+    pub const fn standalone(means: NavMeans) -> Self {
+        means.minimal_unit()
     }
 
     /// This set and `means`.
@@ -90,7 +111,8 @@ impl AblationSet {
 /// What produced an output: one means on its own, or a fusion of a set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NavigationOrigin {
-    /// One means without fusion.
+    /// One means without fusion beyond its [`NavMeans::minimal_unit`]:
+    /// celestial is scored as star sightings aiding dead reckoning.
     Standalone(NavMeans),
     /// A filter fed only from the set's means.
     Fused(AblationSet),

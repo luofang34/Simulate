@@ -72,5 +72,8 @@ pub use inertial::{
     AlignmentFix, InertialNavigator, InitialAlignment, SimulatedImu, TruthGravity, ideal_increment,
     inertial_config,
 };
-pub use truth::{TruthComparison, compare_with_truth, solution_position_ecef};
+pub use truth::{
+    AttitudeComparison, TruthComparison, compare_attitude_with_truth, compare_with_truth,
+    solution_position_ecef,
+};
 pub use visual_fix::{FixDisposition, VisualFixAdapter, VisualFixConfig};

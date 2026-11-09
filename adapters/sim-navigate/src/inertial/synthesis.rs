@@ -47,24 +47,40 @@ impl TruthGravity {
 }
 
 /// The rotation vector of `rotation`, taking the short way round.
-fn rotation_vector(rotation: DQuat) -> DVec3 {
+///
+/// The angle comes from `atan2(|v|, w)` rather than from `acos(w)`, which
+/// loses about half its digits near the identity: an Earth-rate step of
+/// 6e-7 rad would carry a 1e-4 relative error, a spurious rate the size of a
+/// navigation-grade gyro bias.
+pub(crate) fn rotation_vector(rotation: DQuat) -> DVec3 {
     let short = if rotation.w < 0.0 {
         -rotation
     } else {
         rotation
     };
-    short.to_scaled_axis()
+    let axis = short.xyz();
+    let sine = axis.length();
+    if sine == 0.0 {
+        return DVec3::ZERO;
+    }
+    axis * (2.0 * sine.atan2(short.w) / sine)
 }
 
-/// What an ideal strapdown IMU on the vehicle's body axes senses between two
-/// truth states `dt_s` apart.
+/// What an ideal strapdown IMU on the vehicle's body axes reports between two
+/// truth states `dt_s` apart, with exact coning and sculling compensation.
 ///
 /// Inside the step the body rate relative to the Earth is constant and the
 /// ECEF acceleration is `Δv/dt`, which is how `sim_core::KinematicModel`
 /// moves. The rotation increment relative to inertial space is exact:
-/// `exp(Δθ) = q₀⁻¹·exp(Ω·dt)·q₁`. The velocity increment is the integral of
-/// the body-axis specific force `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, by quadrature,
-/// without any rotation correction, as an integrating IMU reports it.
+/// `exp(Δθ) = q₀⁻¹·exp(Ω·dt)·q₁`.
+///
+/// Navigate takes a velocity increment `Δv` whose rotation correction
+/// `Δv + ½·Δθ×Δv` is the specific-force integral in the body axes fixed at
+/// the start of the step. The synthesis forms that integral by quadrature of
+/// `f = a + 2Ω×v + Ω×(Ω×p) − g(p)`, carried from each instant's ECEF axes
+/// into the start's inertial body axes, and inverts the rotation correction
+/// exactly. A raw `∫f_body dt` would differ from it by the sculling term,
+/// which grows with turn rate times acceleration.
 pub fn ideal_increment(
     gravity: TruthGravity,
     from: &VehicleState,
@@ -73,9 +89,9 @@ pub fn ideal_increment(
 ) -> InertialIncrement {
     let frame_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * dt_s);
     let delta_theta_rad = rotation_vector(from.attitude.inverse() * frame_turn * to.attitude);
-    let body_rate = rotation_vector(from.attitude.inverse() * to.attitude) / dt_s;
     let acceleration = (to.velocity_ecef - from.velocity_ecef) / dt_s;
-    let delta_velocity_m_s = QUADRATURE
+    let start_axes = from.attitude.inverse();
+    let integral: DVec3 = QUADRATURE
         .iter()
         .map(|&(node, weight)| {
             let t = node * dt_s;
@@ -86,15 +102,22 @@ pub fn ideal_increment(
                 + 2.0 * EARTH_RATE_ECEF.cross(velocity)
                 + EARTH_RATE_ECEF.cross(EARTH_RATE_ECEF.cross(position))
                 - gravity.attraction_ecef(position);
-            let attitude = from.attitude * DQuat::from_scaled_axis(body_rate * t);
-            attitude.inverse() * specific_force * (weight * dt_s)
+            let inertial_turn = DQuat::from_scaled_axis(EARTH_RATE_ECEF * t);
+            start_axes * (inertial_turn * specific_force) * (weight * dt_s)
         })
         .sum();
     InertialIncrement {
         dt_s,
         delta_theta_rad,
-        delta_velocity_m_s,
+        delta_velocity_m_s: without_rotation_correction(delta_theta_rad, integral),
     }
+}
+
+/// The `x` with `x + ½·θ×x = y`: `(I + [b×])⁻¹·y` with `b = ½·θ` is
+/// `(y − b×y + (b·y)·b) / (1 + |b|²)`.
+fn without_rotation_correction(theta: DVec3, y: DVec3) -> DVec3 {
+    let b = theta * 0.5;
+    (y - b.cross(y) + b * b.dot(y)) / (1.0 + b.length_squared())
 }
 
 /// A strapdown IMU on the vehicle: the ideal increments of

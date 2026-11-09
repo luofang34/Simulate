@@ -24,6 +24,22 @@ fn a_set_holds_exactly_the_means_put_in_it() {
     );
 }
 
+#[test]
+fn celestial_stands_alone_only_with_dead_reckoning() {
+    let celestial = AblationSet::standalone(NavMeans::Celestial);
+    assert_eq!(
+        celestial.means().collect::<Vec<_>>(),
+        vec![NavMeans::DeadReckoning, NavMeans::Celestial]
+    );
+    for means in NavMeans::ALL {
+        let unit = AblationSet::standalone(means);
+        assert!(unit.contains(means));
+        if means != NavMeans::Celestial {
+            assert_eq!(unit, AblationSet::only(means), "{means:?}");
+        }
+    }
+}
+
 /// A straight eastbound flight at one sample per second.
 fn truth(second: u64) -> Truth<SimTruth> {
     let start = Geodetic::from_degrees(39.1, -75.5, 700.0);

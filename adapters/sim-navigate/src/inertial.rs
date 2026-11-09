@@ -25,4 +25,5 @@ mod tests;
 
 pub use alignment::{AlignmentFix, InitialAlignment};
 pub use navigator::{InertialNavigator, inertial_config};
+pub(crate) use synthesis::rotation_vector;
 pub use synthesis::{SimulatedImu, TruthGravity, ideal_increment};

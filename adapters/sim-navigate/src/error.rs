@@ -92,6 +92,9 @@ pub enum NavigateBridgeError {
         #[source]
         source: navigate_celestial::AnalyticError,
     },
+    /// A solution carries no attitude or no attitude covariance.
+    #[error("solution publishes no attitude with covariance")]
+    SolutionAttitudeMissing,
     /// A solution's covariance has no Cholesky factor.
     #[error("solution position covariance is not positive definite")]
     SolutionCovariance,

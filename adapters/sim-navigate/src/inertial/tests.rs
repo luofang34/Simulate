@@ -109,3 +109,15 @@ fn a_seeded_alignment_misses_by_its_declared_sigma() {
     let variance = squares / (3 * draws) as f64;
     assert!((variance / 25.0 - 1.0).abs() < 0.15, "{variance}");
 }
+
+#[test]
+fn rotation_vectors_keep_their_digits_near_the_identity() {
+    for angle in [1e-12, 6.1e-7, 1e-3, 3.0] {
+        let axis = DVec3::new(0.3, -0.5, 0.8).normalize();
+        let vector = super::rotation_vector(DQuat::from_axis_angle(axis, angle));
+        assert!(
+            (vector - axis * angle).length() < angle * 1e-12,
+            "{angle}: {vector}"
+        );
+    }
+}

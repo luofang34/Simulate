@@ -61,3 +61,39 @@ fn a_covariance_with_no_cholesky_factor_is_refused() {
         Err(NavigateBridgeError::SolutionCovariance)
     ));
 }
+
+#[test]
+fn attitude_errors_split_into_tilt_and_heading_in_sigmas() {
+    let position = Geodetic::from_degrees(39.1, -75.6, 900.0);
+    let heading = 0.6;
+    let truth_state = sim_core::VehicleState::level_flight(&position, heading, 50.0);
+    // The estimate is the truth turned 2 mrad in heading and 1 mrad in roll.
+    let estimate_ned =
+        glam::DQuat::from_rotation_z(heading - 2e-3) * glam::DQuat::from_rotation_x(1e-3);
+    let solution = solution(&position, 2.0)
+        .with_attitude(navigate_contract::AttitudeQuaternion::new(
+            estimate_ned.w,
+            estimate_ned.x,
+            estimate_ned.y,
+            estimate_ned.z,
+        ))
+        .with_attitude_cov(SymmetricCov3::from_diagonal(1e-6, 1e-6, 1e-6));
+    let comparison = compare_attitude_with_truth(&solution, truth_state.attitude).unwrap();
+    assert!(
+        (comparison.heading_rad - 2e-3).abs() < 1e-6,
+        "{comparison:?}"
+    );
+    assert!((comparison.tilt_rad - 1e-3).abs() < 1e-6, "{comparison:?}");
+    assert!(
+        (comparison.attitude_nees - 5.0).abs() < 1e-2,
+        "{comparison:?}"
+    );
+    assert!(matches!(
+        compare_attitude_with_truth(&solution_without_attitude(&position), truth_state.attitude),
+        Err(NavigateBridgeError::SolutionAttitudeMissing)
+    ));
+}
+
+fn solution_without_attitude(position: &Geodetic) -> NavigationSolution {
+    solution(position, 2.0)
+}

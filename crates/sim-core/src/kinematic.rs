@@ -67,8 +67,12 @@ impl Block for KinematicModel {
         let state = &mut self.state;
         state.attitude = (state.attitude * DQuat::from_scaled_axis(rates * dt)).normalize();
         state.angular_rate_body = rates;
+        let previous_velocity = state.velocity_ecef;
         state.velocity_ecef = state.forward_ecef() * self.speed_m_s;
-        state.position_ecef += state.velocity_ecef * dt;
+        // The trapezoid makes the step a constant-acceleration arc, so the
+        // samples are the path a strapdown IMU would sense: an Euler step on
+        // the new velocity alone puts the path half a step's Δv·dt off it.
+        state.position_ecef += (previous_velocity + state.velocity_ecef) * (0.5 * dt);
 
         let mut position = ecef_to_geodetic(state.position_ecef);
         if position.height_m < FLOOR_HEIGHT_M {
