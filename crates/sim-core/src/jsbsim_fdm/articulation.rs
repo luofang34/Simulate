@@ -204,8 +204,10 @@ impl AirframeArticulation {
             };
         }
         let abs_rpm = rpm.abs();
+        // The disc fades in exactly as the solid blades fade out, so a turning
+        // propeller is always drawn one way or the other.
         let blade_t = smoothstep(350.0, 900.0, abs_rpm);
-        let disc_t = smoothstep(240.0, 1_900.0, abs_rpm);
+        let disc_t = blade_t;
         let blur = ((abs_rpm * TAU / 60.0) * shutter_exposure_s.clamp(1.0 / 2_000.0, 1.0 / 24.0))
             .clamp(0.06, PI);
         PropellerVisualState {

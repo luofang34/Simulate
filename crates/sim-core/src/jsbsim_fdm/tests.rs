@@ -478,3 +478,19 @@ fn msl_ground_is_raised_by_the_geoid_onto_the_ellipsoid() {
         "{terrain_m}"
     );
 }
+
+/// Between stopped and cruise RPM a turning propeller is never drawn as nothing: as the
+/// solid blades fade the blurred disc takes over (a P-38G idles near 860 propeller RPM,
+/// where the old ramps left 1 % blades and a 0.11 disc).
+#[test]
+fn a_turning_propeller_is_always_drawn_as_blades_or_a_disc() {
+    for rpm in [0.0, 200.0, 400.0, 600.0, 863.0, 1_200.0, 2_600.0] {
+        let art = AirframeArticulation {
+            propeller_rpm: rpm,
+            ..AirframeArticulation::default()
+        };
+        let vis = art.propeller_visual(1.0 / 60.0);
+        let coverage = f64::from(vis.blade_opacity) + f64::from(vis.disc_opacity) / 0.34;
+        assert!((coverage - 1.0).abs() < 1e-3, "rpm {rpm}: {vis:?}");
+    }
+}
