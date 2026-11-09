@@ -2,6 +2,8 @@
   "type_designator": "C172",
   "reference_document": "Cessna 172S Information Manual, original issue 8 July 1998, revision 5 of 2004, for serials 172S8001 and on (N642SP is 172S8050) (POH 172SPHUS05: Figures 5-3 stall, 5-5 takeoff, 5-6 climb, 5-8 cruise, its standard-temperature column on pp. 5-19/5-20) + N642SP (S/N 172S8050, Solberg-Hunterdon N51) recorded flights",
   "rated_bhp": 180.0,
+  "fuselage_station_origin_in": 78.8787,
+  "cg_note": "Stall rows are POH Figure 5-3's most-rearward CG (FS 47.3); the model's lift has no tail term and its stall solver is untrimmed, so stall speed does not depend on CG in this model. The 2,550 lb take-offs fly at FS 41.0, the forward limit (Section 2); the 2,200 lb take-off keeps the front-seat loading because its forward limit, FS 37.5, is out of reach with N642SP's empty CG and full tanks.",
   "tail_profile": {
     "registration": "N642SP",
     "serial_number": "172S8050",
@@ -34,7 +36,8 @@
       "bank_deg": 0.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": 48.0,
-      "target_kcas": 53.0
+      "target_kcas": 53.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps UP (0 deg), 30 deg bank, 2,550 lbs",
@@ -43,7 +46,8 @@
       "bank_deg": 30.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 57.0
+      "target_kcas": 57.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps UP (0 deg), 45 deg bank, 2,550 lbs",
@@ -52,7 +56,8 @@
       "bank_deg": 45.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 63.0
+      "target_kcas": 63.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps UP (0 deg), 60 deg bank, 2,550 lbs",
@@ -61,7 +66,8 @@
       "bank_deg": 60.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 75.0
+      "target_kcas": 75.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps 10 deg, 0 deg bank, 2,550 lbs",
@@ -70,7 +76,8 @@
       "bank_deg": 0.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": 42.0,
-      "target_kcas": 50.0
+      "target_kcas": 50.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps 10 deg, 30 deg bank, 2,550 lbs",
@@ -79,7 +86,8 @@
       "bank_deg": 30.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 54.0
+      "target_kcas": 54.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps 30 deg, 0 deg bank, 2,550 lbs",
@@ -88,7 +96,8 @@
       "bank_deg": 0.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": 40.0,
-      "target_kcas": 48.0
+      "target_kcas": 48.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps 30 deg, 30 deg bank, 2,550 lbs",
@@ -97,7 +106,8 @@
       "bank_deg": 30.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 52.0
+      "target_kcas": 52.0,
+      "cg_fs_in": 47.3
     },
     {
       "label": "Flaps 30 deg, 45 deg bank, 2,550 lbs",
@@ -106,7 +116,8 @@
       "bank_deg": 45.0,
       "gross_mass_kg": 1156.6605,
       "target_kias": null,
-      "target_kcas": 57.0
+      "target_kcas": 57.0,
+      "cg_fs_in": 47.3
     }
   ],
   "climb_points": [
@@ -269,7 +280,8 @@
       "lift_off_kcas": 57.6,
       "obstacle_kcas": 60.6,
       "target_ground_roll_ft": 960.0,
-      "target_total_50ft_ft": 1632.0
+      "target_total_50ft_ft": 1632.0,
+      "cg_fs_in": 41.0
     },
     {
       "label": "Short field, flaps 10, 2,550 lb, 4,000 ft ISA",
@@ -279,7 +291,8 @@
       "lift_off_kcas": 57.6,
       "obstacle_kcas": 60.6,
       "target_ground_roll_ft": 1305.0,
-      "target_total_50ft_ft": 2242.0
+      "target_total_50ft_ft": 2242.0,
+      "cg_fs_in": 41.0
     },
     {
       "label": "Short field, flaps 10, 2,200 lb, SL ISA",

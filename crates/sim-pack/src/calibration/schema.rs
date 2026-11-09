@@ -74,6 +74,10 @@ pub struct TakeoffBenchmark {
     pub target_ground_roll_ft: f64,
     /// Published total distance to clear a 50 ft obstacle (`ft`).
     pub target_total_50ft_ft: f64,
+    /// The CG the point is flown at, fuselage station (`in`); needs the
+    /// suite's `fuselage_station_origin_in`.
+    #[serde(default)]
+    pub cg_fs_in: Option<f64>,
 }
 
 /// Static full-throttle ground runup propeller RPM certification window (e.g. FAA TCDS `3A12`).
@@ -104,6 +108,10 @@ pub struct StallBenchmark {
     pub target_kias: Option<f64>,
     /// Published POH calibrated stall speed (`KCAS`).
     pub target_kcas: f64,
+    /// The handbook's CG for the row, fuselage station (`in`); needs the
+    /// suite's `fuselage_station_origin_in`.
+    #[serde(default)]
+    pub cg_fs_in: Option<f64>,
 }
 
 /// Full-throttle steady climb rate benchmark at a target climb airspeed and pressure altitude.
@@ -201,6 +209,10 @@ pub struct CalibrationSuite {
     pub rated_bhp: Option<f64>,
     /// Optional specific tail-number anchor (`N642SP`, etc.).
     pub tail_profile: Option<TailProfile>,
+    /// Structural x (`in`) of the handbook's fuselage station 0, for the
+    /// points that give a CG.
+    #[serde(default)]
+    pub fuselage_station_origin_in: Option<f64>,
     /// Pass/fail error tolerances by flight regime.
     pub tolerances: CalibrationTolerances,
     /// Optional static WOT ground runup RPM check.
