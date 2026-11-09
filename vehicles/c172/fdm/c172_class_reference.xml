@@ -185,46 +185,56 @@
         <location unit="IN"> <x> 41.3386 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
         <sense> 1 </sense>
         <propeller name="prop">
+          <!-- McCauley 1A170E/JHA7660: 2 blades, 76 in, 60 in pitch, elliptical tip.
+               C_THRUST(J) and C_POWER(J) are printed by vehicles/tools/propeller_measured.py
+               (ct1, cp1) from vehicles/c172/design/mccauley_1a170e_jha7660.json: below J 0.3
+               NACA TR 640's measured 2-blade Clark-Y 5868-9 maps with TR 684's tip-Mach
+               loss, from J 0.4 the blade-element maps of a 60 in helix, blended between.
+               What they cannot meet is recorded in performance/validation.json. -->
           <ixx> 2.0 </ixx>
-          <diameter unit="IN"> 75.984 </diameter>
+          <diameter unit="IN"> 76.0 </diameter>
           <numblades> 2 </numblades>
           <gearratio> 1 </gearratio>
           <table name="C_THRUST" type="internal">
             <tableData>
-            0.00000  0.088000
-            0.25000  0.082500
-            0.38000  0.078200
-            0.40600  0.077600
-            0.42400  0.072600
-            0.46500  0.070600
-            0.49500  0.065200
-            0.53000  0.060500
-            0.55000  0.059000
-            0.65000  0.054500
-            0.74000  0.045600
-            0.80000  0.036500
-            0.86000  0.018000
-            0.90000  0.000000
-            0.95000 -0.035000
-            1.07000 -0.037500
-            1.15000 -0.049000
-            1.36237 -0.085000
+             0.00    0.10250
+             0.10    0.10130
+             0.20    0.09850
+             0.30    0.09410
+             0.35    0.09978
+             0.40    0.10381
+             0.50    0.08907
+             0.60    0.07173
+             0.70    0.05332
+             0.80    0.03405
+             0.90    0.01401
+             1.00   -0.00678
+             1.10   -0.02826
+             1.20   -0.05008
+             1.30   -0.07110
+             1.50   -0.09720
+             2.00   -0.12485
             </tableData>
           </table>
           <table name="C_POWER" type="internal">
             <tableData>
-            0.00000  0.062500
-            0.25000  0.060500
-            0.38000  0.058800
-            0.42000  0.057400
-            0.47000  0.055400
-            0.55000  0.051200
-            0.65000  0.047500
-            0.74000  0.044200
-            0.80000  0.039800
-            0.86000  0.029500
-            0.92000  0.015000
-            1.36237 -0.018000
+             0.00    0.06218
+             0.10    0.06097
+             0.20    0.05958
+             0.30    0.05766
+             0.35    0.06086
+             0.40    0.06528
+             0.50    0.06231
+             0.60    0.05607
+             0.70    0.04691
+             0.80    0.03467
+             0.90    0.01910
+             1.00    0.00003
+             1.10   -0.02273
+             1.20   -0.04889
+             1.30   -0.07700
+             1.50   -0.11709
+             2.00   -0.14995
             </tableData>
           </table>
         </propeller>
