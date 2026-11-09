@@ -144,9 +144,10 @@ cargo run --release -p ironbird -- \
   --duration-s 30
 ```
 
-Use `--realtime`. Betaflight SITL sends a motor packet only when its own loop
-has run since the last FDM packet, not one per FDM packet. A lockstep run
-therefore misses a reply and stops at the 2 s timeout.
+Use `--realtime`. Betaflight's SITL target does not promise exactly one motor
+packet per FDM packet (it drops a reply when its own loop has not run in
+between), so a lockstep run eventually waits for a reply that never comes and
+stops at the 2 s timeout.
 
 `ironbird` sends no RC channels, so Betaflight stays disarmed and the
 quadrotor falls with its motors idle. `sim_xil::betaflight` has MSP v1/v2
@@ -160,8 +161,8 @@ so run it from a scratch directory.
 
 ## ArduPilot
 
-There is no ArduPilot path. ArduPilot's SITL does not read `HIL_SENSOR` or
-write `HIL_ACTUATOR_CONTROLS`. Its external-simulator backends (for example
-`--model JSON`) use ArduPilot's own UDP protocols, which `sim-xil` does not
-implement. Supporting ArduPilot means adding such an endpoint to `sim-xil`
+There is no ArduPilot path. From ArduPilot's sources, not this repository:
+ArduPilot does not read `HIL_SENSOR` or write `HIL_ACTUATOR_CONTROLS`, and its
+SITL external-simulator backends (for example `--model JSON`) use ArduPilot's
+own UDP protocols, which `sim-xil` does not implement. Supporting ArduPilot means adding such an endpoint to `sim-xil`
 and a mode to `ironbird`.
