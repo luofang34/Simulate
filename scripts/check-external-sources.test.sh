@@ -31,15 +31,15 @@ newer="$(commit "$up" newer)"
 git -C "$scratch/built" fetch -q origin
 
 # Repositories in UNPUBLISHED that a case does not exercise stay plain git entries.
-others='jsbsim-rs Aviate Indicate Navigate'
+others='Aviate'
 
 write_manifest() {
-    local maplibre="$1" world="$2" omit="${3:-}"
+    local maplibre="$1" jsbsim="$2" omit="${3:-}"
     mkdir -p "$scratch/tree"
     {
         printf '[workspace.metadata.external_sources]\n'
         printf 'maplibre-rs-experimental = { git = "u", %s, version = "0" }\n' "$maplibre"
-        printf 'world = { git = "u", %s, version = "0" }\n' "$world"
+        printf 'jsbsim-rs = { git = "u", %s, version = "0" }\n' "$jsbsim"
         for name in $others; do
             [ "$name" = "$omit" ] || printf '%s = { git = "u", rev = "r", version = "0" }\n' "$name"
         done
@@ -75,5 +75,5 @@ expect_reject "a pin unknown to the checkout" \
 expect_reject "a published pin still in UNPUBLISHED" "$(built "$published")" "$(built "$published")"
 expect_reject "an UNPUBLISHED pin without a checkout" "$(built "$published")" \
     'rev = "r", path = "../absent"'
-expect_reject "a stale UNPUBLISHED entry" "$(built "$published")" "$git_only" Navigate
+expect_reject "a stale UNPUBLISHED entry" "$(built "$published")" "$git_only" Aviate
 echo "check-external-sources tests passed"
