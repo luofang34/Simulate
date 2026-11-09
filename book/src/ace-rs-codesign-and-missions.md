@@ -4,7 +4,7 @@ When compiling a **Pilot's Operating Handbook (`POH`)**, **Flight Manual (`NATOP
 
 1. **Multi-Altitude & Mid-Mission Payload-Drop Profiles**: Evaluating `Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, and `Hi-Loiter-Hi` profiles where payload stores/cargo are released mid-mission ($\Delta m_{\text{drop}}$) and external store drag is cleaned up ($\Delta C_{D0} \le 0$), solving for the **Maximum Action / Combat Radius $R_{\text{action}}$** (`NM`) and quantifying the post-drop rate-of-climb recovery.
 2. **Overall Design (`总体设计`) & Powerplant (`动力装置`) Trade Studies**: Sweeping wing area $S_{\text{ref}}$, aspect ratio $AR = b^2/S$, zero-lift drag $C_{D0}$, structural empty mass, wet-wing fuel volume, engine shaft power (`BHP` / `kW`), and `BSFC` directly through the 6-DoF JSBSim flight dynamics engine.
-3. **Closed-Loop Co-Design with Sibling `~/ace-rs`**: Ingesting `~/ace-rs` conceptual `vehicle.json` models, compiling and flying them in 6-DoF JSBSim, exporting ready-to-fly `syspack` directories with synthesized `performance/airspeed_envelope.json`, and feeding 6-DoF trimmed $C_{D0}$, Oswald efficiency $e$, propeller efficiency $\eta_p$, and BSFC back into `aex synthesize --set`.
+3. **Closed-Loop Co-Design with Sibling `~/ace-rs`**: Ingesting `~/ace-rs` conceptual vehicle.json models, compiling and flying them in 6-DoF JSBSim, exporting ready-to-fly `syspack` directories with synthesized `performance/airspeed_envelope.json`, and feeding 6-DoF trimmed $C_{D0}$, Oswald efficiency $e$, propeller efficiency $\eta_p$, and BSFC back into `aex synthesize --set`.
 
 ---
 
@@ -21,7 +21,7 @@ flowchart LR
 
 | Stage | Engineering Artifact Produced | Tool / API |
 |---|---|---|
-| **Stage 1 — Conceptual Sizing** | Converged MTOW, OEW, wing loading $W/S$, power-to-weight $P/W$, `vehicle.json` | `~/ace-rs` (`aex synthesize`) |
+| **Stage 1 — Conceptual Sizing** | Converged MTOW, OEW, wing loading $W/S$, power-to-weight $P/W$, vehicle.json | `~/ace-rs` (`aex synthesize`) |
 | **Stage 2 — 6-DoF Envelope Discovery** | $V_{S0}, V_{S1}, V_X, V_Y, V_G, V_A$, climb table, service ceiling, `airspeed_envelope.json` | `sim_pack::estimate_design_performance` |
 | **Stage 3 — Mission & Payload-Drop Manual** | `Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, `Hi-Loiter-Hi` action radii & segment fuel logs | `sim_pack::evaluate_mission_profile` |
 | **Stage 4 — Airframe & Powerplant Trades** | Sensitivity of ceiling, ROC, specific range, and action radius to $\Delta AR, \Delta C_{D0}, \Delta P, \Delta \text{BSFC}$ | `sim_pack::run_design_trade_study` |
@@ -93,12 +93,12 @@ cargo run --release -p ironbird -- \
 
 ### What `--mode ace-bridge` Executes
 
-1. **Direct `vehicle.json` Ingestion (`load_syspack_from_ace_vehicle_json`)**:
+1. **Direct vehicle.json Ingestion (`load_syspack_from_ace_vehicle_json`)**:
    Reads `wing.area`, `wing.span`, `aero.cd0`, `weight.oew`, `weight.maximum_fuel`, `engine.rated_power`, `engine.sizing_factor`, and `engine.bsfc` from the `~/ace-rs` JSON document and synthesizes a SHA-256-verified `LoadedSyspack`.
 2. **6-DoF JSBSim Flight-Manual & Mission Evaluation**:
    Sweeps stall, climb, glide, cruise polar, payload–range, and all four multi-altitude / payload-drop mission profiles (`Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, `Hi-Loiter-Hi`).
 3. **Complete `syspack` Export (`--export-syspack <DIR>`)**:
-   Writes `syspack.json`, `fdm/*.xml`, and the newly synthesized `performance/airspeed_envelope.json` with updated SHA-256 digests so the aircraft can immediately be flown in `simulate-app` or `ironbird --mode tier0-dir`.
+   Writes `syspack.json`, `fdm/*.xml`, and the newly synthesized `performance/airspeed_envelope.json` with updated SHA-256 digests so the aircraft can immediately be flown with `ironbird --mode tier0-dir --package-dir <DIR>`.
 4. **Closed-Loop Parameter Feedback to `~/ace-rs` (`AceFeedbackReport`)**:
    Extracts the 6-DoF trimmed cruise $C_{D0}$ (accounting for elevator trim drag and alpha polar tables), effective Oswald efficiency $e$, cruise & climb propeller efficiencies $\eta_p$, and altitude-lapsed BSFC, and outputs a ready-to-run `aex synthesize` command:
 

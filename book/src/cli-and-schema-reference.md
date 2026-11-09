@@ -2,9 +2,9 @@
 
 ## 1. `ironbird` Command-Line Interface
 
-```sh
-cargo run --release -p ironbird -- [FLAGS]
-```
+`cargo run --release -p ironbird -- --mode <MODE> [OPTIONS]`
+
+Arguments are parsed by hand in `apps/ironbird/src/cli.rs`. There is no `--help`: an unknown flag or mode exits with an error that lists every valid mode. Logging follows `RUST_LOG` (default `info`).
 
 ### Execution Modes (`--mode <MODE>`)
 
@@ -20,24 +20,24 @@ cargo run --release -p ironbird -- [FLAGS]
 | `trade-c172` | Trade Study | Airframe & powerplant trade study (`S_ref`, `AR`, `CD0`, `Power`, `BSFC`, `Fuel`) on built-in `C172`. |
 | `trade-dir` | Trade Study | Airframe & powerplant trade study on an on-disk `syspack` (`--package-dir <path>`). |
 | `ace-bridge` | Co-Design | Ingests `--ace-vehicle <vehicle.json>`, runs 6-DoF estimation, optionally exports `--export-syspack <dir>`, and emits `aex synthesize --set` feedback. |
-| `mavlink-tcp-listen` | Tier-2 XIL | MAVLink v2 HIL TCP server (e.g. PX4 SITL at `127.0.0.1:4560`). |
-| `mavlink-tcp-connect` | Tier-2 XIL | MAVLink v2 HIL TCP client connecting to `--peer`. |
-| `mavlink-udp` | Tier-2 XIL | MAVLink v2 HIL UDP endpoint bound to `--bind` and sending to `--peer`. |
-| `betaflight-udp` | Tier-2 XIL | Betaflight SITL UDP endpoint (`144 B` FDM / servo packets). |
+| `mavlink-tcp-listen` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL TCP server on `--bind`; blocks until one client (e.g. PX4 SITL) connects. |
+| `mavlink-tcp-connect` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL TCP client connecting to `--peer`. |
+| `mavlink-udp` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL UDP endpoint bound to `--bind` and sending to `--peer`. |
+| `betaflight-udp` | Tier-2 XIL | `X500RigidPlant` behind a Betaflight SITL UDP endpoint: `144 B` FDM packets to `--peer`, servo packets received on `--bind`. |
 
 ### CLI Options
 
 | Flag | Default | Description |
 |---|---|---|
 | `--package-dir <PATH>` | `None` | Path to a `syspack` directory (required for `tier0-dir`, `calibrate-dir`, `estimate-dir`, and `trade-dir`). |
-| `--ace-vehicle <PATH>` | `None` | Path to an `~/ace-rs` `vehicle.json` file for `--mode ace-bridge`. |
+| `--ace-vehicle <PATH>` | `None` | Path to an `~/ace-rs` vehicle.json file for `--mode ace-bridge`; the built-in C172 when absent. |
 | `--export-syspack <DIR>` | `None` | Writes a complete SHA-256-verified `syspack` directory with synthesized `performance/airspeed_envelope.json` (`--mode ace-bridge`). |
 | `--report-out <PATH>` | `None` | Writes the Markdown calibration, sensitivity, design-estimation, trade-study, or `ace-rs` co-design report to `<PATH>`. |
 | `--sensitivity` | `false` | Appends finite-difference Jacobian & damped Gauss-Newton parameter identification (`calibrate-*` modes). |
 | `--duration-s <F64>` | `10.0` | Simulated flight duration in seconds (`tier0-*` and Tier-2 modes). |
-| `--bind <ADDR:PORT>` | `127.0.0.1:4560` | Local socket bind address for Tier-2 modes. |
-| `--peer <ADDR:PORT>` | `127.0.0.1:14550` | Remote peer socket address for Tier-2 client/UDP modes. |
-| `--lockstep-us <U64>` | `2500` | Lockstep barrier processing delay in microseconds (`HitlSyncMode::LockstepBarrier`). |
+| `--bind <ADDR:PORT>` | `127.0.0.1:4560` | Local socket bind address for Tier-2 modes (the servo listen port for `betaflight-udp`, normally `127.0.0.1:9002`). |
+| `--peer <ADDR:PORT>` | `127.0.0.1:14550` | Remote peer socket address for Tier-2 client/UDP modes (Betaflight's FDM port for `betaflight-udp`, normally `127.0.0.1:9003`). |
+| `--lockstep-us <U64>` | `2500` | Lockstep barrier processing delay in microseconds (`HitlSyncMode::LockstepBarrier`); the run fails if a reply takes longer than 2 s of wall-clock time. |
 | `--realtime` | `false` | Disables lockstep barrier and paces simulation to wall-clock (`HitlSyncMode::RealTimeStamped`). |
 
 ---

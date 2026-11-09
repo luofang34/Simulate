@@ -2,7 +2,9 @@
 
 **Simulate** is a deterministic, closed-loop 6-DoF flight simulator in Rust that runs natively (Metal, Vulkan, DX12) and in the browser (WebGPU/WebGL2) from a single workspace. Alongside the interactive split-viewport cockpit (`simulate-app`), the workspace ships **`ironbird`** (`apps/ironbird`) and **`sim-pack`** (`crates/sim-pack`): a headless software- and hardware-in-the-loop (`XIL`) verification, flight-test calibration, and aircraft performance estimation bench.
 
-Every simulation run in `Simulate` and `ironbird` executes on an integer nanosecond master clock (`sim_core::SimInstant`, `TICKS_PER_SECOND = 1_000_000_000`) through the `sim_core::Block` contract. Whether an aircraft is flown interactively in the cockpit, stepped at `>1,000x` real-time in headless Tier-0 `Aviate` XIL, coupled to an external PX4/ArduPilot/Betaflight controller over Tier-2 sockets, or swept across altitude and power settings in a flight-test suite, it runs the exact same verified vehicle package (`syspack`) and 6-DoF physics blocks.
+Every simulation run in `Simulate` and `ironbird` executes on an integer nanosecond master clock (`sim_core::SimInstant`, `TICKS_PER_SECOND = 1_000_000_000`) through the `sim_core::Block` contract. Whether an aircraft is flown interactively in the cockpit, stepped faster than real time in headless Tier-0 `Aviate` XIL, coupled to an external PX4 or Betaflight controller over Tier-2 sockets, or swept across altitude and power settings in a flight-test suite, it runs the exact same verified vehicle package (`syspack`) and 6-DoF physics blocks.
+
+The **User Guide** part of this book covers building and running the simulator ([Getting Started](getting-started.md)), flying it ([Flying the Simulator](flying.md)), and connecting an external autopilot ([Flying an External Autopilot](external-autopilots.md)). The rest is the engineering manual.
 
 ## Three Core Aircraft Engineering Workflows
 

@@ -9,13 +9,15 @@ There are two supported ways to create a fixed-wing `syspack` for `Simulate` and
 
 ## Workflow A: Exporting a Design from `ace-rs`
 
-When an aircraft is defined in the sibling `ace-rs` repository, `ace-export` generates the entire `syspack` directory — including the component tree, inertia tensor, JSBSim aerodynamic/propulsion XML, and SHA-256 manifest digests — in one command:
+When an aircraft is defined in the sibling `ace-rs` repository, `ace-export` generates the entire `syspack` directory — including the component tree, inertia tensor, JSBSim aerodynamic/propulsion XML, and SHA-256 manifest digests — in one command. Run it from this repository's root, with `<ace-rs>` standing for your `ace-rs` checkout:
 
 ```sh
-cargo run -p ace-export --example export_syspack -- \
-  examples/c172/vehicle.json \
-  ../Simulate/vehicles/c172
+cargo run --manifest-path <ace-rs>/Cargo.toml -p ace-export --example export_syspack -- \
+  <ace-rs>/examples/c172/vehicle.json \
+  vehicles/c172
 ```
+
+`vehicles/c172` is generated this way and is not edited by hand.
 
 After exporting:
 
