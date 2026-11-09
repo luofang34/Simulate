@@ -15,6 +15,10 @@ struct Draw {
     params: vec4<f32>,
     // xyz unit direction to the sun in ENU, w daylight factor
     sun: vec4<f32>,
+    // xyz panel seam pitch along part-local x, y, z (0 = none), w weathering
+    detail: vec4<f32>,
+    // x soot source |x|, y start station, z fade length, w strength
+    soot: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> draw: Draw;
@@ -32,6 +36,8 @@ struct VertexOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) occlusion: f32,
+    @location(4) local: vec3<f32>,
+    @location(5) local_normal: vec3<f32>,
 };
 
 @vertex
@@ -42,6 +48,8 @@ fn vs(in: VertexIn) -> VertexOut {
     out.normal = (draw.enu_from_part * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = in.uv;
     out.occlusion = in.occlusion;
+    out.local = in.position;
+    out.local_normal = in.normal;
     return out;
 }
 
@@ -49,8 +57,9 @@ const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
 const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
 const EXPOSURE: f32 = 1.5;
 
-fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32, pixel: vec2<f32>) -> vec3<f32> {
-    var n = normalize(n_in);
+fn shade(in: VertexOut, front: bool) -> vec3<f32> {
+    let world = in.world;
+    var n = normalize(in.normal);
     if (!front) {
         n = -n;
     }
@@ -59,15 +68,16 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32, pixel: 
     let h = normalize(l + v);
     let daylight = draw.sun.w;
     let metallic = draw.emissive.w;
-    let roughness = clamp(draw.params.x, 0.04, 1.0);
-    let albedo = draw.base_color.rgb;
+    let finish = paint(draw.base_color.rgb, draw.params.x, in.local, in.local_normal, in.occlusion, draw.detail, draw.soot);
+    let roughness = finish.roughness;
+    let albedo = finish.albedo;
     let n_dot_l = max(dot(n, l), 0.0);
     let n_dot_v = max(dot(n, v), 0.001);
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     let f = fresnel(f0, dot(h, v));
     let spec = f * ggx(max(dot(n, h), 0.0), roughness) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
     let diffuse = (vec3<f32>(1.0) - f) * (1.0 - metallic) * albedo / PI;
-    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, n, pixel);
+    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, n, in.clip.xy);
     // Sky above and sunlit ground below both light the airframe, so undersides never go black.
     let hemi = mix(GROUND * 1.6, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
     let r = reflect(-v, n);
@@ -76,7 +86,7 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32, pixel: 
     let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
     // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
     // view still sees open sky past a junction.
-    let ao = clamp(occlusion, 0.0, 1.0);
+    let ao = clamp(in.occlusion, 0.0, 1.0) * finish.cavity;
     let specular_ao = mix(ao * ao, 1.0, 0.35);
     let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
@@ -84,7 +94,7 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32, pixel: 
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    let color = shade(in.normal, in.world, front, in.occlusion, in.clip.xy);
+    let color = shade(in, front);
     return vec4<f32>(filmic(color, EXPOSURE), 1.0);
 }
 

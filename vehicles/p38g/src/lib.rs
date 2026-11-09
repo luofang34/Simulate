@@ -42,8 +42,8 @@ pub use package::{
 pub use stations::{
     AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, HTAIL_Z,
     OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,
-    ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, WING_AREA_M2, WING_DIHEDRAL_DEG,
-    boom_point, fin_point, gondola_point, interpolate_boom, interpolate_gondola,
+    ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TURBO_NOZZLE_Y, WING_AREA_M2,
+    WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point, interpolate_boom, interpolate_gondola,
     three_view_boom_outline_x, three_view_gondola_outline_x, three_view_wing_leading_y,
     three_view_wing_trailing_y, wing_station, wing_surface_point,
 };

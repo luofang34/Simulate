@@ -9,7 +9,7 @@ use glam::{DMat4, DVec3, Vec3};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, glowing, part};
 use crate::stations::{
     BOOM_X, CHROME_OLEO, EXHAUST_RUST, GUNMETAL, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK,
-    TURBO_STEEL, boom_point, wing_surface_point,
+    TURBO_NOZZLE_Y, TURBO_STEEL, boom_point, wing_surface_point,
 };
 
 pub(crate) fn powerplant_prims() -> Vec<P38MeshPrim> {
@@ -123,7 +123,7 @@ fn build_ge_b13_turbosuperchargers(prims: &mut Vec<P38MeshPrim>) {
         );
         scrolls.tube(
             Vec3::new(bx, -1.32, tz - 0.01),
-            Vec3::new(bx, -1.62, tz + 0.035),
+            Vec3::new(bx, TURBO_NOZZLE_Y, tz + 0.035),
             0.055,
             0.048,
             12,

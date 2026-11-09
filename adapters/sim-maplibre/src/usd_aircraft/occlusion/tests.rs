@@ -21,6 +21,8 @@ fn part_from(triangles: &[[Vec3; 3]], normal: Vec3) -> UsdMeshPart {
         double_sided: false,
         rest_to_aircraft: DMat4::IDENTITY,
         custom_hinge_axis: None,
+        needle_channel: None,
+        detail: crate::usd_aircraft::SurfaceDetail::default(),
         indices: (0..vertices.len() as u32).collect(),
         vertices,
     }

@@ -10,11 +10,12 @@ use std::f32::consts::TAU;
 
 use glam::{DMat4, Mat4, Vec3};
 
-use super::{PartRole, PbrMaterial, UsdAircraftAsset, UsdMeshPart, UsdMeshVertex};
+use super::{PartRole, PbrMaterial, SurfaceDetail, UsdAircraftAsset, UsdMeshPart, UsdMeshVertex};
 use crate::MapAdapterError;
 
 mod fixed_wing;
 mod lunar_lander;
+mod p38_finish;
 mod quadrotor;
 mod shapes;
 #[cfg(test)]
@@ -41,6 +42,7 @@ impl UsdAircraftAsset {
         let parts = sim_p38g::p38g_mesh_prims()
             .into_iter()
             .map(|prim| UsdMeshPart {
+                detail: p38_finish::detail(&prim.prim_path),
                 prim_path: prim.prim_path,
                 role: PartRole::from_token(prim.role.as_token()),
                 material: PbrMaterial {
@@ -119,6 +121,7 @@ fn part(
         rest_to_aircraft: rest,
         custom_hinge_axis: None,
         needle_channel: None,
+        detail: SurfaceDetail::default(),
         vertices,
         indices,
     }

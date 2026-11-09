@@ -267,6 +267,7 @@ impl QuadAcc {
             rest_to_aircraft: DMat4::IDENTITY,
             custom_hinge_axis: None,
             needle_channel: None,
+            detail: crate::usd_aircraft::SurfaceDetail::default(),
             vertices: self.vertices,
             indices: self.indices,
         }

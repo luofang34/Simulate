@@ -29,6 +29,10 @@ struct Draw {
     params: vec4<f32>,
     // xyz unit direction to the key light, w light level
     sun: vec4<f32>,
+    // xyz panel seam pitch along part-local x, y, z (0 = none), w weathering
+    detail: vec4<f32>,
+    // x soot source |x|, y start station, z fade length, w strength
+    soot: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -120,6 +124,8 @@ struct VertexOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) occlusion: f32,
+    @location(4) local: vec3<f32>,
+    @location(5) local_normal: vec3<f32>,
 };
 
 @vertex
@@ -130,12 +136,13 @@ fn vs(in: VertexIn) -> VertexOut {
     out.normal = (draw.enu_from_part * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = in.uv;
     out.occlusion = in.occlusion;
+    out.local = in.position;
+    out.local_normal = in.normal;
     return out;
 }
 
-fn light(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>, albedo: vec3<f32>, f0: vec3<f32>) -> vec3<f32> {
+fn light(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>, albedo: vec3<f32>, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
     let metallic = draw.emissive.w;
-    let roughness = clamp(draw.params.x, 0.04, 1.0);
     let n_dot_l = max(dot(n, l), 0.0);
     let n_dot_v = max(dot(n, v), 0.001);
     let h = normalize(l + v);
@@ -145,22 +152,23 @@ fn light(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>, albedo: 
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * radiance * n_dot_l;
 }
 
-fn studio(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec3<f32> {
-    var n = normalize(n_in);
+fn studio(in: VertexOut, front: bool) -> vec3<f32> {
+    var n = normalize(in.normal);
     if (!front) {
         n = -n;
     }
-    let v = normalize(-world);
+    let v = normalize(-in.world);
     let metallic = draw.emissive.w;
-    let roughness = clamp(draw.params.x, 0.04, 1.0);
-    let albedo = draw.base_color.rgb;
+    let finish = paint(draw.base_color.rgb, draw.params.x, in.local, in.local_normal, in.occlusion, draw.detail, draw.soot);
+    let roughness = finish.roughness;
+    let albedo = finish.albedo;
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
-    var color = light(n, v, frame.key.xyz, KEY_RGB * frame.key.w, albedo, f0);
-    color += light(n, v, frame.rim.xyz, RIM_RGB * frame.rim.w, albedo, f0);
-    color += light(n, v, frame.fill.xyz, FILL_RGB * frame.fill.w, albedo, f0);
+    var color = light(n, v, frame.key.xyz, KEY_RGB * frame.key.w, albedo, f0, roughness);
+    color += light(n, v, frame.rim.xyz, RIM_RGB * frame.rim.w, albedo, f0, roughness);
+    color += light(n, v, frame.fill.xyz, FILL_RGB * frame.fill.w, albedo, f0, roughness);
     // Studio bounce: the bright floor pool lights undersides, the dark ceiling the tops.
     let hemi = mix(FLOOR * 4.0, HORIZON * 1.6, n.z * 0.5 + 0.5);
-    let ao = clamp(occlusion, 0.0, 1.0);
+    let ao = clamp(in.occlusion, 0.0, 1.0) * finish.cavity;
     color += hemi * albedo * (1.0 - 0.7 * metallic) * ao;
     // Metals and gloss coats mirror the cyclorama so they never read as flat black.
     let r = reflect(-v, n);
@@ -171,7 +179,7 @@ fn studio(n_in: vec3<f32>, world: vec3<f32>, front: bool, occlusion: f32) -> vec
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return tonemap(studio(in.normal, in.world, front, in.occlusion));
+    return tonemap(studio(in, front));
 }
 
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {

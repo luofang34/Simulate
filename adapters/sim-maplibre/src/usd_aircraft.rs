@@ -15,6 +15,7 @@ use sim_core::AirframeArticulation;
 use crate::MapAdapterError;
 
 mod export;
+mod finish;
 mod loader;
 mod occlusion;
 mod procedural;
@@ -23,6 +24,7 @@ mod roles;
 mod tests;
 
 pub use export::{UsdCameraSample, UsdRunwaySample, UsdSceneExportInput, export_scene_usda};
+pub use finish::{SootStreak, SurfaceDetail};
 use roles::role_visible_to_camera;
 pub use roles::{PartRole, SlotCameraRole};
 
@@ -85,6 +87,8 @@ pub struct UsdMeshPart {
     /// The [`sim_core::InstrumentNeedles`] channel a [`PartRole::InstrumentNeedle`]
     /// follows (`sim:needleChannel`).
     pub needle_channel: Option<usize>,
+    /// Procedural paint finish: panel seams, weathering and soot.
+    pub detail: SurfaceDetail,
     /// Triangulated vertex buffer.
     pub vertices: Vec<UsdMeshVertex>,
     /// Triangle index buffer (`0..vertices.len()`).

@@ -40,3 +40,94 @@ fn filmic(radiance: vec3<f32>, exposure: f32) -> vec3<f32> {
     let graded = ACES_OUTPUT * rrt_and_odt(ACES_INPUT * (max(radiance, vec3<f32>(0.0)) * exposure));
     return clamp(graded, vec3<f32>(0.0), vec3<f32>(1.0));
 }
+
+// Procedural paint finish (see `SurfaceDetail`): seams, rivet rows, fading, soot and
+// cavity grime, from the part-local position so they stay fixed on the skin.
+struct Paint {
+    albedo: vec3<f32>,
+    roughness: f32,
+    // Extra occlusion of seams, multiplied into the baked vertex occlusion.
+    cavity: f32,
+};
+
+fn hash31(p: vec3<f32>) -> f32 {
+    let q = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
+    let r = q + vec3<f32>(dot(q, q.yzx + vec3<f32>(33.33)));
+    return fract((r.x + r.y) * r.z);
+}
+
+fn value_noise(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (vec3<f32>(3.0) - 2.0 * f);
+    let x00 = mix(hash31(i), hash31(i + vec3<f32>(1.0, 0.0, 0.0)), u.x);
+    let x10 = mix(hash31(i + vec3<f32>(0.0, 1.0, 0.0)), hash31(i + vec3<f32>(1.0, 1.0, 0.0)), u.x);
+    let x01 = mix(hash31(i + vec3<f32>(0.0, 0.0, 1.0)), hash31(i + vec3<f32>(1.0, 0.0, 1.0)), u.x);
+    let x11 = mix(hash31(i + vec3<f32>(0.0, 1.0, 1.0)), hash31(i + vec3<f32>(1.0, 1.0, 1.0)), u.x);
+    return mix(mix(x00, x10, u.y), mix(x01, x11, u.y), u.z);
+}
+
+// Distance in metres from `coord` to the nearest multiple of `pitch`.
+fn seam_distance(coord: f32, pitch: f32) -> f32 {
+    return abs(fract(coord / max(pitch, 1e-3) + 0.5) - 0.5) * pitch;
+}
+
+// Coverage of a `width_m` line at that distance. A seam narrower than the pixel footprint
+// is widened and dimmed in proportion, so distant skins keep their average tone without
+// aliasing into moiré.
+fn line_coverage(distance: f32, width_m: f32, footprint: f32) -> f32 {
+    let w = max(width_m, footprint);
+    return (1.0 - smoothstep(0.5 * w, 0.5 * w + footprint, distance)) * (width_m / w);
+}
+
+fn paint(albedo_in: vec3<f32>, roughness_in: f32, local: vec3<f32>, local_normal: vec3<f32>, occlusion: f32, detail: vec4<f32>, soot: vec4<f32>) -> Paint {
+    let n = normalize(local_normal);
+    let footprint = max(length(fwidth(local)), 1e-5);
+    var seams = 0.0;
+    var rivets = 0.0;
+    // A seam across an axis shows where the skin runs along that axis, not where it faces it.
+    let tangent = vec3<f32>(1.0) - smoothstep(vec3<f32>(0.55), vec3<f32>(0.85), abs(n));
+    let along = vec3<f32>(local.y + local.z, local.x + local.z, local.x + local.y);
+    let rivet_fade = 1.0 - smoothstep(0.004, 0.012, footprint);
+    for (var a = 0; a < 3; a++) {
+        let pitch = detail[a];
+        if (pitch > 0.0) {
+            let d = seam_distance(local[a], pitch);
+            seams += line_coverage(d, 0.0035, footprint) * tangent[a];
+            // Rows of flush rivets either side of the seam, 4 cm apart.
+            let row = abs(d - 0.016);
+            let dots = length(vec2<f32>(row, seam_distance(along[a], 0.04)));
+            rivets += (1.0 - smoothstep(0.0025, 0.0025 + footprint, dots)) * tangent[a] * rivet_fade;
+        }
+    }
+    seams = clamp(seams, 0.0, 1.0);
+    let weathering = detail.w;
+    let up = clamp(n.z, 0.0, 1.0);
+    let blotch = value_noise(local * 0.9) * 0.6 + value_noise(local * 3.7) * 0.4;
+    let cell = floor(local / max(detail.xyz, vec3<f32>(1e-3))) * step(vec3<f32>(1e-4), detail.xyz);
+    let panel = hash31(cell + vec3<f32>(17.0)) - 0.5;
+    // Olive drab under sun turns lighter, greyer and browner, then chalks; neighbouring
+    // panels, replaced or repainted at different times, differ slightly.
+    let fade = weathering * (0.2 + 0.8 * up) * (0.45 + 0.55 * blotch);
+    let grey = vec3<f32>(dot(albedo_in, vec3<f32>(0.2126, 0.7152, 0.0722)));
+    let faded = mix(albedo_in, grey * vec3<f32>(1.06, 1.0, 0.86), 0.4) * 1.4 + vec3<f32>(0.01);
+    var albedo = mix(albedo_in, faded, clamp(fade * 0.8, 0.0, 1.0)) * (1.0 + panel * 0.1 * weathering);
+    var roughness = roughness_in + weathering * (fade * 0.2 + (blotch - 0.5) * 0.1 + panel * 0.06);
+    // Dirt settles in the seams and in occluded corners.
+    let grime = weathering * (1.0 - clamp(occlusion, 0.0, 1.0)) * 0.35;
+    albedo *= (1.0 - 0.35 * seams) * (1.0 - grime) * (1.0 - 0.12 * clamp(rivets, 0.0, 1.0));
+    // Exhaust soot runs aft from the source along the slipstream, spreading and thinning.
+    let aft = soot.y - local.y;
+    let spread = 0.14 + 0.05 * max(aft, 0.0);
+    let lateral = abs(abs(local.x) - soot.x);
+    let streaks = 0.5 + 0.5 * value_noise(vec3<f32>(local.x * 16.0, local.y * 0.7, 0.0));
+    let deposit = soot.w * smoothstep(0.0, 0.15, aft) * exp(-1.1 * max(aft, 0.0) / max(soot.z, 0.1))
+        * (1.0 - smoothstep(0.35 * spread, spread, lateral)) * streaks * smoothstep(-0.2, 0.4, n.z);
+    albedo = mix(albedo, vec3<f32>(0.03, 0.028, 0.025), clamp(deposit, 0.0, 1.0));
+    roughness = mix(roughness, 0.9, clamp(deposit, 0.0, 1.0));
+    var out: Paint;
+    out.albedo = albedo;
+    out.roughness = clamp(roughness, 0.04, 1.0);
+    out.cavity = 1.0 - 0.5 * seams;
+    return out;
+}

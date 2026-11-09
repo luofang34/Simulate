@@ -48,7 +48,7 @@ pub const USD_AIRCRAFT_PASS: &str = "usd_aircraft_pass";
 /// Bytes per draw in a slot's uniform buffer (the dynamic-offset alignment).
 pub(crate) const DRAW_STRIDE: u64 = 256;
 /// Bytes of the `Draw` uniform block the shader reads.
-pub(crate) const DRAW_BYTES: usize = 192;
+pub(crate) const DRAW_BYTES: usize = 224;
 
 /// One aircraft to draw: placement, articulation, and whether it is ownship.
 #[derive(Clone, Copy, Debug)]
@@ -253,6 +253,7 @@ fn pack_part(
             view.sun_enu.z as f32,
             view.daylight,
         ],
+        detail: part.detail.uniform_rows(),
     };
     (
         enu_from_part.w_axis.truncate().length(),
@@ -323,6 +324,8 @@ pub(crate) struct DrawBlock {
     pub(crate) emissive: [f32; 4],
     pub(crate) params: [f32; 4],
     pub(crate) sun: [f32; 4],
+    /// [`crate::SurfaceDetail`] rows: panel pitch and weathering, then soot.
+    pub(crate) detail: [[f32; 4]; 2],
 }
 
 impl DrawBlock {
@@ -335,7 +338,8 @@ impl DrawBlock {
             .chain(self.base_color)
             .chain(self.emissive)
             .chain(self.params)
-            .chain(self.sun);
+            .chain(self.sun)
+            .chain(self.detail.into_iter().flatten());
         let mut out = [0_u8; DRAW_BYTES];
         for (chunk, value) in out.as_chunks_mut::<4>().0.iter_mut().zip(floats) {
             *chunk = value.to_le_bytes();

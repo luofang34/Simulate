@@ -155,6 +155,7 @@ fn pack_part(part: &UsdMeshPart, draw: &UsdPartDraw, rig: &StudioRig) -> (bool, 
             kind,
         ],
         sun: [rig.key.x as f32, rig.key.y as f32, rig.key.z as f32, 1.0],
+        detail: part.detail.uniform_rows(),
     };
     let pipeline = match (translucent, part.double_sided) {
         (true, _) => PipelineKind::Translucent,

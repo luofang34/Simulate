@@ -118,6 +118,7 @@ fn decode_mesh_prim(
         rest_to_aircraft,
         custom_hinge_axis,
         needle_channel,
+        detail: crate::usd_aircraft::SurfaceDetail::default(),
         vertices,
         indices,
     }))

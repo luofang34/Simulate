@@ -85,8 +85,9 @@ pub use streaming::{
     decode_outbound_packet, encode_inbound_interaction_bytes,
 };
 pub use usd_aircraft::{
-    PartRole, PbrMaterial, SlotCameraRole, UsdAircraftAsset, UsdCameraSample, UsdMeshPart,
-    UsdMeshVertex, UsdPartDraw, UsdRunwaySample, UsdSceneExportInput, export_scene_usda,
+    PartRole, PbrMaterial, SlotCameraRole, SootStreak, SurfaceDetail, UsdAircraftAsset,
+    UsdCameraSample, UsdMeshPart, UsdMeshVertex, UsdPartDraw, UsdRunwaySample, UsdSceneExportInput,
+    export_scene_usda,
 };
 pub use usd_pass::{OwnshipVisualKind, USD_AIRCRAFT_PASS};
 pub use volume_patch::{

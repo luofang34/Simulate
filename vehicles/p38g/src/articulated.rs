@@ -11,7 +11,7 @@ use crate::mesh::{
 use crate::stations::{
     AILERON_END_X, BOOM_X, CHROME_OLEO, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, INSIGNIA_RED,
     NEUTRAL_GRAY, OLIVE_DRAB, PROP_BLACK, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
-    RUDDER_HINGE_Y, SPINNER_WHITE, TIRE_RUBBER, WHEEL_WELL_ZINC, wing_station,
+    RUDDER_HINGE_Y, SPINNER_ALUMINIUM, TIRE_RUBBER, WHEEL_WELL_ZINC, wing_station,
 };
 
 pub(crate) fn articulated_prims() -> Vec<P38MeshPrim> {
@@ -42,7 +42,7 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
             ),
             (
                 "SpinnerNose",
-                SPINNER_WHITE,
+                SPINNER_ALUMINIUM,
                 &[
                     (0.22, 0.28),
                     (0.36, 0.23),

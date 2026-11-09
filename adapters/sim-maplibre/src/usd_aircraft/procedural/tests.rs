@@ -362,3 +362,28 @@ fn p38g_panel_needles_turn_by_their_channel_angle() {
     // Seen from the seat (looking +Y), a positive angle turns the needle clockwise.
     assert!(rest.cross(quarter).y > 0.9, "{rest} {quarter}");
 }
+
+#[test]
+fn p38_skins_carry_seams_weathering_and_turbo_soot_and_other_parts_stay_plain() {
+    let asset = crate::UsdAircraftAsset::p38g().unwrap();
+    let part = |path: &str| asset.parts().iter().find(|p| p.prim_path == path).unwrap();
+    let booms = part("/P38g/Booms/UpperOlive").detail;
+    assert!(booms.panel_pitch_m.iter().all(|&p| p > 0.0));
+    let soot = booms.soot.unwrap();
+    assert!((soot.lateral_m - sim_p38g::BOOM_X).abs() < 1e-6);
+    assert!(soot.station_m < 0.0 && soot.strength > 0.0);
+    let [[_, _, _, weathering], [lateral, ..]] = booms.uniform_rows();
+    assert_eq!((weathering, lateral), (1.0, sim_p38g::BOOM_X));
+    let lower = part("/P38g/Wing/LowerGray").detail;
+    assert!(lower.weathering < part("/P38g/Wing/UpperOlive").detail.weathering);
+    assert_eq!(
+        part("/P38g/Canopy/Glazing").detail,
+        crate::SurfaceDetail::default()
+    );
+    let c172 = crate::UsdAircraftAsset::embedded_c172().unwrap();
+    assert!(
+        c172.parts()
+            .iter()
+            .all(|p| p.detail == crate::SurfaceDetail::default())
+    );
+}

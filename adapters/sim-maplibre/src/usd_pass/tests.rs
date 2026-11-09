@@ -63,6 +63,7 @@ fn the_draw_block_packs_little_endian_in_shader_order() {
         emissive: [0.0, 0.0, 0.0, 0.7],
         params: [0.3, 1.0, 0.2, 2.0],
         sun: [0.0, 0.0, 1.0, 1.0],
+        detail: [[0.5, 0.0, 0.3, 1.0], [2.0, -1.0, 2.5, 0.7]],
     };
     let bytes = block.to_le_bytes();
     let read = |i: usize| f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
@@ -74,6 +75,9 @@ fn the_draw_block_packs_little_endian_in_shader_order() {
     assert_eq!(read(39), 0.7);
     assert_eq!(read(43), 2.0);
     assert_eq!(read(46), 1.0);
+    assert_eq!(read(50), 0.3);
+    assert_eq!(read(53), -1.0);
+    assert_eq!(read(55), 0.7);
 }
 
 #[test]

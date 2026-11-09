@@ -30,6 +30,8 @@ pub const WING_AREA_M2: f32 = 30.43;
 pub const WING_DIHEDRAL_DEG: f32 = 5.67;
 /// Twin boom lateral centerline (`93.0 in` = `2.3622 m` from aircraft symmetry plane).
 pub const BOOM_X: f32 = 2.3622;
+/// Aft end of the GE B-13 turbosupercharger exhaust nozzle on each boom's top (`y`).
+pub const TURBO_NOZZLE_Y: f32 = -1.62;
 /// Outboard end of differential aileron (`WS 282` = `7.16 m`).
 pub const AILERON_END_X: f32 = 7.16;
 /// Curtiss Electric propeller hub station (`BS 26` = `+2.52 m`; `26 in` spinner tip at `+3.18 m`).
@@ -46,12 +48,15 @@ pub const RUDDER_HINGE_Y: f32 = -6.92;
 pub const HTAIL_Z: f32 = 0.24;
 
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
-pub(crate) const OLIVE_DRAB: P38Material = mat([0.23, 0.25, 0.17], 0.08, 0.66);
-pub(crate) const OLIVE_FADED: P38Material = mat([0.27, 0.29, 0.20], 0.06, 0.72);
-pub(crate) const ANTI_GLARE: P38Material = mat([0.13, 0.15, 0.11], 0.03, 0.88);
-pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.50, 0.53, 0.56], 0.10, 0.56);
+/// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
+pub(crate) const OLIVE_DRAB: P38Material = mat([0.16, 0.165, 0.095], 0.0, 0.70);
+pub(crate) const OLIVE_FADED: P38Material = mat([0.19, 0.19, 0.12], 0.0, 0.78);
+pub(crate) const ANTI_GLARE: P38Material = mat([0.075, 0.08, 0.05], 0.0, 0.9);
+/// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
+pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);
 pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
-pub(crate) const SPINNER_WHITE: P38Material = mat([0.90, 0.90, 0.87], 0.12, 0.36);
+/// Unpainted spun-aluminium spinner, dulled by handling.
+pub(crate) const SPINNER_ALUMINIUM: P38Material = mat([0.62, 0.62, 0.61], 1.0, 0.34);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
 pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.07, 0.13, 0.28], 0.06, 0.46);
 pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
@@ -62,9 +67,9 @@ pub(crate) const GUNMETAL: P38Material = mat([0.16, 0.17, 0.19], 0.82, 0.30);
 pub(crate) const BRASS_SHELL: P38Material = mat([0.74, 0.58, 0.22], 0.78, 0.32);
 pub(crate) const TURBO_STEEL: P38Material = mat([0.36, 0.31, 0.27], 0.78, 0.38);
 pub(crate) const EXHAUST_RUST: P38Material = mat([0.30, 0.22, 0.18], 0.58, 0.54);
-pub(crate) const PROP_BLACK: P38Material = mat([0.09, 0.10, 0.11], 0.32, 0.40);
+pub(crate) const PROP_BLACK: P38Material = mat([0.03, 0.03, 0.032], 0.0, 0.55);
 pub(crate) const PROP_YELLOW: P38Material = mat([0.92, 0.74, 0.08], 0.08, 0.36);
-pub(crate) const TIRE_RUBBER: P38Material = mat([0.10, 0.10, 0.11], 0.03, 0.86);
+pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92);
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
 pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
 pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
