@@ -58,6 +58,17 @@ impl SkinMap {
         }
     }
 
+    /// The same map from its second level down: half the resolution, a
+    /// quarter of the memory.
+    #[must_use]
+    pub fn without_finest(mut self) -> Self {
+        if self.levels.len() > 1 {
+            self.levels.remove(0);
+            (self.width, self.height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        }
+        self
+    }
+
     /// Texel encoding.
     #[must_use]
     pub const fn format(&self) -> SkinFormat {

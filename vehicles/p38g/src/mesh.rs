@@ -182,18 +182,9 @@ impl MeshBuilder {
         }
     }
 
-    pub(crate) fn surface_tri(
-        &mut self,
-        [p0, p1, p2]: [Vec3; 3],
-        [n0, n1, n2]: [Vec3; 3],
-        outward: Vec3,
-    ) {
-        let a = self.push_vertex(p0, n0, Vec2::ZERO);
-        let b = self.push_vertex(p1, n1, Vec2::ZERO);
-        let c = self.push_vertex(p2, n2, Vec2::ZERO);
-        self.push_oriented([a, b, c], outward);
-    }
-
+    /// Lofts an open sheet through `rows` of equal length. Texture
+    /// coordinates are metres on the skin: `u` along each column (across the
+    /// rows: station or span), `v` along each row (girth or chord).
     pub(crate) fn loft_open(&mut self, rows: &[Vec<Vec3>], inside: Inside) {
         let Some(cols) = rows.first().map(Vec::len) else {
             return;
@@ -201,27 +192,70 @@ impl MeshBuilder {
         if rows.len() < 2 || cols < 2 || rows.iter().any(|r| r.len() != cols) {
             return;
         }
+        let uvs = sheet_uvs(rows);
+        self.loft_grid(rows, &uvs, false, inside);
+    }
+
+    /// Lofts a closed tube through `rings` of equal length, optionally
+    /// capping both ends. Texture coordinates are metres as for
+    /// [`Self::loft_open`], `v` running once round each ring; the first
+    /// column is repeated at the end so the seam does not wrap.
+    pub(crate) fn loft(&mut self, rings: &[Vec<Vec3>], cap_ends: bool, inside: Inside) {
+        let Some(ring_len) = rings.first().map(Vec::len) else {
+            return;
+        };
+        if rings.len() < 2 || ring_len < 3 || rings.iter().any(|r| r.len() != ring_len) {
+            return;
+        }
+        let closed: Vec<Vec<Vec3>> = rings
+            .iter()
+            .map(|ring| ring.iter().chain(ring.first()).copied().collect())
+            .collect();
+        let uvs = sheet_uvs(&closed);
+        self.loft_grid(&closed, &uvs, true, inside);
+        if cap_ends
+            && let (Some(first), Some(last)) = (rings.first(), rings.last())
+            && let (Some(c0), Some(c1)) = (row_centroid(Some(first)), row_centroid(Some(last)))
+        {
+            let axis = (c1 - c0).normalize_or(Vec3::Y);
+            self.polygon(first, -axis);
+            self.polygon(last, axis);
+        }
+    }
+
+    /// Triangulates the grid `rows` x columns with smooth normals; when
+    /// `seam` is set the last column repeats the first and shares its normal.
+    fn loft_grid(&mut self, rows: &[Vec<Vec3>], uvs: &[Vec<Vec2>], seam: bool, inside: Inside) {
+        let cols = rows.first().map_or(0, Vec::len);
         let base = u32::try_from(self.vertices.len()).unwrap_or(0);
-        let mut normals = vec![Vec3::ZERO; rows.len() * cols];
-        for row in rows {
-            for &point in row {
-                self.push_vertex(point, Vec3::Z, Vec2::ZERO);
+        for (row, row_uv) in rows.iter().zip(uvs) {
+            for (&point, &uv) in row.iter().zip(row_uv) {
+                self.push_vertex(point, Vec3::Z, uv);
             }
         }
+        let mut normals = vec![Vec3::ZERO; rows.len() * cols];
         let cols_u32 = u32::try_from(cols).unwrap_or(0);
+        // The seam's two copies are one point of the surface.
+        let canonical = |c: u32| if seam && c + 1 == cols_u32 { 0 } else { c };
         for r in 0..rows.len().saturating_sub(1) {
             let r_u32 = u32::try_from(r).unwrap_or(0);
+            // A ring's centroid leaves out the seam's repeated point.
+            let distinct = if seam { cols.saturating_sub(1) } else { cols };
+            let centroid_of = |row: Option<&Vec<Vec3>>| {
+                row.map(|row| row.iter().take(distinct).copied().collect::<Vec<_>>())
+            };
             let centroid = match inside {
-                Inside::Axis => row_centroid(rows.get(r))
-                    .zip(row_centroid(rows.get(r.wrapping_add(1))))
+                Inside::Axis => row_centroid(centroid_of(rows.get(r)).as_ref())
+                    .zip(row_centroid(
+                        centroid_of(rows.get(r.wrapping_add(1))).as_ref(),
+                    ))
                     .map_or(Vec3::ZERO, |(a, b)| (a + b) * 0.5),
                 Inside::Point(p) => p,
             };
-            for i in 0..cols.saturating_sub(1) {
-                let i_u32 = u32::try_from(i).unwrap_or(0);
-                let a = base + r_u32 * cols_u32 + i_u32;
+            for i in 0..cols_u32.saturating_sub(1) {
+                let a = base + r_u32 * cols_u32 + i;
                 let b = a + 1;
-                let c = base + (r_u32 + 1) * cols_u32 + i_u32;
+                let c = base + (r_u32 + 1) * cols_u32 + i;
                 let d = c + 1;
                 let quad_mid =
                     (self.position(a) + self.position(b) + self.position(c) + self.position(d))
@@ -230,7 +264,9 @@ impl MeshBuilder {
                 for tri in [[a, b, d], [a, d, c]] {
                     if let Some(fnrm) = self.push_oriented(tri, out) {
                         for v in tri {
-                            if let Some(slot) = normals.get_mut((v - base) as usize) {
+                            let offset = v - base;
+                            let key = offset - offset % cols_u32 + canonical(offset % cols_u32);
+                            if let Some(slot) = normals.get_mut(key as usize) {
                                 *slot += fnrm;
                             }
                         }
@@ -238,70 +274,14 @@ impl MeshBuilder {
                 }
             }
         }
-        for (offset, n) in normals.into_iter().enumerate() {
+        for offset in 0..normals.len() {
+            let offset_u32 = u32::try_from(offset).unwrap_or(0);
+            let key =
+                offset_u32 - offset_u32 % cols_u32.max(1) + canonical(offset_u32 % cols_u32.max(1));
+            let n = normals.get(key as usize).copied().unwrap_or(Vec3::Z);
             if let Some(v) = self.vertices.get_mut(base as usize + offset) {
                 v.normal = n.normalize_or(Vec3::Z).to_array();
             }
-        }
-    }
-
-    pub(crate) fn loft(&mut self, rings: &[Vec<Vec3>], cap_ends: bool, inside: Inside) {
-        let Some(ring_len) = rings.first().map(Vec::len) else {
-            return;
-        };
-        if rings.len() < 2 || ring_len < 3 || rings.iter().any(|r| r.len() != ring_len) {
-            return;
-        }
-        let base = u32::try_from(self.vertices.len()).unwrap_or(0);
-        let mut normals = vec![Vec3::ZERO; rings.len() * ring_len];
-        for ring in rings {
-            for &point in ring {
-                self.push_vertex(point, Vec3::Z, Vec2::ZERO);
-            }
-        }
-        let ring_u32 = u32::try_from(ring_len).unwrap_or(0);
-        for r in 0..rings.len().saturating_sub(1) {
-            let r_u32 = u32::try_from(r).unwrap_or(0);
-            let centroid = match inside {
-                Inside::Axis => row_centroid(rings.get(r))
-                    .zip(row_centroid(rings.get(r.wrapping_add(1))))
-                    .map_or(Vec3::ZERO, |(a, b)| (a + b) * 0.5),
-                Inside::Point(p) => p,
-            };
-            for i in 0..ring_len {
-                let i_u32 = u32::try_from(i).unwrap_or(0);
-                let next_u32 = u32::try_from((i.wrapping_add(1)) % ring_len).unwrap_or(0);
-                let a = base + r_u32 * ring_u32 + i_u32;
-                let b = base + r_u32 * ring_u32 + next_u32;
-                let c = base + (r_u32 + 1) * ring_u32 + i_u32;
-                let d = base + (r_u32 + 1) * ring_u32 + next_u32;
-                let quad_mid =
-                    (self.position(a) + self.position(b) + self.position(c) + self.position(d))
-                        * 0.25;
-                let out = quad_mid - centroid;
-                for tri in [[a, b, d], [a, d, c]] {
-                    if let Some(fnrm) = self.push_oriented(tri, out) {
-                        for v in tri {
-                            if let Some(slot) = normals.get_mut((v - base) as usize) {
-                                *slot += fnrm;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        for (offset, n) in normals.into_iter().enumerate() {
-            if let Some(v) = self.vertices.get_mut(base as usize + offset) {
-                v.normal = n.normalize_or(Vec3::Z).to_array();
-            }
-        }
-        if cap_ends
-            && let (Some(first), Some(last)) = (rings.first(), rings.last())
-            && let (Some(c0), Some(c1)) = (row_centroid(Some(first)), row_centroid(Some(last)))
-        {
-            let axis = (c1 - c0).normalize_or(Vec3::Y);
-            self.polygon(first, -axis);
-            self.polygon(last, axis);
         }
     }
 
@@ -422,6 +402,36 @@ pub(crate) fn aerofoil(leading: Vec3, chord_vec: Vec3, half_thickness: Vec3) -> 
             let u = 0.5 * (1.0 - a.cos());
             let side = a.sin().signum();
             leading + chord_vec * u + half_thickness * (side * thickness(u))
+        })
+        .collect()
+}
+
+/// Metric texture coordinates of a grid of points: `u` the distance along
+/// each column from the first row, `v` the distance along each row from its
+/// first point. A closed grid's last column repeats its first, so `v` ends
+/// at the ring's girth.
+fn sheet_uvs(rows: &[Vec<Vec3>]) -> Vec<Vec<Vec2>> {
+    let cols = rows.first().map_or(0, Vec::len);
+    let mut along = vec![0.0_f32; cols];
+    let mut previous: Option<&Vec<Vec3>> = None;
+    rows.iter()
+        .map(|row| {
+            if let Some(prev) = previous {
+                for ((u, a), b) in along.iter_mut().zip(prev).zip(row) {
+                    *u += a.distance(*b);
+                }
+            }
+            previous = Some(row);
+            let mut girth = 0.0_f32;
+            let mut last = row.first().copied().unwrap_or(Vec3::ZERO);
+            row.iter()
+                .zip(&along)
+                .map(|(&p, &u)| {
+                    girth += p.distance(last);
+                    last = p;
+                    Vec2::new(u, girth)
+                })
+                .collect()
         })
         .collect()
 }

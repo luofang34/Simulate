@@ -1,0 +1,104 @@
+use glam::Vec3;
+
+use super::anchors::{Anchors, M_PER_IN};
+use super::markings::{Art, Colour, Marking, Place};
+use super::panel_lines;
+use crate::mesh::{Inside, MeshBuilder};
+
+#[test]
+fn a_closed_loft_repeats_its_seam_column_with_metric_coordinates() {
+    let ring = |y: f32| -> Vec<Vec3> {
+        (0..12)
+            .map(|i| {
+                let a = std::f32::consts::TAU * i as f32 / 12.0;
+                Vec3::new(a.cos(), y, a.sin())
+            })
+            .collect()
+    };
+    let mut mesh = MeshBuilder::new();
+    mesh.loft(&[ring(0.0), ring(-3.0)], false, Inside::Axis);
+    let (vertices, indices) = mesh.into_buffers();
+    assert_eq!(vertices.len(), 2 * 13);
+    let first = vertices[0];
+    let seam = vertices[12];
+    assert_eq!(first.position, seam.position);
+    assert_eq!(first.normal, seam.normal);
+    // Girth of the twelve-sided ring and the loft's length, in metres.
+    let girth = 12.0 * 2.0 * (std::f32::consts::PI / 12.0).sin();
+    assert!((seam.uv[1] - girth).abs() < 1e-4, "{:?}", seam.uv);
+    assert!((vertices[13].uv[0] - 3.0).abs() < 1e-4);
+    // No triangle wraps from the last column back to the first.
+    for t in indices.as_chunks::<3>().0 {
+        let v: Vec<f32> = t.iter().map(|&i| vertices[i as usize].uv[1]).collect();
+        let span =
+            v.iter().cloned().fold(f32::MIN, f32::max) - v.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(span < girth * 0.5, "{v:?}");
+    }
+}
+
+#[test]
+fn traced_wing_joints_land_on_the_drawings_wing_stations() {
+    // AN 01-75F-2 p.2: the outer-wing joint at WS 115 and the 36 in chord
+    // callout at WS 289, where the rounded tip begins.
+    let spanwise: Vec<f32> = panel_lines::WING
+        .iter()
+        .filter(|l| l.iter().all(|p| (p[0] - l[0][0]).abs() < 0.5) && l.len() == 2)
+        .filter(|l| (l[0][1] - l[1][1]).abs() > 0.9)
+        .map(|l| l[0][0].abs())
+        .collect();
+    for ws in [115.0, 289.0] {
+        assert!(
+            spanwise.iter().any(|w| (w - ws).abs() < 5.0),
+            "{ws} in {spanwise:?}"
+        );
+    }
+}
+
+#[test]
+fn the_nose_number_reads_forward_from_starboard_and_aft_from_port() {
+    let anchors = Anchors::measure(&crate::p38g_mesh_prims());
+    let number = |side: f32| Marking {
+        art: Art::Numerals {
+            text: "147",
+            height_in: 11.0,
+            stroke: 0.15,
+            colour: Colour::White,
+        },
+        place: Place::Nose {
+            side,
+            fs_in: 48.0,
+            wl_in: 13.0,
+        },
+    };
+    let centre_y = anchors.nose_y - 48.0 * M_PER_IN;
+    let z = anchors.frl_z + 16.0 * M_PER_IN;
+    let cover = |side: f32, dy_in: f32| {
+        let p = Vec3::new(side * 0.5, centre_y + dy_in * M_PER_IN, z);
+        number(side)
+            .paint(
+                &anchors,
+                "/P38g/Gondola/UpperOlive",
+                p,
+                Vec3::X * side,
+                0.05,
+            )
+            .map_or(0.0, |paint| paint.cover)
+    };
+    let offsets: Vec<f32> = (-120..=120).map(|i| i as f32 * 0.1).collect();
+    let port: Vec<f32> = offsets.iter().map(|&d| cover(-1.0, d)).collect();
+    let starboard: Vec<f32> = offsets.iter().map(|&d| cover(1.0, d)).collect();
+    assert!(port.iter().sum::<f32>() > 5.0, "the number is painted");
+    // Each side is the other seen in a mirror: the same glyph order read
+    // from the other side runs the other way along the nose.
+    let mirrored: Vec<f32> = starboard.iter().rev().copied().collect();
+    let differ = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f32>();
+    assert!(
+        differ(&port, &mirrored) < 0.5,
+        "{}",
+        differ(&port, &mirrored)
+    );
+    assert!(
+        differ(&port, &starboard) > 5.0,
+        "starboard must not be port's copy"
+    );
+}

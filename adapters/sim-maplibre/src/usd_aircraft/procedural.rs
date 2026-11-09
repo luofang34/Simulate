@@ -39,7 +39,9 @@ impl UsdAircraftAsset {
     /// Builds a Lockheed P-38G-13-LO Lightning (`"Miss Virginia"`, `s/n 43-2264`) from the
     /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`).
     pub fn p38g() -> Result<Self, MapAdapterError> {
-        let parts = sim_p38g::p38g_mesh_prims()
+        let prims = sim_p38g::p38g_mesh_prims();
+        let skin = sim_p38g::P38Skin::new(&prims);
+        let parts = prims
             .into_iter()
             .map(|prim| UsdMeshPart {
                 detail: p38_finish::detail(&prim.prim_path),
@@ -71,7 +73,13 @@ impl UsdAircraftAsset {
                 indices: prim.indices,
             })
             .collect();
-        assemble("p38g", parts)
+        let mut asset = assemble("p38g", parts)?;
+        let source = p38_finish::P38SkinSource {
+            skin,
+            paths: asset.parts.iter().map(|p| p.prim_path.clone()).collect(),
+        };
+        asset.bake_skin(p38_finish::SKIN_LAYOUT, &source, p38_finish::skinned);
+        Ok(asset)
     }
 
     /// Builds a crewed lunar lander: faceted gold-kapton descent stage, ascent cabin, and
