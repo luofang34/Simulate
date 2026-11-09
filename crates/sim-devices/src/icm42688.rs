@@ -9,7 +9,7 @@ use crate::supply::rail_up;
 mod tests;
 
 const BLOCK: &str = "icm42688";
-const STANDARD_GRAVITY_M_S2: f64 = 9.806_65;
+pub(crate) const STANDARD_GRAVITY_M_S2: f64 = 9.806_65;
 /// Accelerometer full scale, ±16 g.
 const ACCEL_FULL_SCALE_M_S2: f64 = 16.0 * STANDARD_GRAVITY_M_S2;
 /// Gyroscope full scale, ±2000 °/s.
@@ -34,9 +34,9 @@ const GYRO_BYTES: u8 = 6;
 const DEFAULT_RATE_HZ: u64 = 1_000;
 const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(DEFAULT_RATE_HZ));
 /// Accelerometer noise density, 70 µg/√Hz.
-const ACCEL_NOISE_DENSITY: f64 = 70e-6 * STANDARD_GRAVITY_M_S2;
+pub(crate) const ACCEL_NOISE_DENSITY: f64 = 70e-6 * STANDARD_GRAVITY_M_S2;
 /// Gyroscope noise density, 0.0028 °/s/√Hz.
-const GYRO_NOISE_DENSITY: f64 = 0.0028 * (std::f64::consts::PI / 180.0);
+pub(crate) const GYRO_NOISE_DENSITY: f64 = 0.0028 * (std::f64::consts::PI / 180.0);
 
 /// Setup of one [`Icm42688Block`].
 #[derive(Debug, Clone, Copy, PartialEq)]

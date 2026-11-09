@@ -20,8 +20,10 @@ navigate-geodesy = { workspace = true }
 navigate-visual = { workspace = true }
 sim-scenario = { workspace = true }
 sim-scenery = { workspace = true }
+sim-devices = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-sim-devices = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
