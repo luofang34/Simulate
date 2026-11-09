@@ -131,3 +131,42 @@ fn paint(albedo_in: vec3<f32>, roughness_in: f32, local: vec3<f32>, local_normal
     out.cavity = 1.0 - 0.5 * seams;
     return out;
 }
+
+// A part's finished surface: what the BRDF lights.
+struct Finish {
+    albedo: vec3<f32>,
+    roughness: f32,
+    metallic: f32,
+    // Baked vertex occlusion times the skin's or the seams' own.
+    occlusion: f32,
+    // Shading normal, the geometric one bent by the skin's normal map.
+    normal: vec3<f32>,
+};
+
+// Parts of kind 5 take everything from the asset's baked skin (the pass binds `skin_albedo`,
+// `skin_normal`, `skin_orm` and `skin_sampler`); others keep their material under the
+// procedural paint of `SurfaceDetail`. `n` faces the viewer, `tangent` is in its frame with
+// the handedness in `w`. The branch is on a uniform, so sampling and derivatives stay legal.
+fn surface_finish(albedo_in: vec3<f32>, n: vec3<f32>, local: vec3<f32>, local_normal: vec3<f32>, occlusion: f32, uv: vec2<f32>, tangent: vec4<f32>) -> Finish {
+    var out: Finish;
+    if (draw.params.w > 4.5) {
+        let orm = textureSample(skin_orm, skin_sampler, uv);
+        let bump = textureSample(skin_normal, skin_sampler, uv).rg * 2.0 - vec2<f32>(1.0);
+        let t = normalize(tangent.xyz - n * dot(n, tangent.xyz) + vec3<f32>(1e-6, 0.0, 0.0));
+        let b = cross(n, t) * select(-1.0, 1.0, tangent.w >= 0.0);
+        let z = sqrt(max(1.0 - dot(bump, bump), 0.0));
+        out.albedo = textureSample(skin_albedo, skin_sampler, uv).rgb;
+        out.occlusion = clamp(occlusion, 0.0, 1.0) * orm.r;
+        out.roughness = clamp(orm.g, 0.04, 1.0);
+        out.metallic = orm.b;
+        out.normal = normalize(t * bump.x + b * bump.y + n * z);
+    } else {
+        let paint = paint(albedo_in, draw.params.x, local, local_normal, occlusion, draw.detail, draw.soot);
+        out.albedo = paint.albedo;
+        out.occlusion = clamp(occlusion, 0.0, 1.0) * paint.cavity;
+        out.roughness = paint.roughness;
+        out.metallic = draw.emissive.w;
+        out.normal = n;
+    }
+    return out;
+}

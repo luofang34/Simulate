@@ -71,6 +71,7 @@ impl HangarPreviewPass {
     pub fn set_asset(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         asset: &UsdAircraftAsset,
     ) -> Result<(), MapAdapterError> {
         let fingerprint = scene::fingerprint(asset);
@@ -81,7 +82,7 @@ impl HangarPreviewPass {
         {
             return Ok(());
         }
-        let uploaded = scene::SceneAsset::upload(device, asset);
+        let uploaded = scene::SceneAsset::upload(device, queue, asset, &self.pipelines.textures);
         if uploaded.meshes.iter().all(Option::is_none) {
             return Err(MapAdapterError::AircraftPass {
                 detail: format!(
@@ -167,6 +168,11 @@ impl HangarPreviewPass {
         });
         pass.set_pipeline(&self.pipelines.backdrop);
         pass.set_bind_group(0, &self.uniforms.bind_group, &[0]);
+        let textures = self
+            .scene
+            .as_ref()
+            .map_or(&self.pipelines.textures.blank, |s| &s.textures);
+        pass.set_bind_group(1, textures, &[]);
         pass.draw(0..3, 0..1);
         let Some(scene) = self.scene.as_ref() else {
             return Ok(());

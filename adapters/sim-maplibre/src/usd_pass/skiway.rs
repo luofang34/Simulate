@@ -233,6 +233,7 @@ impl QuadAcc {
                 normal,
                 uv,
                 occlusion: 1.0,
+                tangent: crate::UsdMeshVertex::NO_TANGENT,
             });
         }
         self.indices.extend_from_slice(&[
@@ -268,6 +269,7 @@ impl QuadAcc {
             custom_hinge_axis: None,
             needle_channel: None,
             detail: crate::usd_aircraft::SurfaceDetail::default(),
+            surface: crate::usd_aircraft::PartSurface::Material,
             vertices: self.vertices,
             indices: self.indices,
         }

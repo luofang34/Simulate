@@ -65,6 +65,7 @@ impl Node for UsdAircraftPassNode {
             pass.draw(0..4, 0..1);
         }
         let mut bound = None;
+        let mut bound_textures = None;
         for command in &slot_gpu.commands {
             let Some(Some(mesh)) = gpu
                 .meshes
@@ -76,6 +77,10 @@ impl Node for UsdAircraftPassNode {
             if bound != Some(command.pipeline) {
                 pass.set_pipeline(gpu.pipeline(command.pipeline));
                 bound = Some(command.pipeline);
+            }
+            if bound_textures != Some(command.asset) {
+                pass.set_bind_group(2, gpu.textures(command.asset), &[]);
+                bound_textures = Some(command.asset);
             }
             pass.set_bind_group(0, &slot_gpu.bind_group, &[command.offset]);
             pass.set_vertex_buffer(0, mesh.vertices.slice(..));

@@ -43,6 +43,7 @@ impl UsdAircraftAsset {
             .into_iter()
             .map(|prim| UsdMeshPart {
                 detail: p38_finish::detail(&prim.prim_path),
+                surface: crate::usd_aircraft::PartSurface::Material,
                 prim_path: prim.prim_path,
                 role: PartRole::from_token(prim.role.as_token()),
                 material: PbrMaterial {
@@ -64,6 +65,7 @@ impl UsdAircraftAsset {
                         normal: v.normal,
                         uv: v.uv,
                         occlusion: 1.0,
+                        tangent: crate::UsdMeshVertex::NO_TANGENT,
                     })
                     .collect(),
                 indices: prim.indices,
@@ -122,6 +124,7 @@ fn part(
         custom_hinge_axis: None,
         needle_channel: None,
         detail: SurfaceDetail::default(),
+        surface: crate::usd_aircraft::PartSurface::Material,
         vertices,
         indices,
     }

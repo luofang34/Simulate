@@ -115,7 +115,7 @@ fn every_builtin_draws_over_the_backdrop_without_validation_errors() {
         "output must be opaque"
     );
     for (name, asset) in builtins() {
-        pass.set_asset(&device, &asset).unwrap();
+        pass.set_asset(&device, &queue, &asset).unwrap();
         let with_vehicle = render(&mut pass, &device, &queue, &art, &fixed_orbit());
         // Same framing, meshes withheld: only the studio backdrop remains.
         let meshes = std::mem::take(&mut pass.scene.as_mut().unwrap().meshes);
@@ -176,7 +176,7 @@ fn articulation_moves_rendered_pixels() {
             spun,
         ),
     ] {
-        pass.set_asset(&device, &asset).unwrap();
+        pass.set_asset(&device, &queue, &asset).unwrap();
         let a = render(&mut pass, &device, &queue, &rest, &orbit);
         let b = render(&mut pass, &device, &queue, &posed, &orbit);
         let (differing, _) = centre_differences(&a, &b);
@@ -188,20 +188,20 @@ fn articulation_moves_rendered_pixels() {
 
 #[test]
 fn set_asset_is_cached_and_targets_resize() {
-    let Some((device, _queue)) = try_device() else {
+    let Some((device, queue)) = try_device() else {
         return;
     };
     let mut pass = HangarPreviewPass::new(&device, SIZE).unwrap();
     let x500 = UsdAircraftAsset::x500_quadrotor().unwrap();
-    pass.set_asset(&device, &x500).unwrap();
+    pass.set_asset(&device, &queue, &x500).unwrap();
     let sentinel = orbit::Bounds {
         min: glam::DVec3::splat(-1.0),
         max: glam::DVec3::splat(1.0),
     };
     pass.scene.as_mut().unwrap().bounds = sentinel;
-    pass.set_asset(&device, &x500.clone()).unwrap();
+    pass.set_asset(&device, &queue, &x500.clone()).unwrap();
     assert_eq!(pass.scene.as_ref().unwrap().bounds, sentinel, "re-uploaded");
-    pass.set_asset(&device, &UsdAircraftAsset::lunar_lander().unwrap())
+    pass.set_asset(&device, &queue, &UsdAircraftAsset::lunar_lander().unwrap())
         .unwrap();
     assert_ne!(pass.scene.as_ref().unwrap().bounds, sentinel, "stale asset");
 
