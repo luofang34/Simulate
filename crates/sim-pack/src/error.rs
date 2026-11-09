@@ -77,6 +77,16 @@ pub enum PackError {
         /// Why it was refused.
         detail: String,
     },
+    /// A part the vehicle pins could not be found or installed.
+    #[error("part {id:?} in role {role:?} refused: {detail}")]
+    Part {
+        /// The role the vehicle pins it in.
+        role: String,
+        /// The pinned part's id.
+        id: String,
+        /// Why it was refused.
+        detail: String,
+    },
     /// Closed-loop FDM execution failed during calibration or sensitivity evaluation.
     #[error("closed-loop calibration run failed: {detail}")]
     CalibrationRun {

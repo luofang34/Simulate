@@ -14,6 +14,7 @@ mod instruments;
 mod landmarks;
 mod livery;
 mod loaded;
+mod parts;
 mod pec;
 
 pub use builtin::{
@@ -41,6 +42,7 @@ pub use landmarks::{
 };
 pub use livery::{LIVERY_CATALOG_ASSET, LiveryCatalog, VehicleLivery};
 pub use loaded::{CotsDevice, LoadedSyspack, MountedCotsDevice, PackageCamera};
+pub use parts::{BuiltinParts, InstalledPart, PartLibrary, builtin_part_ids, builtin_part_source};
 pub use pec::{
     AirspeedCalibrationPoint, PITOT_STATIC_CALIBRATION_ASSET, PitotStaticCalibration,
     PitotStaticCurve,
@@ -50,5 +52,6 @@ pub use syspack::DirectoryPackageSource;
 pub use syspack::{
     AssetDigest, ComponentRecord, ControlsSpec, DeviceKindSpec, DynamicsSpec,
     INITIAL_COMPONENT_TEMPERATURE_K, MANIFEST_FILE, MemoryPackageSource, MountedDeviceSpec,
-    PackageSource, SCHEMA_VERSION, SyspackError, SyspackManifest, SystemKind, VerifiedSyspack,
+    PackageSource, PartRef, SCHEMA_VERSION, SyspackError, SyspackManifest, SystemKind,
+    VerifiedSyspack,
 };

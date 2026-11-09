@@ -4,6 +4,7 @@ use jsbsim::MemoryResolver;
 use syspack::{InstrumentPackDocument, MountedDeviceSpec, PackageSource, VerifiedSyspack};
 
 use crate::instruments::{pitot_static_device, resolve_pinned_pack};
+use crate::parts::{BuiltinParts, InstalledPart, PartLibrary, jsbsim_part_files, resolve_parts};
 use crate::{
     AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, CalibrationSuite,
     LIVERY_CATALOG_ASSET, LiveryCatalog, PITOT_STATIC_CALIBRATION_ASSET, PackError,
@@ -31,6 +32,7 @@ pub struct LoadedSyspack {
     livery_catalog: Option<LiveryCatalog>,
     structural_landmarks: Option<StructuralLandmarks>,
     instrument_pack: Option<VerifiedSyspack>,
+    parts: Vec<InstalledPart>,
 }
 
 impl Deref for LoadedSyspack {
@@ -43,8 +45,17 @@ impl Deref for LoadedSyspack {
 
 impl LoadedSyspack {
     /// Reads and verifies the package in `source`, then builds its devices and
-    /// validates any declared airspeed, `PEC`, or POH calibration assets fail-closed.
+    /// validates any declared airspeed, `PEC`, or POH calibration assets
+    /// fail-closed. Pinned parts come from the parts shipped in the binary.
     pub fn load(source: &dyn PackageSource) -> Result<Self, PackError> {
+        Self::load_with_parts(source, &BuiltinParts)
+    }
+
+    /// [`Self::load`], with pinned parts found in `library`.
+    pub fn load_with_parts(
+        source: &dyn PackageSource,
+        library: &dyn PartLibrary,
+    ) -> Result<Self, PackError> {
         let verified = VerifiedSyspack::load(source)?;
         let airspeed_envelope = match verified.asset(AIRSPEED_ENVELOPE_ASSET) {
             Some(bytes) => Some(AirspeedEnvelope::from_json_bytes(bytes)?),
@@ -67,6 +78,7 @@ impl LoadedSyspack {
             None => None,
         };
         let instrument_pack = resolve_pinned_pack(&verified)?;
+        let parts = resolve_parts(&verified, library)?;
         let package = Self {
             verified,
             airspeed_envelope,
@@ -75,6 +87,7 @@ impl LoadedSyspack {
             livery_catalog,
             structural_landmarks,
             instrument_pack,
+            parts,
         };
         package.instantiate_cots_devices()?;
         package.camera_mounts()?;
@@ -156,11 +169,39 @@ impl LoadedSyspack {
         Ok(self.verified.jsbsim_model()?)
     }
 
-    /// The verified aircraft files at their JSBSim virtual paths, so a
-    /// [`sim_core::JsbsimFdmBlock`] flies the package with no file system.
+    /// The parts the vehicle pins, each verified against its pin.
+    #[must_use]
+    pub fn parts(&self) -> &[InstalledPart] {
+        &self.parts
+    }
+
+    /// The part installed in `role`.
+    #[must_use]
+    pub fn part(&self, role: &str) -> Option<&VerifiedSyspack> {
+        self.parts
+            .iter()
+            .find(|part| part.role == role)
+            .map(|part| &part.package)
+    }
+
+    /// The verified aircraft files at their JSBSim virtual paths, with each
+    /// installed part's documents where the aircraft's `file=` references find
+    /// them, so a [`sim_core::JsbsimFdmBlock`] flies the package with no file
+    /// system. A part may not shadow one of the aircraft's own files.
     pub fn build_jsbsim_resolver(&self) -> Result<MemoryResolver, PackError> {
         let mut files = MemoryResolver::new();
-        for (path, bytes) in self.jsbsim_files()? {
+        let own = self.jsbsim_files()?;
+        for (path, bytes) in jsbsim_part_files(&self.parts)? {
+            if own.iter().any(|(taken, _)| *taken == path) {
+                return Err(PackError::Part {
+                    role: path.clone(),
+                    id: self.manifest().id.clone(),
+                    detail: format!("{path} is already one of the aircraft's own files"),
+                });
+            }
+            files.insert(path, bytes);
+        }
+        for (path, bytes) in own {
             files.insert(path, bytes);
         }
         Ok(files)
