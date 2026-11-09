@@ -126,10 +126,11 @@ impl P38Skin {
         };
         let mut worn = weathering::wear(&self.anchors, &exposure, albedo, roughness);
         if coat == scheme::Coat::Olive && relief.touch_up > 0.0 {
-            // Fresh olive drab, darker and less chalky than the faded skin.
+            // Fresh olive drab, darker and less chalky than the faded skin,
+            // but itself a few months in the sun.
             let (fresh, gloss) = scheme::base(coat);
-            worn.albedo = worn.albedo.lerp(fresh * 0.8, relief.touch_up * 0.95);
-            worn.roughness += (gloss - worn.roughness) * relief.touch_up;
+            worn.albedo = worn.albedo.lerp(fresh, relief.touch_up * 0.5);
+            worn.roughness += (gloss - worn.roughness) * relief.touch_up * 0.5;
         }
         // Dirt in the gaps and around the rivet heads; the gap holds shadow.
         let dirt = 1.0 - 0.7 * relief.seam - 0.12 * relief.rivet;

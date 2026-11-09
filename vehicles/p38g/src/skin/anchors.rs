@@ -58,14 +58,20 @@ impl Anchors {
             centroid(points(prims, path).filter(|p| p.x * sign > 0.0)).unwrap_or(Vec3::ZERO)
         };
         let booms = side("/P38g/Booms/UpperOlive", 1.0);
+        // The turbine wheels, under either name the airframe has given them.
+        let turbo = |sign: f32| {
+            let wheels = side("/P38g/Powerplant/TurboBucketWheels", sign);
+            if wheels == Vec3::ZERO {
+                side("/P38g/Powerplant/TurboBucketWheels", sign)
+            } else {
+                wheels
+            }
+        };
         Self {
             nose_y: if nose_y.is_finite() { nose_y } else { 0.0 },
             frl_z: crate::PROP_HUB_Z - FRL_BELOW_THRUST_IN * M_PER_IN,
             boom_x: booms.x.abs(),
-            turbo: [
-                side("/P38g/Powerplant/TurboBucketWheels", -1.0),
-                side("/P38g/Powerplant/TurboBucketWheels", 1.0),
-            ],
+            turbo: [turbo(-1.0), turbo(1.0)],
             wing_edges: wing_edges(prims),
         }
     }

@@ -63,12 +63,14 @@ pub(crate) fn wear(anchors: &Anchors, at: &Exposure, albedo: Vec3, roughness: f3
 fn fade(worn: &mut Worn, at: &Exposure) {
     let up = at.normal.z.clamp(0.0, 1.0);
     let sun = (0.25 + 0.75 * up) * at.sky.clamp(0.0, 1.0);
-    let blotch = noise::fractal(at.position, 1.9);
+    // Broad, gentle unevenness and a fine chalky grain, low in contrast.
+    let broad = noise::fractal(at.position, 1.2);
+    let fine = noise::fractal(at.position, 45.0);
     let strength = match at.coat {
-        Coat::Olive => 1.0,
+        Coat::Olive => 0.9,
         Coat::Gray => 0.25,
     };
-    let fade = (strength * sun * (0.2 + 0.95 * blotch * blotch)).clamp(0.0, 1.0);
+    let fade = (strength * sun * (0.45 + 0.3 * broad + 0.25 * fine)).clamp(0.0, 1.0);
     let luma = worn.albedo.dot(Vec3::new(0.2126, 0.7152, 0.0722));
     let chalked = Vec3::splat(luma) * Vec3::new(1.12, 1.04, 0.86) * 1.75 + Vec3::splat(0.012);
     worn.albedo = worn.albedo.lerp(chalked, fade * 0.9);

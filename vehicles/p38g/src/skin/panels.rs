@@ -16,8 +16,6 @@ pub(crate) struct Hit {
     /// Unit direction in the table's axes (scaled to inches) from the break
     /// toward the point.
     pub(crate) away: Vec2,
-    /// Which polyline of the table the break is.
-    pub(crate) line: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,6 +76,43 @@ impl LineSet {
         }
     }
 
+    /// The first break a ray from `p` along the axis direction `dir` (unit
+    /// `±x` or `±y`) crosses within `cells` grid cells, if any.
+    pub(crate) fn bound(&self, p: Vec2, dir: Vec2, cells: i32) -> Option<u32> {
+        let c = (p / self.cell).floor();
+        let step = (
+            dir.x.signum() * f32::from(dir.x != 0.0),
+            dir.y.signum() * f32::from(dir.y != 0.0),
+        );
+        let mut best: Option<(f32, u32)> = None;
+        for k in 0..=cells {
+            let key = (
+                c.x as i32 + step.0 as i32 * k,
+                c.y as i32 + step.1 as i32 * k,
+            );
+            for &index in self.grid.get(&key).into_iter().flatten() {
+                let Some(s) = self.segments.get(index as usize) else {
+                    continue;
+                };
+                let ab = s.b - s.a;
+                let denom = dir.perp_dot(ab);
+                if denom.abs() < 1e-9 {
+                    continue;
+                }
+                let ap = s.a - p;
+                let t = ap.perp_dot(ab) / denom;
+                let u = ap.perp_dot(dir) / denom;
+                if t > 0.0 && (0.0..=1.0).contains(&u) && best.is_none_or(|(bt, _)| t < bt) {
+                    best = Some((t, s.line));
+                }
+            }
+            if best.is_some() {
+                break;
+            }
+        }
+        best.map(|(_, line)| line)
+    }
+
     /// The nearest break to `p` within one cell, measuring the table's
     /// second axis `v_scale` times larger (inches per unit) than its first.
     pub(crate) fn nearest(&self, p: Vec2, v_scale: f32) -> Option<Hit> {
@@ -100,7 +135,6 @@ impl LineSet {
                         best = Some(Hit {
                             distance_in: distance,
                             along_in: s.start + t * s.a.distance(s.b),
-                            line: s.line,
                             away: (q - closest)
                                 .try_normalize()
                                 .unwrap_or(ab.perp().normalize_or_zero()),

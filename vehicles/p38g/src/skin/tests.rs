@@ -127,3 +127,28 @@ fn victory_row_reads_two_rising_suns_then_the_ship() {
     assert_eq!(ink(5.0, 0.15), Some(Ink::White), "hull");
     assert_eq!(ink(5.0, 0.9), None, "sky above the hull");
 }
+
+#[test]
+fn a_panel_is_bounded_by_the_breaks_round_it() {
+    use super::panels::LineSet;
+    // A 10 in square panel with a break dividing its right half.
+    let square: &[&[[f32; 2]]] = &[
+        &[[0.0, 0.0], [10.0, 0.0]],
+        &[[10.0, 0.0], [10.0, 10.0]],
+        &[[10.0, 10.0], [0.0, 10.0]],
+        &[[0.0, 10.0], [0.0, 0.0]],
+        &[[5.0, 0.0], [5.0, 10.0]],
+    ];
+    let set = LineSet::new(square, Vec2::splat(6.0));
+    let bounds = |p: Vec2| [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y].map(|d| set.bound(p, d, 4));
+    assert_eq!(
+        bounds(Vec2::new(2.0, 3.0)),
+        [Some(4), Some(3), Some(2), Some(0)]
+    );
+    assert_eq!(
+        bounds(Vec2::new(7.0, 3.0)),
+        [Some(1), Some(4), Some(2), Some(0)]
+    );
+    // Outside the panel the region is open on one side.
+    assert_eq!(bounds(Vec2::new(12.0, 3.0))[0], None);
+}

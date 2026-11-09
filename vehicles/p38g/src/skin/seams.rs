@@ -44,9 +44,9 @@ pub(crate) struct Relief {
     pub(crate) uphill: Vec3,
     /// Distance to the nearest seam, inches; wear concentrates near seams.
     pub(crate) distance_in: f32,
-    /// Fresh paint brushed along the seam after its panel was off, `0..1`:
-    /// the darker outlines round the nose panels of 43-2239 (USMC
-    /// 127-GR-8-72001).
+    /// Fresh paint over the whole panel, `0..1`: a panel taken off and
+    /// repainted, darker than the faded skin round it, as on 43-2239's nose
+    /// (USMC 127-GR-8-72001).
     pub(crate) touch_up: f32,
 }
 
@@ -59,14 +59,6 @@ impl Relief {
         distance_in: f32::INFINITY,
         touch_up: 0.0,
     };
-}
-
-/// Which table a point consults, and how its axes lie in the aircraft
-/// frame.
-enum View<'a> {
-    Wing,
-    Top(&'a LineSet),
-    Side(&'a LineSet),
 }
 
 /// The traced breaks, ready to look up.
@@ -93,6 +85,60 @@ impl Seams {
         }
     }
 
+    /// The table a point of part `path` consults, and where it is in it.
+    fn locate(&self, anchors: &Anchors, path: &str, p: Vec3, n: Vec3) -> Option<Located<'_>> {
+        let top = n.z > n.x.abs();
+        let set = if path.contains("/Wing/") {
+            &self.wing
+        } else if path.contains("VerticalFins") || path.contains("Rudder") {
+            &self.fin_side
+        } else if path.contains("/Booms/") {
+            if top { &self.boom_top } else { &self.boom_side }
+        } else if path.contains("/Gondola/") {
+            if top {
+                &self.gondola_top
+            } else {
+                &self.gondola_side
+            }
+        } else {
+            return None;
+        };
+        let mut fs = anchors.fs_in(p.y);
+        if path.contains("/Booms/") {
+            let turbo = anchors.turbo.iter().find(|t| t.x * p.x > 0.0);
+            if let Some(turbo) = turbo {
+                let shift = anchors.fs_in(turbo.y) - TRACED_TURBO_FS;
+                fs -= shift * smooth(NACELLE_CARRY_FS.1, NACELLE_CARRY_FS.0, fs);
+            }
+        }
+        let side = p.x.signum() as i32;
+        if path.contains("/Wing/") {
+            let (lead, trail) = anchors.wing_chord(p.x)?;
+            return Some(Located {
+                set,
+                at: Vec2::new(p.x / M_PER_IN, (lead - p.y) / (lead - trail).max(1e-3)),
+                v_scale: (lead - trail) / M_PER_IN,
+                u_axis: Vec3::X,
+                v_axis: Vec3::NEG_Y,
+                salt: [1, side],
+            });
+        }
+        // Side lines were traced on the port side; the starboard side mirrors them.
+        let (v, v_axis, table) = if top {
+            (p.x / M_PER_IN, Vec3::X, 2)
+        } else {
+            (anchors.wl_in(p.z), Vec3::Z, 3)
+        };
+        Some(Located {
+            set,
+            at: Vec2::new(fs, v),
+            v_scale: 1.0,
+            u_axis: Vec3::NEG_Y,
+            v_axis,
+            salt: [table, side],
+        })
+    }
+
     /// The relief at `p` (normal `n`) of part `path`, a texel `footprint_in`
     /// wide.
     pub(crate) fn relief(
@@ -103,86 +149,56 @@ impl Seams {
         n: Vec3,
         footprint_in: f32,
     ) -> Relief {
-        let view = if path.contains("/Wing/") {
-            Some(View::Wing)
-        } else if path.contains("VerticalFins") || path.contains("Rudder") {
-            Some(View::Side(&self.fin_side))
-        } else if path.contains("/Booms/") {
-            Some(if n.z > n.x.abs() {
-                View::Top(&self.boom_top)
-            } else {
-                View::Side(&self.boom_side)
-            })
-        } else if path.contains("/Gondola/") {
-            Some(if n.z > n.x.abs() {
-                View::Top(&self.gondola_top)
-            } else {
-                View::Side(&self.gondola_side)
-            })
-        } else {
-            None
-        };
-        let Some(view) = view else {
+        let Some(at) = self.locate(anchors, path, p, n) else {
             return Relief::NONE;
         };
-        let mut fs = anchors.fs_in(p.y);
-        if path.contains("/Booms/") {
-            let turbo = anchors.turbo.iter().find(|t| t.x * p.x > 0.0);
-            if let Some(turbo) = turbo {
-                let shift = anchors.fs_in(turbo.y) - TRACED_TURBO_FS;
-                fs -= shift * smooth(NACELLE_CARRY_FS.1, NACELLE_CARRY_FS.0, fs);
-            }
-        }
-        let (hit, u_axis, v_axis) = match view {
-            View::Wing => {
-                let Some((lead, trail)) = anchors.wing_chord(p.x) else {
-                    return Relief::NONE;
-                };
-                let chord_in = (lead - trail) / M_PER_IN;
-                let at = Vec2::new(p.x / M_PER_IN, (lead - p.y) / (lead - trail).max(1e-3));
-                (self.wing.nearest(at, chord_in), Vec3::X, Vec3::NEG_Y)
-            }
-            View::Top(set) => (
-                set.nearest(Vec2::new(fs, p.x / M_PER_IN), 1.0),
-                Vec3::NEG_Y,
-                Vec3::X,
-            ),
-            // Traced on the port side; the starboard side mirrors it.
-            View::Side(set) => (
-                set.nearest(Vec2::new(fs, anchors.wl_in(p.z)), 1.0),
-                Vec3::NEG_Y,
-                Vec3::Z,
-            ),
-        };
-        let salt = [u_axis.x, v_axis.z, p.x.signum()].map(|c| c as i32);
-        hit.map_or(Relief::NONE, |hit| {
-            let mut relief = shape(hit, u_axis, v_axis, n, footprint_in);
-            relief.touch_up = touch_up(hit, salt, p);
-            relief
-        })
+        at.set
+            .nearest(at.at, at.v_scale)
+            .map_or(Relief::NONE, |hit| {
+                let mut relief = shape(hit, at.u_axis, at.v_axis, n, footprint_in);
+                relief.touch_up = repainted(&at);
+                relief
+            })
     }
 }
 
-/// Share of seams whose panels were off and touched up again.
-const TOUCHED_UP: f32 = 0.55;
+/// Where a point lies in the table it consults.
+struct Located<'a> {
+    set: &'a LineSet,
+    at: Vec2,
+    /// Inches per unit of the table's second axis.
+    v_scale: f32,
+    u_axis: Vec3,
+    v_axis: Vec3,
+    /// Which table and which side, so mirrored panels repaint independently.
+    salt: [i32; 2],
+}
 
-/// How much fresh paint lies at `p` beside the break of `hit`: a brushed
-/// band an inch or three wide along a third or so of the seams.
-fn touch_up(hit: Hit, salt: [i32; 3], p: Vec3) -> f32 {
-    let line = i32::try_from(hit.line).unwrap_or(0);
-    let pick = noise::value(
-        Vec3::new(
-            line as f32 * 7.31,
-            salt[0] as f32 * 3.1 + salt[1] as f32 * 1.7,
-            salt[2] as f32 * 5.3,
-        ) + Vec3::splat(0.5),
-    );
-    if pick > TOUCHED_UP {
+/// Share of closed panels repainted after they were off.
+const REPAINTED: f32 = 0.3;
+/// Grid cells searched for a panel's bounding breaks.
+const PANEL_REACH_CELLS: i32 = 10;
+
+/// Whether the panel holding `at` was repainted: a panel is the region the
+/// nearest breaks on its four sides enclose, so fresh paint fills it to its
+/// seams and no further. Regions the traced lines leave open are not panels
+/// and are never repainted.
+fn repainted(at: &Located<'_>) -> f32 {
+    let bounds = [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y]
+        .map(|dir| at.set.bound(at.at, dir, PANEL_REACH_CELLS));
+    let [Some(a), Some(b), Some(c), Some(d)] = bounds else {
         return 0.0;
+    };
+    let key = Vec3::new(
+        a.wrapping_mul(31).wrapping_add(b) as f32 * 0.731,
+        c.wrapping_mul(17).wrapping_add(d) as f32 * 0.593,
+        (at.salt[0] * 7 + at.salt[1]) as f32 * 1.37,
+    );
+    if noise::value(key + Vec3::splat(0.5)) < REPAINTED {
+        1.0
+    } else {
+        0.0
     }
-    let brush = noise::fractal(p, 9.0);
-    let width = 1.0 + 2.0 * pick / TOUCHED_UP + 1.2 * brush;
-    smooth(width, width - 0.6, hit.distance_in)
 }
 
 /// The seam and rivets of `hit`, the table's axes lying along `u_axis` and
