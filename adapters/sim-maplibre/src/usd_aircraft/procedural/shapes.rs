@@ -10,14 +10,14 @@ use crate::UsdMeshVertex;
 
 /// Accumulates vertices and triangle indices for one part's mesh.
 #[derive(Clone, Debug, Default)]
-pub(super) struct MeshBuilder {
+pub(in crate::usd_aircraft) struct MeshBuilder {
     vertices: Vec<UsdMeshVertex>,
     indices: Vec<u32>,
 }
 
 /// Interior reference used to decide which side of a lofted surface faces outward.
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Inside {
+pub(in crate::usd_aircraft) enum Inside {
     /// The segment between consecutive ring centroids (open tubes, fuselages, blades).
     Axis,
     /// One interior point of a convex solid (ellipsoids, domes).
@@ -25,11 +25,11 @@ pub(super) enum Inside {
 }
 
 impl MeshBuilder {
-    pub(super) fn new() -> Self {
+    pub(in crate::usd_aircraft) fn new() -> Self {
         Self::default()
     }
 
-    pub(super) fn into_buffers(self) -> (Vec<UsdMeshVertex>, Vec<u32>) {
+    pub(in crate::usd_aircraft) fn into_buffers(self) -> (Vec<UsdMeshVertex>, Vec<u32>) {
         (self.vertices, self.indices)
     }
 
@@ -69,7 +69,7 @@ impl MeshBuilder {
     }
 
     /// Flat-shaded convex polygon (fan triangulated) facing `outward`.
-    pub(super) fn polygon(&mut self, points: &[Vec3], outward: Vec3) {
+    pub(in crate::usd_aircraft) fn polygon(&mut self, points: &[Vec3], outward: Vec3) {
         let mut corners = points.iter().copied();
         let (Some(p0), Some(p1), Some(p2)) = (corners.next(), corners.next(), corners.next())
         else {
@@ -89,7 +89,7 @@ impl MeshBuilder {
     }
 
     /// Flat-shaded axis-aligned box.
-    pub(super) fn cuboid(&mut self, min: Vec3, max: Vec3) {
+    pub(in crate::usd_aircraft) fn cuboid(&mut self, min: Vec3, max: Vec3) {
         let centre = (min + max) * 0.5;
         let corner = |x: bool, y: bool, z: bool| {
             Vec3::new(
@@ -226,7 +226,13 @@ impl MeshBuilder {
     }
 
     /// Smooth ellipsoid centred on `centre` with semi-axes `radii`.
-    pub(super) fn ellipsoid(&mut self, centre: Vec3, radii: Vec3, segments: u32, stacks: u32) {
+    pub(in crate::usd_aircraft) fn ellipsoid(
+        &mut self,
+        centre: Vec3,
+        radii: Vec3,
+        segments: u32,
+        stacks: u32,
+    ) {
         let rings: Vec<Vec<Vec3>> = (0..=stacks.max(2))
             .map(|k| {
                 let phi = -std::f32::consts::FRAC_PI_2
@@ -244,7 +250,14 @@ impl MeshBuilder {
     }
 
     /// Capped circular frustum from `a` (radius `ra`) to `b` (radius `rb`).
-    pub(super) fn tube(&mut self, a: Vec3, b: Vec3, ra: f32, rb: f32, segments: u32) {
+    pub(in crate::usd_aircraft) fn tube(
+        &mut self,
+        a: Vec3,
+        b: Vec3,
+        ra: f32,
+        rb: f32,
+        segments: u32,
+    ) {
         let (u, v) = (b - a).normalize_or(Vec3::Z).any_orthonormal_pair();
         let rings = [
             ring(a, u * ra, v * ra, segments),
@@ -271,7 +284,7 @@ impl MeshBuilder {
     }
 
     /// Appends `other` transformed by the rigid `transform`.
-    pub(super) fn append(&mut self, other: MeshBuilder, transform: Mat4) {
+    pub(in crate::usd_aircraft) fn append(&mut self, other: MeshBuilder, transform: Mat4) {
         let base = u32::try_from(self.vertices.len()).unwrap_or(u32::MAX);
         self.vertices.extend(other.vertices.into_iter().map(|v| {
             UsdMeshVertex {

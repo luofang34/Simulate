@@ -21,7 +21,7 @@ mod fixed_wing;
 mod lunar_lander;
 mod p38_finish;
 mod quadrotor;
-mod shapes;
+pub(super) mod shapes;
 #[cfg(test)]
 mod tests;
 

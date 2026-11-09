@@ -159,6 +159,9 @@ pub struct UsdPartDraw {
 /// Embedded BSD-3-Clause Cessna 172 Skyhawk binary OpenUSD Crate (`c172.usdc`).
 pub const EMBEDDED_C172_USDC: &[u8] = include_bytes!("../../../vehicles/c172/usd/c172.usdc");
 
+/// N642SP's per-tail override layer over [`EMBEDDED_C172_USDC`] (`n642sp.usda`).
+pub const EMBEDDED_N642SP_USDA: &[u8] = include_bytes!("../../../vehicles/c172/usd/n642sp.usda");
+
 /// Embedded `Raketa` single-stage test rocket OpenUSD stage (`retro_rocket_v4.usd`).
 pub const EMBEDDED_RAKETA_USD: &[u8] =
     include_bytes!("../../../vehicles/raketa/assets/retro_rocket_v4.usd");
@@ -180,6 +183,18 @@ impl UsdAircraftAsset {
         Self::from_usd_bytes("c172.usdc", EMBEDDED_C172_USDC)
     }
 
+    /// Composes N642SP, the C172S the simulator flies: the generic airframe under the
+    /// tail's override layer (paint, equipment, gear and markings).
+    pub fn embedded_n642sp() -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers(
+            "n642sp.usda",
+            [
+                ("c172.usdc", EMBEDDED_C172_USDC.into()),
+                ("n642sp.usda", EMBEDDED_N642SP_USDA.into()),
+            ],
+        )
+    }
+
     /// Decodes and composes the embedded `Raketa` (`retro_rocket_v4.usd`) OpenUSD stage.
     pub fn embedded_raketa() -> Result<Self, MapAdapterError> {
         Self::from_usd_bytes("retro_rocket_v4.usd", EMBEDDED_RAKETA_USD)
@@ -190,7 +205,23 @@ impl UsdAircraftAsset {
         identifier: &str,
         bytes: impl Into<AssetBuffer>,
     ) -> Result<Self, MapAdapterError> {
-        loader::load_aircraft_from_bytes(identifier, bytes.into())
+        loader::load_aircraft(
+            identifier,
+            EmbeddedUsdResolver::single(identifier, bytes.into()),
+        )
+    }
+
+    /// Composes the stage rooted at `root` from in-memory layers, so a layer can sublayer
+    /// or reference another by its name in `layers` (a per-tail override over a base airframe).
+    pub fn from_usd_layers(
+        root: &str,
+        layers: impl IntoIterator<Item = (&'static str, AssetBuffer)>,
+    ) -> Result<Self, MapAdapterError> {
+        let mut resolver = EmbeddedUsdResolver::default();
+        for (name, bytes) in layers {
+            resolver.insert(name, bytes);
+        }
+        loader::load_aircraft(root, resolver)
     }
 
     pub(crate) fn from_parts(parts: Vec<UsdMeshPart>) -> Self {

@@ -204,3 +204,100 @@ fn a_shorter_shutter_smears_the_propeller_over_a_smaller_angle() {
     let disc = default.iter().find(|d| d.is_prop_disc).unwrap();
     assert_eq!(disc.shutter_blur_rad, eye);
 }
+
+#[test]
+fn an_override_layer_deactivates_parts_and_rebinds_materials() {
+    let layer = r#"#usda 1.0
+(
+    defaultPrim = "C172"
+    subLayers = [@c172.usdc@]
+)
+over "C172"
+{
+    over "Airframe"
+    {
+        over "BeaconLight" (active = false) {}
+        over "HighWingTrim"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+    }
+}
+"#;
+    let base = UsdAircraftAsset::embedded_c172().unwrap();
+    let tail = UsdAircraftAsset::from_usd_layers(
+        "tail.usda",
+        [
+            ("c172.usdc", EMBEDDED_C172_USDC.into()),
+            ("tail.usda", layer.as_bytes().to_vec().into()),
+        ],
+    )
+    .unwrap();
+    assert_eq!(tail.parts().len() + 1, base.parts().len());
+    let wing = |a: &UsdAircraftAsset| {
+        a.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with("/HighWingTrim"))
+            .map(|p| p.material)
+    };
+    assert_ne!(wing(&tail), wing(&base));
+    assert_eq!(wing(&tail).map(|m| m.metallic), Some(0.08));
+}
+
+/// Lowest rest-pose point of the part at `suffix`, and its rest origin, in metres.
+fn rest_extremes(asset: &UsdAircraftAsset, suffix: &str) -> (f64, DVec3) {
+    let part = asset.parts().iter().find(|p| p.prim_path.ends_with(suffix));
+    let part = part.unwrap_or_else(|| panic!("no part {suffix}"));
+    let lowest = part
+        .vertices
+        .iter()
+        .map(|v| {
+            part.rest_to_aircraft
+                .transform_point3(glam::Vec3::from(v.position).as_dvec3())
+                .z
+        })
+        .fold(f64::INFINITY, f64::min);
+    (lowest, part.rest_to_aircraft.transform_point3(DVec3::ZERO))
+}
+
+#[test]
+fn n642sp_flies_bare_gear_on_the_poh_wheel_base_without_moving_the_contact_plane() {
+    let base = UsdAircraftAsset::embedded_c172().unwrap();
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    assert!(
+        tail.parts()
+            .iter()
+            .all(|p| !p.prim_path.contains("Fairing"))
+    );
+    assert!(
+        base.parts()
+            .iter()
+            .any(|p| p.prim_path.ends_with("/WheelFairingLeft"))
+    );
+    for wheel in ["/NoseWheel/Tire", "/WheelLeft/Tire", "/WheelRight/Tire"] {
+        let (generic, _) = rest_extremes(&base, wheel);
+        let (n642sp, _) = rest_extremes(&tail, wheel);
+        assert!(
+            (generic - n642sp).abs() < 2e-3,
+            "{wheel}: {generic} vs {n642sp}"
+        );
+    }
+    let (_, nose) = rest_extremes(&tail, "/NoseWheel/Tire");
+    let (main_bottom, main) = rest_extremes(&tail, "/WheelLeft/Tire");
+    let wheel_base_in = (nose.y - main.y) / 0.0254;
+    assert!(
+        (wheel_base_in - 65.0).abs() < 1.0,
+        "wheel base {wheel_base_in} in"
+    );
+    // 6.00-6 main tyre: 17.5 in outside diameter.
+    let main_radius_in = (main.z - main_bottom) / 0.0254;
+    assert!(
+        (main_radius_in - 8.75).abs() < 0.2,
+        "main tyre radius {main_radius_in} in"
+    );
+    assert!(
+        tail.parts()
+            .iter()
+            .any(|p| p.prim_path.ends_with("/WheelLeft/BrakeDisc"))
+    );
+}

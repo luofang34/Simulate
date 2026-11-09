@@ -23,7 +23,6 @@ impl EmbeddedUsdResolver {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn insert(&mut self, name: &str, bytes: AssetBuffer) {
         self.assets.insert(normalize_asset_key(name), bytes);
     }
