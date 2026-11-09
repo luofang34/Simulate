@@ -6,20 +6,20 @@ use glam::{DMat3, DQuat, DVec3};
 
 /// A pinhole camera in mesh axes. Optical axes: `x` right, `y` down, `z` forward.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct PinholePose {
+pub(crate) struct PinholePose {
     /// Rotates mesh-axis vectors into optical axes.
-    pub(super) mesh_to_optical: DQuat,
+    pub(crate) mesh_to_optical: DQuat,
     /// Camera centre, mesh axes, metres.
-    pub(super) eye: DVec3,
+    pub(crate) eye: DVec3,
     /// Focal length, pixels.
-    pub(super) focal_px: f64,
+    pub(crate) focal_px: f64,
     /// Principal point, pixels from the top-left corner.
-    pub(super) principal_px: [f64; 2],
+    pub(crate) principal_px: [f64; 2],
 }
 
 impl PinholePose {
     /// Pixel of `point`, `None` behind the camera.
-    pub(super) fn project(&self, point: DVec3) -> Option<[f64; 2]> {
+    pub(crate) fn project(&self, point: DVec3) -> Option<[f64; 2]> {
         let c = self.mesh_to_optical * (point - self.eye);
         (c.z > 1e-3).then(|| {
             [
@@ -30,19 +30,19 @@ impl PinholePose {
     }
 
     /// Vertical field of view of an image `height_px` tall, radians.
-    pub(super) fn fov_y_rad(&self, height_px: f64) -> f64 {
+    pub(crate) fn fov_y_rad(&self, height_px: f64) -> f64 {
         2.0 * (0.5 * height_px / self.focal_px).atan()
     }
 }
 
 /// The solved camera and how well it fits.
 #[derive(Clone, Debug)]
-pub(super) struct Resection {
-    pub(super) pose: PinholePose,
+pub(crate) struct Resection {
+    pub(crate) pose: PinholePose,
     /// Root-mean-square reprojection error, pixels.
-    pub(super) rms_px: f64,
+    pub(crate) rms_px: f64,
     /// Per-landmark reprojection error, pixels.
-    pub(super) residual_px: Vec<f64>,
+    pub(crate) residual_px: Vec<f64>,
 }
 
 /// Pixel penalty for a landmark behind the camera.
@@ -52,7 +52,7 @@ const ITERATIONS: usize = 80;
 /// Solves for the camera seeing `correspondences` (`mesh point`, `pixel`) in an image
 /// `size_px`, with the principal point free when `free_principal` and at the centre
 /// otherwise. Needs four landmarks more than the unknowns.
-pub(super) fn resect(
+pub(crate) fn resect(
     correspondences: &[(DVec3, [f64; 2])],
     size_px: [f64; 2],
     free_principal: bool,

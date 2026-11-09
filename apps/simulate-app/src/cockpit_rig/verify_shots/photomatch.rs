@@ -8,9 +8,13 @@
 use glam::DVec3;
 use serde_json::Value;
 
+// Shared with other photo matches under `verify_shots` (cockpit photographs).
+pub(crate) use backproject::{hit_mesh, hit_plane, ray_through, triangulate};
 use landmarks::p38g_landmarks;
-use resection::{Resection, resect};
+pub(crate) use resection::{PinholePose, Resection, resect};
 
+#[cfg(test)]
+mod backproject;
 #[cfg(test)]
 mod compose;
 #[cfg(test)]

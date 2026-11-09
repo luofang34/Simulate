@@ -3,7 +3,7 @@ use std::io::Write;
 use glam::{DQuat, DVec3};
 
 use super::landmarks::p38g_landmarks;
-use super::resection::{PinholePose, resect};
+use super::{PinholePose, hit_mesh, hit_plane, ray_through, resect, triangulate};
 
 #[test]
 fn the_mesh_yields_every_landmark_on_its_own_side() {
@@ -172,4 +172,49 @@ fn landmark_shifts_the_photos_imply() {
         )
         .ok();
     }
+}
+
+fn looking_at(eye: DVec3, target: DVec3, focal_px: f64) -> PinholePose {
+    let forward = (target - eye).normalize();
+    let right = forward.cross(DVec3::Z).normalize();
+    let down = forward.cross(right);
+    PinholePose {
+        mesh_to_optical: DQuat::from_mat3(
+            &glam::DMat3::from_cols(right, down, forward).transpose(),
+        ),
+        eye,
+        focal_px,
+        principal_px: [1000.0, 750.0],
+    }
+}
+
+#[test]
+fn a_projected_point_back_projects_onto_its_plane_and_triangulates_from_two_photos() {
+    let point = DVec3::new(0.12, 1.22, 0.40);
+    let normal = DVec3::new(0.0, 1.0, -0.14).normalize();
+    let a = looking_at(DVec3::new(0.0, 0.42, 0.68), point, 1400.0);
+    let b = looking_at(DVec3::new(0.30, 0.20, 0.75), point + DVec3::X * 0.1, 1100.0);
+    let ray_a = ray_through(&a, a.project(point).unwrap());
+    let ray_b = ray_through(&b, b.project(point).unwrap());
+    let on_plane = hit_plane(
+        &ray_a,
+        point + normal.any_orthonormal_vector() * 0.2,
+        normal,
+    );
+    assert!(on_plane.unwrap().distance(point) < 1e-9);
+    assert!(hit_plane(&ray_a, point, DVec3::X.cross(ray_a.dir).normalize()).is_none());
+    assert!(triangulate(&[ray_a, ray_b]).unwrap().distance(point) < 1e-9);
+    assert!(triangulate(&[ray_a]).is_none());
+}
+
+#[test]
+fn a_spinner_pixel_back_projects_onto_the_spinner_mesh() {
+    let prims = sim_p38g::p38g_mesh_prims();
+    let marks = p38g_landmarks();
+    let spinner = marks.iter().find(|(id, _)| *id == "spinner_r").unwrap().1;
+    let pose = looking_at(DVec3::new(9.0, 14.0, 1.5), spinner, 2400.0);
+    let (hit, path) =
+        hit_mesh(&ray_through(&pose, pose.project(spinner).unwrap()), &prims).unwrap();
+    assert!(path.ends_with("/PropRight/SpinnerNose"), "{path}");
+    assert!(hit.distance(spinner) < 0.05, "{hit} vs {spinner}");
 }
