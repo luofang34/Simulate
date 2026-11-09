@@ -73,7 +73,7 @@ pub struct CelestialFrame {
 
 impl CelestialFrame {
     /// A frame with the given Sun geometry and the shared lighting constants.
-    pub(super) fn with_sun(sun_direction_fixed: DVec3, sun_angular_radius_deg: f64) -> Self {
+    pub fn with_sun(sun_direction_fixed: DVec3, sun_angular_radius_deg: f64) -> Self {
         Self {
             utc_unix_s: 0.0,
             sun_direction_fixed,

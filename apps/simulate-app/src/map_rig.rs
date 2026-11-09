@@ -20,6 +20,7 @@ use sim_scenery::{
     CatalogScenery, LandingRunwayGeometry, LiveDemBridge, OsmAerodromeDiagram, TileId,
 };
 
+use crate::environment::TruthSky;
 use crate::error::AppSimError;
 use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
@@ -297,14 +298,9 @@ impl MapLibreRig {
         if let Some(surface) = self.avionics.get_mut(AIRPORT_SURFACE_MAP) {
             surface.resize(w, h)?;
         }
-        match &input.sky.celestial {
-            Some(sky) => self.truth.set_celestial(sky),
-            None => self
-                .truth
-                .set_sun_direction_ecef(input.sky.sun_direction_ecef)?,
-        }
+        TruthSky::of(input.sky).apply(&mut self.truth)?;
         self.avionics
-            .set_sun_direction_ecef(input.sky.sun_direction_ecef)?;
+            .set_sun_direction_ecef(input.sky.environment.sun.direction_fixed)?;
         let sim_dur = Duration::from_secs_f64(
             input
                 .timestamp

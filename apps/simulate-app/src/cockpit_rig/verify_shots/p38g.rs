@@ -180,7 +180,7 @@ fn draw_chase_orbit_lit(
     sun_ecef: DVec3,
     out: &Path,
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(sun_ecef);
+    let sky = SkyFrame::fixed_sun(h.flight.world().body(), sun_ecef);
     let look = LookOffset { yaw_rad, pitch_rad };
     for _ in 0..35 {
         let state = h.flight.display_vehicle_state();
@@ -264,7 +264,7 @@ fn draw_p38_cockpit_look(
     pitch_deg: f64,
     out: &Path,
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(h.flight.world());
     let look = LookOffset {
         yaw_rad: yaw_deg.to_radians(),
         pitch_rad: pitch_deg.to_radians(),

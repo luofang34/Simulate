@@ -10,10 +10,12 @@
 //! terrain offscreen into an [`OffscreenAperture`] for simulated cameras.
 //! [`VectorScenePass`] draws anti-aliased 2D symbology into a [`VectorTarget`]
 //! that [`CompositorPass`] layers over the world as a premultiplied overlay.
+//! Every pass lights and fogs the world from one [`EnvironmentFrame`].
 
 mod aperture;
 mod camera;
 mod compositor;
+mod environment;
 mod error;
 mod frame;
 mod globe;
@@ -41,6 +43,10 @@ pub use compositor::{
     ColorTransfer, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS, OverlayQuad, QuadFilter,
     RgbaPanelTexture, ViewportRect,
 };
+pub use environment::{
+    Atmosphere, CloudLayerHandle, EnvironmentFrame, Fog, SOLAR_ILLUMINANCE_1AU_LUX, Sunlight,
+    TwilightRamp,
+};
 pub use error::{FrameOutcome, RenderError};
 pub use globe::{GlobeMesh, GlobeVertex, MAX_PATCHES, TerrainRegion, TerrainSources};
 pub use gpu::HeadlessGpu;
@@ -54,7 +60,7 @@ pub use multiscale::{
     reconstruct_planetary_eye_depth_m, sort_celestial_bodies_back_to_front,
 };
 pub use ortho::{OrthoAtlas, OrthoFootprint};
-pub use renderer::{Renderer, SceneLighting};
+pub use renderer::Renderer;
 pub use vector_pass::{
     VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorScenePass, VectorTarget, VectorVertex,
 };

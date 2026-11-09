@@ -8,6 +8,7 @@ use sim_scenery::{
 };
 use std::num::NonZeroU32;
 
+mod environment;
 mod microbolometer;
 mod motion_blur;
 mod optics;
@@ -15,8 +16,8 @@ mod optics;
 use super::*;
 use crate::aperture::{OcclusionOverlayConfig, PropellerDisk, WindowBezel};
 use crate::{
-    ApertureImage, CameraPose, HeadlessGpu, OrthoFootprint, PinholeProjection, SceneLighting,
-    TerrainRegion, TerrainSources,
+    ApertureImage, CameraPose, EnvironmentFrame, HeadlessGpu, OrthoFootprint, PinholeProjection,
+    Sunlight, TerrainRegion, TerrainSources, TwilightRamp,
 };
 
 const WIDTH: u32 = 320;
@@ -57,10 +58,27 @@ fn nadir(body: &BodyEllipsoid, position: &Geodetic, height_m: f64) -> CameraPose
     CameraPose::looking(eye, -frame.up(), frame.north())
 }
 
-fn sun_overhead(position: &Geodetic) -> SceneLighting {
-    SceneLighting {
-        sun_direction_ecef: LocalFrame::at(position).up(),
+const TWILIGHT: TwilightRamp = TwilightRamp {
+    night_end_deg: -6.0,
+    day_start_deg: 2.0,
+    night_brightness: 0.22,
+};
+
+/// Clear, airless light from `sun_direction`: the sky renders black, so
+/// only the terrain varies between frames.
+fn airless(sun_direction: DVec3) -> EnvironmentFrame {
+    EnvironmentFrame {
+        atmosphere: None,
+        ..EnvironmentFrame::clear(
+            BodyEllipsoid::WGS84,
+            Sunlight::uneclipsed(sun_direction, None),
+            TWILIGHT,
+        )
     }
+}
+
+fn sun_overhead(position: &Geodetic) -> EnvironmentFrame {
+    airless(LocalFrame::at(position).up())
 }
 
 fn render(
@@ -85,13 +103,11 @@ fn render(
     image
 }
 
-fn visible(pose: CameraPose, lighting: SceneLighting) -> ApertureFrame {
+fn visible(pose: CameraPose, environment: EnvironmentFrame) -> ApertureFrame {
     ApertureFrame {
         pose,
-        lighting,
-        waveband: ApertureWaveband::VisibleRgb {
-            sky_linear_rgb: [0.0; 3],
-        },
+        environment,
+        waveband: ApertureWaveband::VisibleRgb,
         occlusion: OcclusionOverlayConfig::default(),
     }
 }
@@ -244,9 +260,7 @@ fn with_no_atlas_the_surface_is_procedural() {
 fn thermal_frame(pose: CameraPose, scale: ThermalScale) -> ApertureFrame {
     ApertureFrame {
         pose,
-        lighting: SceneLighting {
-            sun_direction_ecef: DVec3::X,
-        },
+        environment: airless(DVec3::X),
         waveband: ApertureWaveband::ThermalLwir(scale),
         occlusion: OcclusionOverlayConfig::default(),
     }

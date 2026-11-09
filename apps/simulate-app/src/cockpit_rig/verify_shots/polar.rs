@@ -198,7 +198,7 @@ fn assert_zero_efb_flicker(h: &mut VerifyHarness, label: &str) -> Result<(), App
 }
 
 fn step_and_readback_composite(h: &mut VerifyHarness) -> Result<Vec<u8>, AppSimError> {
-    let sky = SkyFrame::fixed_sun(h.flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(h.flight.world());
     let mode = h.rig.supervisor().viewport_mode();
     let cam = h.flight.display_camera(mode)?;
     h.rig.efb_command(EfbCommand::ZoomBy(0.0))?;

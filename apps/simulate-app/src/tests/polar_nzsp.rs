@@ -186,7 +186,7 @@ fn verify_gpu_polar_cockpit(
     rig.supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Cockpit);
     let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
-    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(flight.world());
     let exposures = flight.drain_sensor_exposures();
     let _ = rig.prepare_frame(&gpu.queue, VIEWPORT_SIZE, flight, &cam, &sky, &exposures)?;
     assert_eq!(

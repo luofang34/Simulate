@@ -1,9 +1,9 @@
 use glam::DVec3;
 use sim_geo::{BodyEllipsoid, InertialTransform, UtcTime, nav_star_by_octal_id};
 
-use super::{HEIGHT, WIDTH, gpu, render};
+use super::{HEIGHT, WIDTH, airless, gpu, render};
 use crate::aperture::{ApertureFrame, ApertureWaveband, OcclusionOverlayConfig, OpticalReticle};
-use crate::{CameraPose, GlobeMesh, SceneLighting, TerrainRegion, TerrainSources};
+use crate::{CameraPose, GlobeMesh, TerrainRegion, TerrainSources};
 
 fn inertial() -> InertialTransform {
     InertialTransform::moon_at(UtcTime::from_unix_seconds(-14_182_940.0))
@@ -19,9 +19,7 @@ fn looking_at_star(eye: DVec3, octal_id: u8, inertial: &InertialTransform) -> Ca
 fn starfield(pose: CameraPose, reticle: Option<OpticalReticle>) -> ApertureFrame {
     ApertureFrame {
         pose,
-        lighting: SceneLighting {
-            sun_direction_ecef: -pose.orientation * DVec3::NEG_Z,
-        },
+        environment: airless(-pose.orientation * DVec3::NEG_Z),
         waveband: ApertureWaveband::StarfieldOptical {
             inertial: inertial(),
             reticle,

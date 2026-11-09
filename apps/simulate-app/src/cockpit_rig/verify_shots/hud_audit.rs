@@ -262,7 +262,7 @@ fn settle_and_save_sun(
     sun_ecef: DVec3,
     out: &Path,
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::fixed_sun(sun_ecef);
+    let sky = SkyFrame::fixed_sun(h.flight.world().body(), sun_ecef);
     for _ in 0..frames {
         let mode = h.rig.supervisor().viewport_mode();
         let cam = h.flight.display_camera(mode)?;

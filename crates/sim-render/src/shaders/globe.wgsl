@@ -13,9 +13,12 @@ const ALBEDO_EXPOSURE: f32 = 5.0;
 
 struct Frame {
     view_proj: mat4x4<f32>,
+    // Toward the Sun in xyz; exposure in w.
     sun_direction: vec4<f32>,
     // Black exitance, white exitance (W/m²), NEDT (K), noise seed.
     thermal: vec4<f32>,
+    // Fog colour (linear, exposed) in rgb; extinction per metre in w.
+    fog: vec4<f32>,
     patch_offsets: array<vec4<f32>, MAX_PATCHES>,
 };
 
@@ -39,6 +42,7 @@ struct VertexOut {
     @location(1) lat_lon_deg: vec2<f32>,
     @location(2) ortho_uv: vec2<f32>,
     @location(3) radiometry: vec2<f32>,
+    @location(4) eye_relative: vec3<f32>,
 };
 
 @vertex
@@ -51,6 +55,7 @@ fn vs_main(v: VertexIn) -> VertexOut {
     out.lat_lon_deg = degrees(v.lat_lon);
     out.ortho_uv = v.ortho_uv;
     out.radiometry = v.radiometry;
+    out.eye_relative = eye_relative;
     return out;
 }
 
@@ -73,6 +78,17 @@ fn procedural_surface(in: VertexOut, daylight: f32) -> vec3<f32> {
     return mix(lit, vec3<f32>(0.85, 0.80, 0.55) * (0.25 + 0.75 * daylight), lines);
 }
 
+// Exposure, then Beer-Lambert extinction toward the fog colour. Clear air
+// returns early so the exposed colour is not perturbed by `mix` rounding.
+fn fogged(lit: vec3<f32>, eye_relative: vec3<f32>) -> vec3<f32> {
+    let exposed = lit * frame.sun_direction.w;
+    if frame.fog.w <= 0.0 {
+        return exposed;
+    }
+    let transmittance = exp(-frame.fog.w * length(eye_relative));
+    return mix(frame.fog.rgb, exposed, transmittance);
+}
+
 // Imagery already holds the light of its own exposure, so the Sun only
 // modulates it. Where nothing is draped, zero alpha falls through to the
 // procedural surface.
@@ -84,9 +100,9 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let in_atlas = all(in.ortho_uv >= vec2<f32>(0.0)) && all(in.ortho_uv <= vec2<f32>(1.0));
     let procedural = procedural_surface(in, daylight);
     if in_atlas && ortho.a > 0.5 {
-        return vec4<f32>(ortho.rgb * (0.35 + 0.65 * daylight), 1.0);
+        return vec4<f32>(fogged(ortho.rgb * (0.35 + 0.65 * daylight), in.eye_relative), 1.0);
     }
-    return vec4<f32>(procedural, 1.0);
+    return vec4<f32>(fogged(procedural, in.eye_relative), 1.0);
 }
 
 fn pcg(input: u32) -> u32 {

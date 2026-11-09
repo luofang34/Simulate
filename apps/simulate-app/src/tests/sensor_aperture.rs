@@ -32,7 +32,7 @@ fn frame(
     flight.advance_by(elapsed_s, CRUISE, SimTimeScale::RealTime)?;
     let exposures = flight.drain_sensor_exposures();
     let camera = flight.display_camera(mode)?;
-    let sky = SkyFrame::fixed_sun(flight.world().sun_direction_ecef());
+    let sky = SkyFrame::of_world(flight.world());
     let _need_globe = rig.prepare_frame(&gpu.queue, size, flight, &camera, &sky, &exposures)?;
     Ok(exposures)
 }

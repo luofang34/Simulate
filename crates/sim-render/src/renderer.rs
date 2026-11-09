@@ -1,24 +1,16 @@
-use glam::DVec3;
-
 use crate::compositor::{CompositorPass, CompositorTarget, OverlayQuad};
 use crate::frame::FrameParams;
 use crate::gpu::SurfaceGpu;
 use crate::pipeline::{GlobeLayouts, globe_pipeline};
 use crate::scene::GlobeScene;
-use crate::{Camera, FrameOutcome, GlobeMesh, MAX_PATCHES, OrthoAtlas, RenderError};
+use crate::{
+    Camera, EnvironmentFrame, FrameOutcome, GlobeMesh, MAX_PATCHES, OrthoAtlas, RenderError,
+};
 
 /// Globe tessellation: 12 × 24 patches of 15° × 15°, each a 16 × 16 grid.
 const GLOBE_LAT_PATCHES: u32 = 12;
 const GLOBE_LON_PATCHES: u32 = 24;
 const GLOBE_PATCH_GRID: u32 = 16;
-
-/// Lighting inputs for one frame.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SceneLighting {
-    /// Direction from the body toward the Sun, body-fixed (need not be
-    /// normalised).
-    pub sun_direction_ecef: DVec3,
-}
 
 /// Owns the GPU, the globe geometry, the split-viewport compositor, and the per-frame uniform block.
 pub struct Renderer {
@@ -129,9 +121,9 @@ impl Renderer {
     pub fn render(
         &mut self,
         camera: &Camera,
-        lighting: &SceneLighting,
+        environment: &EnvironmentFrame,
     ) -> Result<FrameOutcome, RenderError> {
-        self.render_composite(Some((camera, lighting)), &[])
+        self.render_composite(Some((camera, environment)), &[])
     }
 
     /// Draws an optional 3D `GlobeScene` pass followed by zero-copy [`OverlayQuad`] viewports/panels.
@@ -140,7 +132,7 @@ impl Renderer {
     /// `OTW`, `SensorAperture`, or `ChartMap` quad covers the presentation surface.
     pub fn render_composite(
         &mut self,
-        globe: Option<(&Camera, &SceneLighting)>,
+        globe: Option<(&Camera, &EnvironmentFrame)>,
         quads: &[OverlayQuad<'_>],
     ) -> Result<FrameOutcome, RenderError> {
         if let Some(message) = self.gpu.take_device_error() {
@@ -170,15 +162,13 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        let clear_compositor = if let Some((camera, lighting)) = globe {
-            let params = FrameParams {
-                view_proj: camera.view_projection(self.gpu.aspect()),
-                sun_direction: lighting.sun_direction_ecef,
-                thermal: [0.0; 4],
-            };
+        let clear_compositor = if let Some((camera, environment)) = globe {
+            let view_proj = camera.view_projection(self.gpu.aspect());
+            let params = FrameParams::visible(view_proj, environment, [0.0; 4]);
             self.scene
                 .write_frame(&self.gpu.queue, &params, camera.pose.position_ecef);
-            self.encode_globe_pass(&mut encoder, &view);
+            let sky = environment.sky_linear_rgb_at(camera.pose.position_ecef);
+            self.encode_globe_pass(&mut encoder, &view, sky);
             None
         } else {
             Some(wgpu::Color {
@@ -204,7 +194,12 @@ impl Renderer {
         Ok(FrameOutcome::Presented)
     }
 
-    fn encode_globe_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    fn encode_globe_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        [r, g, b]: [f32; 3],
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("globe"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -213,9 +208,9 @@ impl Renderer {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.01,
-                        g: 0.01,
-                        b: 0.03,
+                        r: f64::from(r),
+                        g: f64::from(g),
+                        b: f64::from(b),
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,

@@ -116,7 +116,7 @@ impl VerifyHarness {
         sun_ecef: glam::DVec3,
         out: &Path,
     ) -> Result<(), AppSimError> {
-        let sky = SkyFrame::fixed_sun(sun_ecef);
+        let sky = SkyFrame::fixed_sun(self.flight.world().body(), sun_ecef);
         for _ in 0..35 {
             let mode = self.rig.supervisor().viewport_mode();
             let cam = self.flight.display_camera(mode)?;

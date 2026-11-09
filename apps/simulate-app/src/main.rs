@@ -8,6 +8,7 @@ mod avionics;
 mod camera_view;
 mod cockpit_rig;
 mod controls;
+mod environment;
 mod error;
 mod esc_menu;
 mod flight;
