@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use super::anchors::{Anchors, M_PER_IN};
 use super::markings::{Art, Colour, Marking, Place};
@@ -67,11 +67,11 @@ fn the_nose_number_reads_forward_from_starboard_and_aft_from_port() {
         place: Place::Nose {
             side,
             fs_in: 48.0,
-            wl_in: 13.0,
+            wl_in: 9.5,
         },
     };
     let centre_y = anchors.nose_y - 48.0 * M_PER_IN;
-    let z = anchors.frl_z + 16.0 * M_PER_IN;
+    let z = anchors.frl_z + 12.5 * M_PER_IN;
     let cover = |side: f32, dy_in: f32| {
         let p = Vec3::new(side * 0.5, centre_y + dy_in * M_PER_IN, z);
         number(side)
@@ -101,4 +101,29 @@ fn the_nose_number_reads_forward_from_starboard_and_aft_from_port() {
         differ(&port, &starboard) > 5.0,
         "starboard must not be port's copy"
     );
+}
+
+#[test]
+fn victory_row_reads_two_rising_suns_then_the_ship() {
+    use super::victories::{Ink, paint};
+    // Row of two 1.5-wide flags and a 2.8-long ship, 0.4 apart, 3 in tall:
+    // 6.6 heights wide, so it starts 3.3 heights left of centre.
+    let h = 3.0;
+    let at =
+        |x_heights: f32, y_heights: f32| Vec2::new((x_heights - 3.3) * h, (y_heights - 0.5) * h);
+    let ink = |x, y| paint(2, 1, h, at(x, y), 0.01).map(|(ink, _)| ink);
+    for flag_centre in [0.75, 2.65] {
+        assert_eq!(
+            ink(flag_centre, 0.5),
+            Some(Ink::Red),
+            "disc at {flag_centre}"
+        );
+        assert_eq!(
+            ink(flag_centre - 0.6, 0.15),
+            Some(Ink::White),
+            "field at {flag_centre}"
+        );
+    }
+    assert_eq!(ink(5.0, 0.15), Some(Ink::White), "hull");
+    assert_eq!(ink(5.0, 0.9), None, "sky above the hull");
 }

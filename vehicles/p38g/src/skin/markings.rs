@@ -9,8 +9,9 @@ use glam::{Vec2, Vec3};
 
 use super::anchors::{Anchors, M_PER_IN};
 use super::glyphs;
+use super::victories::{self, Ink};
 use super::weathering::smooth;
-use crate::stations::{INSIGNIA_BLUE, INSIGNIA_WHITE, STENCIL_YELLOW};
+use crate::stations::{INSIGNIA_BLUE, INSIGNIA_RED, INSIGNIA_WHITE, STENCIL_YELLOW};
 
 /// What is painted.
 #[derive(Clone, Copy, Debug)]
@@ -24,6 +25,13 @@ pub(crate) enum Art {
         height_in: f32,
         stroke: f32,
         colour: Colour,
+    },
+    /// A row of `flags` Japanese flags then `ships` ship silhouettes,
+    /// `height_in` tall (see `victories`).
+    Victories {
+        flags: u32,
+        ships: u32,
+        height_in: f32,
     },
 }
 
@@ -200,6 +208,17 @@ impl Art {
                     cover: disc,
                 })
             }
+            Art::Victories {
+                flags,
+                ships,
+                height_in,
+            } => victories::paint(flags, ships, height_in, at, aa).map(|(ink, cover)| Paint {
+                colour: Vec3::from(match ink {
+                    Ink::White => INSIGNIA_WHITE.diffuse_rgb,
+                    Ink::Red => INSIGNIA_RED.diffuse_rgb,
+                }),
+                cover,
+            }),
             Art::Numerals {
                 text,
                 height_in,
@@ -228,25 +247,12 @@ impl Art {
 fn star_distance(p: Vec2) -> f32 {
     // A regular star's inner vertices lie at sin 18° / sin 54° of its points.
     let inner = 18.0_f32.to_radians().sin() / 54.0_f32.to_radians().sin();
-    let corners: Vec<Vec2> = (0..10)
+    let corners: Vec<[f32; 2]> = (0..10)
         .map(|i| {
             let a = std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::PI / 5.0;
             let r = if i % 2 == 0 { 1.0 } else { inner };
-            Vec2::new(a.cos(), a.sin()) * r
+            [a.cos() * r, a.sin() * r]
         })
         .collect();
-    let mut distance = f32::INFINITY;
-    let mut inside = false;
-    for i in 0..corners.len() {
-        let (Some(&a), Some(&b)) = (corners.get(i), corners.get((i + 1) % corners.len())) else {
-            continue;
-        };
-        let ab = b - a;
-        let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-        distance = distance.min(p.distance(a + ab * t));
-        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * ab.x {
-            inside = !inside;
-        }
-    }
-    if inside { -distance } else { distance }
+    victories::polygon_distance(p, &corners)
 }

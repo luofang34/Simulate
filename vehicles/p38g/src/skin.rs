@@ -15,6 +15,7 @@ mod scheme;
 mod seams;
 #[cfg(test)]
 mod tests;
+mod victories;
 mod weathering;
 
 use glam::Vec3;
