@@ -212,7 +212,8 @@ fn propeller_disc(in: VertexOut) -> vec4<f32> {
     let wedge = pow(0.5 + 0.5 * cos(blades * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
     let tip = smoothstep(0.945, 0.962, r) * (1.0 - smoothstep(0.986, 0.998, r));
     let base = draw.base_color.a;
-    let blade_alpha = base * 0.34 * radial * (0.30 + 0.70 * wedge);
+    // `base` is the disc's peak opacity (the articulation's `disc_opacity`).
+    let blade_alpha = base * radial * (0.30 + 0.70 * wedge);
     let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.48;
     let blade_rgb = draw.base_color.rgb;
     let tip_rgb = select(vec3<f32>(0.86, 0.88, 0.90), draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);

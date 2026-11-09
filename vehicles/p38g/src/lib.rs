@@ -9,41 +9,46 @@
 //! - [`cockpit_reservation`]: Reserved 3D cockpit station contract (`FS 86` instrument panel mount,
 //!   optical reflector gunsight mount, starboard control-girder pivot, left engine/feathering
 //!   quadrant, right flap/cooling console, `FS 154` pilot armor bulkhead, and `FS 182` radio bay),
-//! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, 24 individual
-//!   exhaust ejector stacks, recessed dorsal GE B-13 turbosuperchargers, wing leading-edge
-//!   intercooler louvers, chin oil cooler, and aft-boom glycol radiator ducts with splitter plates,
-//! - [`package`]: Embedded `syspack.json` source, OpenUSD `.usda` stage export, and 3-view
-//!   orthographic blueprint verification.
+//! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, exhaust
+//!   collectors to the dorsal GE B-13 turbosuperchargers, wing leading-edge
+//!   intercooler louvers and chin oil cooler; [`radiators`]: the glycol radiator scoops on the
+//!   tail booms and their exit flaps,
+//! - [`package`]: Embedded `syspack.json` source and OpenUSD `.usda` stage export,
+//! - [`drawing`]: the digitised AN 01-75F-2 general arrangement and its station callouts,
+//!   against which [`verify_p38g_three_view_and_stations`] measures the built mesh.
 
 mod airframe;
 mod articulated;
+mod calibration;
 mod canopy_frames;
 mod cockpit_controls;
 mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
+pub mod drawing;
+mod fillets;
+mod gear;
 mod instrument_panel;
 mod mesh;
 mod package;
 mod powerplant;
+mod radiators;
 mod role;
 mod stations;
 #[cfg(test)]
 mod tests;
 
+pub use calibration::{P38BlueprintCalibrationReport, verify_p38g_three_view_and_stations};
 pub use cockpit_reservation::{
     CockpitInteriorContract, PanelMountFrame, StationBulkheadSpec, p38g_cockpit_contract,
 };
 pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
-pub use package::{
-    P38BlueprintCalibrationReport, P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda,
-    verify_p38g_three_view_and_stations,
-};
+pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
 pub use stations::{
     AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, HTAIL_Z,
-    OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,
-    ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TURBO_NOZZLE_Y, WING_AREA_M2,
-    WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point, interpolate_boom, interpolate_gondola,
-    three_view_boom_outline_x, three_view_gondola_outline_x, three_view_wing_leading_y,
-    three_view_wing_trailing_y, wing_station, wing_surface_point,
+    OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_BLADE_OFFSET_M, PROP_HUB_Y,
+    PROP_HUB_Z, PROP_RADIUS_M, ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TIP_START_X,
+    TURBO_NOZZLE_Y, WING_AREA_M2, WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point,
+    interpolate_boom, interpolate_gondola, three_view_boom_outline_x, three_view_gondola_outline_x,
+    three_view_wing_leading_y, three_view_wing_trailing_y, wing_station, wing_surface_point,
 };

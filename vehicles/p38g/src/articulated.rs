@@ -1,17 +1,20 @@
 //! Articulated P-38G-13-LO flight controls, Curtiss Electric full-feathering
-//! propellers (`BS 0..26`), cooling shutters, and tricycle landing gear (`T.O. 01-75F-1`).
+//! propellers, flaps, ailerons, elevator and rudders (`T.O. 01-75F-1`); the landing gear
+//! is built in [`crate::gear`].
 
 use std::f32::consts::TAU;
 
 use glam::{DMat4, DVec3, Vec3};
 
+use crate::drawing::{ELEVATOR_CHORD_IN, INCH_M, y_to_fs};
+use crate::gear::{build_main_gear, build_nose_gear};
 use crate::mesh::{
-    Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, fixed, part,
+    Inside, MeshBuilder, P38Material, P38MeshPrim, P38PartRole, aerofoil, circle_segments, part,
 };
 use crate::stations::{
-    AILERON_END_X, BOOM_X, CHROME_OLEO, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, INSIGNIA_RED,
-    NEUTRAL_GRAY, OLIVE_DRAB, PROP_BLACK, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
-    RUDDER_HINGE_Y, SPINNER_ALUMINIUM, TIRE_RUBBER, WHEEL_WELL_ZINC, wing_station,
+    AILERON_END_X, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
+    PROP_BLACK, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, PROP_YELLOW,
+    RUDDER_HINGE_Y, TAILPLANE_SECTIONS_BL, tailplane_planform_fs, wing_station,
 };
 
 pub(crate) fn articulated_prims() -> Vec<P38MeshPrim> {
@@ -34,28 +37,32 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
             f64::from(PROP_HUB_Y),
             f64::from(PROP_HUB_Z),
         ));
+        // Spinners painted with the airframe, as on the 339th FS's P-38G-13s (photo of
+        // 43-2239 at Fighter 2, 1943); the nose is the blunt ogive of the AN 01-75F-2 plan
+        // view (26 in base, half-width 11.5 in ten inches aft of the tip).
         for (sub, mat, rings_spec) in [
             (
                 "SpinnerBase",
                 OLIVE_DRAB,
-                &[(0.0_f32, 0.33_f32), (0.12, 0.31), (0.22, 0.28)][..],
+                &[(0.0_f32, 0.33_f32), (0.14, 0.31), (0.26, 0.27)][..],
             ),
             (
                 "SpinnerNose",
-                SPINNER_ALUMINIUM,
+                OLIVE_DRAB,
                 &[
-                    (0.22, 0.28),
-                    (0.36, 0.23),
-                    (0.49, 0.16),
-                    (0.59, 0.08),
-                    (0.66, 0.014),
+                    (0.26, 0.285),
+                    (0.40, 0.245),
+                    (0.53, 0.18),
+                    (0.64, 0.095),
+                    (0.69, 0.045),
+                    (0.71, 0.012),
                 ][..],
             ),
         ] {
             let mut m = MeshBuilder::new();
             let rings: Vec<Vec<Vec3>> = rings_spec
                 .iter()
-                .map(|&(y, r)| circle_xz(y, r, 24))
+                .map(|&(y, r)| circle_xz(y, r, circle_segments(0.33)))
                 .collect();
             m.loft(&rings, true, Inside::Axis);
             prims.push(part(
@@ -98,7 +105,7 @@ fn build_propeller_discs(prims: &mut Vec<P38MeshPrim>) {
         disc.disc_xz(PROP_RADIUS_M, 40);
         let rest = DMat4::from_translation(DVec3::new(
             f64::from(side * BOOM_X),
-            f64::from(PROP_HUB_Y + 0.11),
+            f64::from(PROP_HUB_Y + PROP_BLADE_OFFSET_M),
             f64::from(PROP_HUB_Z),
         ));
         let mut p = part(
@@ -122,35 +129,60 @@ fn circle_xz(y: f32, r: f32, segs: u32) -> Vec<Vec3> {
         .collect()
 }
 
+/// Blade planform of `design/curtiss_electric_3b.json` (the propeller performance model's
+/// own blade): chord over diameter `base + bulge * sin(pi * (x - 0.2) / 0.85)` less a
+/// linear `tip_taper` over the outer tenth, and thickness over chord falling linearly
+/// from `root` to `tip`, at radius fraction `x`.
+pub(crate) const BLADE_CHORD_OVER_D: (f32, f32, f32) = (0.055, 0.030, 0.02);
+pub(crate) const BLADE_THICKNESS_OVER_CHORD: (f32, f32) = (0.30, 0.06);
+
+/// Chord and half-thickness of the blade at radius `r_m`, metres.
+fn blade_section(r_m: f32) -> (f32, f32) {
+    let (base, bulge, taper) = BLADE_CHORD_OVER_D;
+    let (root_t, tip_t) = BLADE_THICKNESS_OVER_CHORD;
+    let x = (r_m / PROP_RADIUS_M).clamp(0.0, 1.0);
+    let planform = base + bulge * (std::f32::consts::PI * ((x - 0.2) / 0.85).min(1.0)).sin();
+    let chord = (planform - taper * ((x - 0.9).max(0.0) / 0.1)) * 2.0 * PROP_RADIUS_M;
+    let t_over_c = root_t + (tip_t - root_t) * ((x - 0.2) / 0.8).clamp(0.0, 1.0);
+    (chord, 0.5 * t_over_c * chord)
+}
+
 fn build_curtiss_paddle_blade(pitch_hand: f32) -> (MeshBuilder, MeshBuilder) {
     let mut body = MeshBuilder::new();
     body.tube(
-        Vec3::new(0.18, 0.11, 0.0),
-        Vec3::new(0.38, 0.11, 0.0),
+        Vec3::new(0.18, PROP_BLADE_OFFSET_M, 0.0),
+        Vec3::new(0.38, PROP_BLADE_OFFSET_M, 0.0),
         0.048,
         0.056,
         12,
     );
-    let body_rings: Vec<Vec<Vec3>> = [
-        (0.36_f32, 0.13_f32, 0.030_f32, 34.0_f32),
-        (0.62, 0.21, 0.024, 28.0),
-        (0.95, 0.25, 0.018, 22.0),
-        (1.28, 0.23, 0.013, 17.0),
-        (1.56, 0.18, 0.009, 13.0),
-    ]
-    .into_iter()
-    .map(|(r, c, t, deg)| blade_ring(r, c, t, deg.to_radians() * pitch_hand))
-    .collect();
+    // Blade angle eases from 34 deg at the root to 9.5 deg at the tip.
+    let ring = |r: f32, squeeze: f32| {
+        let (chord, half_t) = blade_section(r);
+        let deg = 34.0 - 24.5 * ((r - 0.36) / (PROP_RADIUS_M - 0.36)).clamp(0.0, 1.0);
+        blade_ring(
+            r,
+            chord * squeeze,
+            half_t * squeeze,
+            deg.to_radians() * pitch_hand,
+        )
+    };
+    let body_rings: Vec<Vec<Vec3>> = [0.36_f32, 0.55, 0.80, 1.05, 1.30, 1.56]
+        .into_iter()
+        .map(|r| ring(r, 1.0))
+        .collect();
     body.loft(&body_rings, true, Inside::Axis);
 
+    // The paddle tip: full chord to the last few inches, then rounded off.
     let mut tip = MeshBuilder::new();
     let tip_rings: Vec<Vec<Vec3>> = [
-        (1.56_f32, 0.18_f32, 0.009_f32, 13.0_f32),
-        (1.68, 0.13, 0.006, 11.0),
-        (PROP_RADIUS_M, 0.06, 0.004, 9.5),
+        (1.56_f32, 1.0_f32),
+        (1.68, 1.0),
+        (PROP_RADIUS_M - 0.03, 0.85),
+        (PROP_RADIUS_M, 0.45),
     ]
     .into_iter()
-    .map(|(r, c, t, deg)| blade_ring(r, c, t, deg.to_radians() * pitch_hand))
+    .map(|(r, squeeze)| ring(r, squeeze))
     .collect();
     tip.loft(&tip_rings, true, Inside::Axis);
     (body, tip)
@@ -160,22 +192,28 @@ fn blade_ring(x_r: f32, chord: f32, half_t: f32, beta: f32) -> Vec<Vec3> {
     let (sb, cb) = beta.sin_cos();
     let chord_dir = Vec3::new(0.0, sb, cb);
     let thick_dir = Vec3::new(0.0, cb, -sb);
-    let lead = Vec3::new(x_r, 0.11, 0.0) - chord_dir * (0.42 * chord);
+    let lead = Vec3::new(x_r, PROP_BLADE_OFFSET_M, 0.0) - chord_dir * (0.42 * chord);
     aerofoil(lead, chord_dir * chord, thick_dir * half_t)
 }
 
 fn build_fowler_flaps(prims: &mut Vec<P38MeshPrim>) {
+    // AN 01-75F-2 plan view: flaps from the gondola to `WS 69.25` and from `WS 118.75` to
+    // `WS 157.25`, `23.5 in` chord at the flap leading edge.
+    const FLAP_CHORD_M: f32 = 23.5 * 0.0254;
     let (fl, fr) = (P38PartRole::FlapLeft, P38PartRole::FlapRight);
+    let (inner, outer) = (
+        (0.50_f32, 69.25 * 0.0254),
+        (118.75 * 0.0254, 157.25 * 0.0254),
+    );
     for (name, role, x0, x1) in [
-        ("FlapInboardLeft", fl, -1.86_f32, -0.62_f32),
-        ("FlapOutboardLeft", fl, -3.76, -2.84),
-        ("FlapInboardRight", fr, 0.62, 1.86),
-        ("FlapOutboardRight", fr, 2.84, 3.76),
+        ("FlapInboardLeft", fl, -inner.1, -inner.0),
+        ("FlapOutboardLeft", fl, -outer.1, -outer.0),
+        ("FlapInboardRight", fr, inner.0, inner.1),
+        ("FlapOutboardRight", fr, outer.0, outer.1),
     ] {
         let xm = 0.5 * (x0 + x1);
         let (_, ty_m, zm_m, ..) = wing_station(xm);
-        let (hy, hz) = (ty_m + 0.42, zm_m - 0.025);
-        let mut mesh = MeshBuilder::new();
+        let (hy, hz) = (ty_m + FLAP_CHORD_M, zm_m - 0.025);
         let sections: Vec<Vec<Vec3>> = [x0, xm, x1]
             .into_iter()
             .map(|x| {
@@ -187,75 +225,129 @@ fn build_fowler_flaps(prims: &mut Vec<P38MeshPrim>) {
                 )
             })
             .collect();
-        mesh.loft(&sections, true, Inside::Axis);
         let rest = DMat4::from_translation(DVec3::new(f64::from(xm), f64::from(hy), f64::from(hz)));
-        prims.push(part(
+        push_two_tone(
+            prims,
             &format!("/P38g/Wing/{name}"),
             role,
-            OLIVE_DRAB,
             rest,
-            mesh,
-        ));
+            &sections,
+            None,
+        );
     }
 }
 
+/// A control surface lofted through closed `aerofoil` sections (ordered by increasing
+/// `x`), painted like the wing: olive drab on top and on the end ribs, neutral gray
+/// underneath. Both halves share the role and rest frame so they deflect together.
+pub(crate) fn push_two_tone(
+    prims: &mut Vec<P38MeshPrim>,
+    path: &str,
+    role: P38PartRole,
+    rest: DMat4,
+    sections: &[Vec<Vec3>],
+    hinge_axis: Option<DVec3>,
+) {
+    // `aerofoil` rings run leading edge (index 0) over the top to the trailing edge
+    // (index half) and back underneath.
+    let half = sections.first().map_or(0, |r| r.len() / 2);
+    let upper_rows: Vec<Vec<Vec3>> = sections
+        .iter()
+        .map(|r| r.iter().take(half + 1).copied().collect())
+        .collect();
+    let lower_rows: Vec<Vec<Vec3>> = sections
+        .iter()
+        .map(|r| {
+            r.iter()
+                .skip(half)
+                .chain(r.iter().take(1))
+                .copied()
+                .collect()
+        })
+        .collect();
+    let mut upper = MeshBuilder::new();
+    upper.loft_open(&upper_rows, Inside::Point(Vec3::new(0.0, 0.0, -10.0)));
+    for (ring, outward) in [(sections.first(), Vec3::NEG_X), (sections.last(), Vec3::X)] {
+        if let Some(ring) = ring {
+            upper.polygon(ring, outward);
+        }
+    }
+    let mut lower = MeshBuilder::new();
+    lower.loft_open(&lower_rows, Inside::Point(Vec3::new(0.0, 0.0, 10.0)));
+    for (sub, mat, mesh) in [("", OLIVE_DRAB, upper), ("Underside", NEUTRAL_GRAY, lower)] {
+        let mut prim = part(&format!("{path}{sub}"), role, mat, rest, mesh);
+        prim.custom_hinge_axis = hinge_axis;
+        prims.push(prim);
+    }
+}
+
+/// Aileron hinge line: `70 %` chord (AN 01-75F-2 `HINGE ℄ AT 70% C.`).
+fn aileron_hinge(x: f32) -> (f32, f32, f32) {
+    let (lead, trail, zm, ..) = wing_station(x);
+    let aft_chord = 0.30 * (lead - trail);
+    (trail + aft_chord, zm, aft_chord)
+}
+
 fn build_ailerons_and_trims(prims: &mut Vec<P38MeshPrim>) {
+    // AN 01-75F-2 plan view: `107 in` of aileron outboard of `WS 182`.
+    const AILERON_START_X: f32 = 182.2 * 0.0254;
     for (name, trim_name, role, x0, x1) in [
         (
             "AileronLeft",
             "AileronTrimTabLeft",
             P38PartRole::AileronLeft,
             -AILERON_END_X,
-            -3.84_f32,
+            -AILERON_START_X,
         ),
         (
             "AileronRight",
             "AileronTrimTabRight",
             P38PartRole::AileronRight,
-            3.84,
+            AILERON_START_X,
             AILERON_END_X,
         ),
     ] {
         let xm = 0.5 * (x0 + x1);
-        let (_, ty_m, zm_m, ..) = wing_station(xm);
-        let (hy, hz) = (ty_m + 0.32, zm_m);
-        let (_, ty0, zm0, ..) = wing_station(x0);
-        let (_, ty1, zm1, ..) = wing_station(x1);
+        let (hy, hz, mid_chord) = aileron_hinge(xm);
+        let (hy0, hz0, _) = aileron_hinge(x0);
+        let (hy1, hz1, _) = aileron_hinge(x1);
         let axis = DVec3::new(
             f64::from(x1 - x0),
-            f64::from(ty1 - ty0),
-            f64::from(zm1 - zm0),
+            f64::from(hy1 - hy0),
+            f64::from(hz1 - hz0),
         )
         .normalize_or(DVec3::X);
 
-        let mut mesh = MeshBuilder::new();
         let sections: Vec<Vec<Vec3>> = [x0, xm, x1]
             .into_iter()
             .map(|x| {
-                let (_, ty, zm, ..) = wing_station(x);
+                let (y, z, chord) = aileron_hinge(x);
                 aerofoil(
-                    Vec3::new(x - xm, ty + 0.32 - hy, zm - hz),
-                    Vec3::new(0.0, -0.32, 0.0),
+                    Vec3::new(x - xm, y - hy, z - hz),
+                    Vec3::new(0.0, -chord, 0.0),
                     Vec3::new(0.0, 0.0, 0.032),
                 )
             })
             .collect();
-        mesh.loft(&sections, true, Inside::Axis);
-
         let rest = DMat4::from_translation(DVec3::new(f64::from(xm), f64::from(hy), f64::from(hz)));
-        let mut prim = part(&format!("/P38g/Wing/{name}"), role, OLIVE_DRAB, rest, mesh);
-        prim.custom_hinge_axis = Some(axis);
-        prims.push(prim);
+        push_two_tone(
+            prims,
+            &format!("/P38g/Wing/{name}"),
+            role,
+            rest,
+            &sections,
+            Some(axis),
+        );
 
         let mut tab = MeshBuilder::new();
         tab.cuboid(
-            Vec3::new(-0.24, -0.34, -0.012),
-            Vec3::new(0.24, -0.24, 0.012),
+            Vec3::new(-0.24, -mid_chord, -0.012),
+            Vec3::new(0.24, 0.10 - mid_chord, 0.012),
         );
         let mut tab_prim = part(
             &format!("/P38g/Wing/{trim_name}"),
             P38PartRole::CabinExterior,
-            INSIGNIA_RED,
+            OLIVE_DRAB,
             rest,
             tab,
         );
@@ -270,37 +362,44 @@ fn build_elevator_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         f64::from(ELEVATOR_HINGE_Y),
         f64::from(HTAIL_Z),
     ));
-    let mut elev = MeshBuilder::new();
-    let e_sections: Vec<Vec<Vec3>> = [-BOOM_X + 0.14, -1.10, 0.0, 1.10, BOOM_X - 0.14]
-        .into_iter()
-        .map(|x| {
-            aerofoil(
-                Vec3::new(x, 0.0, 0.0),
-                Vec3::new(0.0, -0.50, 0.0),
-                Vec3::new(0.0, 0.0, 0.044),
-            )
+    // The `20 in` elevator aft of the hinge, tip to tip; it narrows to nothing where the
+    // semicircular tips close ahead of the hinge.
+    let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
+    let e_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
+        .iter()
+        .filter_map(|&bl| {
+            let (le, te) = tailplane_planform_fs(bl)?;
+            let start = le.max(hinge_fs);
+            let chord_in = (te - start).max(0.3);
+            let scale = (te - le) / 45.0;
+            Some(aerofoil(
+                Vec3::new(bl * INCH_M, -(start - hinge_fs) * INCH_M, 0.0),
+                Vec3::new(0.0, -chord_in * INCH_M, 0.0),
+                Vec3::new(0.0, 0.0, (0.045 * scale).max(0.004)),
+            ))
         })
         .collect();
-    elev.loft(&e_sections, true, Inside::Axis);
-    prims.push(part(
+    push_two_tone(
+        prims,
         "/P38g/Empennage/Elevator",
         P38PartRole::Elevator,
-        OLIVE_DRAB,
         elev_rest,
-        elev,
-    ));
+        &e_sections,
+        None,
+    );
 
+    // One trim tab across the centre: `47.686 in` span, `5.25 in` chord (AN 01-75F-2).
     let mut elev_tabs = MeshBuilder::new();
-    for side in [-1.0_f32, 1.0] {
-        elev_tabs.cuboid(
-            Vec3::new(side * 0.85 - 0.34, -0.53, -0.014),
-            Vec3::new(side * 0.85 + 0.34, -0.44, 0.014),
-        );
-    }
+    let (half_span, chord, elev_chord) =
+        (23.843 * INCH_M, 5.25 * INCH_M, ELEVATOR_CHORD_IN * INCH_M);
+    elev_tabs.cuboid(
+        Vec3::new(-half_span, -elev_chord, -0.010),
+        Vec3::new(half_span, chord - elev_chord, 0.010),
+    );
     prims.push(part(
         "/P38g/Empennage/ElevatorTrimTab",
         P38PartRole::CabinExterior,
-        INSIGNIA_RED,
+        OLIVE_DRAB,
         elev_rest,
         elev_tabs,
     ));
@@ -317,7 +416,7 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
         let r_sections: Vec<Vec<Vec3>> = FIN_PROFILE
             .iter()
             .map(|&(z, _ly, ty, half_t)| {
-                let aft_c = (ty - RUDDER_HINGE_Y).min(-0.14);
+                let aft_c = (ty - RUDDER_HINGE_Y).min(-0.01);
                 aerofoil(
                     Vec3::new(0.0, 0.0, z - 0.40),
                     Vec3::new(0.0, aft_c, 0.0),
@@ -326,169 +425,29 @@ fn build_rudders_and_tabs(prims: &mut Vec<P38MeshPrim>) {
             })
             .collect();
         r_mesh.loft(&r_sections, true, Inside::Axis);
-        prims.push(part(
+        let mut rudder = part(
             &format!("/P38g/Empennage/{name}"),
             P38PartRole::Rudder,
             OLIVE_DRAB,
             r_rest,
             r_mesh,
-        ));
+        );
+        // The mesh hinges on a vertical line (the drawn hinge rakes only 1 deg 15 min);
+        // without an axis the renderer swings a rudder about a raked default axis.
+        rudder.custom_hinge_axis = Some(DVec3::Z);
+        prims.push(rudder);
 
         let mut r_tab = MeshBuilder::new();
         r_tab.cuboid(
-            Vec3::new(-0.014, -1.06, -0.18),
-            Vec3::new(0.014, -0.92, 0.22),
+            Vec3::new(-0.010, -0.60, -0.18),
+            Vec3::new(0.010, -0.48, 0.22),
         );
         prims.push(part(
             &format!("/P38g/Empennage/{name}TrimTab"),
             P38PartRole::CabinExterior,
-            INSIGNIA_RED,
+            OLIVE_DRAB,
             r_rest,
             r_tab,
         ));
     }
-}
-
-fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
-    let mut wells = MeshBuilder::new();
-    wells.cuboid(Vec3::new(-0.20, 1.54, -0.44), Vec3::new(0.20, 2.30, -0.34));
-    for side in [-1.0_f32, 1.0] {
-        let bx = side * BOOM_X;
-        wells.cuboid(
-            Vec3::new(bx - 0.24, -1.52, -0.42),
-            Vec3::new(bx + 0.24, -0.36, -0.32),
-        );
-    }
-    prims.push(fixed(
-        "/P38g/Gear/WheelWells",
-        P38PartRole::CabinExterior,
-        WHEEL_WELL_ZINC,
-        wells,
-    ));
-
-    let nose_rest = DMat4::from_translation(DVec3::new(0.0, 2.25, -0.36));
-    let mut n_strut = MeshBuilder::new();
-    n_strut.tube(Vec3::ZERO, Vec3::new(0.0, 0.06, -0.82), 0.044, 0.036, 12);
-    n_strut.tube(
-        Vec3::new(0.0, 0.06, -0.82),
-        Vec3::new(0.06, 0.08, -1.36),
-        0.032,
-        0.028,
-        12,
-    );
-    prims.push(part(
-        "/P38g/Gear/NoseStrut",
-        P38PartRole::GearStruts,
-        CHROME_OLEO,
-        nose_rest,
-        n_strut,
-    ));
-
-    let mut n_door = MeshBuilder::new();
-    n_door.cuboid(Vec3::new(0.20, -0.68, -0.26), Vec3::new(0.23, 0.08, -0.02));
-    prims.push(part(
-        "/P38g/Gear/NoseDoor",
-        P38PartRole::GearStruts,
-        NEUTRAL_GRAY,
-        nose_rest,
-        n_door,
-    ));
-    append_wheel_and_hub(
-        prims,
-        "/P38g/Gear/NoseWheel",
-        P38PartRole::NoseWheel,
-        DVec3::new(0.0, 2.33, -1.72),
-        0.34,
-        0.10,
-    );
-}
-
-fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
-    for (s_name, w_name, w_role, side) in [
-        (
-            "MainStrutLeft",
-            "WheelLeft",
-            P38PartRole::WheelLeft,
-            -1.0_f32,
-        ),
-        (
-            "MainStrutRight",
-            "WheelRight",
-            P38PartRole::WheelRight,
-            1.0_f32,
-        ),
-    ] {
-        let bx = side * BOOM_X;
-        let m_rest = DMat4::from_translation(DVec3::new(f64::from(bx), -0.45, -0.36));
-        let mut m_strut = MeshBuilder::new();
-        m_strut.tube(Vec3::ZERO, Vec3::new(0.0, -0.04, -1.24), 0.056, 0.044, 14);
-        m_strut.tube(
-            Vec3::new(0.0, -0.58, -0.06),
-            Vec3::new(0.0, -0.02, -0.78),
-            0.030,
-            0.024,
-            10,
-        );
-        m_strut.cuboid(
-            Vec3::new(side * 0.36, -0.92, -0.28),
-            Vec3::new(side * 0.39, 0.12, -0.02),
-        );
-        prims.push(part(
-            &format!("/P38g/Gear/{s_name}"),
-            P38PartRole::GearStruts,
-            CHROME_OLEO,
-            m_rest,
-            m_strut,
-        ));
-        append_wheel_and_hub(
-            prims,
-            &format!("/P38g/Gear/{w_name}"),
-            w_role,
-            DVec3::new(f64::from(bx), -0.49, -1.60),
-            0.46,
-            0.15,
-        );
-    }
-}
-
-fn append_wheel_and_hub(
-    prims: &mut Vec<P38MeshPrim>,
-    path: &str,
-    role: P38PartRole,
-    center: DVec3,
-    radius: f32,
-    half_width: f32,
-) {
-    let mut tire = MeshBuilder::new();
-    let rings: Vec<Vec<Vec3>> = [
-        (-half_width, radius * 0.42),
-        (-half_width * 0.92, radius * 0.86),
-        (-half_width * 0.48, radius),
-        (half_width * 0.48, radius),
-        (half_width * 0.92, radius * 0.86),
-        (half_width, radius * 0.42),
-    ]
-    .into_iter()
-    .map(|(x, r)| {
-        (0..24)
-            .map(|i| {
-                let (s, c) = (TAU * i as f32 / 24.0).sin_cos();
-                Vec3::new(x, c * r, s * r)
-            })
-            .collect()
-    })
-    .collect();
-    tire.loft(&rings, true, Inside::Axis);
-    let rest = DMat4::from_translation(center);
-    prims.push(part(path, role, TIRE_RUBBER, rest, tire));
-
-    let mut hub = MeshBuilder::new();
-    hub.tube(
-        Vec3::new(-half_width * 1.04, 0.0, 0.0),
-        Vec3::new(half_width * 1.04, 0.0, 0.0),
-        radius * 0.44,
-        radius * 0.44,
-        16,
-    );
-    prims.push(part(&format!("{path}Hub"), role, CHROME_OLEO, rest, hub));
 }

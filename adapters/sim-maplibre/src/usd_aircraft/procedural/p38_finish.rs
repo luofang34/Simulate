@@ -41,7 +41,7 @@ pub(super) fn detail(prim_path: &str) -> SurfaceDetail {
             ..skin(0.45)
         },
         "Booms/LowerGray" | "Gondola/LowerGray" => skin(0.45),
-        "Wing/FuelBayPanels" | "Wing/KarmanFillets" => SurfaceDetail {
+        "Wing/KarmanFillets" => SurfaceDetail {
             panel_pitch_m: [0.0; 3],
             weathering: 1.0,
             soot: None,

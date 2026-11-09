@@ -124,11 +124,10 @@ fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
 }
 
 /// Red while the P-38G flight model's gear is 8.7 in short of the Lockheed geometry: the
-/// drawn wheels reach 22 cm below the ground the flight model stands on.
+/// The P-38G's drawn wheels stand on the drawn terrain where its flight model parks it.
 #[test]
 #[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
-fn p38g_parked_wheels_touch_the_drawn_terrain_red_while_the_fdm_gear_is_short()
--> Result<(), AppSimError> {
+fn p38g_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
     assert_parked_wheels_touch(FreeFlightVehicle::JsbsimP38g, &UsdAircraftAsset::p38g()?)
 }
 

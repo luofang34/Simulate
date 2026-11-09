@@ -1,17 +1,35 @@
 {
   "source_station_offset_in": 0.0,
-  "source_frame": "The flight model's own structural frame, until the AN 01-75F-2 drawing stations are converted into it.",
+  "source_frame": "Lockheed P-38G general arrangement, AN 01-75F-2 page 2 (vehicles/p38g/design/an01-75f-2_general_arrangement.json): fuselage stations, inches aft of the gondola nose. The flight model's structural frame is that frame, with z the height above the fuselage reference line.",
   "height": {
     "feature": { "rule": "propeller_disc_centre" },
-    "structural_up_in": 0.0,
-    "source": "flight model thrusters on the structural z = 0 line"
+    "structural_up_in": 5.078,
+    "source": "AN 01-75F-2 side view: thrust line 5.078 in above the fuselage reference line"
   },
   "landmarks": [
     {
       "name": "propeller discs",
-      "station_in": 36.0,
-      "source": "flight model thrusters at x 36 in",
+      "station_in": 61.875,
+      "source": "AN 01-75F-2 side view, 61.875 in from the gondola nose to the propeller centreline",
       "feature": { "rule": "propeller_disc_centre" }
+    },
+    {
+      "name": "nose axle",
+      "station_in": 54.9,
+      "source": "AN 01-75F-2 side view, centre of the dashed 27 in nose tyre (sheet px 458.7, 489.9)",
+      "feature": { "rule": "nose_axle_centre" }
+    },
+    {
+      "name": "main axles",
+      "station_in": 173.9,
+      "source": "AN 01-75F-2 side view, centre of the dashed 36 in main tyre (sheet px 748.6, 454.0)",
+      "feature": { "rule": "main_axles_centre" }
+    },
+    {
+      "name": "wing root leading edge",
+      "station_in": 119.05,
+      "source": "AN 01-75F-2 side view, 119.05 in from the gondola nose to the L.E. of the root chord",
+      "feature": { "rule": "wing_leading_edge", "span_from_m": 0.0, "span_to_m": 0.1 }
     }
   ]
 }

@@ -4,15 +4,18 @@
 
 use std::f32::consts::PI;
 
-use glam::Vec3;
+use glam::{DMat4, Vec3};
 
+use crate::articulated::push_two_tone;
 use crate::cockpit_opening::upper_gondola_skin;
+use crate::drawing::{INCH_M, fs_to_y, y_to_fs};
+use crate::fillets::fillet_prims;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
 use crate::stations::{
     ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
     ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, GUNMETAL, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
-    OLIVE_FADED, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, boom_point, gondola_point,
-    interpolate_gondola, wing_station, wing_surface_point,
+    PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point,
+    gondola_point, interpolate_gondola, tailplane_planform_fs, wing_surface_point,
 };
 
 pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
@@ -26,7 +29,7 @@ pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
 }
 
 fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
-    const ARC_STEPS: usize = 20;
+    const ARC_STEPS: usize = 32;
     let mut lower_rows = Vec::with_capacity(GONDOLA_STATIONS.len());
     for &(y, ..) in GONDOLA_STATIONS {
         let lo = (0..=ARC_STEPS)
@@ -145,6 +148,14 @@ fn build_nose_armament(prims: &mut Vec<P38MeshPrim>) {
     build_shell_chutes(prims);
 }
 
+/// Height of the gondola's lower skin at lateral offset `x` and station `y`.
+pub(crate) fn keel_z_at(x: f32, y: f32) -> f32 {
+    (0..=64)
+        .map(|i| gondola_point(y, PI * (0.5 + 0.5 * i as f32 / 64.0)))
+        .min_by(|a, b| (a.x - x).abs().total_cmp(&(b.x - x).abs()))
+        .map_or(0.0, |p| p.z)
+}
+
 fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
     let mut chutes = MeshBuilder::new();
     for (cx, cy) in [
@@ -154,9 +165,10 @@ fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
         (0.09, 2.42),
         (0.18, 2.48),
     ] {
+        let z = keel_z_at(cx, cy);
         chutes.cuboid(
-            Vec3::new(cx - 0.016, cy - 0.06, -0.47),
-            Vec3::new(cx + 0.016, cy + 0.06, -0.41),
+            Vec3::new(cx - 0.016, cy - 0.06, z - 0.03),
+            Vec3::new(cx + 0.016, cy + 0.06, z + 0.03),
         );
     }
     prims.push(fixed(
@@ -245,19 +257,42 @@ fn build_canopy_and_windscreen(prims: &mut Vec<P38MeshPrim>) {
     ));
 }
 
+/// Chordwise rows of the wing loft (cosine spaced, dense at the nose and tail).
+pub(crate) const WING_CHORD_STEPS: usize = 28;
+
 fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
-    let span_xs = [
-        -SEMI_SPAN, -7.75, -7.315, -6.20, -4.80, -3.55, -BOOM_X, -1.35, -0.56, 0.0, 0.56, 1.35,
-        BOOM_X, 3.55, 4.80, 6.20, 7.315, 7.75, SEMI_SPAN,
+    // The taper is straight to the tip arc, so the rows only need to follow the arc
+    // and the junctions with the gondola and booms.
+    const HALF: [f32; 15] = [
+        0.0,
+        0.48,
+        1.35,
+        BOOM_X,
+        3.55,
+        4.80,
+        6.20,
+        TIP_START_X,
+        7.50,
+        7.62,
+        7.72,
+        7.80,
+        7.86,
+        7.90,
+        SEMI_SPAN,
     ];
-    const CHORD_STEPS: usize = 16;
+    let span_xs: Vec<f32> = HALF
+        .iter()
+        .rev()
+        .map(|x| -x)
+        .chain(HALF.iter().skip(1).copied())
+        .collect();
     let mut upper_rows = Vec::with_capacity(span_xs.len());
     let mut lower_rows = Vec::with_capacity(span_xs.len());
     for x in span_xs {
-        let mut up = Vec::with_capacity(CHORD_STEPS + 1);
-        let mut lo = Vec::with_capacity(CHORD_STEPS + 1);
-        for i in 0..=CHORD_STEPS {
-            let u = 0.5 * (1.0 - (PI * i as f32 / CHORD_STEPS as f32).cos());
+        let mut up = Vec::with_capacity(WING_CHORD_STEPS + 1);
+        let mut lo = Vec::with_capacity(WING_CHORD_STEPS + 1);
+        for i in 0..=WING_CHORD_STEPS {
+            let u = 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos());
             up.push(wing_surface_point(x, u, true));
             lo.push(wing_surface_point(x, u, false));
         }
@@ -286,44 +321,7 @@ fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
 }
 
 fn build_wing_fillets_and_pylons(prims: &mut Vec<P38MeshPrim>) {
-    // Weathered olive-drab fuel tank access panels & Karman wing-root fillets
-    let mut panels = MeshBuilder::new();
-    let mut fillets = MeshBuilder::new();
-    for side in [-1.0_f32, 1.0] {
-        let mut rows = Vec::new();
-        for x in [side * 0.72, side * 1.32, side * 1.92] {
-            let mut r = Vec::new();
-            for i in 2..=11 {
-                let u = i as f32 / 14.0;
-                r.push(wing_surface_point(x, u, true) + Vec3::new(0.0, 0.0, 0.0018));
-            }
-            rows.push(r);
-        }
-        panels.loft_open(&rows, Inside::Point(Vec3::new(side * 1.3, -0.3, -2.0)));
-
-        // Karman aerodynamic fairing fillets at Gondola-Wing and Boom-Wing junctions
-        for jx in [side * 0.56, side * (BOOM_X - 0.44), side * (BOOM_X + 0.44)] {
-            let (ly, ty, zm, ..) = wing_station(jx);
-            fillets.ellipsoid(
-                Vec3::new(jx, 0.5 * (ly + ty), zm + 0.04),
-                Vec3::new(0.14, 0.48 * (ly - ty), 0.11),
-                12,
-                6,
-            );
-        }
-    }
-    prims.push(fixed(
-        "/P38g/Wing/FuelBayPanels",
-        P38PartRole::WingStructure,
-        OLIVE_FADED,
-        panels,
-    ));
-    prims.push(fixed(
-        "/P38g/Wing/KarmanFillets",
-        P38PartRole::WingStructure,
-        OLIVE_DRAB,
-        fillets,
-    ));
+    prims.extend(fillet_prims());
 
     // Under-wing 150-gal drop-tank shackles & L-shaped pitot static mast
     let mut pylons = MeshBuilder::new();
@@ -411,8 +409,10 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
         let bx = side * BOOM_X;
         let sections: Vec<Vec<Vec3>> = FIN_PROFILE
             .iter()
-            .map(|&(z, ly, _ty, half_t)| {
-                let fwd_chord = (RUDDER_HINGE_Y - ly).min(-0.18);
+            .map(|&(z, ly, ty, half_t)| {
+                // The fin ends at the rudder hinge, or at the trailing edge where the
+                // outline closes ahead of it near the tips.
+                let fwd_chord = (ty.max(RUDDER_HINGE_Y) - ly).min(-0.02);
                 aerofoil(
                     Vec3::new(bx, ly, z),
                     Vec3::new(0.0, fwd_chord, 0.0),
@@ -429,35 +429,28 @@ fn build_empennage(prims: &mut Vec<P38MeshPrim>) {
         fins,
     ));
 
-    // Horizontal stabilizer spanning between twin booms + outboard mass-balance tips (±2.95 m)
-    let mut htail = MeshBuilder::new();
-    let h_sections: Vec<Vec<Vec3>> = [-2.95_f32, -2.75, -BOOM_X, 0.0, BOOM_X, 2.75, 2.95]
-        .into_iter()
-        .map(|x| {
-            let ax = x.abs();
-            let (lead_y, chord, thick) = if ax <= BOOM_X {
-                (-6.27, ELEVATOR_HINGE_Y - (-6.27), 0.068)
-            } else {
-                let t = ((ax - BOOM_X) / (2.95 - BOOM_X)).clamp(0.0, 1.0);
-                let c = (1.0 - t * t).max(0.15).sqrt();
-                (
-                    -6.27 - 0.20 * t,
-                    (ELEVATOR_HINGE_Y - (-6.27)) * c,
-                    0.056 * c,
-                )
-            };
-            aerofoil(
-                Vec3::new(x, lead_y, HTAIL_Z),
-                Vec3::new(0.0, chord, 0.0),
-                Vec3::new(0.0, 0.0, thick),
-            )
+    // Stabiliser: the fixed `25 in` ahead of the elevator hinge, across both booms to the
+    // semicircular tips.
+    let hinge_fs = y_to_fs(ELEVATOR_HINGE_Y);
+    let h_sections: Vec<Vec<Vec3>> = TAILPLANE_SECTIONS_BL
+        .iter()
+        .filter_map(|&bl| {
+            let (le, te) = tailplane_planform_fs(bl)?;
+            let chord_in = (te.min(hinge_fs) - le).max(0.3);
+            let scale = (te - le) / 45.0;
+            Some(aerofoil(
+                Vec3::new(bl * INCH_M, fs_to_y(le), HTAIL_Z),
+                Vec3::new(0.0, -chord_in * INCH_M, 0.0),
+                Vec3::new(0.0, 0.0, (0.066 * scale).max(0.004)),
+            ))
         })
         .collect();
-    htail.loft(&h_sections, true, Inside::Axis);
-    prims.push(fixed(
+    push_two_tone(
+        prims,
         "/P38g/Empennage/HorizontalTail",
         P38PartRole::CabinExterior,
-        OLIVE_DRAB,
-        htail,
-    ));
+        DMat4::IDENTITY,
+        &h_sections,
+        None,
+    );
 }
