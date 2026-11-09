@@ -28,6 +28,23 @@ impl CameraPose {
             orientation: DQuat::from_mat3(&DMat3::from_cols(right, true_up, back)),
         }
     }
+
+    /// The pose a fraction `t` of the way to `end`, moving at constant
+    /// velocity and turning at constant angular rate.
+    pub fn interpolated(&self, end: &Self, t: f64) -> Self {
+        Self {
+            position_ecef: self.position_ecef.lerp(end.position_ecef, t),
+            orientation: self.orientation.slerp(end.orientation, t).normalize(),
+        }
+    }
+
+    /// The poses at the middles of `count` equal time slices of a move to
+    /// `end`, for rendering sub-frames of one exposure.
+    pub fn exposure_sub_poses(&self, end: &Self, count: usize) -> Vec<Self> {
+        (0..count)
+            .map(|slice| self.interpolated(end, (slice as f64 + 0.5) / count as f64))
+            .collect()
+    }
 }
 
 /// A perspective camera with reversed-Z, infinite-far projection.

@@ -44,6 +44,10 @@ pub struct MicrobolometerConfig {
     /// Responsivity lost at the image corners, fraction; it falls off with
     /// the square of the distance from the principal point.
     pub vignetting: f64,
+    /// First-order thermal time constant of a pixel, seconds: the detector
+    /// temperature relaxes toward the scene as `exp(−t/τ)`. Used by
+    /// [`Microbolometer::capture_lagged`](super::Microbolometer::capture_lagged).
+    pub time_constant_s: f64,
     /// Selects the fixed pattern of this sensor instance and its noise.
     pub seed: u64,
 }
@@ -54,13 +58,20 @@ pub const MICROBOLOMETER_BITS: u8 = 14;
 /// Responsivity of the presets: 0.02 K per count keeps a 50 mK NETD at 2.5
 /// counts, well above the 0.29-count rounding noise, and spans 180 K to
 /// 507 K over the 14 bits with 300 K at count 6000.
+/// Thermal time constant of a 12 µm VOx pixel. Uncooled data sheets give
+/// 8–12 ms at 12 µm pitch; the 10 ms here is mid-range, an assumption rather
+/// than one product's figure.
+const VOX_TIME_CONSTANT_S: f64 = 0.010;
+/// Thermal time constant of a 17 µm a-Si pixel, typically a little slower
+/// than VOx at its pitch; 12 ms is an assumption of the same kind.
+const ASI_TIME_CONSTANT_S: f64 = 0.012;
 const PRESET_COUNTS_PER_K: f64 = 50.0;
 const PRESET_REFERENCE_K: f64 = 300.0;
 const PRESET_REFERENCE_COUNTS: f64 = 6000.0;
 
 impl MicrobolometerConfig {
     /// A vanadium-oxide 640 × 512 core with 12 µm pixels and a 13 mm lens:
-    /// 32.9° by 26.6° field, NETD 50 mK.
+    /// 32.9° by 26.6° field, NETD 50 mK, 10 ms time constant.
     pub fn vox_640x512() -> Self {
         Self {
             width: 640,
@@ -68,12 +79,13 @@ impl MicrobolometerConfig {
             pixel_pitch_m: 12e-6,
             focal_length_m: 13e-3,
             netd_k: 0.050,
+            time_constant_s: VOX_TIME_CONSTANT_S,
             ..Self::preset_response()
         }
     }
 
     /// An amorphous-silicon 640 × 512 core with 17 µm pixels and a 19 mm
-    /// lens: 32.0° by 25.8° field, NETD 60 mK.
+    /// lens: 32.0° by 25.8° field, NETD 60 mK, 12 ms time constant.
     pub fn asi_640x512() -> Self {
         Self {
             width: 640,
@@ -81,6 +93,7 @@ impl MicrobolometerConfig {
             pixel_pitch_m: 17e-6,
             focal_length_m: 19e-3,
             netd_k: 0.060,
+            time_constant_s: ASI_TIME_CONSTANT_S,
             ..Self::preset_response()
         }
     }
@@ -102,6 +115,7 @@ impl MicrobolometerConfig {
             column_offset_k: 0.05,
             column_noise_k: 0.01,
             vignetting: 0.05,
+            time_constant_s: VOX_TIME_CONSTANT_S,
             seed: 0,
         }
     }
