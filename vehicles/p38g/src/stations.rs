@@ -34,8 +34,9 @@ pub const WING_AREA_M2: f32 = 30.43;
 pub const WING_DIHEDRAL_DEG: f32 = 5.67;
 /// Boom centreline from the ship centreline (AN 01-75F-2 plan view `96` in = `2.4384 m`).
 pub const BOOM_X: f32 = 96.0 * 0.0254;
-/// Aft end of the GE B-13 turbosupercharger exhaust nozzle on each boom's top (`y`).
-pub const TURBO_NOZZLE_Y: f32 = -1.62;
+/// Where the exhaust leaves each boom: the GE B-13 turbine bucket wheel on the boom top,
+/// `FS 205.6` (AN 01-75F-2 plan view).
+pub const TURBO_NOZZLE_Y: f32 = 3.55 - 205.6 * 0.0254;
 /// Outboard end of the aileron (AN 01-75F-2 plan view, `WS 289` = `7.341 m`).
 pub const AILERON_END_X: f32 = TIP_START_X;
 /// Spinner base and propeller hub frame origin, at the cowl joint (`FS 71.3` = `+1.739 m`).

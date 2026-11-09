@@ -20,10 +20,10 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
     for expected in [
         "/P38g/Powerplant/ReductionGearCastings",
         "/P38g/Powerplant/ExhaustManifoldShrouds",
-        "/P38g/Powerplant/ExhaustEjectorStacks24",
-        "/P38g/Powerplant/TurboWells",
-        "/P38g/Powerplant/TurboNozzleScrolls",
-        "/P38g/Powerplant/TurboImpellerWheels",
+        "/P38g/Powerplant/ExhaustCollectors",
+        "/P38g/Powerplant/TurboHousings",
+        "/P38g/Powerplant/TurboNozzleBoxes",
+        "/P38g/Powerplant/TurboBucketWheels",
         "/P38g/Powerplant/RadiatorScoops",
         "/P38g/Powerplant/ChinOilCoolerScoops",
         "/P38g/Powerplant/CoolerMatrixCores",
@@ -37,6 +37,9 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
             "missing prim {expected}"
         );
     }
+
+    // The turbocharged G exhausts through its turbos; it has no ejector stacks.
+    assert!(!prims.iter().any(|p| p.prim_path.contains("Ejector")));
 
     let contract = p38g_cockpit_contract();
     assert_eq!(contract.bulkheads.len(), 6);
@@ -59,7 +62,7 @@ fn openusd_stage_and_package_manifest_export_cleanly() {
     };
     assert!(usda.starts_with("#usda 1.0"));
     assert!(usda.contains("defaultPrim = \"P38g\""));
-    assert!(usda.contains("Powerplant_ExhaustEjectorStacks24"));
+    assert!(usda.contains("Powerplant_ExhaustCollectors"));
     assert!(usda.contains("CockpitInterior_InstrumentPanel_Board"));
 }
 

@@ -1,16 +1,17 @@
-//! Allison V-1710-51/-55 `60°` V-12 powerplant, 24 individual exhaust ejector stacks,
-//! recessed dorsal GE Type B-13 turbosuperchargers, wing leading-edge intercooler
+//! Allison V-1710-51/-55 `60°` V-12 powerplant, exhaust collectors to the dorsal GE
+//! Type B-13 turbosuperchargers, wing leading-edge intercooler
 //! louvers, chin oil-cooler scoops, and aft-boom glycol radiator fairings (`T.O. 01-75F-1`).
 
 use std::f32::consts::{PI, TAU};
 
 use glam::{DMat4, DVec3, Vec3};
 
+use crate::drawing::{INCH_M, fs_to_y};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, glowing, part};
 use crate::radiators::radiator_prims;
 use crate::stations::{
-    BOOM_X, CHROME_OLEO, EXHAUST_RUST, GUNMETAL, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK,
-    TURBO_NOZZLE_Y, TURBO_STEEL, boom_point, wing_surface_point,
+    BOOM_X, EXHAUST_RUST, GUNMETAL, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK, TURBO_STEEL, boom_point,
+    wing_surface_point,
 };
 
 pub(crate) fn powerplant_prims() -> Vec<P38MeshPrim> {
@@ -27,7 +28,7 @@ pub(crate) fn powerplant_prims() -> Vec<P38MeshPrim> {
 
 fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
     let mut shrouds = MeshBuilder::new();
-    let mut stacks = MeshBuilder::new();
+    let mut collectors = MeshBuilder::new();
     let mut gearboxes = MeshBuilder::new();
 
     for side in [-1.0_f32, 1.0] {
@@ -60,20 +61,14 @@ fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
                 }
             }
 
-            // 6 individual exhaust ejector stubs per V-12 bank (12 per engine, 24 total)
-            for cyl in 0..6_u32 {
-                let y = 1.137 - cyl as f32 * 0.244;
-                let base = boom_point(side, y, theta) + out * 0.004;
-                let tip = base + Vec3::new(bank_sign * 0.044, -0.042, 0.030);
-                stacks.tube(base, tip, 0.020, 0.016, 8);
-            }
-
-            // Recessed dorsal collector trunk routing hot exhaust aft to the GE B-13 nozzle box
+            // No ejector stubs on the turbocharged G: each bank's manifold collects the
+            // exhaust and a trunk carries it aft along the boom top to the turbo's nozzle box.
             let p_aft = boom_point(side, -0.26, theta) - out * 0.012;
             let p_mid = boom_point(side, -0.56, bank_sign * 0.36) - Vec3::new(0.0, 0.0, 0.010);
-            let p_trb = boom_point(side, -0.82, bank_sign * 0.18) - Vec3::new(0.0, 0.0, 0.008);
-            stacks.tube(p_aft, p_mid, 0.030, 0.028, 10);
-            stacks.tube(p_mid, p_trb, 0.028, 0.025, 10);
+            let p_trb =
+                boom_point(side, TURBO_BOX_FRONT_Y, bank_sign * 0.18) - Vec3::new(0.0, 0.0, 0.008);
+            collectors.tube(p_aft, p_mid, 0.030, 0.028, 10);
+            collectors.tube(p_mid, p_trb, 0.028, 0.025, 10);
         }
     }
 
@@ -90,85 +85,91 @@ fn build_allison_exhaust_and_gearboxes(prims: &mut Vec<P38MeshPrim>) {
         shrouds,
     ));
     prims.push(fixed(
-        "/P38g/Powerplant/ExhaustEjectorStacks24",
+        "/P38g/Powerplant/ExhaustCollectors",
         P38PartRole::CabinExterior,
         EXHAUST_RUST,
-        stacks,
+        collectors,
     ));
 }
 
+/// AN 01-75F-2 plan view: an oval housing on each boom top from `FS 182` to `FS 231`,
+/// `24 in` wide, with the turbine bucket wheel (`9 in` radius) at `FS 205.6` and the
+/// exhaust nozzle box ahead of it, which the side view shows rising `3 in` above the
+/// boom at its front.
+const TURBO_HOUSING_FS: (f32, f32) = (182.0, 231.0);
+const TURBO_WHEEL_FS: f32 = 205.6;
+const TURBO_BOX_FRONT_Y: f32 = 3.55 - 182.5 * 0.0254;
+
 fn build_ge_b13_turbosuperchargers(prims: &mut Vec<P38MeshPrim>) {
-    let mut wells = MeshBuilder::new();
-    let mut scrolls = MeshBuilder::new();
-    let mut impellers = MeshBuilder::new();
+    let mut housings = MeshBuilder::new();
+    let mut boxes = MeshBuilder::new();
+    let mut wheels = MeshBuilder::new();
+    let (h0, h1) = TURBO_HOUSING_FS;
+    let wy = fs_to_y(TURBO_WHEEL_FS);
 
     for side in [-1.0_f32, 1.0] {
         let bx = side * BOOM_X;
-        let tz = boom_point(side, -1.12, 0.0).z;
-        wells.tube(
-            Vec3::new(bx, -1.12, tz - 0.06),
-            Vec3::new(bx, -1.12, tz + 0.012),
-            0.25,
-            0.26,
-            20,
+        let top = |y: f32| boom_point(side, y, 0.0).z;
+        // Low cooling-shroud cap over the turbine, faired into the boom top.
+        housings.ellipsoid(
+            Vec3::new(bx, fs_to_y(0.5 * (h0 + h1)), top(wy) - 0.02),
+            Vec3::new(12.0 * INCH_M, 0.5 * (h1 - h0) * INCH_M, 0.075),
+            24,
+            8,
         );
-        wells.cuboid(
-            Vec3::new(bx - 0.14, -0.78, tz - 0.03),
-            Vec3::new(bx + 0.14, -0.52, tz + 0.025),
+        // Nozzle box: a ramp from the collector trunks up to the wheel's rim.
+        let box_rows: Vec<Vec<Vec3>> = [(182.5_f32, 0.080_f32), (190.0, 0.075), (197.0, 0.055)]
+            .into_iter()
+            .map(|(fs, rise)| {
+                let y = fs_to_y(fs);
+                [(-1.0_f32, 0.0_f32), (-1.0, rise), (1.0, rise), (1.0, 0.0)]
+                    .into_iter()
+                    .map(|(sx, dz)| Vec3::new(bx + sx * 6.0 * INCH_M, y, top(y) - 0.02 + dz))
+                    .collect()
+            })
+            .collect();
+        boxes.loft(&box_rows, true, Inside::Axis);
+        // Exposed bucket wheel and its hub in the cap.
+        let tz = top(wy) + 0.05;
+        wheels.tube(
+            Vec3::new(bx, wy, tz - 0.01),
+            Vec3::new(bx, wy, tz + 0.012),
+            9.0 * INCH_M,
+            9.0 * INCH_M,
+            28,
         );
-        scrolls.tube(
-            Vec3::new(bx, -1.12, tz - 0.03),
-            Vec3::new(bx, -1.12, tz + 0.024),
-            0.21,
-            0.19,
-            18,
-        );
-        scrolls.tube(
-            Vec3::new(bx, -1.32, tz - 0.01),
-            Vec3::new(bx, TURBO_NOZZLE_Y, tz + 0.035),
-            0.055,
-            0.048,
-            12,
-        );
-        impellers.tube(
-            Vec3::new(bx, -1.12, tz + 0.010),
-            Vec3::new(bx, -1.12, tz + 0.034),
-            0.145,
-            0.130,
-            18,
-        );
-        impellers.tube(
-            Vec3::new(bx, -1.12, tz + 0.028),
-            Vec3::new(bx, -1.12, tz + 0.048),
+        wheels.tube(
+            Vec3::new(bx, wy, tz + 0.010),
+            Vec3::new(bx, wy, tz + 0.030),
             0.045,
             0.032,
             12,
         );
-        for vane in 0..18_u32 {
-            let (s, c) = (TAU * vane as f32 / 18.0).sin_cos();
-            let p_in = Vec3::new(bx + c * 0.045, -1.12 + s * 0.045, tz + 0.032);
-            let p_out = Vec3::new(bx + c * 0.140, -1.12 + s * 0.140, tz + 0.024);
-            impellers.tube(p_in, p_out, 0.009, 0.006, 6);
+        for vane in 0..24_u32 {
+            let (s, c) = (TAU * vane as f32 / 24.0).sin_cos();
+            let p_in = Vec3::new(bx + c * 0.05, wy + s * 0.05, tz + 0.014);
+            let p_out = Vec3::new(bx + c * 0.21, wy + s * 0.21, tz + 0.014);
+            wheels.tube(p_in, p_out, 0.008, 0.006, 6);
         }
     }
 
     prims.push(fixed(
-        "/P38g/Powerplant/TurboWells",
+        "/P38g/Powerplant/TurboHousings",
         P38PartRole::CabinExterior,
-        GUNMETAL,
-        wells,
+        OLIVE_DRAB,
+        housings,
     ));
     prims.push(fixed(
-        "/P38g/Powerplant/TurboNozzleScrolls",
+        "/P38g/Powerplant/TurboNozzleBoxes",
         P38PartRole::CabinExterior,
         EXHAUST_RUST,
-        scrolls,
+        boxes,
     ));
     prims.push(fixed(
-        "/P38g/Powerplant/TurboImpellerWheels",
+        "/P38g/Powerplant/TurboBucketWheels",
         P38PartRole::CabinExterior,
-        CHROME_OLEO,
-        impellers,
+        TURBO_STEEL,
+        wheels,
     ));
 }
 

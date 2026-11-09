@@ -9,8 +9,8 @@
 //! - [`cockpit_reservation`]: Reserved 3D cockpit station contract (`FS 86` instrument panel mount,
 //!   optical reflector gunsight mount, starboard control-girder pivot, left engine/feathering
 //!   quadrant, right flap/cooling console, `FS 154` pilot armor bulkhead, and `FS 182` radio bay),
-//! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, 24 individual
-//!   exhaust ejector stacks, recessed dorsal GE B-13 turbosuperchargers, wing leading-edge
+//! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, exhaust
+//!   collectors to the dorsal GE B-13 turbosuperchargers, wing leading-edge
 //!   intercooler louvers and chin oil cooler; [`radiators`]: the glycol radiator scoops on the
 //!   tail booms and their exit flaps,
 //! - [`package`]: Embedded `syspack.json` source and OpenUSD `.usda` stage export,
