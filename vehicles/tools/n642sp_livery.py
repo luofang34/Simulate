@@ -3,19 +3,18 @@
 the generic C172 skin, for a renderer without texture sampling.
 
 Usage: usdcat vehicles/c172/usd/c172.usdc -o /tmp/c172.usda
-       n642sp_livery.py /tmp/c172.usda vehicles/c172/usd/n642sp_livery.usda
+       n642sp_livery.py vehicles/c172/usd/n642sp_livery.json /tmp/c172.usda \
+           vehicles/c172/usd/n642sp_livery.usda
 
-Every outline is traced in pixels on airport-data.com photo 820598 (Todd Royer,
-KOSH 2012-07-25, left side, the photo itself is not redistributed) and mapped into
-the model's side plane by a similarity fitted on three anchors (spinner tip, beacon
-top, rudder top-aft corner; residuals under 7 cm). The registration is set in
-project-drawn square italic capitals, 12 in tall (the size of the marks in the
-photo). Each outline is laid as a strip split every 5 cm along its length and
-projected along the x axis onto the skin, 4 mm proud of it with the skin's interpolated normal.
-The starboard side is the mirror of the port side, except that the registration
-reads normally from the left there too; no starboard photo was available.
+All traced data lives in the JSON spec: the photo and the anchors that register it to
+the model's side plane, the stripe outlines, the registration measurements against
+14 CFR 45.29, and the glyph strokes. Each outline is laid as a strip split every 5 cm
+along its length and projected along the x axis onto the skin, 4 mm proud of it with
+the skin's interpolated normal. The starboard side mirrors the port side, except that
+the registration reads normally from the left there too; no starboard photo was
+available.
 """
-import cmath
+import json
 import math
 import re
 import sys
@@ -24,64 +23,15 @@ STANDOFF_M = 0.004
 # Skin farther out than this is a wing strut crossing the stripes, not the fuselage side.
 FUSELAGE_HALF_WIDTH_M = 0.6
 MAX_EDGE_M = 0.05
-REG_HEIGHT_M = 0.3048
-
-# Photo pixel (u, v) -> model (y, z): anchors measured on photo 820598.
-ANCHORS = [((248, 568), (2.335, 0.055)), ((1610, 343), (-5.30, 1.464)), ((1708, 368), (-5.977, 1.309))]
-
-# Outlines in 2x crops of the photo: (crop origin u, v, scale) then upper and lower edges.
-FWD = (340, 540, 0.5)
-STRIPES = {
-    # Upper red swoosh from the cowl, running aft as the red pinstripe to the registration.
-    "SwooshRed": ("MatLiveryRed", FWD,
-        [(85, 78), (170, 107), (260, 131), (330, 141), (420, 129), (500, 112), (580, 99), (660, 91),
-         (760, 90), (900, 95), (1100, 110), (1300, 125), (1508, 139)],
-        [(85, 78), (170, 118), (250, 147), (330, 160), (420, 146), (500, 129), (580, 116), (660, 107),
-         (760, 104), (900, 108), (1100, 123), (1300, 138), (1497, 152)]),
-    # Broad maroon swoosh below it, merging into the pinstripe under the door.
-    "SwooshMaroon": ("MatLiveryMaroon", FWD,
-        [(125, 128), (220, 160), (330, 180), (450, 170), (550, 152), (640, 128), (720, 111), (800, 104),
-         (880, 106)],
-        [(125, 128), (220, 178), (320, 200), (430, 207), (530, 198), (610, 180), (690, 152), (770, 128),
-         (840, 114), (880, 106)]),
-    # Navy stripe from under the strut aft to the registration.
-    "SwooshNavy": ("MatLiveryNavy", FWD,
-        [(650, 193), (720, 172), (800, 155), (900, 142), (1000, 139), (1200, 150), (1488, 166)],
-        [(650, 193), (720, 184), (800, 167), (900, 154), (1000, 151), (1200, 162), (1480, 180)]),
-    # Fin swoosh under the "Skyhawk SP" logo (4x crop).
-    "FinSwooshRed": ("MatLiveryRed", (1470, 470, 0.25),
-        [(80, 160), (200, 185), (320, 190), (440, 170), (560, 150)],
-        [(80, 160), (200, 195), (320, 202), (440, 183), (560, 150)]),
-    "FinSwooshNavy": ("MatLiveryNavy", (1470, 470, 0.25),
-        [(110, 190), (250, 225), (380, 232), (500, 210), (600, 190), (700, 175)],
-        [(110, 190), (250, 250), (380, 262), (500, 245), (600, 215), (700, 175)]),
-}
-# Registration box on the photo: left, top, right, bottom of the letters.
-REG_BOX = (1082, 596, 1368, 652)
-REG_TEXT = "N642SP"
-SLANT = math.tan(math.radians(18.0))
-
-# Square italic capitals: stroke centrelines in cap-height units, filleted at corners.
-C0, C1, B, T, M = 0.08, 0.54, 0.08, 0.92, 0.5
-STROKE = 0.16
-GLYPHS = {
-    "N": ([(C0, B), (C0, T), (C1, B), (C1, T)], 0.0),
-    "6": ([(C1, T), (C0, T), (C0, B), (C1, B), (C1, M), (C0, M)], 0.12),
-    "4": ([(C1 - 0.1, B), (C1 - 0.1, T), (C0, 0.36), (C1 + 0.02, 0.36)], 0.0),
-    "2": ([(C0, T), (C1, T), (C1, M), (C0, M), (C0, B), (C1, B)], 0.12),
-    "S": ([(C1, T), (C0, T), (C0, M), (C1, M), (C1, B), (C0, B)], 0.12),
-    "P": ([(C0, B), (C0, T), (C1, T), (C1, 0.45), (C0, 0.45)], 0.12),
-}
-GLYPH_PITCH = 0.84
 
 SKIN = ("CabinWhite", "CabinStripe", "CabinTrim", "CabinDark", "NoseCowlingWhite",
         "NoseCowlingStripe", "NoseCowlingIntake", "GearStruts")
 RUDDER = "Rudder"
 
 
-def fit():
-    p = [complex(u, -v) for (u, v), _ in ANCHORS]
-    q = [complex(-y, z) for _, (y, z) in ANCHORS]
+def fit(anchors):
+    p = [complex(a["px"][0], -a["px"][1]) for a in anchors]
+    q = [complex(-a["model_yz"][0], a["model_yz"][1]) for a in anchors]
     pm, qm = sum(p) / len(p), sum(q) / len(q)
     a = sum((qq - qm) * (pp - pm).conjugate() for pp, qq in zip(p, q)) / sum(abs(pp - pm) ** 2 for pp in p)
     b = qm - a * pm
@@ -211,9 +161,13 @@ def fillet(points, radius):
     return out
 
 
-def glyph_quads(ch):
+def glyph_quads(ch, reg, glyphs):
     """Stroke quads of one glyph in cap-height units (x right, y up), unslanted."""
-    line, radius = GLYPHS[ch]
+    # Glyph x is in glyph widths; convert the centreline to cap-height units.
+    width = reg["glyph_width_h"]
+    line = [(x * width, y) for x, y in glyphs[ch]["stroke"]]
+    radius = glyphs[ch]["radius"]
+    stroke = reg["stroke_h"]
     pts = fillet(line, radius)
     quads = []
     for i, (a, b) in enumerate(zip(pts, pts[1:])):
@@ -222,8 +176,8 @@ def glyph_quads(ch):
         if ln < 1e-9:
             continue
         ux, uy = dx / ln, dy / ln
-        nx, ny = -uy * STROKE / 2, ux * STROKE / 2
-        ext = STROKE / 2
+        nx, ny = -uy * stroke / 2, ux * stroke / 2
+        ext = stroke / 2
         a2 = (a[0] - ux * ext, a[1] - uy * ext)
         b2 = (b[0] + ux * ext, b[1] + uy * ext)
         # Square caps would poke a diagonal's corners past the cap height; flatten them.
@@ -233,26 +187,28 @@ def glyph_quads(ch):
     return quads
 
 
-def registration(to_model, side):
+def registration(to_model, side, reg, glyphs):
     """Glyph strokes as (upper, lower) edges in model (y, z), reading left to right as seen."""
-    (y0, z0), (y1, z1) = to_model(REG_BOX[0], REG_BOX[1]), to_model(REG_BOX[2], REG_BOX[3])
+    box = reg["box_px"]
+    (y0, z0), (y1, z1) = to_model(box[0], box[1]), to_model(box[2], box[3])
     yc, zc = (y0 + y1) / 2, (z0 + z1) / 2
-    h = REG_HEIGHT_M
-    width = (GLYPH_PITCH * (len(REG_TEXT) - 1) + C1 + C0 + SLANT) * h
+    h, slant, text = reg["cap_height_m"], reg["slant"], reg["text"]
+    pitch = reg["glyph_width_h"] + reg["gap_h"]
+    width = (pitch * (len(text) - 1) + reg["glyph_width_h"] + slant) * h
     polys = []
     def place(gx, gy, k):
-        s = (k * GLYPH_PITCH + gx + gy * SLANT) * h - width / 2  # along the reading direction
+        s = (k * pitch + gx + gy * slant) * h - width / 2  # along the reading direction
         # Port reads nose-to-tail (towards -y); starboard reads tail-to-nose.
         return (yc - s if side < 0 else yc + s, zc + (gy - 0.5) * h)
-    for k, ch in enumerate(REG_TEXT):
-        for upper, lower in glyph_quads(ch):
+    for k, ch in enumerate(text):
+        for upper, lower in glyph_quads(ch, reg, glyphs):
             polys.append(([place(x, y, k) for x, y in upper], [place(x, y, k) for x, y in lower]))
     return polys
 
 
 def outline(spec, to_model):
-    _, (u0, v0, k), upper, lower = spec
-    return tuple([to_model(u0 + x * k, v0 + y * k) for x, y in edge] for edge in (upper, lower))
+    u0, v0, k = spec["crop_px"]
+    return tuple([to_model(u0 + x * k, v0 + y * k) for x, y in spec[e]] for e in ("upper", "lower"))
 
 
 def project(polys, caster, side):
@@ -301,14 +257,16 @@ def mesh_text(name, tris, material, role, offset, indent):
 
 
 def main():
-    meshes = parse_meshes(sys.argv[1])
+    spec = json.load(open(sys.argv[1]))
+    meshes = parse_meshes(sys.argv[2])
     caster = Caster(meshes)
-    to_model, _ = fit()
+    to_model, _ = fit(spec["photo"]["anchors_px_to_model_m"])
+    reg = spec["registration"]
     rudder_t = meshes[RUDDER][3]
     airframe, rudder = [], []
     for side, tag in ((-1, "Port"), (1, "Starboard")):
-        items = [(n, s[0], [outline(s, to_model)]) for n, s in STRIPES.items()]
-        items.append(("Registration", "MatLiveryNavy", registration(to_model, side)))
+        items = [(s["name"], s["material"], [outline(s, to_model)]) for s in spec["stripes"]]
+        items.append(("Registration", reg["material"], registration(to_model, side, reg, spec["glyphs"])))
         for name, material, polys in items:
             for owner, tris in project(polys, caster, side).items():
                 if owner == RUDDER:
@@ -321,7 +279,7 @@ def main():
     if rudder:
         out.append("\n    over \"ControlSurfaces\"\n    {\n        over \"Rudder\"\n        {\n" + "".join(rudder).rstrip() + "\n        }\n    }\n")
     out.append("}\n")
-    open(sys.argv[2], "w").write("".join(out))
+    open(sys.argv[3], "w").write("".join(out))
 
 
 if __name__ == "__main__":

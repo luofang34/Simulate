@@ -1,0 +1,84 @@
+{
+  "tail": "N642SP",
+  "photo": {
+    "source": "airport-data.com photo 000820598, Todd Royer, KOSH 2012-07-25, left side in flight, 1920 px wide; reference only, not redistributed",
+    "anchors_px_to_model_m": [
+      { "what": "spinner tip", "px": [248, 568], "model_yz": [2.335, 0.055] },
+      { "what": "beacon top", "px": [1610, 343], "model_yz": [-5.30, 1.464] },
+      { "what": "rudder top-aft corner", "px": [1708, 368], "model_yz": [-5.977, 1.309] }
+    ],
+    "fit": "least-squares similarity; 0.00567 m/px, 0.9 deg rotation, residuals 0.004, 0.063, 0.059 m"
+  },
+  "stripes": [
+    {
+      "name": "SwooshRed",
+      "what": "upper red swoosh from the cowl, running aft as the red pinstripe to the registration",
+      "material": "MatLiveryRed",
+      "crop_px": [340, 540, 0.5],
+      "upper": [[85, 78], [170, 107], [260, 131], [330, 141], [420, 129], [500, 112], [580, 99], [660, 91], [760, 90], [900, 95], [1100, 110], [1300, 125], [1508, 139]],
+      "lower": [[85, 78], [170, 118], [250, 147], [330, 160], [420, 146], [500, 129], [580, 116], [660, 107], [760, 104], [900, 108], [1100, 123], [1300, 138], [1497, 152]]
+    },
+    {
+      "name": "SwooshMaroon",
+      "what": "broad maroon swoosh below it, merging into the pinstripe under the door",
+      "material": "MatLiveryMaroon",
+      "crop_px": [340, 540, 0.5],
+      "upper": [[125, 128], [220, 160], [330, 180], [450, 170], [550, 152], [640, 128], [720, 111], [800, 104], [880, 106]],
+      "lower": [[125, 128], [220, 178], [320, 200], [430, 207], [530, 198], [610, 180], [690, 152], [770, 128], [840, 114], [880, 106]]
+    },
+    {
+      "name": "SwooshNavy",
+      "what": "navy stripe from under the strut aft to the registration",
+      "material": "MatLiveryNavy",
+      "crop_px": [340, 540, 0.5],
+      "upper": [[650, 193], [720, 172], [800, 155], [900, 142], [1000, 139], [1200, 150], [1488, 166]],
+      "lower": [[650, 193], [720, 184], [800, 167], [900, 154], [1000, 151], [1200, 162], [1480, 180]]
+    },
+    {
+      "name": "FinSwooshRed",
+      "what": "red stroke of the fin swoosh under the Skyhawk SP logo",
+      "material": "MatLiveryRed",
+      "crop_px": [1470, 470, 0.25],
+      "upper": [[80, 160], [200, 185], [320, 190], [440, 170], [560, 150]],
+      "lower": [[80, 160], [200, 195], [320, 202], [440, 183], [560, 150]]
+    },
+    {
+      "name": "FinSwooshNavy",
+      "what": "navy crescent of the fin swoosh",
+      "material": "MatLiveryNavy",
+      "crop_px": [1470, 470, 0.25],
+      "upper": [[110, 190], [250, 225], [380, 232], [500, 210], [600, 190], [700, 175]],
+      "lower": [[110, 190], [250, 250], [380, 262], [500, 245], [600, 215], [700, 175]]
+    }
+  ],
+  "registration": {
+    "text": "N642SP",
+    "material": "MatLiveryNavy",
+    "box_px": [1082, 596, 1368, 652],
+    "measured_px": {
+      "method": "navy pixels (B < 120, R+G+B < 300) in the box, deslanted by the shear that best separates glyphs",
+      "height": 59,
+      "glyph_width": [36, 37],
+      "gap": 11,
+      "stroke": [9, 10],
+      "slant": [0.55, 0.60]
+    },
+    "regulation": "14 CFR 45.29 (current text via LII, fetched 2026-11-09): fixed-wing marks at least 12 in high (b); width 2/3 of height (c); stroke 1/6 of height (d); spacing at least 1/4 of width (e); same on both sides (g)",
+    "confidence": "medium: the photo gives 12.4-13.1 in tall and 0.61 H wide, within blur and perspective of 12 in x 8 in; the regulation proportions are used",
+    "cap_height_m": 0.3048,
+    "glyph_width_h": 0.6667,
+    "stroke_h": 0.1667,
+    "gap_h": 0.19,
+    "slant": 0.57
+  },
+  "glyphs": {
+    "units": "cap height; x right from the glyph's left edge (0 to 1 = glyph width), y up from the baseline; stroke centrelines, filleted at interior corners by radius (cap height units)",
+    "style": "project-drawn square italic capitals traced to the photo; not derived from any font",
+    "N": { "radius": 0.0, "stroke": [[0.125, 0.083], [0.125, 0.917], [0.875, 0.083], [0.875, 0.917]] },
+    "6": { "radius": 0.12, "stroke": [[0.875, 0.917], [0.125, 0.917], [0.125, 0.083], [0.875, 0.083], [0.875, 0.5], [0.125, 0.5]] },
+    "4": { "radius": 0.0, "stroke": [[0.72, 0.083], [0.72, 0.917], [0.125, 0.36], [0.92, 0.36]] },
+    "2": { "radius": 0.12, "stroke": [[0.125, 0.917], [0.875, 0.917], [0.875, 0.5], [0.125, 0.5], [0.125, 0.083], [0.875, 0.083]] },
+    "S": { "radius": 0.12, "stroke": [[0.875, 0.917], [0.125, 0.917], [0.125, 0.5], [0.875, 0.5], [0.875, 0.083], [0.125, 0.083]] },
+    "P": { "radius": 0.12, "stroke": [[0.125, 0.083], [0.125, 0.917], [0.875, 0.917], [0.875, 0.45], [0.125, 0.45]] }
+  }
+}
