@@ -7,19 +7,26 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, OnceLock};
 
 use sim_geo::Geodetic;
 
+use crate::AirportDatabase;
 use crate::airport_db::{CELL_DEG, LAT_CELLS, LON_CELLS};
-use crate::world_query::strongest;
-use crate::{AirportDatabase, CatalogVerticalDatum, RunwayStrip};
+use crate::world_query::surface_ecef;
 
+mod landing;
+mod profile;
+mod resolve;
 mod stamp;
+mod strips;
 #[cfg(test)]
 mod tests;
 
+use profile::Profile;
 pub use stamp::MIN_STAMP_ZOOM;
+use strips::{DatumStrip, RunwayRef, datum_strips};
 
 /// Fine cells per degree.
 const FINE_PER_DEG: f64 = 32.0;
@@ -30,21 +37,28 @@ const FINE_LON_CELLS: i64 = 360 * FINE_PER_DEG as i64;
 const POLAR_LAT_DEG: f64 = 80.0;
 
 /// Strips filed by fine cell `(lat index, lon index)`.
-type FineCells = BTreeMap<(i64, i64), Vec<RunwayStrip>>;
+type FineCells = BTreeMap<(i64, i64), Vec<DatumStrip>>;
 
 struct Index {
     database: Arc<AirportDatabase>,
     cells: Vec<OnceLock<FineCells>>,
-    polar: OnceLock<Vec<RunwayStrip>>,
+    polar: OnceLock<Vec<DatumStrip>>,
+    /// Each airport's runway profiles by runway, once resolved from terrain.
+    profiles: Vec<OnceLock<Vec<Option<Profile>>>>,
+    /// Counts airports resolved, so a surface knows its runways changed.
+    generation: AtomicU64,
 }
 
 /// Every runway of an [`AirportDatabase`] as the strip an
 /// [`crate::AuthoritativeWorldSurface`] holds: pavement, shoulders and overruns at the
-/// charted profile between the published end elevations, feathered into the terrain.
+/// runway's profile, feathered into the terrain.
 ///
+/// A runway's profile is straight between its published end elevations until
+/// [`Self::resolve_airport`] gives it the terrain's smoothed centreline, bent to meet
+/// those ends, graded no steeper than 2% and never above the published field elevation.
 /// Heights are charted MSL numbers, read in whatever datum the terrain they blend with
 /// uses, as [`AirportRecord::runway_strips`](crate::AirportRecord::runway_strips) does.
-/// Clones share one lazily built index.
+/// Clones share one lazily built index and its resolved profiles.
 #[derive(Clone)]
 pub struct RunwayDatum {
     index: Arc<Index>,
@@ -71,11 +85,13 @@ impl RunwayDatum {
     pub fn new(database: Arc<AirportDatabase>) -> Self {
         Self {
             index: Arc::new(Index {
-                database,
                 cells: (0..LAT_CELLS * LON_CELLS)
                     .map(|_| OnceLock::new())
                     .collect(),
                 polar: OnceLock::new(),
+                profiles: (0..database.len()).map(|_| OnceLock::new()).collect(),
+                generation: AtomicU64::new(0),
+                database,
             }),
         }
     }
@@ -93,10 +109,10 @@ impl RunwayDatum {
     pub fn height_and_weight(&self, position: &Geodetic) -> Option<(f64, f64)> {
         let lat_deg = position.lat_deg();
         if lat_deg.abs() > POLAR_LAT_DEG {
-            return strongest(self.polar_strips(), position);
+            return self.strongest(self.polar_strips(), position);
         }
         let key = fine_key(lat_deg, position.lon_deg());
-        strongest(self.fine_cell(key), position)
+        self.strongest(self.fine_cell(key), position)
     }
 
     /// `terrain_m` with the runway datum laid over it: the charted height on a strip,
@@ -110,23 +126,32 @@ impl RunwayDatum {
     }
 
     /// Whether any strip reaches into the fine cells covering a latitude/longitude box.
-    fn any_strip_in(&self, (south, north): (f64, f64), (west, east): (f64, f64)) -> bool {
+    fn any_strip_in(&self, lats: (f64, f64), lons: (f64, f64)) -> bool {
+        self.strips_in(lats, lons).next().is_some()
+    }
+
+    /// The strips filed in the fine cells covering a latitude/longitude box; a strip
+    /// spanning several cells comes once per cell.
+    fn strips_in(
+        &self,
+        (south, north): (f64, f64),
+        (west, east): (f64, f64),
+    ) -> Box<dyn Iterator<Item = &DatumStrip> + '_> {
         if south.abs().max(north.abs()) > POLAR_LAT_DEG {
-            return !self.polar_strips().is_empty();
+            return Box::new(self.polar_strips().iter());
         }
         let (lat_lo, lon_lo) = fine_key(south, west);
         let (lat_hi, lon_hi) = fine_key(north, east);
         let lon_span = (lon_hi - lon_lo).rem_euclid(FINE_LON_CELLS);
-        (lat_lo..=lat_hi).any(|lat| {
-            (0..=lon_span).any(|step| {
-                !self
-                    .fine_cell((lat, (lon_lo + step).rem_euclid(FINE_LON_CELLS)))
-                    .is_empty()
+        Box::new((lat_lo..=lat_hi).flat_map(move |lat| {
+            (0..=lon_span).flat_map(move |step| {
+                self.fine_cell((lat, (lon_lo + step).rem_euclid(FINE_LON_CELLS)))
+                    .iter()
             })
-        })
+        }))
     }
 
-    fn fine_cell(&self, key: (i64, i64)) -> &[RunwayStrip] {
+    fn fine_cell(&self, key: (i64, i64)) -> &[DatumStrip] {
         let (lat_band, lon_band) = parent_of(key);
         self.index
             .cells
@@ -141,7 +166,7 @@ impl RunwayDatum {
     fn build_cell(&self, lat_band: usize, lon_band: usize) -> FineCells {
         let mut cells = FineCells::new();
         for strip in self.strips_around(lat_band, lon_band) {
-            let corners = strip.skirt_corners();
+            let corners = strip.strip.skirt_corners();
             let lats = corners.map(|c| c.lat_deg());
             let lons = unwrapped_lons(corners.map(|c| c.lon_deg()));
             let (lat_lo, lon_lo) = fine_key(min(lats), min(lons));
@@ -159,18 +184,18 @@ impl RunwayDatum {
         cells
     }
 
-    fn strips_around(&self, lat_band: usize, lon_band: usize) -> Vec<RunwayStrip> {
+    fn strips_around(&self, lat_band: usize, lon_band: usize) -> Vec<DatumStrip> {
         let lat_bands = lat_band.saturating_sub(1)..=(lat_band + 1).min(LAT_CELLS - 1);
         lat_bands
             .flat_map(|lat| {
                 [LON_CELLS - 1, 0, 1].map(move |offset| (lat, (lon_band + offset) % LON_CELLS))
             })
             .flat_map(|(lat, lon)| self.index.database.airports_in_cell(lat, lon))
-            .flat_map(|record| record.runway_strips(CatalogVerticalDatum::OrthometricMslEgm96))
+            .flat_map(|(idx, record)| datum_strips(idx, record))
             .collect()
     }
 
-    fn polar_strips(&self) -> &[RunwayStrip] {
+    fn polar_strips(&self) -> &[DatumStrip] {
         self.index.polar.get_or_init(|| {
             // Bands reaching within a degree of the polar latitude, so a strip whose
             // airport sits just outside it still covers the polar side.
@@ -182,8 +207,40 @@ impl RunwayDatum {
                 })
                 .flat_map(|lat| (0..LON_CELLS).map(move |lon| (lat, lon)))
                 .flat_map(|(lat, lon)| self.index.database.airports_in_cell(lat, lon))
-                .flat_map(|record| record.runway_strips(CatalogVerticalDatum::OrthometricMslEgm96))
+                .flat_map(|(idx, record)| datum_strips(idx, record))
                 .collect()
+        })
+    }
+
+    /// The runway height and weight of the strip covering `position` most strongly,
+    /// along its resolved profile or straight between its ends.
+    fn strongest(&self, strips: &[DatumStrip], position: &Geodetic) -> Option<(f64, f64)> {
+        let surface = surface_ecef(position);
+        strips
+            .iter()
+            .filter_map(|datum| {
+                let reach = datum.strip.reach_ecef(surface)?;
+                (reach.weight > 0.0).then_some((datum.runway, reach))
+            })
+            .fold(None, |best: Option<(RunwayRef, _)>, candidate| match best {
+                Some(best) if !candidate.1.beats(&best.1) => Some(best),
+                _ => Some(candidate),
+            })
+            .map(|(runway, reach)| {
+                let height = self
+                    .profile_height(runway, reach.fraction)
+                    .unwrap_or(reach.straight_m);
+                (height, reach.weight)
+            })
+    }
+
+    fn profile_height(&self, runway: RunwayRef, fraction: f64) -> Option<f64> {
+        let profiles = self.index.profiles.get(runway.airport.index())?.get()?;
+        let profile = profiles.get(runway.runway)?.as_ref()?;
+        profile.at(if runway.reversed {
+            1.0 - fraction
+        } else {
+            fraction
         })
     }
 }

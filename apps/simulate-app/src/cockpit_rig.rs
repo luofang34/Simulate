@@ -431,9 +431,11 @@ impl CockpitRig {
         earth: bool,
         profile: Option<sim_scenario::ScenarioProfile>,
     ) -> Option<sim_scenery::LandingRunwayGeometry> {
+        let datum = self.supervisor.vertical_datum();
         earth
             .then(|| self.supervisor.active_landing_runway(profile))
             .flatten()
+            .map(|rwy| self.surface.runway_datum().touchdown_plane(&rwy, datum))
     }
 
     /// Assembles the ordered zero-copy [`OverlayQuad`] stack for [`Renderer::render_composite`].

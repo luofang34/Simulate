@@ -129,10 +129,8 @@ impl RunwayStrip {
         Some((delta.dot(self.along_ecef), delta.dot(self.across_ecef)))
     }
 
-    /// The strip height at `surface_ecef`, how strongly it applies (1 on the strip,
-    /// easing to 0 across the skirt) and how far the point lies off the pavement;
-    /// `None` beyond the skirt.
-    fn reach_ecef(&self, surface_ecef: DVec3) -> Option<(f64, f64, f64)> {
+    /// Where `surface_ecef` falls on the strip; `None` beyond the skirt.
+    pub(crate) fn reach_ecef(&self, surface_ecef: DVec3) -> Option<Reach> {
         let (along, across) = self.local_ecef(surface_ecef)?;
         let over_across = (across.abs() - (self.half_width_m + SHOULDER_M)).max(0.0);
         let over_along = (-OVERRUN_M - along)
@@ -143,31 +141,76 @@ impl RunwayStrip {
             return None;
         }
         let t = 1.0 - outside / SKIRT_M;
-        let weight = t * t * (3.0 - 2.0 * t);
         let fraction = (along / self.length_m).clamp(0.0, 1.0);
-        let height = self.threshold_m + (self.far_end_m - self.threshold_m) * fraction;
-        let off_pavement = (across.abs() - self.half_width_m)
-            .max(0.0)
-            .hypot((-along).max(along - self.length_m).max(0.0));
-        Some((height, weight, off_pavement))
+        Some(Reach {
+            fraction,
+            straight_m: self.threshold_m + (self.far_end_m - self.threshold_m) * fraction,
+            weight: t * t * (3.0 - 2.0 * t),
+            off_pavement_m: (across.abs() - self.half_width_m)
+                .max(0.0)
+                .hypot((-along).max(along - self.length_m).max(0.0)),
+            length_m: self.length_m,
+        })
+    }
+
+    /// The threshold this strip starts from, on the ellipsoid.
+    pub(crate) fn origin_ecef(&self) -> DVec3 {
+        self.origin_ecef
+    }
+}
+
+/// Where a point falls on a [`RunwayStrip`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Reach {
+    /// How far along the runway from this strip's threshold, `0..=1`; held at the ends
+    /// over the overruns.
+    pub(crate) fraction: f64,
+    /// The height of the straight line between the two thresholds there.
+    pub(crate) straight_m: f64,
+    /// How strongly the strip applies: 1 on it, easing to 0 across the skirt.
+    pub(crate) weight: f64,
+    /// How far the point lies off the pavement.
+    pub(crate) off_pavement_m: f64,
+    /// The runway's length, so a runway crossing a longer one yields to it.
+    pub(crate) length_m: f64,
+}
+
+impl Reach {
+    /// Whether this reach should win over `other` at the same point: the stronger one;
+    /// where crossing runways both cover it fully, the one whose pavement it is on, or
+    /// nearest; where it is on both, the longer runway, which the crossing one is graded
+    /// to.
+    pub(crate) fn beats(&self, other: &Self) -> bool {
+        self.weight
+            .total_cmp(&other.weight)
+            .then(other.off_pavement_m.total_cmp(&self.off_pavement_m))
+            .then(self.length_m.total_cmp(&other.length_m))
+            .is_gt()
     }
 }
 
 /// The height of the strip that most strongly covers `position`, with its
-/// weight in `(0, 1]`. Where crossing runways both cover it fully, the one whose
-/// pavement it is on, or nearest, wins.
+/// weight in `(0, 1]`, by [`Reach::beats`].
 pub(crate) fn strongest<'a>(
     strips: impl IntoIterator<Item = &'a RunwayStrip>,
     position: &Geodetic,
 ) -> Option<(f64, f64)> {
-    let surface_ecef = geodetic_to_ecef(&Geodetic {
-        height_m: 0.0,
-        ..*position
-    });
+    let surface_ecef = surface_ecef(position);
     strips
         .into_iter()
         .filter_map(|strip| strip.reach_ecef(surface_ecef))
-        .filter(|&(_, weight, _)| weight > 0.0)
-        .max_by(|a, b| a.1.total_cmp(&b.1).then(b.2.total_cmp(&a.2)))
-        .map(|(height, weight, _)| (height, weight))
+        .filter(|reach| reach.weight > 0.0)
+        .fold(None, |best: Option<Reach>, reach| match best {
+            Some(best) if !reach.beats(&best) => Some(best),
+            _ => Some(reach),
+        })
+        .map(|reach| (reach.straight_m, reach.weight))
+}
+
+/// `position` on the ellipsoid, where strips are laid out.
+pub(crate) fn surface_ecef(position: &Geodetic) -> DVec3 {
+    geodetic_to_ecef(&Geodetic {
+        height_m: 0.0,
+        ..*position
+    })
 }

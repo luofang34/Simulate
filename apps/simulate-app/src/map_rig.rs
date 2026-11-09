@@ -116,7 +116,7 @@ impl MapLibreRig {
             endpoints,
             catalog,
             live_ground,
-        } = source.loader(charts.clone())?;
+        } = source.loader(charts.clone(), surface.runway_datum())?;
         let runtime = SharedMapRuntime::new(
             gpu,
             default_device_tier(),

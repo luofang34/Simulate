@@ -3,6 +3,7 @@
 //! HTTP client (Reqwest with a disk cache natively, `fetch` in the browser), remembering
 //! remote URLs that answered "no such tile".
 
+use std::collections::BTreeMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -14,7 +15,9 @@ use maplibre::{
     },
     platform::http_client,
 };
-use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TerrariumTile, TileId};
+use sim_scenery::{
+    CatalogScenery, LiveDemBridge, RunwayDatum, TerrariumTile, TileId, project_to_tile,
+};
 
 use crate::scenery_loader::encode_rgba_png;
 use crate::{
@@ -29,6 +32,11 @@ mod tests;
 use negative_cache::{NEGATIVE_CACHE_CAPACITY, NegativeTileCache, fetch_negative_cached};
 
 const CATALOG_PREFIX: &str = "https://sim.catalog/";
+
+/// Zoom of the published terrain a runway's profile is read from: pixels of about 38 m
+/// at the equator, fine enough for a profile smoothed over 200 m, coarse enough that one
+/// or two tiles hold a whole runway.
+const PROFILE_ZOOM: u8 = 12;
 
 #[cfg(not(target_arch = "wasm32"))]
 type PlatformClient = http_client::ReqwestHttpClient;
@@ -152,6 +160,43 @@ impl HybridTileLoader {
             .flatten()
     }
 
+    /// Gives every runway reaching the Terrarium tile at `url` its terrain profile before
+    /// the tile is stamped, from the published zoom-[`PROFILE_ZOOM`] tiles its centrelines
+    /// cross. A runway whose terrain cannot be fetched stays straight for good, so every
+    /// tile carries the same runway.
+    async fn resolve_runway_profiles(&self, url: &str) {
+        let (Some(datum), Some(tile)) = (&self.runway_datum, terrarium_tile_id(url)) else {
+            return;
+        };
+        for airport in datum.unresolved_airports_reaching(tile) {
+            let mut terrain = BTreeMap::new();
+            for profile_tile in datum.centreline_tiles(airport, PROFILE_ZOOM) {
+                let Some(profile_url) = terrarium_url_for(url, profile_tile) else {
+                    continue;
+                };
+                let fetched = fetch_negative_cached(&self.missing, &profile_url, || {
+                    self.platform.fetch(&profile_url)
+                })
+                .await;
+                match fetched.map(|bytes| TerrariumTile::from_png_bytes(&bytes)) {
+                    Ok(Ok(dem)) => {
+                        terrain.insert(profile_tile, dem);
+                    }
+                    Ok(Err(error)) => {
+                        tracing::warn!(profile_url, %error, "runway profile terrain unreadable");
+                    }
+                    Err(error) => {
+                        tracing::warn!(profile_url, %error, "runway profile terrain unavailable");
+                    }
+                }
+            }
+            datum.resolve_airport(airport, &|position| {
+                let coord = project_to_tile(position, PROFILE_ZOOM)?;
+                terrain.get(&coord.tile)?.sample_bilinear(coord.u, coord.v)
+            });
+        }
+    }
+
     /// `bytes` with the runway datum laid in, when they are a Terrarium tile it reaches.
     fn stamp_terrarium(&self, url: &str, bytes: Vec<u8>) -> Vec<u8> {
         let (Some(datum), Some(tile)) = (&self.runway_datum, terrarium_tile_id(url)) else {
@@ -190,6 +235,20 @@ impl HybridTileLoader {
     }
 }
 
+/// The URL of Terrarium tile `tile` on the same server as `url`, another tile's URL.
+fn terrarium_url_for(url: &str, tile: TileId) -> Option<String> {
+    let (path, query) = url
+        .find(['?', '#'])
+        .map_or((url, ""), |at| url.split_at(at));
+    let mut parts = path.rsplitn(4, '/');
+    let (_y, _x, _z) = (parts.next()?, parts.next()?, parts.next()?);
+    let prefix = parts.next()?;
+    Some(format!(
+        "{prefix}/{}/{}/{}.png{query}",
+        tile.zoom, tile.x, tile.y
+    ))
+}
+
 /// The tile a Terrarium elevation URL ending `/terrarium/.../{z}/{x}/{y}.png` addresses.
 fn terrarium_tile_id(url: &str) -> Option<TileId> {
     let path = url.split(['?', '#']).next()?;
@@ -220,6 +279,7 @@ impl HttpClient for HybridTileLoader {
             None => {
                 let fetched =
                     fetch_negative_cached(&self.missing, url, || self.platform.fetch(url)).await?;
+                self.resolve_runway_profiles(url).await;
                 let bytes = self.stamp_terrarium(url, fetched);
                 self.forward_terrarium(url, &bytes);
                 Ok(bytes)

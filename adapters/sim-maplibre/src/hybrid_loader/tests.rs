@@ -199,3 +199,20 @@ fn fetched_terrarium_tiles_carry_the_runway_datum_to_maps_and_ground() {
         published
     );
 }
+
+#[test]
+fn profile_terrain_comes_from_the_same_server() {
+    let tile = TileId {
+        zoom: 12,
+        x: 7,
+        y: 9,
+    };
+    assert_eq!(
+        super::terrarium_url_for(TERRARIUM_URL, tile).as_deref(),
+        Some("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/12/7/9.png")
+    );
+    assert_eq!(
+        super::terrarium_url_for("https://t.example/terrarium/15/1/2.png?key=k", tile).as_deref(),
+        Some("https://t.example/terrarium/12/7/9.png?key=k")
+    );
+}

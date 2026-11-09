@@ -27,6 +27,9 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct WorldSurfaceHandle {
     shared: Arc<RwLock<AuthoritativeWorldSurface>>,
+    /// One datum for the life of the handle, so runway profiles resolved while the maps
+    /// stamp their tiles are the ones the ground reads, across scenery changes too.
+    runway_datum: RunwayDatum,
 }
 
 impl Default for WorldSurfaceHandle {
@@ -39,15 +42,23 @@ impl WorldSurfaceHandle {
     /// The offline catalog surface, the state before any map rig picks a source. It is
     /// pure in-memory data (no I/O).
     pub fn new() -> Self {
-        let surface = catalog_surface().unwrap_or_else(|error| {
+        let runway_datum = RunwayDatum::builtin();
+        let surface = catalog_surface(&runway_datum).unwrap_or_else(|error| {
             tracing::error!(%error, "regional catalog unavailable; runways over bare Earth");
-            with_runways(AuthoritativeWorldSurface::earth(
-                CatalogVerticalDatum::OrthometricMslEgm96,
-            ))
+            with_runways(
+                AuthoritativeWorldSurface::earth(CatalogVerticalDatum::OrthometricMslEgm96),
+                &runway_datum,
+            )
         });
         Self {
             shared: Arc::new(RwLock::new(surface)),
+            runway_datum,
         }
+    }
+
+    /// The runway datum this surface and the maps drawing it share.
+    pub fn runway_datum(&self) -> &RunwayDatum {
+        &self.runway_datum
     }
 
     /// Replaces the surface with the one `source` draws: the synthetic catalog
@@ -55,10 +66,11 @@ impl WorldSurfaceHandle {
     /// carry every charted runway.
     pub fn configure(&self, source: &ScenerySource) -> Result<(), SceneryError> {
         let surface = match source {
-            ScenerySource::Catalog => catalog_surface()?,
-            ScenerySource::RealWorld { .. } => with_runways(AuthoritativeWorldSurface::earth(
-                CatalogVerticalDatum::OrthometricMslEgm96,
-            )),
+            ScenerySource::Catalog => catalog_surface(&self.runway_datum)?,
+            ScenerySource::RealWorld { .. } => with_runways(
+                AuthoritativeWorldSurface::earth(CatalogVerticalDatum::OrthometricMslEgm96),
+                &self.runway_datum,
+            ),
         };
         *self.write() = surface;
         Ok(())
@@ -172,20 +184,24 @@ impl WorldSurfaceHandle {
     }
 }
 
-/// The synthetic regional catalog with the runway datum laid into its terrain, as the
-/// offline maps draw it.
-pub fn stamped_regional_catalog() -> Result<CatalogScenery, SceneryError> {
-    Ok(CatalogScenery::synthetic_regional_network()?.with_runway_datum(&RunwayDatum::builtin()))
+/// The synthetic regional catalog with `datum` laid into its terrain, as the offline maps
+/// draw it.
+pub fn stamped_regional_catalog(datum: &RunwayDatum) -> Result<CatalogScenery, SceneryError> {
+    Ok(CatalogScenery::synthetic_regional_network()?.with_runway_datum(datum))
 }
 
-fn catalog_surface() -> Result<AuthoritativeWorldSurface, SceneryError> {
-    Ok(with_runways(AuthoritativeWorldSurface::earth_with_catalog(
-        stamped_regional_catalog()?,
-    )))
+fn catalog_surface(datum: &RunwayDatum) -> Result<AuthoritativeWorldSurface, SceneryError> {
+    Ok(with_runways(
+        AuthoritativeWorldSurface::earth_with_catalog(stamped_regional_catalog(datum)?),
+        datum,
+    ))
 }
 
-fn with_runways(surface: AuthoritativeWorldSurface) -> AuthoritativeWorldSurface {
+fn with_runways(
+    surface: AuthoritativeWorldSurface,
+    datum: &RunwayDatum,
+) -> AuthoritativeWorldSurface {
     surface
         .with_polar_elevations_m(0.0, 2_835.0)
-        .with_runway_datum(RunwayDatum::builtin())
+        .with_runway_datum(datum.clone())
 }

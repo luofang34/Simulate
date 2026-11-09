@@ -5,6 +5,7 @@
 
 use glam::{DMat3, DQuat, DVec3};
 use sim_core::{CameraPoseEcef, SimInstant, VehicleState};
+use sim_geo::Geodetic;
 use sim_geo::{BodyEllipsoid, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use sim_indicate::{
     AltitudeSource, DisplayAxes, FeedConfig, FlightSample, HeadingMode, SourceMonitor, StateFeed,
@@ -14,7 +15,9 @@ use sim_maplibre::{
     DEFAULT_FAR_CLIP_M, DEFAULT_NEAR_CLIP_M, conformal_stamp_from_pose_on,
     project_geodetic_to_screen, symmetric_frustum,
 };
-use sim_scenery::{AirportDatabase, CatalogVerticalDatum, LandingRunwayGeometry};
+use sim_scenery::{
+    AirportDatabase, AirportRecord, CatalogVerticalDatum, LandingRunwayGeometry, RunwayDatum,
+};
 
 use super::super::*;
 use crate::camera_view::{pilot_eye_mount, scenario_camera};
@@ -124,11 +127,15 @@ impl Pipeline {
         (along_m, agl_m): (f64, f64),
         (pitch_deg, roll_deg): (f64, f64),
         target_px: [u32; 2],
+        runway_datum: Option<&RunwayDatum>,
     ) -> Self {
         let db = AirportDatabase::builtin();
         let (_, rec) = db.by_code(code).expect("airport");
         let datum = CatalogVerticalDatum::OrthometricMslEgm96;
         let rwy = rec.landing_runway(desig, datum).expect("landing runway");
+        let rwy = runway_datum.map_or(rwy, |runway_datum| {
+            runway_datum.touchdown_plane(&rwy, datum)
+        });
         let vehicle = build_vehicle_at_station(&rwy, along_m, agl_m, pitch_deg, roll_deg);
 
         // Non-zero C172 left-seat pilot eye lever arm `[+0.10, -0.26, -0.12]`.
@@ -233,6 +240,7 @@ fn assert_full_pipeline_hud_alignment(
         (along_m, agl_m),
         (pitch_deg, roll_deg),
         target_px,
+        None,
     );
     for (name, geo, a_m) in [
         ("threshold", &pipe.rwy.threshold, 0.0_f32),
@@ -279,24 +287,69 @@ fn pilot_seat_lever_arm_registers_at_nzsp_south_pole_and_conus_airports() {
     }
 }
 
+/// Terrain over `record`'s runways: each runway's charted line, 2 m higher, crowned
+/// `crown_m` mid-runway.
+fn crowned_terrain(record: &AirportRecord, crown_m: f64) -> impl Fn(&Geodetic) -> Option<f64> + '_ {
+    move |point: &Geodetic| {
+        let at = geodetic_to_ecef(point);
+        record
+            .runways
+            .iter()
+            .map(|runway| {
+                let [a, b] = &runway.ends;
+                let a_ecef = geodetic_to_ecef(&Geodetic::from_degrees(a.lat_deg, a.lon_deg, 0.0));
+                let b_ecef = geodetic_to_ecef(&Geodetic::from_degrees(b.lat_deg, b.lon_deg, 0.0));
+                let t = (at - a_ecef).dot(b_ecef - a_ecef) / (b_ecef - a_ecef).length_squared();
+                let off = (at - (a_ecef + (b_ecef - a_ecef) * t)).length();
+                let line = f64::from(a.elevation_msl_m)
+                    + f64::from(b.elevation_msl_m - a.elevation_msl_m) * t;
+                (
+                    off,
+                    line + 2.0 + crown_m * (1.0 - (2.0 * t - 1.0).powi(2)).max(0.0),
+                )
+            })
+            .min_by(|x, y| x.0.total_cmp(&y.0))
+            .map(|(_, height)| height)
+    }
+}
+
 /// The HUD centreline lands on the runway the window draws: the centreline at the
-/// threshold and 1,000 m on, at the ground the world surface has there (the runway datum
-/// the maps also lay into the terrain they draw), projects within a quarter pixel of the
-/// HUD's centreline, at sea level and a mile high.
+/// threshold and 1,000 m on (or 100 m short of the far end), at the ground the world surface has there (the runway datum
+/// the maps also lay into the terrain they draw, here with crowned profiles), projects
+/// within a quarter pixel of the HUD's centreline, from sea level to a mile high and on
+/// N51's crowned runway.
 #[test]
 fn hud_centreline_lands_on_the_drawn_runway_at_threshold_and_1000_m() {
     let ground = crate::world_surface::WorldSurfaceHandle::new();
     ground
         .configure(&crate::map_rig::ScenerySource::RealWorld { cache_dir: None })
         .expect("real-world surface");
-    for (code, desig) in [("KEWR", "22L"), ("KDEN", "16R")] {
-        let pipe = Pipeline::new(code, desig, (-950.0, 65.0), (-3.0, 0.0), [1920, 1080]);
+    let runway_datum = ground.runway_datum();
+    for (code, desig) in [
+        ("KEWR", "22L"),
+        ("KDEN", "16R"),
+        ("47N", "07"),
+        ("N51", "04"),
+    ] {
+        let (idx, record) = AirportDatabase::builtin().by_code(code).expect("airport");
+        // Airports inside the offline catalog already took their profile from it.
+        runway_datum.resolve_airport(idx, &crowned_terrain(record, 3.0));
+        assert!(runway_datum.is_resolved(idx));
+        let pipe = Pipeline::new(
+            code,
+            desig,
+            (-950.0, 65.0),
+            (-3.0, 0.0),
+            [1920, 1080],
+            Some(runway_datum),
+        );
         let rwy = &pipe.rwy;
         let thr_local = LocalFrame::at(&rwy.threshold);
         let (sb, cb) = rwy.true_bearing_rad.sin_cos();
         let ahead = thr_local.north() * cb + thr_local.east() * sb;
         let hud_scale = f64::from(pipe.hud.length_m) / rwy.landing_length_m;
-        for along_m in [0.0, 1_000.0] {
+        // 47N and N51 land on less than 1,100 m past their displaced thresholds.
+        for along_m in [0.0, 1_000.0_f64.min(rwy.landing_length_m - 100.0)] {
             let mut centre = ecef_to_geodetic(geodetic_to_ecef(&rwy.threshold) + ahead * along_m);
             centre.height_m = ground.ellipsoidal_ground_m(&centre).expect("runway ground");
             let otw = pipe.otw_px(&centre).expect("centreline in view");

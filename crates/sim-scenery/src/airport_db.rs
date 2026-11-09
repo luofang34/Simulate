@@ -164,11 +164,11 @@ impl AirportDatabase {
         &self,
         lat_band: usize,
         lon_band: usize,
-    ) -> impl Iterator<Item = &AirportRecord> + '_ {
+    ) -> impl Iterator<Item = (AirportIdx, &AirportRecord)> + '_ {
         self.grid
             .cell(lat_band, lon_band)
             .iter()
-            .filter_map(|&idx| self.get(idx))
+            .filter_map(|&idx| Some((idx, self.get(idx)?)))
     }
 
     /// Handles of every record, in index order.

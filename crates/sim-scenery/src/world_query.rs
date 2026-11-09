@@ -24,7 +24,7 @@ mod tests;
 
 use live_dem::LiveDem;
 pub use runway::RunwayStrip;
-pub(crate) use runway::strongest;
+pub(crate) use runway::surface_ecef;
 
 /// Half the baseline of the central differences behind a surface normal.
 const NORMAL_HALF_BASELINE_M: f64 = 5.0;
@@ -411,9 +411,15 @@ impl AuthoritativeWorldSurface {
 impl WorldSurfaceQuery for AuthoritativeWorldSurface {
     fn world_version(&self) -> u64 {
         match &self.body {
-            Body::Earth(earth) => earth.catalog.as_ref().map_or(self.version, |catalog| {
-                self.version.wrapping_add(catalog.version())
-            }),
+            Body::Earth(earth) => self
+                .version
+                .wrapping_add(earth.catalog.as_ref().map_or(0, CatalogScenery::version))
+                .wrapping_add(
+                    earth
+                        .runway_datum
+                        .as_ref()
+                        .map_or(0, RunwayDatum::generation),
+                ),
             _ => self.version,
         }
     }

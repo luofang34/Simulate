@@ -17,7 +17,8 @@ use crate::map_rig::AvionicsPreset;
 use crate::sky_rig::SkyFrame;
 use crate::vehicles::C172_GEAR_HEIGHT_M;
 
-const AIRPORTS: [(&str, &str); 7] = [
+const AIRPORTS: [(&str, &str); 8] = [
+    ("N51", "04"),
     ("KEWR", "22L"),
     ("KEWR", "04R"),
     ("47N", "07"),
@@ -127,6 +128,32 @@ fn along_runway(landing: &LandingRunwayGeometry, along_m: f64) -> (Geodetic, f64
     (at, msl)
 }
 
+/// How far down the runway the ownship is, and a label with its cross-track offset,
+/// heading error against the runway and the live tiles resident.
+fn ownship_on_runway(
+    landing: &LandingRunwayGeometry,
+    state: &sim_core::VehicleState,
+    live_tiles: usize,
+) -> (f64, String) {
+    let own = ecef_to_geodetic(state.position_ecef);
+    let frame = LocalFrame::at(&landing.threshold);
+    let d = state.position_ecef - geodetic_to_ecef(&landing.threshold);
+    let (sin_b, cos_b) = landing.true_bearing_rad.sin_cos();
+    let along = d.dot(frame.north() * cos_b + frame.east() * sin_b);
+    let across = d.dot(frame.east() * cos_b - frame.north() * sin_b);
+    let local = LocalFrame::at(&own);
+    let nose = state.attitude * glam::DVec3::X;
+    let hdg = nose.dot(local.east()).atan2(nose.dot(local.north()));
+    let heading_err_deg = (hdg - landing.true_bearing_rad + std::f64::consts::PI)
+        .rem_euclid(std::f64::consts::TAU)
+        .to_degrees()
+        - 180.0;
+    (
+        along,
+        format!("ownship xt {across:+.2} m hdg {heading_err_deg:+.3}° live {live_tiles}"),
+    )
+}
+
 fn record(
     h: &VerifyHarness,
     landing: &LandingRunwayGeometry,
@@ -139,28 +166,7 @@ fn record(
     let surface = h.flight.world_surface();
     let state = h.flight.vehicle_state();
     let own = ecef_to_geodetic(state.position_ecef);
-    let (along_own, across_own) = {
-        let frame = LocalFrame::at(&landing.threshold);
-        let d = state.position_ecef - geodetic_to_ecef(&landing.threshold);
-        let (sin_b, cos_b) = landing.true_bearing_rad.sin_cos();
-        (
-            d.dot(frame.north() * cos_b + frame.east() * sin_b),
-            d.dot(frame.east() * cos_b - frame.north() * sin_b),
-        )
-    };
-    let heading_err_deg = {
-        let local = LocalFrame::at(&own);
-        let nose = state.attitude * glam::DVec3::X;
-        let hdg = nose.dot(local.east()).atan2(nose.dot(local.north()));
-        (hdg - landing.true_bearing_rad + std::f64::consts::PI)
-            .rem_euclid(std::f64::consts::TAU)
-            .to_degrees()
-            - 180.0
-    };
-    let own_label = format!(
-        "ownship xt {across_own:+.2} m hdg {heading_err_deg:+.3}° live {}",
-        surface.live_dem_len()
-    );
+    let (along_own, own_label) = ownship_on_runway(landing, &state, surface.live_dem_len());
     let points = [
         ("threshold", 0.0),
         (own_label.as_str(), along_own),
@@ -171,6 +177,11 @@ fn record(
         .rig
         .supervisor()
         .active_landing_runway(None)
+        .map(|rwy| {
+            surface
+                .runway_datum()
+                .touchdown_plane(&rwy, surface.vertical_datum())
+        })
         .ok_or_else(|| shot_error("no active runway"))?;
     let fmt = |v: Option<f64>| v.map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
     for (name, along) in points {

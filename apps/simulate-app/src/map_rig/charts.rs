@@ -28,14 +28,19 @@ impl MapLibreRig {
             .sample_resident_dem_msl(lat_deg, lon_deg)
     }
 
-    /// The active landing runway at its charted profile, the runway datum every map lays
-    /// into the terrain it draws, so the conformal runway sits on the drawn one.
+    /// The active landing runway laid on the runway datum every map lays into the terrain
+    /// it draws ([`sim_scenery::RunwayDatum::touchdown_plane`]), so the conformal runway
+    /// sits on the drawn one.
     #[must_use]
     pub(super) fn active_landing_runway(
         &self,
         input: &MapFrameInput<'_>,
     ) -> Option<LandingRunwayGeometry> {
-        input.supervisor.active_landing_runway(input.profile)
+        let datum = input.supervisor.vertical_datum();
+        input
+            .supervisor
+            .active_landing_runway(input.profile)
+            .map(|rwy| self.surface.runway_datum().touchdown_plane(&rwy, datum))
     }
 }
 

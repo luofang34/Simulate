@@ -78,10 +78,14 @@ impl ScenerySource {
 
     /// The loader, style endpoints, offline catalog, and live DEM hand-off of this source;
     /// the loader also serves the EFB's approach plates from `charts`.
-    pub(super) fn loader(&self, charts: ChartAssetStore) -> Result<SceneryLoader, AppSimError> {
+    pub(super) fn loader(
+        &self,
+        charts: ChartAssetStore,
+        datum: &RunwayDatum,
+    ) -> Result<SceneryLoader, AppSimError> {
         match self {
             Self::Catalog => {
-                let scenery = crate::world_surface::stamped_regional_catalog()
+                let scenery = crate::world_surface::stamped_regional_catalog(datum)
                     .map_err(sim_scenario::ScenarioError::from)?;
                 let max_dem = scenery
                     .elevation_tiles()
@@ -102,10 +106,12 @@ impl ScenerySource {
             #[cfg(not(target_arch = "wasm32"))]
             Self::RealWorld { cache_dir } => Ok(real_world_loader(
                 HybridTileLoader::new(None, cache_dir.clone()).with_chart_store(charts),
+                datum,
             )),
             #[cfg(target_arch = "wasm32")]
             Self::RealWorld {} => Ok(real_world_loader(
                 HybridTileLoader::new(None).with_chart_store(charts),
+                datum,
             )),
         }
     }
@@ -123,10 +129,10 @@ fn catalog_transport(scenery: Arc<CatalogScenery>) -> HybridTileLoader {
     HybridTileLoader::new(Some(scenery))
 }
 
-fn real_world_loader(transport: HybridTileLoader) -> SceneryLoader {
+fn real_world_loader(transport: HybridTileLoader, datum: &RunwayDatum) -> SceneryLoader {
     let bridge = LiveDemBridge::new();
     let transport = transport
-        .with_runway_datum(RunwayDatum::builtin())
+        .with_runway_datum(datum.clone())
         .with_live_dem_bridge(bridge.clone());
     let endpoints = SceneryEndpoints::real_world();
     let live_ground = LiveGround::new(bridge, Some(transport.clone()), endpoints.dem_tiles.clone());
