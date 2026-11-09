@@ -69,16 +69,18 @@ fn build_usaaf_star_roundels(prims: &mut Vec<P38MeshPrim>) {
     let mut blue_discs = MeshBuilder::new();
     let mut white_stars = MeshBuilder::new();
 
-    // 1. Left upper wing & right lower wing 45-in (radius 0.57 m) roundels at WS 205 (x = ±5.20 m)
-    for (xc, yc, upper) in [(-5.20_f32, -0.18_f32, true), (5.20, -0.18, false)] {
+    // 1. Left upper wing & right lower wing 45-in (radius 0.57 m) roundels at WS 205 (x = ±5.20 m),
+    //    centred on the local chord (FS 138.6..199.7 there)
+    for (xc, yc, upper) in [(-5.20_f32, -0.748_f32, true), (5.20, -0.748, false)] {
         project_wing_disc(&mut blue_discs, xc, yc, 0.56, upper, 0.0022);
         project_wing_star(&mut white_stars, xc, yc, 0.54, upper, 0.0046);
     }
 
-    // 2. Outboard left & right boom roundels aft of wing trailing edge (y = -2.02 m)
+    // 2. Outboard left & right boom roundels between the wing trailing edge (FS 219 at the
+    //    boom) and the radiator scoop (FS 265): centred at FS 242
     for side in [-1.0_f32, 1.0] {
-        project_boom_disc(&mut blue_discs, side, -2.02, 0.27, 0.0024);
-        project_boom_star(&mut white_stars, side, -2.02, 0.255, 0.0048);
+        project_boom_disc(&mut blue_discs, side, -2.597, 0.27, 0.0024);
+        project_boom_star(&mut white_stars, side, -2.597, 0.255, 0.0048);
     }
 
     prims.push(fixed(
