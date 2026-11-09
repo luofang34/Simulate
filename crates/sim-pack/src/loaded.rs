@@ -5,10 +5,10 @@ use syspack::{InstrumentPackDocument, MountedDeviceSpec, PackageSource, Verified
 
 use crate::instruments::{pitot_static_device, resolve_pinned_pack};
 use crate::{
-    AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, CalibrationSuite,
-    LIVERY_CATALOG_ASSET, LiveryCatalog, PITOT_STATIC_CALIBRATION_ASSET, PackError,
-    PitotStaticCalibration, ResolvedAirspeedEnvelope, STRUCTURAL_LANDMARKS_ASSET,
-    StructuralLandmarks,
+    AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, CAMERA_VIEWS_ASSET,
+    CalibrationSuite, CameraViewSet, LIVERY_CATALOG_ASSET, LiveryCatalog,
+    PITOT_STATIC_CALIBRATION_ASSET, PackError, PitotStaticCalibration, ResolvedAirspeedEnvelope,
+    STRUCTURAL_LANDMARKS_ASSET, StructuralLandmarks, jsbsim_wingspan_m,
 };
 
 mod devices;
@@ -30,6 +30,7 @@ pub struct LoadedSyspack {
     calibration_suite: Option<CalibrationSuite>,
     livery_catalog: Option<LiveryCatalog>,
     structural_landmarks: Option<StructuralLandmarks>,
+    camera_views: Option<CameraViewSet>,
     instrument_pack: Option<VerifiedSyspack>,
 }
 
@@ -62,6 +63,10 @@ impl LoadedSyspack {
             Some(bytes) => Some(LiveryCatalog::from_verified(&verified, bytes)?),
             None => None,
         };
+        let camera_views = match verified.asset(CAMERA_VIEWS_ASSET) {
+            Some(bytes) => Some(CameraViewSet::from_json_bytes(bytes)?),
+            None => None,
+        };
         let structural_landmarks = match verified.asset(STRUCTURAL_LANDMARKS_ASSET) {
             Some(bytes) => Some(StructuralLandmarks::from_json_bytes(bytes)?),
             None => None,
@@ -74,6 +79,7 @@ impl LoadedSyspack {
             calibration_suite,
             livery_catalog,
             structural_landmarks,
+            camera_views,
             instrument_pack,
         };
         package.instantiate_cots_devices()?;
@@ -148,6 +154,25 @@ impl LoadedSyspack {
             .mass_properties()
             .map_or(env.reference_mass_kg, |props| props.total_mass_kg);
         Some(env.resolve_at_mass(mass_kg))
+    }
+
+    /// The camera views this package declares in [`CAMERA_VIEWS_ASSET`], else
+    /// [`CameraViewSet::derived`] from its JSBSim wingspan.
+    #[must_use]
+    pub fn camera_view_set(&self) -> CameraViewSet {
+        self.camera_views
+            .clone()
+            .unwrap_or_else(|| CameraViewSet::derived(self.jsbsim_wingspan_m().unwrap_or(f64::NAN)))
+    }
+
+    /// The wingspan the package's JSBSim aircraft document declares, metres.
+    #[must_use]
+    pub fn jsbsim_wingspan_m(&self) -> Option<f64> {
+        let syspack::DynamicsSpec::JsbsimXml { entry_asset, .. } = &self.manifest().dynamics else {
+            return None;
+        };
+        let xml = std::str::from_utf8(self.verified.asset(entry_asset)?).ok()?;
+        jsbsim_wingspan_m(xml)
     }
 
     /// The aircraft directory and model name a [`sim_core::JsbsimFdmConfig`]

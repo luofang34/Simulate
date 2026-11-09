@@ -139,7 +139,7 @@ fn lunar_cameras_stand_on_the_moon_and_frame_the_lander() {
             camera.id
         );
         let look = pose.orientation * DVec3::NEG_Z;
-        match camera.id {
+        match camera.id.as_ref() {
             "dps_nadir" => {
                 assert!((look - lander.attitude * DVec3::NEG_X).length() < 1e-9);
                 assert!(look.dot(down) > 0.5, "nadir looks at {}", look.dot(down));

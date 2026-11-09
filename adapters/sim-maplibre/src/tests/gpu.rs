@@ -207,8 +207,8 @@ pub(super) fn sample_kewr_otw_and_tower_stamps(
         DQuat::IDENTITY,
     );
     let rig_spec = sim_core::VirtualCameraSpec {
-        id: "kewr_tower",
-        title: "Newark Tower PTZ",
+        id: "kewr_tower".into(),
+        title: "Newark Tower PTZ".into(),
         placement: sim_core::VirtualCameraPlacement::WorldAutoTrack {
             position: kewr.tower_viewpoint,
             // The traffic drawn here is static, so aim at it rather than 21 m ahead of the
@@ -219,6 +219,7 @@ pub(super) fn sample_kewr_otw_and_tower_stamps(
             min_fov_y_rad: 0.1_f64.to_radians(),
             max_fov_y_rad: 50.0_f64.to_radians(),
         },
+        airframe: sim_core::AirframeVisibility::External,
         base_intrinsics: sim_geo::SensorIntrinsics {
             width: 96,
             height: 72,

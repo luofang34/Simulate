@@ -9,7 +9,6 @@ use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
 use winit::event_loop::ActiveEventLoop;
 
 use super::{FlightApp, TITLE_INTERVAL_S};
-use crate::camera_view::camera_from_virtual_spec_on;
 use crate::platform;
 use crate::sky_rig::wall_clock_utc_s;
 use crate::telemetry;
@@ -93,7 +92,7 @@ impl FlightApp {
             &telemetry::title(
                 &self.flight,
                 viewport_mode,
-                cam_title,
+                cam_title.as_deref(),
                 aero_code,
                 time_scale,
                 &cockpit,
@@ -107,6 +106,10 @@ impl FlightApp {
         event_loop: &ActiveEventLoop,
         mode: OperatorViewportMode,
     ) -> Option<Camera> {
+        if let Some(rig) = self.cockpit_rig.as_mut() {
+            rig.supervisor_mut()
+                .set_vehicle_cameras(self.flight.vehicle_cameras());
+        }
         let body = self.flight.world().body();
         let camera = match self.flight.display_camera(mode) {
             Ok(camera) => {
@@ -124,9 +127,7 @@ impl FlightApp {
             let (cam_body, spec) = rig
                 .supervisor()
                 .active_virtual_camera_on_body(self.flight.profile());
-            if let Some(vcam) =
-                camera_from_virtual_spec_on(cam_body, &spec, &self.flight.display_vehicle_state())
-            {
+            if let Some(vcam) = self.flight.virtual_camera(cam_body, &spec) {
                 return Some(vcam);
             }
         }

@@ -3,8 +3,11 @@
 //! Commander's window faces `+z`.
 
 use glam::DVec3;
+use std::borrow::Cow;
+
 use sim_core::{
-    CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement, VirtualCameraSpec,
+    AirframeVisibility, CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement,
+    VirtualCameraSpec,
 };
 use sim_geo::Geodetic;
 use sim_scenery::{ElevationSource, LunarTranquilityScenery};
@@ -34,10 +37,11 @@ const DESCENT_FLYBY: FlybyTracker = FlybyTracker {
 
 pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
     let base = VirtualCameraSpec::pinhole_800x600(55.0_f64.to_radians());
-    let camera = |id, title, placement| VirtualCameraSpec {
-        id,
-        title,
+    let camera = |id, title, airframe, placement| VirtualCameraSpec {
+        id: Cow::Borrowed(id),
+        title: Cow::Borrowed(title),
         placement,
+        airframe,
         base_intrinsics: base,
         period: CAMERA_DEFAULT_PERIOD,
         depth_readout: true,
@@ -48,6 +52,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "lpd_window",
             "LPD Pilot Window",
+            AirframeVisibility::CabinWindow,
             VirtualCameraPlacement::BodyMounted(CameraMount::looking_along(
                 DVec3::new(1.2, -0.4, 1.0),
                 DVec3::Z * cos_lpd - DVec3::X * sin_lpd,
@@ -57,6 +62,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "dps_nadir",
             "Descent Engine / Footpad Nadir",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::looking_along(
                 DVec3::new(-1.5, 0.0, 0.0),
                 DVec3::NEG_X,
@@ -66,6 +72,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "starboard_quad",
             "Starboard Thruster Quad Cam",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::looking_along(
                 DVec3::new(0.5, 2.2, 0.0),
                 DVec3::Y * cos_quad - DVec3::X * sin_quad,
@@ -75,6 +82,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "tranquility_tracker",
             "Tranquility Base Landing Tracker",
+            AirframeVisibility::External,
             VirtualCameraPlacement::RangeLimitedAutoTrack {
                 position: tracker_position(),
                 lead_time_s: 0.2,
@@ -88,6 +96,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "lunar_flyby",
             "Lunar Descent Flyby Cam",
+            AirframeVisibility::External,
             VirtualCameraPlacement::FlybyAutoTrack(DESCENT_FLYBY),
         ),
     ]

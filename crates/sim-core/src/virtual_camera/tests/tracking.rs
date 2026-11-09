@@ -18,9 +18,10 @@ const FLYBY: FlybyTracker = FlybyTracker {
 
 fn spec(placement: VirtualCameraPlacement) -> VirtualCameraSpec {
     VirtualCameraSpec {
-        id: "tracker",
-        title: "Tracker",
+        id: "tracker".into(),
+        title: "Tracker".into(),
         placement,
+        airframe: crate::AirframeVisibility::External,
         base_intrinsics: VirtualCameraSpec::pinhole_800x600(50.0_f64.to_radians()),
         period: CAMERA_DEFAULT_PERIOD,
         depth_readout: true,

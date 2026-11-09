@@ -10,7 +10,7 @@ use sim_scenery::{
 use world::GeodeticPosition;
 
 use airport::{AirportGraphs, featured_idx};
-use cameras::CAMERA_COUNT;
+use cameras::SUITE_CAMERA_COUNT;
 
 mod airport;
 mod cameras;
@@ -42,6 +42,8 @@ pub struct SupervisorRig {
     virtual_camera_index: usize,
     /// The profile whose camera suite [`Self::cycle_virtual_camera`] last stepped through.
     camera_suite: Option<ScenarioProfile>,
+    /// The flying vehicle's own views, cycled after the scenario's suite.
+    vehicle_cameras: &'static [VirtualCameraSpec],
 }
 
 impl Default for SupervisorRig {
@@ -79,6 +81,7 @@ impl SupervisorRig {
             graphs: AirportGraphs::build(datum, free_airport),
             virtual_camera_index: 0,
             camera_suite: None,
+            vehicle_cameras: &[],
         }
     }
 
@@ -128,10 +131,25 @@ impl SupervisorRig {
         self.refresh_graphs();
     }
 
-    /// Selects a specific virtual camera channel index (`0..5`).
+    /// Selects a specific virtual camera channel: the scenario suite's five, then the
+    /// vehicle's own views.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_virtual_camera_index(&mut self, index: usize) {
-        self.virtual_camera_index = index % CAMERA_COUNT;
+        self.virtual_camera_index = index % self.camera_count();
+    }
+
+    /// Gives the cycle the flying vehicle's own views; a selection past the new vehicle's
+    /// last view goes back to the first camera.
+    pub fn set_vehicle_cameras(&mut self, cameras: &'static [VirtualCameraSpec]) {
+        self.vehicle_cameras = cameras;
+        if self.virtual_camera_index >= self.camera_count() {
+            self.virtual_camera_index = 0;
+        }
+    }
+
+    /// Cameras [`Self::cycle_virtual_camera`] visits.
+    fn camera_count(&self) -> usize {
+        SUITE_CAMERA_COUNT.saturating_add(self.vehicle_cameras.len())
     }
 
     /// Cycles the active free-flight airport (`KDOV` → `47N` → `KEWR`).
@@ -221,7 +239,8 @@ impl SupervisorRig {
     }
 
     /// Steps the virtual camera channel (`Nose Nav`, `Belly Nadir`, `Left Pattern Window`,
-    /// `Tower PTZ Auto-Track`, `Threshold Final Cam`) in `SensorAperture` view.
+    /// `Tower PTZ Auto-Track`, `Threshold Final Cam`, then the vehicle's own views) in
+    /// `SensorAperture` view.
     ///
     /// From any other view, or with another profile's suite showing, it starts at the first
     /// camera; past the last camera it returns to the `Cockpit` view (and its HUD).
@@ -231,7 +250,7 @@ impl SupervisorRig {
             self.virtual_camera_index = 0;
             self.supervisor
                 .set_viewport_mode(OperatorViewportMode::SensorAperture);
-        } else if self.virtual_camera_index.wrapping_add(1) < CAMERA_COUNT {
+        } else if self.virtual_camera_index.wrapping_add(1) < self.camera_count() {
             self.virtual_camera_index = self.virtual_camera_index.wrapping_add(1);
         } else {
             self.virtual_camera_index = 0;

@@ -7,10 +7,13 @@
 //! from the airport, so cross-country flights still see the aircraft.
 
 use glam::DVec3;
+use std::borrow::Cow;
+
 use sim_core::{
-    CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement, VirtualCameraSpec,
+    AirframeVisibility, CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement,
+    VirtualCameraSpec,
 };
-use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, SensorIntrinsics};
 use sim_scenery::{CatalogVerticalDatum, OsmAerodromeDiagram};
 
 /// Range (`m`) beyond which the tower hands over to a nearby range camera.
@@ -60,18 +63,11 @@ pub(crate) fn pattern_cameras_on_datum(
     let base_42 = VirtualCameraSpec::pinhole_800x600(42.0_f64.to_radians());
     let tower = on_ellipsoid(datum, diagram.tower_viewpoint);
     let approach = approach_camera_position(diagram, datum);
-    let camera = |id, title, placement, base_intrinsics| VirtualCameraSpec {
-        id,
-        title,
-        placement,
-        base_intrinsics,
-        period: CAMERA_DEFAULT_PERIOD,
-        depth_readout: true,
-    };
     [
         camera(
             "nose_nav",
             "Nose Nav Camera",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::forward_nose(DVec3::new(
                 1.25, 0.0, -0.15,
             ))),
@@ -81,6 +77,7 @@ pub(crate) fn pattern_cameras_on_datum(
         camera(
             "belly_optical",
             "Belly Nadir Camera",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::nadir_belly(DVec3::new(
                 0.15, 0.0, 0.18,
             ))),
@@ -89,6 +86,7 @@ pub(crate) fn pattern_cameras_on_datum(
         camera(
             "pattern_window",
             "Left Wing / Pattern Cam",
+            AirframeVisibility::CabinWindow,
             VirtualCameraPlacement::BodyMounted(CameraMount::oblique(
                 DVec3::new(0.35, -0.45, -0.25),
                 -86.0_f64.to_radians(),
@@ -100,6 +98,7 @@ pub(crate) fn pattern_cameras_on_datum(
         camera(
             "tower_ptz",
             "Tower PTZ Auto-Track",
+            AirframeVisibility::External,
             VirtualCameraPlacement::RangeLimitedAutoTrack {
                 position: tower,
                 lead_time_s: 0.20,
@@ -114,6 +113,7 @@ pub(crate) fn pattern_cameras_on_datum(
         camera(
             "approach_flyby",
             "Approach / Flyby Track",
+            AirframeVisibility::External,
             VirtualCameraPlacement::RangeLimitedAutoTrack {
                 position: approach,
                 lead_time_s: 0.15,
@@ -126,6 +126,25 @@ pub(crate) fn pattern_cameras_on_datum(
             base_42,
         ),
     ]
+}
+
+/// A `30 Hz` camera with a depth readout.
+fn camera(
+    id: &'static str,
+    title: &'static str,
+    airframe: AirframeVisibility,
+    placement: VirtualCameraPlacement,
+    base_intrinsics: SensorIntrinsics,
+) -> VirtualCameraSpec {
+    VirtualCameraSpec {
+        id: Cow::Borrowed(id),
+        title: Cow::Borrowed(title),
+        placement,
+        airframe,
+        base_intrinsics,
+        period: CAMERA_DEFAULT_PERIOD,
+        depth_readout: true,
+    }
 }
 
 /// `position` with its height read in `datum`, on the WGS84 ellipsoid.

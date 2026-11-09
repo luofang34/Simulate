@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "views": [
+    {
+      "id": "chase",
+      "title": "Chase",
+      "fov_y_deg": 55.0,
+      "airframe": "external",
+      "placement": { "kind": "chase", "back_m": 27.0, "up_m": 8.0 }
+    },
+    {
+      "id": "wingman",
+      "title": "Wingman (3/4 rear, right)",
+      "fov_y_deg": 40.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-16.0, 13.0, -4.0],
+        "target_frd_m": [-2.0, 0.0, 0.0]
+      }
+    },
+    {
+      "id": "flyby_front",
+      "title": "Low Front-Quarter Flyby",
+      "fov_y_deg": 50.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "spotter",
+        "grid_step_m": 900.0,
+        "lateral_m": 45.0,
+        "height_m": 1.0,
+        "lead_time_s": 0.0,
+        "frame_span_m": 24.0
+      }
+    },
+    {
+      "id": "side_profile",
+      "title": "Side Profile (left)",
+      "fov_y_deg": 35.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-2.2, -25.0, -0.4],
+        "target_frd_m": [-2.2, 0.0, -0.4]
+      }
+    },
+    {
+      "id": "top_down",
+      "title": "Top-Down",
+      "fov_y_deg": 35.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-2.2, 0.0, -30.0],
+        "target_frd_m": [-2.2, 0.0, 0.0],
+        "up_frd": [1.0, 0.0, 0.0]
+      }
+    },
+    {
+      "id": "ground_spotter",
+      "title": "Ground Spotter (telephoto)",
+      "fov_y_deg": 45.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "spotter",
+        "grid_step_m": 2400.0,
+        "lateral_m": -400.0,
+        "height_m": 2.0,
+        "lead_time_s": 0.0,
+        "frame_span_m": 30.0
+      }
+    },
+    {
+      "id": "wingtip_left",
+      "title": "Left Wingtip, Looking In",
+      "fov_y_deg": 62.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-0.6, -8.25, -1.1],
+        "target_frd_m": [0.4, 0.0, -0.5]
+      }
+    },
+    {
+      "id": "wingtip_right",
+      "title": "Right Wingtip, Looking In",
+      "fov_y_deg": 62.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-0.6, 8.25, -1.1],
+        "target_frd_m": [0.4, 0.0, -0.5]
+      }
+    },
+    {
+      "id": "cockpit_forward",
+      "title": "Cockpit: Forward",
+      "fov_y_deg": 45.0,
+      "airframe": "pilot_eye",
+      "placement": { "kind": "cockpit_look", "yaw_deg": 0.0, "pitch_deg": -2.5 }
+    },
+    {
+      "id": "cockpit_gunsight",
+      "title": "Cockpit: Gunsight",
+      "fov_y_deg": 26.0,
+      "airframe": "pilot_eye",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": 0.0,
+        "pitch_deg": -2.0,
+        "eye_shift_frd_m": [0.10, 0.0, 0.0]
+      }
+    },
+    {
+      "id": "cockpit_left_engine",
+      "title": "Cockpit: Left Engine",
+      "fov_y_deg": 55.0,
+      "airframe": "pilot_eye",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": -72.0,
+        "pitch_deg": -14.0,
+        "eye_shift_frd_m": [0.0, -0.06, 0.0]
+      }
+    },
+    {
+      "id": "cockpit_right_engine",
+      "title": "Cockpit: Right Engine",
+      "fov_y_deg": 55.0,
+      "airframe": "pilot_eye",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": 72.0,
+        "pitch_deg": -14.0,
+        "eye_shift_frd_m": [0.0, 0.06, 0.0]
+      }
+    },
+    {
+      "id": "cockpit_over_shoulder",
+      "title": "Cockpit: Over the Shoulder (booms and tail)",
+      "fov_y_deg": 60.0,
+      "airframe": "pilot_eye",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": -146.0,
+        "pitch_deg": -2.0,
+        "eye_shift_frd_m": [0.05, -0.24, -0.12]
+      }
+    },
+    {
+      "id": "cockpit_panel",
+      "title": "Cockpit: Instrument Panel",
+      "fov_y_deg": 42.0,
+      "airframe": "pilot_eye",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": 0.0,
+        "pitch_deg": -22.0,
+        "eye_shift_frd_m": [0.28, 0.0, 0.10]
+      }
+    }
+  ]
+}

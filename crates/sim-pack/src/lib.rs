@@ -15,6 +15,7 @@ mod landmarks;
 mod livery;
 mod loaded;
 mod pec;
+mod views;
 
 pub use builtin::{
     builtin_c172_package, builtin_c172_source, builtin_p38g_package, builtin_p38g_source,
@@ -51,4 +52,7 @@ pub use syspack::{
     AssetDigest, ComponentRecord, ControlsSpec, DeviceKindSpec, DynamicsSpec,
     INITIAL_COMPONENT_TEMPERATURE_K, MANIFEST_FILE, MemoryPackageSource, MountedDeviceSpec,
     PackageSource, SCHEMA_VERSION, SyspackError, SyspackManifest, SystemKind, VerifiedSyspack,
+};
+pub use views::{
+    CAMERA_VIEWS_ASSET, CameraView, CameraViewSet, ViewAirframe, ViewPlacement, jsbsim_wingspan_m,
 };

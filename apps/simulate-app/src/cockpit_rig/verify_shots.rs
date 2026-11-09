@@ -32,8 +32,10 @@ mod ground_contact;
 mod hud_audit;
 mod n51_audit;
 mod p38g;
+mod photomatch;
 mod polar;
 mod runway_datum;
+mod vehicle_views;
 
 const SHOT_SIZE: [u32; 2] = [1280, 720];
 
@@ -219,6 +221,15 @@ impl VerifyHarness {
         quads: &[sim_render::OverlayQuad<'_>],
         out: &Path,
     ) -> Result<(), AppSimError> {
+        let rgba = self.composite_rgba(quads)?;
+        save_png(out, SHOT_SIZE, rgba)
+    }
+
+    /// The composited frame as tightly packed RGBA rows of [`SHOT_SIZE`].
+    fn composite_rgba(
+        &self,
+        quads: &[sim_render::OverlayQuad<'_>],
+    ) -> Result<Vec<u8>, AppSimError> {
         let mut encoder = self
             .gpu
             .device
@@ -237,8 +248,7 @@ impl VerifyHarness {
             quads,
         );
         self.gpu.queue.submit([encoder.finish()]);
-        let rgba = readback_target_rgba(&self.gpu.device, &self.gpu.queue, &self.target)?;
-        save_png(out, SHOT_SIZE, rgba)
+        readback_target_rgba(&self.gpu.device, &self.gpu.queue, &self.target)
     }
 
     fn menu_status(&self) -> MenuStatus {

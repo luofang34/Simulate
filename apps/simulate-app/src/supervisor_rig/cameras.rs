@@ -1,5 +1,6 @@
-//! The five virtual cameras of the active flight, on the body it flies over, with the
-//! airport trackers standing at whichever database airport free flight is at.
+//! The virtual cameras of the active flight, on the body it flies over: the scenario's
+//! five, with the airport trackers standing at whichever database airport free flight is
+//! at, then the vehicle's own views.
 
 use flightbag::RunwayEndSpec;
 use glam::DVec3;
@@ -17,8 +18,9 @@ const APPROACH_TRIPOD_CLEARANCE_M: f64 = 18.0;
 /// Approach tripod height above the threshold, metres.
 const APPROACH_TRIPOD_AGL_M: f64 = 2.8;
 
-/// Cameras in every suite; [`SupervisorRig::cycle_virtual_camera`] visits them in order.
-pub(super) const CAMERA_COUNT: usize = 5;
+/// Cameras in every scenario suite; [`SupervisorRig::cycle_virtual_camera`] visits them
+/// in order, then the vehicle's own.
+pub(super) const SUITE_CAMERA_COUNT: usize = 5;
 
 impl SupervisorRig {
     /// The body the active flight's cameras stand on and its selected camera: the
@@ -43,10 +45,13 @@ impl SupervisorRig {
             let runway = self.cached_runway(None).copied();
             relocate_trackers(&mut specs, record, runway.as_ref(), self.datum);
         }
-        let spec = specs
-            .get(self.virtual_camera_index % CAMERA_COUNT)
-            .copied()
-            .unwrap_or_else(default_nose_camera);
+        let index = self.virtual_camera_index % self.camera_count();
+        let spec = match index.checked_sub(SUITE_CAMERA_COUNT) {
+            None => specs.get(index),
+            Some(own) => self.vehicle_cameras.get(own),
+        }
+        .cloned()
+        .unwrap_or_else(default_nose_camera);
         (body, spec)
     }
 }
@@ -62,7 +67,7 @@ fn relocate_trackers(
     let tower = record.tower_viewpoint(datum);
     let approach = runway.map_or(tower, approach_tripod);
     for spec in specs {
-        let at = match spec.id {
+        let at = match spec.id.as_ref() {
             "tower_ptz" => tower,
             "approach_flyby" => approach,
             _ => continue,
@@ -99,11 +104,12 @@ fn approach_tripod(runway: &RunwayEndSpec) -> Geodetic {
 /// The nose camera, for a rig without any airport diagram.
 fn default_nose_camera() -> VirtualCameraSpec {
     VirtualCameraSpec {
-        id: "nose_nav",
-        title: "Nose Nav Camera",
+        id: "nose_nav".into(),
+        title: "Nose Nav Camera".into(),
         placement: VirtualCameraPlacement::BodyMounted(sim_core::CameraMount::forward_nose(
             DVec3::new(1.25, 0.0, -0.15),
         )),
+        airframe: sim_core::AirframeVisibility::Hidden,
         base_intrinsics: VirtualCameraSpec::pinhole_800x600(53.0_f64.to_radians()),
         period: sim_core::CAMERA_DEFAULT_PERIOD,
         depth_readout: true,

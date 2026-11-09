@@ -68,8 +68,8 @@ pub use sim_geo::SensorIntrinsics;
 pub use state::VehicleState;
 pub use time::{SimInstant, TICKS_PER_SECOND, TickSpan};
 pub use virtual_camera::{
-    FlybyTracker, VirtualCameraPlacement, VirtualCameraRigBlock, VirtualCameraRigSnapshot,
-    VirtualCameraSpec,
+    AirframeVisibility, FlybyTracker, VirtualCameraPlacement, VirtualCameraRigBlock,
+    VirtualCameraRigSnapshot, VirtualCameraSpec,
 };
 pub use visual_harness::{
     FusionEligibility, MapCell, NeesSummary, TwoTierConfig, TwoTierVisualHarness, VisualEstimate,

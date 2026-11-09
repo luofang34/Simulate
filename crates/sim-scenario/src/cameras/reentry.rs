@@ -2,8 +2,11 @@
 //! behind the heat shield and `+z` faces the Earth while the lift is up.
 
 use glam::DVec3;
+use std::borrow::Cow;
+
 use sim_core::{
-    CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement, VirtualCameraSpec,
+    AirframeVisibility, CAMERA_DEFAULT_PERIOD, CameraMount, FlybyTracker, VirtualCameraPlacement,
+    VirtualCameraSpec,
 };
 
 /// Tilt of the crew's view from the heat-shield axis towards the Earth, as
@@ -37,10 +40,11 @@ const ENTRY_FLYBY: FlybyTracker = FlybyTracker {
 
 pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
     let base = VirtualCameraSpec::pinhole_800x600(55.0_f64.to_radians());
-    let camera = |id, title, placement| VirtualCameraSpec {
-        id,
-        title,
+    let camera = |id, title, airframe, placement| VirtualCameraSpec {
+        id: Cow::Borrowed(id),
+        title: Cow::Borrowed(title),
         placement,
+        airframe,
         base_intrinsics: base,
         period: CAMERA_DEFAULT_PERIOD,
         depth_readout: true,
@@ -50,6 +54,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "capsule_window",
             "Capsule Forward Window",
+            AirframeVisibility::CabinWindow,
             VirtualCameraPlacement::BodyMounted(CameraMount::oblique(
                 DVec3::ZERO,
                 0.0,
@@ -60,6 +65,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "heatshield_wake",
             "Heatshield Wake Cam",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::looking_along(
                 DVec3::new(-1.2, 0.0, 0.0),
                 DVec3::NEG_X,
@@ -69,6 +75,7 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "starboard_horizon",
             "Starboard Horizon Cam",
+            AirframeVisibility::Hidden,
             VirtualCameraPlacement::BodyMounted(CameraMount::looking_along(
                 DVec3::new(0.0, 1.9, 0.0),
                 DVec3::Y,
@@ -78,11 +85,13 @@ pub(super) fn cameras() -> [VirtualCameraSpec; 5] {
         camera(
             "range_tracker",
             "High-Altitude Range Tracker",
+            AirframeVisibility::External,
             VirtualCameraPlacement::FlybyAutoTrack(RANGE_TRACKER),
         ),
         camera(
             "entry_flyby",
             "Entry Flyby Tracker",
+            AirframeVisibility::External,
             VirtualCameraPlacement::FlybyAutoTrack(ENTRY_FLYBY),
         ),
     ]
