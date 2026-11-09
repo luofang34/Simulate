@@ -4,7 +4,7 @@ When compiling a **Pilot's Operating Handbook (`POH`)**, **Flight Manual (`NATOP
 
 1. **Multi-Altitude & Mid-Mission Payload-Drop Profiles**: Evaluating `Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, and `Hi-Loiter-Hi` profiles where payload stores/cargo are released mid-mission ($\Delta m_{\text{drop}}$) and external store drag is cleaned up ($\Delta C_{D0} \le 0$), solving for the **Maximum Action / Combat Radius $R_{\text{action}}$** (`NM`) and quantifying the post-drop rate-of-climb recovery.
 2. **Overall Design (`总体设计`) & Powerplant (`动力装置`) Trade Studies**: Sweeping wing area $S_{\text{ref}}$, aspect ratio $AR = b^2/S$, zero-lift drag $C_{D0}$, structural empty mass, wet-wing fuel volume, engine shaft power (`BHP` / `kW`), and `BSFC` directly through the 6-DoF JSBSim flight dynamics engine.
-3. **Closed-Loop Co-Design with Sibling `~/ace-rs`**: Ingesting `~/ace-rs` conceptual vehicle.json models, compiling and flying them in 6-DoF JSBSim, exporting ready-to-fly `syspack` directories with synthesized `performance/airspeed_envelope.json`, and feeding 6-DoF trimmed $C_{D0}$, Oswald efficiency $e$, propeller efficiency $\eta_p$, and BSFC back into `aex synthesize --set`.
+3. **Closed-Loop Co-Design with `ace-rs`**: flying the `syspack` that `ace-rs` exports from a conceptual design, comparing the design's declared $C_{D0}$, Oswald efficiency $e$, propeller efficiency $\eta_p$ and BSFC with the values the flight measures, and writing the measured ones back with `aex edit`.
 
 ---
 
@@ -12,11 +12,11 @@ When compiling a **Pilot's Operating Handbook (`POH`)**, **Flight Manual (`NATOP
 
 ```mermaid
 flowchart LR
-    A["1. ~/ace-rs (aex synthesize)<br/>Conceptual Sizing & MTOW Loop"] -->|"vehicle.json / syspack"| B["2. ironbird --mode ace-bridge<br/>6-DoF V-Speed & Polar Sweep"]
+    A["1. ace-rs (aex synthesize, ace-export)<br/>Conceptual Sizing & Package Export"] -->|"vehicle.json + syspack"| B["2. ironbird --mode ace-bridge<br/>6-DoF V-Speed & Polar Sweep"]
     B --> C["3. Multi-Altitude & Payload-Drop<br/>Action-Radius Solver (Hi-Lo-Hi)"]
     C --> D["4. ironbird --mode trade-*<br/>Airframe & Powerplant Trades"]
     D -->|"--export-syspack"| E["5. Simulate Desktop / XIL<br/>PFD V-Speed Tape & Pilot Loop"]
-    B -->|"aex synthesize --set"| A
+    B -->|"aex edit --set"| A
 ```
 
 | Stage | Engineering Artifact Produced | Tool / API |
@@ -25,7 +25,7 @@ flowchart LR
 | **Stage 2 — 6-DoF Envelope Discovery** | $V_{S0}, V_{S1}, V_X, V_Y, V_G, V_A$, climb table, service ceiling, `airspeed_envelope.json` | `sim_pack::estimate_design_performance` |
 | **Stage 3 — Mission & Payload-Drop Manual** | `Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, `Hi-Loiter-Hi` action radii & segment fuel logs | `sim_pack::evaluate_mission_profile` |
 | **Stage 4 — Airframe & Powerplant Trades** | Sensitivity of ceiling, ROC, specific range, and action radius to $\Delta AR, \Delta C_{D0}, \Delta P, \Delta \text{BSFC}$ | `sim_pack::run_design_trade_study` |
-| **Stage 5 — Closed-Loop Simulator & Feedback** | Calibrated `syspack` + `--set` parameter corrections back to `~/ace-rs` | `sim_pack::build_ace_feedback_report` |
+| **Stage 5 — Closed-Loop Simulator & Feedback** | Declared-versus-flown table + `aex edit --set` with the measured values | `sim_pack::build_ace_feedback_report` |
 
 ---
 
@@ -79,34 +79,54 @@ Each `DesignTradeSpec` perturbs airframe and powerplant parameters directly insi
 
 ---
 
-## 4. Seamless Closed-Loop Iteration with Sibling `~/ace-rs` (`ace_bridge.rs`)
+## 4. Closed-Loop Iteration with `ace-rs` (`ace_bridge.rs`)
 
-`ironbird --mode ace-bridge` connects `~/ace-rs` (`aex`) and `Simulate` into a single closed-loop design pipeline:
+`ace-rs` builds the flight package: its `ace-export` crate compiles a
+vehicle.json into a verified `syspack` directory. `ironbird --mode ace-bridge`
+flies that package and compares it with the design it came from:
 
 ```sh
+cargo run --manifest-path ~/ace-rs/Cargo.toml -p ace-export --example export_syspack -- \
+  ~/ace-rs/examples/c172/vehicle.json /tmp/ace_c172
 cargo run --release -p ironbird -- \
   --mode ace-bridge \
   --ace-vehicle ~/ace-rs/examples/c172/vehicle.json \
-  --export-syspack /tmp/ace_c172_calibrated \
+  --package-dir /tmp/ace_c172 \
   --report-out ace_c172_feedback.md
 ```
 
 ### What `--mode ace-bridge` Executes
 
-1. **Direct vehicle.json Ingestion (`load_syspack_from_ace_vehicle_json`)**:
-   Reads `wing.area`, `wing.span`, `aero.cd0`, `weight.oew`, `weight.maximum_fuel`, `engine.rated_power`, `engine.sizing_factor`, and `engine.bsfc` from the `~/ace-rs` JSON document and synthesizes a SHA-256-verified `LoadedSyspack`.
-2. **6-DoF JSBSim Flight-Manual & Mission Evaluation**:
-   Sweeps stall, climb, glide, cruise polar, payload–range, and all four multi-altitude / payload-drop mission profiles (`Hi-Hi-Hi`, `Hi-Lo-Drop-Lo-Hi`, `Lo-Lo-Drop-Lo`, `Hi-Loiter-Hi`).
-3. **Complete `syspack` Export (`--export-syspack <DIR>`)**:
-   Writes `syspack.json`, `fdm/*.xml`, and the newly synthesized `performance/airspeed_envelope.json` with updated SHA-256 digests so the aircraft can immediately be flown with `ironbird --mode tier0-dir --package-dir <DIR>`.
-4. **Closed-Loop Parameter Feedback to `~/ace-rs` (`AceFeedbackReport`)**:
-   Extracts the 6-DoF trimmed cruise $C_{D0}$ (accounting for elevator trim drag and alpha polar tables), effective Oswald efficiency $e$, cruise & climb propeller efficiencies $\eta_p$, and altitude-lapsed BSFC, and outputs a ready-to-run `aex synthesize` command:
+1. **Design read (`AceVehicleInputs`)**: reads `engine.count`, `wing.area`,
+   `wing.span`, `aero.cd0`, `aero.oswald` (required) and
+   `propeller.efficiency`, `engine.bsfc` (when declared) in the units the
+   design states. A missing required parameter or an unknown unit is an
+   `AceBridgeError`, never a default.
+2. **Package check**: the package `id` must be the design `id`, and the flight
+   model must declare `engine.count` engines; otherwise the run stops before
+   any flight.
+3. **6-DoF evaluation**: stall, climb, idle glide, cruise polar,
+   payload–range and the four mission profiles (`estimate_design_performance`).
+   Cruise points record brake power, fuel flow and thrust summed over every
+   engine.
+4. **Declared versus flown (`AceFeedbackReport`)**: each row holds the declared
+   value, the flown value and how it was measured. $C_{D0}$ and $e$ come from a
+   least-squares fit of $C_D = C_{D0} + k C_L^2$ over the level cruise points
+   (drag = summed thrust) and, separately, over the idle glide points, using
+   the flight model's own reference area and span; $\eta_p$ is summed thrust
+   × TAS over summed brake power; BSFC is summed fuel flow over summed brake
+   power. A value the flight did not measure reads "not measured". The
+   powered-fit $C_{D0}$ and $e$, $\eta_p$ and BSFC go into an `aex edit`
+   command that writes them into a copy of the design:
 
 ```sh
-cargo run --manifest-path ~/ace-rs/Cargo.toml --bin aex -- synthesize examples/c172/vehicle.json \
-  --set 'aero.cd0=0.0396' \
-  --set 'aero.oswald=0.780' \
-  --set 'propeller.efficiency=0.788' \
-  --set 'engine.bsfc=0.221 kg/kWh' \
-  --format json
+aex edit ~/ace-rs/examples/c172/vehicle.json \
+  --set 'aero.cd0=0.0401 1' \
+  --set 'aero.oswald=0.9793 1' \
+  --set 'propeller.efficiency=0.7892 1' \
+  --set 'engine.bsfc=0.3084 kg/kWh' \
+  --save-as ~/ace-rs/examples/c172/vehicle-flown.json
 ```
+
+`--export-syspack <DIR>` additionally writes the package with the synthesized
+`performance/airspeed_envelope.json` and updated digests.

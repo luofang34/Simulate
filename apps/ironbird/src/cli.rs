@@ -7,11 +7,11 @@ use sim_aviate::DirectNoiseTier;
 use sim_core::{HitlSyncMode, TICKS_PER_SECOND, TickSpan};
 use sim_geo::Geodetic;
 use sim_pack::{
-    AceFeedbackReport, CalibrationReport, DesignPerformanceReport, DesignTradeStudyReport,
-    DirectoryPackageSource, LoadedSyspack, SensitivityReport, build_ace_feedback_report,
-    builtin_c172_package, default_design_trades, estimate_design_performance, evaluate_package,
-    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
-    write_syspack_with_manual_assets,
+    AceFeedbackReport, AceVehicleInputs, CalibrationReport, DesignPerformanceReport,
+    DesignTradeStudyReport, DirectoryPackageSource, LoadedSyspack, SensitivityReport,
+    build_ace_feedback_report, builtin_c172_package, default_design_trades,
+    estimate_design_performance, evaluate_package, identify_package_sensitivities,
+    run_design_trade_study, write_syspack_with_manual_assets,
 };
 use sim_xil::betaflight::{BetaflightUdpConfig, BetaflightUdpEndpoint};
 use sim_xil::mavlink_hil::{
@@ -46,7 +46,8 @@ pub enum CliMode {
     TradeC172,
     /// Overall airframe & powerplant trade study on an on-disk `syspack` directory.
     TradeDir,
-    /// Bi-directional `~/ace-rs` (`vehicle.json`) co-design & manual synthesis bridge.
+    /// Flies a package `ace-rs` exported (`--package-dir`) and compares it with
+    /// the design it came from (`--ace-vehicle`).
     AceBridge,
     /// Tier-2 MAVLink v2 HIL TCP listener (e.g. PX4 SITL `127.0.0.1:4560`).
     MavlinkTcpListen,
@@ -90,7 +91,7 @@ pub struct CliArgs {
     pub lockstep_delay_us: Option<u64>,
     /// Package directory when `mode == CliMode::CalibrateDir`.
     pub package_dir: Option<PathBuf>,
-    /// Optional input path to an `~/ace-rs` `vehicle.json` file (`--ace-vehicle`).
+    /// The `ace-rs` `vehicle.json` a `--mode ace-bridge` package was exported from (`--ace-vehicle`).
     pub ace_vehicle: Option<PathBuf>,
     /// Optional output directory for exporting a calibrated `syspack` (`--export-syspack`).
     pub export_syspack: Option<PathBuf>,
@@ -308,25 +309,7 @@ fn execute_calibration_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> 
 
 fn execute_trades_or_ace_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
     if args.mode == CliMode::AceBridge {
-        let ace_bytes = match &args.ace_vehicle {
-            Some(path) => Some(std::fs::read(path)?),
-            None => None,
-        };
-        let package = match &ace_bytes {
-            Some(bytes) => load_syspack_from_ace_vehicle_json(bytes)?,
-            None => builtin_c172_package()?,
-        };
-        let report = estimate_design_performance(&package)?;
-        if let Some(out_dir) = &args.export_syspack {
-            write_syspack_with_manual_assets(&package, &report, out_dir)?;
-        }
-        let feedback = build_ace_feedback_report(&package, &report, ace_bytes.as_deref());
-        let md = format!("{}\n{}", report.to_markdown(), feedback.to_markdown());
-        if let Some(path) = &args.report_out {
-            std::fs::write(path, &md)?;
-        }
-        info!(aircraft = %report.package_id, "\n{md}");
-        return Ok(CliOutcome::AceCoDesign(report, feedback));
+        return execute_ace_bridge(args);
     }
     let package = match args.mode {
         CliMode::TradeC172 => builtin_c172_package()?,
@@ -440,4 +423,32 @@ fn usage(msg: &str) -> IronbirdError {
             "{msg} (expected --mode tier0-x500|tier0-c172|tier0-dir|calibrate-c172|calibrate-dir|estimate-c172|estimate-dir|trade-c172|trade-dir|ace-bridge|mavlink-tcp-listen|mavlink-tcp-connect|mavlink-udp|betaflight-udp)"
         ),
     }
+}
+
+/// Flies the exported package and compares it with its design; refuses a
+/// package that was not exported from the design.
+fn execute_ace_bridge(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
+    let (Some(vehicle), Some(dir)) = (&args.ace_vehicle, &args.package_dir) else {
+        return Err(usage(
+            "--mode ace-bridge requires --ace-vehicle <vehicle.json> and --package-dir <dir> \
+             (the package ace-export wrote from that vehicle)",
+        ));
+    };
+    let bytes = std::fs::read(vehicle)?;
+    let inputs = AceVehicleInputs::from_vehicle_json(&vehicle.display().to_string(), &bytes)
+        .map_err(sim_pack::PackError::from)?;
+    let package = LoadedSyspack::load(&DirectoryPackageSource::new(dir))?;
+    inputs.check_package(&package)?;
+    let report = estimate_design_performance(&package)?;
+    if let Some(out_dir) = &args.export_syspack {
+        write_syspack_with_manual_assets(&package, &report, out_dir)?;
+    }
+    let feedback =
+        build_ace_feedback_report(&inputs, vehicle, &report).map_err(sim_pack::PackError::from)?;
+    let md = format!("{}\n{}", report.to_markdown(), feedback.to_markdown());
+    if let Some(path) = &args.report_out {
+        std::fs::write(path, &md)?;
+    }
+    info!(aircraft = %report.package_id, "\n{md}");
+    Ok(CliOutcome::AceCoDesign(report, feedback))
 }
