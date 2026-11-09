@@ -10,19 +10,19 @@
     {
       "name": "propeller disc",
       "station_in": -38.4,
-      "source": "POH Sec. 6 equipment list, propeller arm -38.4 in",
+      "source": "POH Fig. 6-9, ch. 61 propeller arm -38.4 in; a hub and blade centroid lies in the disc plane",
       "feature": { "rule": "propeller_disc_centre" }
     },
     {
       "name": "main axles",
-      "station_in": 54.5,
-      "source": "POH Sec. 6 equipment list, main gear wheels and brakes arm 54.5 in",
+      "station_in": 58.2,
+      "source": "POH Fig. 6-9 sheet 4, item 32-01-R main wheel assembly, tire and tube arm 58.2 in; a wheel's centroid is its axle",
       "feature": { "rule": "main_axles_centre" }
     },
     {
       "name": "nose axle",
-      "station_in": -10.7,
-      "source": "POH Fig. 1-1 wheel base 65.2 in ahead of the main gear at 54.5 in",
+      "station_in": -6.8,
+      "source": "POH Fig. 6-9 sheet 4, item 32-02-R nose wheel and tire arm -6.8 in (65.0 in wheel base, Fig. 1-1 note 2)",
       "feature": { "rule": "nose_axle_centre" }
     },
     {

@@ -111,8 +111,8 @@ fn assert_wheels_on_the_ground(
 }
 
 /// Red while the C172 mesh's wheelbase is 70.3 in: placed by its sourced landmarks, its
-/// nose wheel stands 11 cm ahead of the flight model's `NOSE` and its mains 4 cm aft of
-/// `LEFT_MAIN`/`RIGHT_MAIN` (the flight model's gear is 64.4 in apart, the POH's 65.2 in),
+/// nose wheel stands 6 cm ahead of the flight model's `NOSE` and its mains 9 cm aft of
+/// `LEFT_MAIN`/`RIGHT_MAIN` (the flight model's gear is 64.4 in apart, the POH's 65.0 in),
 /// 1.4 cm outboard, and all three wheels 1.0 to 1.5 cm above the ground.
 #[test]
 #[ignore = "red: C172 mesh wheelbase 70.3 in against the flight model's 64.4 in"]

@@ -4,8 +4,8 @@ use super::StructuralDatum;
 use crate::UsdAircraftAsset;
 
 /// How far any C172 landmark may sit from its POH station. The embedded mesh's mains
-/// stand 4.7 in aft and its propeller 3.1 in forward; a worse mesh shows here.
-const C172_RESIDUAL_BOUND_IN: f64 = 6.0;
+/// stand 2.9 in aft and its nose axle 2.5 in forward; a worse mesh shows here.
+const C172_RESIDUAL_BOUND_IN: f64 = 4.0;
 
 fn fit_c172() -> StructuralDatum {
     let package = builtin_c172_package().unwrap();
@@ -31,7 +31,7 @@ fn the_c172_is_placed_by_its_poh_landmarks_within_bounds() {
     );
     assert!(residuals.iter().map(|(_, aft)| aft).sum::<f64>().abs() < 1e-9);
     let origin = datum.origin_in();
-    assert!((origin.x - 121.27).abs() < 0.05, "{origin}");
+    assert!((origin.x - 123.17).abs() < 0.05, "{origin}");
     assert!((origin.z + 0.055 / 0.0254).abs() < 0.01, "{origin}");
 }
 
