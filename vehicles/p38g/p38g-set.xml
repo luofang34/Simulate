@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <description>Lockheed P-38G-13-LO Lightning ("Miss Virginia", 339th FS)</description>
+    <author>Simulate Reference Flight Dynamics</author>
+    <status>production</status>
+    <flight-model>jsb</flight-model>
+    <aero>fdm/p38g</aero>
+    <variant-of>p38g</variant-of>
+    <model>
+      <path>Models/p38g.xml</path>
+      <livery>
+        <file type="string">miss-virginia</file>
+      </livery>
+    </model>
+    <flaps>
+      <setting>0.000</setting>
+      <setting>0.200</setting>
+      <setting>0.550</setting>
+      <setting>1.000</setting>
+    </flaps>
+  </sim>
+</PropertyList>

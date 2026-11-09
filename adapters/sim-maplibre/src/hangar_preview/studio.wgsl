@@ -204,16 +204,17 @@ fn propeller_disc(in: VertexOut) -> vec4<f32> {
         discard;
     }
     let radial = smoothstep(0.12, 0.22, r) * (1.0 - smoothstep(0.86, 0.99, r)) * (0.55 + 0.45 * sin(r * PI));
+    let blades = select(2.0, 3.0, draw.params.w > 2.5);
     let theta = atan2(uv.y, uv.x) - draw.params.y;
     let blur = max(draw.params.z, 0.05);
-    let wedge = pow(0.5 + 0.5 * cos(2.0 * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
-    let tip = smoothstep(0.955, 0.968, r) * (1.0 - smoothstep(0.986, 0.998, r));
+    let wedge = pow(0.5 + 0.5 * cos(blades * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
+    let tip = smoothstep(0.945, 0.962, r) * (1.0 - smoothstep(0.986, 0.998, r));
     let base = draw.base_color.a;
     let blade_alpha = base * 0.34 * radial * (0.30 + 0.70 * wedge);
-    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.42;
-    let blade_rgb = vec3<f32>(0.10, 0.11, 0.12);
-    let tip_rgb = vec3<f32>(0.86, 0.88, 0.90);
-    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.32);
+    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.48;
+    let blade_rgb = draw.base_color.rgb;
+    let tip_rgb = select(vec3<f32>(0.86, 0.88, 0.90), draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
+    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.34);
     return vec4<f32>(blade_rgb * blade_alpha + tip_rgb * tip_alpha, alpha);
 }
 

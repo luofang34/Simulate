@@ -1,0 +1,78 @@
+{
+  "type_designator": "P38",
+  "reference_document": "FS-M-19-1492-A (P-38G 42-12690, 22 Oct 1942): Type D-2 Kollsman pitot-static head 87 in inboard of the left wing tip, static holes 28 in aft of the leading edge and 14-1/4 in below the lower surface. Flaps-up pairs are the report's water-column (instrument-error-free) airspeed against calibrated airspeed, 95-115 mph IAS. Flaps-down pairs are the stall IAS less the +2 mph instrument error the flaps-up rows show. Above the measured band the installation error is ASSUMED to taper linearly to zero at 200 mph IAS (174 kt); flaps-down points above 66 kt IAS are likewise assumed.",
+  "curves": [
+    {
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "points": [
+        {
+          "kias": 0.0,
+          "kcas": 0.0
+        },
+        {
+          "kias": 80.8,
+          "kcas": 95.6
+        },
+        {
+          "kias": 85.2,
+          "kcas": 99.1
+        },
+        {
+          "kias": 89.5,
+          "kcas": 102.5
+        },
+        {
+          "kias": 93.8,
+          "kcas": 106.4
+        },
+        {
+          "kias": 98.2,
+          "kcas": 110.4
+        },
+        {
+          "kias": 130.0,
+          "kcas": 137.1
+        },
+        {
+          "kias": 150.0,
+          "kcas": 153.9
+        },
+        {
+          "kias": 174.0,
+          "kcas": 174.0
+        },
+        {
+          "kias": 400.0,
+          "kcas": 400.0
+        }
+      ]
+    },
+    {
+      "flap_deg": 40.0,
+      "flap_norm": 1.0,
+      "points": [
+        {
+          "kias": 0.0,
+          "kcas": 0.0
+        },
+        {
+          "kias": 64.3,
+          "kcas": 74.7
+        },
+        {
+          "kias": 66.0,
+          "kcas": 76.5
+        },
+        {
+          "kias": 110.0,
+          "kcas": 117.0
+        },
+        {
+          "kias": 130.0,
+          "kcas": 133.0
+        }
+      ]
+    }
+  ]
+}

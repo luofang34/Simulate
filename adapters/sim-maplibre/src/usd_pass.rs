@@ -117,7 +117,7 @@ pub(crate) struct AircraftSlotView<'a> {
 pub(crate) fn pack_slot_draws(
     library: &AircraftLibrary,
     aircraft: &[AircraftInstance],
-    polar_skiway: Option<(AssetKey, &flightbag::RunwayEndSpec)>,
+    polar_skiway: Option<(AssetKey, &sim_scenery::LandingRunwayGeometry)>,
     view: &AircraftSlotView<'_>,
 ) -> Vec<PackedDraw> {
     let clip_from_enu = clip_from_anchor_enu(view.stamp);
@@ -196,7 +196,11 @@ fn pack_part(
 ) -> (f64, PackedDraw) {
     let translucent = part_draw.is_prop_disc || part_draw.opacity < 0.999;
     let kind = if part_draw.is_prop_disc {
-        2.0
+        if part.prim_path.contains("P38") {
+            3.0
+        } else {
+            2.0
+        }
     } else if translucent {
         1.0
     } else {

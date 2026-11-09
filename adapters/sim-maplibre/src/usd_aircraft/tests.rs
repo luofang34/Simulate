@@ -116,3 +116,26 @@ fn exported_ownship_axes_point_right_forward_and_up_in_the_stage_frame() {
     assert!(close(q * DVec3::X, DVec3::NEG_Y), "{:?}", q * DVec3::X);
     assert!(close(q * DVec3::Z, DVec3::Z), "{:?}", q * DVec3::Z);
 }
+
+#[test]
+fn embedded_raketa_loads_meshes_and_promotes_porthole_glass() {
+    let asset = UsdAircraftAsset::embedded_raketa();
+    assert!(
+        asset.is_ok(),
+        "embedded retro_rocket_v4.usd failed: {asset:?}"
+    );
+    let Some(asset) = asset.ok() else {
+        return;
+    };
+    assert_eq!(asset.parts().len(), 186);
+    assert!(asset.triangle_count() > 20_000);
+    let glass = asset
+        .parts()
+        .iter()
+        .find(|p| p.prim_path == "/Rocket/Window/Glass");
+    assert!(glass.is_some(), "missing /Rocket/Window/Glass");
+    if let Some(glass) = glass {
+        assert_eq!(glass.role, PartRole::CabinGlass);
+        assert!(glass.material.opacity < 0.5);
+    }
+}

@@ -201,17 +201,26 @@ fn a_procedural_airframe_is_built_once_across_switches() {
 
 #[test]
 fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
-    let rwy = flightbag::RunwayEndSpec {
+    let spec = flightbag::RunwayEndSpec {
         designator: flightbag::RunwayDesignator::parse("02").unwrap(),
         threshold: world::GeodeticPosition::wgs84(-89.9975, 139.2729, 2_835.0),
         true_bearing_rad: 20.0_f64.to_radians(),
         length_m: 3_658.0,
         width_m: 61.0,
     };
+    let rwy = sim_scenery::LandingRunwayGeometry::from_runway_end_spec(&spec);
     let target = Geodetic::from_degrees(-89.9975, 139.2729, 2_845.0);
     let stamp = stamp_looking_north_at(&target);
     let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
-    let key = library.ensure_polar_skiway(PolarSkiwayKey::from_runway(&rwy));
+    let ski_key = PolarSkiwayKey::from_runway(&rwy, stamp.render_body);
+    // On Body::EARTH (R = 6,371,008.8 m vs WGS84 polar radius c = 6,399,593.6 m), a 3,658.0 m
+    // WGS84 polar skiway spans ~3,643.28 m on the rendered sphere.
+    assert!(
+        (f64::from(ski_key.after_threshold_cm) * 0.01 - 3_643.28).abs() < 0.25,
+        "expected spherical NZSP skiway length ~3643.28 m, got {} cm",
+        ski_key.after_threshold_cm,
+    );
+    let key = library.ensure_polar_skiway(ski_key);
     let view = AircraftSlotView {
         stamp: &stamp,
         sun_enu: DVec3::Z,
@@ -222,4 +231,110 @@ fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
     let draws = pack_slot_draws(&library, &[], Some((key, &rwy)), &view);
     assert_eq!(draws.len(), 4);
     assert!(draws.iter().all(|d| !d.translucent && d.asset == key));
+}
+
+fn nzsp_overhead_stamp(vp: [u32; 2]) -> ConformalFrameStamp {
+    // Overhead pitched -12 deg down along 020 deg true (reproducing the user's NZSP view),
+    // with an intentionally mismatched ownship geoid undulation (-29.8 m vs threshold's) to
+    // prove zero vertical datum leak.
+    let eye = Geodetic::from_degrees(-89.9975, 139.2729, 2_835.0 - 29.8 + 260.0);
+    let local = sim_geo::LocalFrame::at(&eye);
+    let brg = 20.0_f64.to_radians();
+    let pitch = -12.0_f64.to_radians();
+    let horiz_fwd = local.north() * brg.cos() + local.east() * brg.sin();
+    let fwd = (horiz_fwd * pitch.cos() + local.up() * pitch.sin()).normalize();
+    let right = fwd.cross(local.up()).normalize();
+    let cam_up = right.cross(fwd).normalize();
+    let pose = sim_core::CameraPoseEcef {
+        position_ecef: sim_geo::BodyEllipsoid::WGS84.geodetic_to_fixed(&eye),
+        orientation: DQuat::from_mat3(&DMat3::from_cols(right, cam_up, -fwd)).normalize(),
+    };
+    let frustum = crate::symmetric_frustum(
+        50.0_f64.to_radians(),
+        vp[0],
+        vp[1],
+        crate::DEFAULT_NEAR_CLIP_M,
+        crate::DEFAULT_FAR_CLIP_M,
+    )
+    .expect("frustum");
+    crate::conformal_stamp_from_pose(sim_core::SimInstant::START, &pose, frustum, -29.8)
+        .expect("stamp")
+}
+
+#[test]
+fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
+    let db = sim_scenery::AirportDatabase::builtin();
+    let (_, nzsp) = db.by_code("NZSP").expect("NZSP");
+    let rwy = nzsp
+        .landing_runway(
+            "02T",
+            sim_scenery::CatalogVerticalDatum::OrthometricMslEgm96,
+        )
+        .expect("NZSP 02T");
+    let vp = [916_u32, 876_u32];
+    let stamp = nzsp_overhead_stamp(vp);
+
+    let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
+    let ski_key = PolarSkiwayKey::from_runway(&rwy, stamp.render_body);
+    let key = library.ensure_polar_skiway(ski_key);
+    let asset = library.get(key).expect("skiway asset");
+    let deck_idx = asset
+        .parts()
+        .iter()
+        .position(|p| p.prim_path == "/PolarSkiway/GroomedDeck")
+        .expect("GroomedDeck");
+    let draws = pack_slot_draws(
+        &library,
+        &[],
+        Some((key, &rwy)),
+        &AircraftSlotView {
+            stamp: &stamp,
+            sun_enu: DVec3::Z,
+            daylight: 1.0,
+            ownship_role: SlotCameraRole::CockpitInterior,
+            slot: slot(0),
+        },
+    );
+    let deck_draw = draws
+        .iter()
+        .find(|d| d.part_index == deck_idx)
+        .expect("deck draw");
+    let mut cols = [0.0_f32; 16];
+    for (dst, bytes) in cols
+        .iter_mut()
+        .zip(deck_draw.uniform[..64].as_chunks::<4>().0)
+    {
+        *dst = f32::from_le_bytes(*bytes);
+    }
+    let clip_from_part = glam::Mat4::from_cols_array(&cols);
+
+    let deck_verts = &asset.parts()[deck_idx].vertices;
+    // Far-left and far-right corners of the final quad of `/PolarSkiway/GroomedDeck`.
+    let n = deck_verts.len();
+    let far_right_v = deck_verts[n - 2].position;
+    let far_left_v = deck_verts[n - 1].position;
+    let project_part = |p: [f32; 3]| -> [f32; 2] {
+        let clip = clip_from_part * glam::Vec4::new(p[0], p[1], p[2], 1.0);
+        let ndc = clip.truncate() / clip.w;
+        [
+            (ndc.x * 0.5 + 0.5) * vp[0] as f32,
+            (0.5 - ndc.y * 0.5) * vp[1] as f32,
+        ]
+    };
+    let deck_far_mid = {
+        let l = project_part(far_left_v);
+        let r = project_part(far_right_v);
+        [(l[0] + r[0]) * 0.5, (l[1] + r[1]) * 0.5]
+    };
+    let far_msl_geo = Geodetic {
+        height_m: rwy.far_elevation_msl_m + 0.20,
+        ..rwy.far_end
+    };
+    let (sphere_far_px, _) = crate::project_geodetic_to_screen(&stamp, &far_msl_geo, 0.0, vp)
+        .expect("far_end on screen");
+    let err_px = (deck_far_mid[0] - sphere_far_px[0]).hypot(deck_far_mid[1] - sphere_far_px[1]);
+    assert!(
+        err_px < 0.25,
+        "NZSP polar skiway far end {deck_far_mid:?} must register with Body::EARTH far_end {sphere_far_px:?} (<0.25 px, got {err_px:.3} px)"
+    );
 }

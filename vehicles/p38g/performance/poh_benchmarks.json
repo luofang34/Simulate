@@ -1,0 +1,125 @@
+{
+  "type_designator": "P38",
+  "reference_document": "AAF Materiel Center Memorandum Report FS-M-19-1538-A, P-38G-1 A.C. 42-12687 (Wright Field, 10 Feb 1943): level speeds and climbs at 3000 rpm, auto-rich, 44.7 inHg unless carburettor-air-temperature or turbo-rpm limited; stalls from FS-M-19-1492-A, P-38G A.C. 42-12690 (22 Oct 1942), power off at ~14,800 lb",
+  "rated_bhp": 2450.0,
+  "tail_profile": null,
+  "tolerances": {
+    "stall_kt": 4.0,
+    "climb_fpm": 350.0,
+    "cruise_ktas": 10.0,
+    "cruise_gph": 40.0,
+    "cruise_pct_bhp": 10.0
+  },
+  "static_runup": null,
+  "stalls": [
+    {
+      "label": "Flaps up, gear up, power off, 14,800 lb (42-12690; KIAS is position-error-only)",
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "bank_deg": 0.0,
+      "gross_mass_kg": 6713.167,
+      "target_kias": 83.4,
+      "target_kcas": 97.3
+    },
+    {
+      "label": "Flaps down, gear down, power off, 14,800 lb (42-12690; KIAS is position-error-only)",
+      "flap_deg": 40.0,
+      "flap_norm": 1.0,
+      "bank_deg": 0.0,
+      "gross_mass_kg": 6713.167,
+      "target_kias": 66.0,
+      "target_kcas": 76.5
+    }
+  ],
+  "climb_points": [
+    {
+      "pressure_alt_ft": 0.0,
+      "gross_mass_kg": 6214.215,
+      "climb_kcas": 135.6,
+      "target_kias": 135.6,
+      "lean_best_power": false,
+      "target_fpm": 3300.0,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 10000.0,
+      "gross_mass_kg": 6214.215,
+      "climb_kcas": 135.2,
+      "target_kias": 135.2,
+      "lean_best_power": false,
+      "target_fpm": 3630.0,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 20000.0,
+      "gross_mass_kg": 6214.215,
+      "climb_kcas": 138.9,
+      "target_kias": 138.9,
+      "lean_best_power": false,
+      "target_fpm": 3280.0,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 30000.0,
+      "gross_mass_kg": 6214.215,
+      "climb_kcas": 130.8,
+      "target_kias": 130.8,
+      "lean_best_power": false,
+      "target_fpm": 2100.0,
+      "target_map_inhg": 36.0
+    }
+  ],
+  "cruise_points": [
+    {
+      "pressure_alt_ft": 5000.0,
+      "gross_mass_kg": 6146.177,
+      "target_rpm": 3000.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": null,
+      "target_ktas": 301.1,
+      "target_gph": null,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 5000.0,
+      "gross_mass_kg": 6146.177,
+      "target_rpm": 3000.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": null,
+      "target_ktas": 308.9,
+      "target_gph": null,
+      "target_map_inhg": 48.0
+    },
+    {
+      "pressure_alt_ft": 14700.0,
+      "gross_mass_kg": 6134.837,
+      "target_rpm": 3000.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": null,
+      "target_ktas": 328.5,
+      "target_gph": null,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 22600.0,
+      "gross_mass_kg": 6123.497,
+      "target_rpm": 3000.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": null,
+      "target_ktas": 351.1,
+      "target_gph": null,
+      "target_map_inhg": 44.7
+    },
+    {
+      "pressure_alt_ft": 30000.0,
+      "gross_mass_kg": 6078.138,
+      "target_rpm": 3000.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": null,
+      "target_ktas": 344.1,
+      "target_gph": null,
+      "target_map_inhg": 36.0
+    }
+  ],
+  "empirical_segments": []
+}

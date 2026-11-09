@@ -77,7 +77,11 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, front: bool) -> vec3<f32> {
     let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight;
     // Sky above and sunlit ground below both light the airframe, so undersides never go black.
     let hemi = mix(GROUND * 1.6, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
-    let ambient = hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.35;
+    let r = reflect(-v, n);
+    let env = mix(GROUND * 1.35, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
+    let gloss = 1.0 - roughness * 0.72;
+    let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
+    let ambient = hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25 + env_spec;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
 }
 
@@ -111,17 +115,19 @@ fn propeller_disc(in: VertexOut) -> vec4<f32> {
     }
     // Blade density peaks mid-span and fades at the spinner and the tips.
     let radial = smoothstep(0.12, 0.22, r) * (1.0 - smoothstep(0.86, 0.99, r)) * (0.55 + 0.45 * sin(r * PI));
-    // Two blades smeared over the shutter interval.
+    // Two or three blades smeared over the shutter interval.
+    let blades = select(2.0, 3.0, draw.params.w > 2.5);
     let theta = atan2(uv.y, uv.x) - draw.params.y;
     let blur = max(draw.params.z, 0.05);
-    let wedge = pow(0.5 + 0.5 * cos(2.0 * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
-    let tip = smoothstep(0.955, 0.968, r) * (1.0 - smoothstep(0.986, 0.998, r));
+    let wedge = pow(0.5 + 0.5 * cos(blades * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
+    let tip = smoothstep(0.945, 0.962, r) * (1.0 - smoothstep(0.986, 0.998, r));
     let base = draw.base_color.a;
     let blade_alpha = base * 0.34 * radial * (0.30 + 0.70 * wedge);
-    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.42;
-    let blade_rgb = vec3<f32>(0.10, 0.11, 0.12) * (0.4 + 0.6 * draw.sun.w);
-    let tip_rgb = vec3<f32>(0.86, 0.88, 0.90) * (0.4 + 0.6 * draw.sun.w);
-    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.32);
+    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.48;
+    let blade_rgb = draw.base_color.rgb * (0.4 + 0.6 * draw.sun.w);
+    let raw_tip = select(vec3<f32>(0.86, 0.88, 0.90), draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
+    let tip_rgb = raw_tip * (0.4 + 0.6 * draw.sun.w);
+    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.34);
     let rgb = (blade_rgb * blade_alpha + tip_rgb * tip_alpha);
     return vec4<f32>(rgb, alpha);
 }

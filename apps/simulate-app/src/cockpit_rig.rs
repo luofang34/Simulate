@@ -354,6 +354,7 @@ impl CockpitRig {
                 guidance: &guidance,
                 viewport_mode,
                 terrain_patch: terrain_patch.as_ref(),
+                airspeed_envelope: flight.resolved_airspeed_envelope(),
             },
         )?;
 

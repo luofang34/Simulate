@@ -10,7 +10,7 @@ use std::f32::consts::TAU;
 
 use glam::{DMat4, Mat4, Vec3};
 
-use super::{PartRole, PbrMaterial, UsdAircraftAsset, UsdMeshPart};
+use super::{PartRole, PbrMaterial, UsdAircraftAsset, UsdMeshPart, UsdMeshVertex};
 use crate::MapAdapterError;
 
 mod fixed_wing;
@@ -33,6 +33,39 @@ impl UsdAircraftAsset {
     /// ruddervators, a belly nadir optical payload pod, and an articulated pusher propeller.
     pub fn fixed_wing_uav() -> Result<Self, MapAdapterError> {
         assemble("fixed_wing_uav", fixed_wing::parts())
+    }
+
+    /// Builds a Lockheed P-38G-13-LO Lightning (`"Miss Virginia"`, `s/n 43-2264`) from the
+    /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`).
+    pub fn p38g() -> Result<Self, MapAdapterError> {
+        let parts = sim_p38g::p38g_mesh_prims()
+            .into_iter()
+            .map(|prim| UsdMeshPart {
+                prim_path: prim.prim_path,
+                role: PartRole::from_token(prim.role.as_token()),
+                material: PbrMaterial {
+                    diffuse_rgb: prim.material.diffuse_rgb,
+                    emissive_rgb: prim.material.emissive_rgb,
+                    metallic: prim.material.metallic,
+                    roughness: prim.material.roughness,
+                    opacity: prim.material.opacity,
+                },
+                double_sided: prim.double_sided,
+                rest_to_aircraft: prim.rest_to_aircraft,
+                custom_hinge_axis: prim.custom_hinge_axis,
+                vertices: prim
+                    .vertices
+                    .into_iter()
+                    .map(|v| UsdMeshVertex {
+                        position: v.position,
+                        normal: v.normal,
+                        uv: v.uv,
+                    })
+                    .collect(),
+                indices: prim.indices,
+            })
+            .collect();
+        assemble("p38g", parts)
     }
 
     /// Builds a crewed lunar lander: faceted gold-kapton descent stage, ascent cabin, and

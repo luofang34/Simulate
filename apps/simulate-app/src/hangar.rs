@@ -118,9 +118,11 @@ impl HangarRig {
 pub fn load_model(model: HangarModel) -> Result<UsdAircraftAsset, AppSimError> {
     Ok(match model {
         HangarModel::C172 => UsdAircraftAsset::embedded_c172()?,
+        HangarModel::P38g => UsdAircraftAsset::p38g()?,
         HangarModel::X500 => UsdAircraftAsset::x500_quadrotor()?,
         HangarModel::FixedWingUav => UsdAircraftAsset::fixed_wing_uav()?,
         HangarModel::LunarLander => UsdAircraftAsset::lunar_lander()?,
+        HangarModel::Raketa => UsdAircraftAsset::embedded_raketa()?,
     })
 }
 

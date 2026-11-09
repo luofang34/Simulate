@@ -1,0 +1,1564 @@
+<?xml version="1.0"?>
+<fdm_config name="p38g" version="2.0" release="PRODUCTION">
+
+    <fileheader>
+        <author>Simulate Reference Flight Dynamics</author>
+        <filecreationdate>2026-11-08</filecreationdate>
+        <version>1.1</version>
+        <description>
+            Lockheed P-38G-13-LO Lightning ("Miss Virginia", s/n 43-2264) twin-boom fighter
+            reference model (327.5 sq ft NACA 23016/4412 mid-wing, 12800 lb empty / 15020 lb
+            combat gross, 2x Allison V-1710-51/55 turbosupercharged V-12 engines driving
+            counter-rotating 11 ft 6 in Curtiss Electric 3-blade constant-speed propellers,
+            8 deg Combat / Maneuver Fowler flap detent, manual unboosted ailerons with
+            high-qbar stick-force limiting, and transonic Mach tuck above Mcrit = 0.65
+            without compressibility dive-recovery flaps).
+        </description>
+    </fileheader>
+
+    <metrics>
+        <wingarea unit="FT2"> 327.50 </wingarea>
+        <wingspan unit="FT"> 52.00 </wingspan>
+        <chord unit="FT"> 6.65 </chord>
+        <wing_incidence unit="DEG"> 2.00 </wing_incidence>
+        <htailarea unit="FT2"> 55.50 </htailarea>
+        <htailarm unit="FT"> 21.80 </htailarm>
+        <vtailarea unit="FT2"> 48.90 </vtailarea>
+        <vtailarm unit="FT"> 21.40 </vtailarm>
+        <location name="AERORP" unit="IN">
+            <x> 128.0 </x>
+            <y>   0.0 </y>
+            <z>   0.0 </z>
+        </location>
+        <location name="EYEPOINT" unit="IN">
+            <x> 118.0 </x>
+            <y>   0.0 </y>
+            <z>  32.0 </z>
+        </location>
+        <location name="VRP" unit="IN">
+            <x> 128.0 </x>
+            <y>   0.0 </y>
+            <z>   0.0 </z>
+        </location>
+    </metrics>
+
+    <mass_balance>
+        <!-- P-38G basic empty weight 12,200 lb (guns installed, no pilot, ammunition, oil or
+             fuel). With pilot, combat ammunition, oil and 300 gal internal fuel the gross is
+             ~14,995 lb, matching the 15,000 lb class combat weight; the AAF 42-12687 test flew
+             13,900 lb with 180 gal and a reduced load. pointmass[0] is the payload slot the
+             calibration harness adjusts to reach a benchmark's gross weight. -->
+        <ixx unit="SLUG*FT2"> 24800.0 </ixx>
+        <iyy unit="SLUG*FT2"> 21600.0 </iyy>
+        <izz unit="SLUG*FT2"> 42900.0 </izz>
+        <emptywt unit="LBS"> 12200.0 </emptywt>
+        <location name="CG" unit="IN">
+            <x> 128.0 </x>
+            <y>   0.0 </y>
+            <z>   0.0 </z>
+        </location>
+        <pointmass name="Pilot and parachute">
+            <weight unit="LBS"> 200.0 </weight>
+            <location name="POINTMASS" unit="IN">
+                <x> 124.0 </x>
+                <y>   0.0 </y>
+                <z>  20.0 </z>
+            </location>
+        </pointmass>
+        <pointmass name="Ammunition: 2000 rds .50 cal, 150 rds 20 mm">
+            <weight unit="LBS"> 605.0 </weight>
+            <location name="POINTMASS" unit="IN">
+                <x> 120.0 </x>
+                <y>   0.0 </y>
+                <z>   0.0 </z>
+            </location>
+        </pointmass>
+        <pointmass name="Engine oil, 2 x 13 gal">
+            <weight unit="LBS"> 195.0 </weight>
+            <location name="POINTMASS" unit="IN">
+                <x> 110.0 </x>
+                <y>   0.0 </y>
+                <z>   0.0 </z>
+            </location>
+        </pointmass>
+    </mass_balance>
+
+    <ground_reactions>
+        <contact type="BOGEY" name="NOSE">
+            <location unit="IN">
+                <x>  34.0 </x>
+                <y>   0.0 </y>
+                <z> -74.0 </z>
+            </location>
+            <static_friction> 0.80 </static_friction>
+            <dynamic_friction> 0.50 </dynamic_friction>
+            <rolling_friction> 0.020 </rolling_friction>
+            <spring_coeff unit="LBS/FT"> 14000.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 4500.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 9000.0 </damping_coeff_rebound>
+            <max_steer unit="DEG"> 25.0 </max_steer>
+            <brake_group> NONE </brake_group>
+            <retractable> 1 </retractable>
+        </contact>
+        <contact type="BOGEY" name="LEFT_MAIN">
+            <location unit="IN">
+                <x> 148.0 </x>
+                <y> -98.0 </y>
+                <z> -74.0 </z>
+            </location>
+            <static_friction> 0.80 </static_friction>
+            <dynamic_friction> 0.50 </dynamic_friction>
+            <rolling_friction> 0.020 </rolling_friction>
+            <spring_coeff unit="LBS/FT"> 24000.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 7200.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 14400.0 </damping_coeff_rebound>
+            <max_steer unit="DEG"> 0.0 </max_steer>
+            <brake_group> LEFT </brake_group>
+            <retractable> 1 </retractable>
+        </contact>
+        <contact type="BOGEY" name="RIGHT_MAIN">
+            <location unit="IN">
+                <x> 148.0 </x>
+                <y>  98.0 </y>
+                <z> -74.0 </z>
+            </location>
+            <static_friction> 0.80 </static_friction>
+            <dynamic_friction> 0.50 </dynamic_friction>
+            <rolling_friction> 0.020 </rolling_friction>
+            <spring_coeff unit="LBS/FT"> 24000.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 7200.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 14400.0 </damping_coeff_rebound>
+            <max_steer unit="DEG"> 0.0 </max_steer>
+            <brake_group> RIGHT </brake_group>
+            <retractable> 1 </retractable>
+        </contact>
+        <contact type="STRUCTURE" name="BELLY">
+            <location unit="IN">
+                <x> 128.0 </x>
+                <y>   0.0 </y>
+                <z> -48.0 </z>
+            </location>
+            <static_friction> 0.80 </static_friction>
+            <dynamic_friction> 0.50 </dynamic_friction>
+            <spring_coeff unit="LBS/FT"> 60000.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 12000.0 </damping_coeff>
+        </contact>
+    </ground_reactions>
+
+    <propulsion>
+        <!-- Internal fuel 300 US gal (P-38G): 90 gal main tank forward of the front spar and
+             60 gal reserve tank aft of it, in each centre wing between gondola and boom,
+             6.0 lb/gal. Engine 0 feeds from tanks 0 and 2, engine 1 from tanks 1 and 3. -->
+        <!-- 0: left main, 90 gal -->
+        <tank type="FUEL">
+            <location unit="IN">
+                <x> 118.0 </x>
+                <y> -58.0 </y>
+                <z>   0.0 </z>
+            </location>
+            <capacity unit="LBS"> 540.0 </capacity>
+            <contents unit="LBS"> 540.0 </contents>
+        </tank>
+        <!-- 1: right main, 90 gal -->
+        <tank type="FUEL">
+            <location unit="IN">
+                <x> 118.0 </x>
+                <y>  58.0 </y>
+                <z>   0.0 </z>
+            </location>
+            <capacity unit="LBS"> 540.0 </capacity>
+            <contents unit="LBS"> 540.0 </contents>
+        </tank>
+        <!-- 2: left reserve, 60 gal -->
+        <tank type="FUEL">
+            <location unit="IN">
+                <x> 142.0 </x>
+                <y> -58.0 </y>
+                <z>   0.0 </z>
+            </location>
+            <capacity unit="LBS"> 360.0 </capacity>
+            <contents unit="LBS"> 360.0 </contents>
+        </tank>
+        <!-- 3: right reserve, 60 gal -->
+        <tank type="FUEL">
+            <location unit="IN">
+                <x> 142.0 </x>
+                <y>  58.0 </y>
+                <z>   0.0 </z>
+            </location>
+            <capacity unit="LBS"> 360.0 </capacity>
+            <contents unit="LBS"> 360.0 </contents>
+        </tank>
+        <engine>
+            <feed> 0 </feed>
+            <feed> 2 </feed>
+            <piston_engine name="allison_v1710_51_left">
+                <!-- Allison V-1710-51 (left engine; the pair turns the propellers outboard over the top) with GE B-13 turbosupercharger and wing leading-edge
+                     intercooler. AAF 42-12687 (Wright Field, 10 Feb 1943): 1220 bhp at 44.7 inHg /
+                     3000 rpm held to the critical altitude, 1320 bhp at 48.0 inHg (takeoff and
+                     combat, carburettor-air-temperature limited above ~15,000 ft). The turbo
+                     regulator is the supercharger clamp: the rated boost holds 44.7 inHg, full throttle
+                     (> 0.98) raises the clamp to 48.0 inHg. The top speed is rated where the
+                     ambient lapse above it reproduces the test's turbo-rpm-limited 36.0 inHg at
+                     30,000 ft and 27.2 inHg at 35,000 ft. -->
+                <minmp unit="INHG"> 10.0 </minmp>
+                <maxmp unit="INHG"> 29.9 </maxmp>
+                <displacement unit="IN3"> 1710.6 </displacement>
+                <bore unit="IN"> 5.5 </bore>
+                <stroke unit="IN"> 6.0 </stroke>
+                <cylinders> 12 </cylinders>
+                <cylinder-head-mass unit="LBS"> 40 </cylinder-head-mass>
+                <compression-ratio> 6.65 </compression-ratio>
+                <maxhp> 1325.0 </maxhp>
+                <cycles> 4.0 </cycles>
+                <idlerpm> 600.0 </idlerpm>
+                <maxrpm> 3000.0 </maxrpm>
+                <maxthrottle> 1.0 </maxthrottle>
+                <minthrottle> 0.0 </minthrottle>
+                <sparkfaildrop> 0.10 </sparkfaildrop>
+                <volumetric-efficiency> 0.86 </volumetric-efficiency>
+                <bsfc unit="LBS/HP*HR"> 0.465 </bsfc>
+                <boost-loss-factor> 0.0 </boost-loss-factor>
+                <ram-air-factor> 0.2 </ram-air-factor>
+                <boostoverride> 0 </boostoverride>
+                <!-- The wastegate gives only the pressure ratio the altitude needs, so the throttle
+                     keeps its range at low level. JSBSim's boost multiplies every throttle setting
+                     by one ratio per speed; three speeds rated at 6,000 / 15,000 / 24,700 ft,
+                     switched automatically by altitude, stand in for the continuous turbo. -->
+                <numboostspeeds> 3 </numboostspeeds>
+                <takeoffboost unit="INHG"> 18.08 </takeoffboost>
+                <ratedboost1 unit="INHG"> 14.78 </ratedboost1>
+                <ratedpower1> 1225.0 </ratedpower1>
+                <ratedrpm1> 3000.0 </ratedrpm1>
+                <ratedaltitude1> 6000.0 </ratedaltitude1>
+                <ratedboost2 unit="INHG"> 14.78 </ratedboost2>
+                <ratedpower2> 1225.0 </ratedpower2>
+                <ratedrpm2> 3000.0 </ratedrpm2>
+                <ratedaltitude2> 15000.0 </ratedaltitude2>
+                <ratedboost3 unit="INHG"> 14.78 </ratedboost3>
+                <ratedpower3> 1225.0 </ratedpower3>
+                <ratedrpm3> 3000.0 </ratedrpm3>
+                <ratedaltitude3> 24700.0 </ratedaltitude3>
+            </piston_engine>
+
+            <thruster>
+                <location unit="IN">
+                    <x>  36.0 </x>
+                    <y> -93.0 </y>
+                    <z>   0.0 </z>
+                </location>
+                <orient unit="DEG">
+                    <roll>  0.0 </roll>
+                    <pitch> 0.0 </pitch>
+                    <yaw>   0.0 </yaw>
+                </orient>
+                <sense> -1 </sense>
+                <propeller name="curtiss_electric_left">
+                    <!-- Curtiss Electric 3-blade, 11 ft 6 in, 2:1 reduction. Blade range 22.7-57.7 deg
+                         at the 42 in station (AAF 42-12687 report) is 16.8-51.8 deg at 0.75R with the
+                         helical twist used below; maxpitch is the 87 deg feather stop because JSBSim
+                         is the feather stop. Ct/Cp(J, beta_0.75R) are generated by
+                         vehicles/tools/propeller_bem.py from vehicles/p38g/design/curtiss_electric_3b.json
+                         (blade-element/momentum, Prandtl tip loss, Clark-Y-family sections). -->
+                    <ixx> 100.0 </ixx>
+                    <diameter unit="IN"> 138.0 </diameter>
+                    <numblades> 3 </numblades>
+                    <gearratio> 2.00 </gearratio>
+                    <minpitch> 16.8 </minpitch>
+                    <maxpitch> 87.0 </maxpitch>
+                    <minrpm> 1100.0 </minrpm>
+                    <maxrpm> 1500.0 </maxrpm>
+                    <table name="C_THRUST" type="internal">
+                        <tableData>
+                           15       20       25       30       35       40       45       50       55       60       70       87
+                 0.0   0.1635   0.2016   0.2201   0.1930   0.1575   0.1596   0.1663   0.1676   0.1632   0.1530   0.1158   0.0136
+                 0.2   0.1293   0.1733   0.1903   0.1863   0.1588   0.1300   0.1262   0.1246   0.1189   0.1091   0.0795   0.0143
+                 0.4   0.0964   0.1463   0.1813   0.1961   0.1839   0.1432   0.1274   0.1256   0.1223   0.1145   0.0870   0.0161
+                 0.6   0.0491   0.1064   0.1644   0.2003   0.2019   0.1689   0.1331   0.1243   0.1228   0.1171   0.0923   0.0194
+                 0.8  -0.0047   0.0565   0.1182   0.1795   0.2194   0.2033   0.1535   0.1250   0.1211   0.1178   0.0959   0.0222
+                 1.0  -0.0643   0.0017   0.0680   0.1337   0.1981   0.2367   0.2002   0.1382   0.1194   0.1170   0.0984   0.0241
+                 1.2  -0.1282  -0.0576   0.0140   0.0848   0.1541   0.2215   0.2487   0.1813   0.1271   0.1151   0.0999   0.0252
+                 1.4  -0.1899  -0.1204  -0.0435   0.0330   0.1079   0.1805   0.2504   0.2457   0.1550   0.1152   0.1006   0.0254
+                 1.6  -0.2087  -0.1833  -0.1044  -0.0216   0.0593   0.1377   0.2131   0.2851   0.2217   0.1320   0.1006   0.0248
+                 1.8  -0.2310  -0.2238  -0.1670  -0.0789   0.0086   0.0932   0.1745   0.2520   0.2861   0.1785   0.1000   0.0236
+                 2.0  -0.2678  -0.2406  -0.2239  -0.1391  -0.0444   0.0470   0.1347   0.2181   0.2970   0.2493   0.0996   0.0216
+                 2.2  -0.3161  -0.2713  -0.2541  -0.2009  -0.0996  -0.0009   0.0935   0.1833   0.2680   0.3117   0.1034   0.0190
+                 2.4  -0.3715  -0.3134  -0.2755  -0.2549  -0.1571  -0.0506   0.0511   0.1476   0.2384   0.3204   0.1312   0.0159
+                 2.6  -0.4311  -0.3649  -0.3088  -0.2858  -0.2169  -0.1021   0.0073   0.1108   0.2082   0.2990   0.1743   0.0122
+                 2.8  -0.4949  -0.4227  -0.3522  -0.3088  -0.2776  -0.1555  -0.0380   0.0731   0.1773   0.2742   0.2323   0.0080
+                 3.0  -0.5627  -0.4847  -0.4039  -0.3411  -0.3167  -0.2107  -0.0846   0.0343   0.1456   0.2489   0.2989   0.0033
+                 3.2  -0.6348  -0.5506  -0.4621  -0.3814  -0.3417  -0.2678  -0.1327  -0.0056   0.1132   0.2232   0.3420  -0.0019
+                 3.4  -0.7110  -0.6205  -0.5246  -0.4299  -0.3693  -0.3268  -0.1823  -0.0465   0.0801   0.1970   0.3546  -0.0075
+                 3.6  -0.7916  -0.6943  -0.5909  -0.4854  -0.4043  -0.3716  -0.2333  -0.0886   0.0461   0.1702   0.3534  -0.0135
+                 3.8  -0.8764  -0.7721  -0.6609  -0.5462  -0.4459  -0.3991  -0.2859  -0.1318   0.0113   0.1429   0.3479  -0.0188
+                 4.0  -0.9657  -0.8540  -0.7345  -0.6108  -0.4941  -0.4272  -0.3399  -0.1761  -0.0243   0.1150   0.3366  -0.0224
+                        </tableData>
+                    </table>
+                    <table name="C_POWER" type="internal">
+                        <tableData>
+                           15       20       25       30       35       40       45       50       55       60       70       87
+                 0.0   0.0719   0.1042   0.1402   0.1843   0.2197   0.2757   0.3382   0.4027   0.4671   0.5293   0.6382   0.7390
+                 0.2   0.0675   0.0999   0.1335   0.1665   0.1939   0.2210   0.2605   0.3026   0.3418   0.3762   0.4243   0.4068
+                 0.4   0.0625   0.1012   0.1409   0.1786   0.2090   0.2307   0.2638   0.3090   0.3549   0.3969   0.4633   0.5012
+                 0.6   0.0431   0.0887   0.1436   0.1930   0.2293   0.2509   0.2682   0.3101   0.3614   0.4104   0.4923   0.5597
+                 0.8   0.0080   0.0600   0.1222   0.1933   0.2568   0.2851   0.2893   0.3124   0.3635   0.4195   0.5168   0.6097
+                 1.0  -0.0458   0.0142   0.0854   0.1664   0.2560   0.3317   0.3419   0.3282   0.3642   0.4255   0.5390   0.6580
+                 1.2  -0.1188  -0.0508   0.0311   0.1237   0.2258   0.3363   0.4141   0.3900   0.3771   0.4290   0.5599   0.7071
+                 1.4  -0.1983  -0.1352  -0.0423   0.0637   0.1802   0.3058   0.4397   0.4922   0.4258   0.4350   0.5796   0.7579
+                 1.6  -0.1714  -0.2314  -0.1358  -0.0148   0.1180   0.2608   0.4126   0.5722   0.5485   0.4699   0.5982   0.8108
+                 1.8  -0.1764  -0.2626  -0.2460  -0.1128   0.0382   0.2002   0.3721   0.5525   0.6816   0.5730   0.6153   0.8657
+                 2.0  -0.1965  -0.2439  -0.3428  -0.2313  -0.0600   0.1234   0.3174   0.5209   0.7326   0.7375   0.6325   0.9226
+                 2.2  -0.2349  -0.2621  -0.3483  -0.3651  -0.1773   0.0295   0.2480   0.4767   0.7145   0.8927   0.6602   0.9812
+                 2.4  -0.2829  -0.2991  -0.3453  -0.4649  -0.3142  -0.0818   0.1632   0.4195   0.6856   0.9535   0.7503   1.0414
+                 2.6  -0.3355  -0.3511  -0.3722  -0.4739  -0.4713  -0.2112   0.0627   0.3489   0.6457   0.9516   0.8987   1.1032
+                 2.8  -0.3920  -0.4133  -0.4195  -0.4748  -0.6189  -0.3589  -0.0539   0.2643   0.5942   0.9341   1.1086   1.1662
+                 3.0  -0.4523  -0.4809  -0.4821  -0.5058  -0.6542  -0.5254  -0.1871   0.1657   0.5310   0.9071   1.3388   1.2304
+                 3.2  -0.5164  -0.5533  -0.5572  -0.5557  -0.6515  -0.7109  -0.3370   0.0526   0.4557   0.8706   1.5145   1.2957
+                 3.4  -0.5843  -0.6302  -0.6395  -0.6226  -0.6808  -0.9157  -0.5039  -0.0752   0.3682   0.8242   1.6200   1.3619
+                 3.6  -0.6559  -0.7115  -0.7275  -0.7052  -0.7232  -0.9192  -0.6880  -0.2178   0.2682   0.7679   1.6890   1.4290
+                 3.8  -0.7313  -0.7974  -0.8207  -0.7999  -0.7855  -0.9234  -0.8895  -0.3755   0.1556   0.7013   1.7428   1.5016
+                 4.0  -0.8104  -0.8878  -0.9189  -0.9018  -0.8632  -0.9602  -1.1085  -0.5484   0.0302   0.6245   1.7778   1.5852
+                        </tableData>
+                    </table>
+                    <!-- Helical tip Mach losses for thin (6 %) steel tips: the P-38G tip runs at M 1.05-1.1
+                         near 400 mph at altitude, costing roughly a tenth of the propeller efficiency. -->
+                    <table name="CT_MACH" type="internal">
+                        <tableData>
+                            0.00  1.000
+                            0.85  1.000
+                            0.95  0.975
+                            1.05  0.935
+                            1.15  0.880
+                            1.30  0.780
+                        </tableData>
+                    </table>
+                    <table name="CP_MACH" type="internal">
+                        <tableData>
+                            0.00  1.000
+                            0.85  1.000
+                            0.95  1.010
+                            1.05  1.030
+                            1.15  1.050
+                            1.30  1.080
+                        </tableData>
+                    </table>
+                </propeller>
+            </thruster>
+        </engine>
+        <engine>
+            <feed> 1 </feed>
+            <feed> 3 </feed>
+            <piston_engine name="allison_v1710_55_right">
+                <!-- Allison V-1710-55 (right engine, opposite hand) with GE B-13 turbosupercharger and wing leading-edge
+                     intercooler. AAF 42-12687 (Wright Field, 10 Feb 1943): 1220 bhp at 44.7 inHg /
+                     3000 rpm held to the critical altitude, 1320 bhp at 48.0 inHg (takeoff and
+                     combat, carburettor-air-temperature limited above ~15,000 ft). The turbo
+                     regulator is the supercharger clamp: the rated boost holds 44.7 inHg, full throttle
+                     (> 0.98) raises the clamp to 48.0 inHg. The top speed is rated where the
+                     ambient lapse above it reproduces the test's turbo-rpm-limited 36.0 inHg at
+                     30,000 ft and 27.2 inHg at 35,000 ft. -->
+                <minmp unit="INHG"> 10.0 </minmp>
+                <maxmp unit="INHG"> 29.9 </maxmp>
+                <displacement unit="IN3"> 1710.6 </displacement>
+                <bore unit="IN"> 5.5 </bore>
+                <stroke unit="IN"> 6.0 </stroke>
+                <cylinders> 12 </cylinders>
+                <cylinder-head-mass unit="LBS"> 40 </cylinder-head-mass>
+                <compression-ratio> 6.65 </compression-ratio>
+                <maxhp> 1325.0 </maxhp>
+                <cycles> 4.0 </cycles>
+                <idlerpm> 600.0 </idlerpm>
+                <maxrpm> 3000.0 </maxrpm>
+                <maxthrottle> 1.0 </maxthrottle>
+                <minthrottle> 0.0 </minthrottle>
+                <sparkfaildrop> 0.10 </sparkfaildrop>
+                <volumetric-efficiency> 0.86 </volumetric-efficiency>
+                <bsfc unit="LBS/HP*HR"> 0.465 </bsfc>
+                <boost-loss-factor> 0.0 </boost-loss-factor>
+                <ram-air-factor> 0.2 </ram-air-factor>
+                <boostoverride> 0 </boostoverride>
+                <!-- The wastegate gives only the pressure ratio the altitude needs, so the throttle
+                     keeps its range at low level. JSBSim's boost multiplies every throttle setting
+                     by one ratio per speed; three speeds rated at 6,000 / 15,000 / 24,700 ft,
+                     switched automatically by altitude, stand in for the continuous turbo. -->
+                <numboostspeeds> 3 </numboostspeeds>
+                <takeoffboost unit="INHG"> 18.08 </takeoffboost>
+                <ratedboost1 unit="INHG"> 14.78 </ratedboost1>
+                <ratedpower1> 1225.0 </ratedpower1>
+                <ratedrpm1> 3000.0 </ratedrpm1>
+                <ratedaltitude1> 6000.0 </ratedaltitude1>
+                <ratedboost2 unit="INHG"> 14.78 </ratedboost2>
+                <ratedpower2> 1225.0 </ratedpower2>
+                <ratedrpm2> 3000.0 </ratedrpm2>
+                <ratedaltitude2> 15000.0 </ratedaltitude2>
+                <ratedboost3 unit="INHG"> 14.78 </ratedboost3>
+                <ratedpower3> 1225.0 </ratedpower3>
+                <ratedrpm3> 3000.0 </ratedrpm3>
+                <ratedaltitude3> 24700.0 </ratedaltitude3>
+            </piston_engine>
+
+            <thruster>
+                <location unit="IN">
+                    <x>  36.0 </x>
+                    <y>  93.0 </y>
+                    <z>   0.0 </z>
+                </location>
+                <orient unit="DEG">
+                    <roll>  0.0 </roll>
+                    <pitch> 0.0 </pitch>
+                    <yaw>   0.0 </yaw>
+                </orient>
+                <sense>  1 </sense>
+                <propeller name="curtiss_electric_right">
+                    <!-- Curtiss Electric 3-blade, 11 ft 6 in, 2:1 reduction. Blade range 22.7-57.7 deg
+                         at the 42 in station (AAF 42-12687 report) is 16.8-51.8 deg at 0.75R with the
+                         helical twist used below; maxpitch is the 87 deg feather stop because JSBSim
+                         is the feather stop. Ct/Cp(J, beta_0.75R) are generated by
+                         vehicles/tools/propeller_bem.py from vehicles/p38g/design/curtiss_electric_3b.json
+                         (blade-element/momentum, Prandtl tip loss, Clark-Y-family sections). -->
+                    <ixx> 100.0 </ixx>
+                    <diameter unit="IN"> 138.0 </diameter>
+                    <numblades> 3 </numblades>
+                    <gearratio> 2.00 </gearratio>
+                    <minpitch> 16.8 </minpitch>
+                    <maxpitch> 87.0 </maxpitch>
+                    <minrpm> 1100.0 </minrpm>
+                    <maxrpm> 1500.0 </maxrpm>
+                    <table name="C_THRUST" type="internal">
+                        <tableData>
+                           15       20       25       30       35       40       45       50       55       60       70       87
+                 0.0   0.1635   0.2016   0.2201   0.1930   0.1575   0.1596   0.1663   0.1676   0.1632   0.1530   0.1158   0.0136
+                 0.2   0.1293   0.1733   0.1903   0.1863   0.1588   0.1300   0.1262   0.1246   0.1189   0.1091   0.0795   0.0143
+                 0.4   0.0964   0.1463   0.1813   0.1961   0.1839   0.1432   0.1274   0.1256   0.1223   0.1145   0.0870   0.0161
+                 0.6   0.0491   0.1064   0.1644   0.2003   0.2019   0.1689   0.1331   0.1243   0.1228   0.1171   0.0923   0.0194
+                 0.8  -0.0047   0.0565   0.1182   0.1795   0.2194   0.2033   0.1535   0.1250   0.1211   0.1178   0.0959   0.0222
+                 1.0  -0.0643   0.0017   0.0680   0.1337   0.1981   0.2367   0.2002   0.1382   0.1194   0.1170   0.0984   0.0241
+                 1.2  -0.1282  -0.0576   0.0140   0.0848   0.1541   0.2215   0.2487   0.1813   0.1271   0.1151   0.0999   0.0252
+                 1.4  -0.1899  -0.1204  -0.0435   0.0330   0.1079   0.1805   0.2504   0.2457   0.1550   0.1152   0.1006   0.0254
+                 1.6  -0.2087  -0.1833  -0.1044  -0.0216   0.0593   0.1377   0.2131   0.2851   0.2217   0.1320   0.1006   0.0248
+                 1.8  -0.2310  -0.2238  -0.1670  -0.0789   0.0086   0.0932   0.1745   0.2520   0.2861   0.1785   0.1000   0.0236
+                 2.0  -0.2678  -0.2406  -0.2239  -0.1391  -0.0444   0.0470   0.1347   0.2181   0.2970   0.2493   0.0996   0.0216
+                 2.2  -0.3161  -0.2713  -0.2541  -0.2009  -0.0996  -0.0009   0.0935   0.1833   0.2680   0.3117   0.1034   0.0190
+                 2.4  -0.3715  -0.3134  -0.2755  -0.2549  -0.1571  -0.0506   0.0511   0.1476   0.2384   0.3204   0.1312   0.0159
+                 2.6  -0.4311  -0.3649  -0.3088  -0.2858  -0.2169  -0.1021   0.0073   0.1108   0.2082   0.2990   0.1743   0.0122
+                 2.8  -0.4949  -0.4227  -0.3522  -0.3088  -0.2776  -0.1555  -0.0380   0.0731   0.1773   0.2742   0.2323   0.0080
+                 3.0  -0.5627  -0.4847  -0.4039  -0.3411  -0.3167  -0.2107  -0.0846   0.0343   0.1456   0.2489   0.2989   0.0033
+                 3.2  -0.6348  -0.5506  -0.4621  -0.3814  -0.3417  -0.2678  -0.1327  -0.0056   0.1132   0.2232   0.3420  -0.0019
+                 3.4  -0.7110  -0.6205  -0.5246  -0.4299  -0.3693  -0.3268  -0.1823  -0.0465   0.0801   0.1970   0.3546  -0.0075
+                 3.6  -0.7916  -0.6943  -0.5909  -0.4854  -0.4043  -0.3716  -0.2333  -0.0886   0.0461   0.1702   0.3534  -0.0135
+                 3.8  -0.8764  -0.7721  -0.6609  -0.5462  -0.4459  -0.3991  -0.2859  -0.1318   0.0113   0.1429   0.3479  -0.0188
+                 4.0  -0.9657  -0.8540  -0.7345  -0.6108  -0.4941  -0.4272  -0.3399  -0.1761  -0.0243   0.1150   0.3366  -0.0224
+                        </tableData>
+                    </table>
+                    <table name="C_POWER" type="internal">
+                        <tableData>
+                           15       20       25       30       35       40       45       50       55       60       70       87
+                 0.0   0.0719   0.1042   0.1402   0.1843   0.2197   0.2757   0.3382   0.4027   0.4671   0.5293   0.6382   0.7390
+                 0.2   0.0675   0.0999   0.1335   0.1665   0.1939   0.2210   0.2605   0.3026   0.3418   0.3762   0.4243   0.4068
+                 0.4   0.0625   0.1012   0.1409   0.1786   0.2090   0.2307   0.2638   0.3090   0.3549   0.3969   0.4633   0.5012
+                 0.6   0.0431   0.0887   0.1436   0.1930   0.2293   0.2509   0.2682   0.3101   0.3614   0.4104   0.4923   0.5597
+                 0.8   0.0080   0.0600   0.1222   0.1933   0.2568   0.2851   0.2893   0.3124   0.3635   0.4195   0.5168   0.6097
+                 1.0  -0.0458   0.0142   0.0854   0.1664   0.2560   0.3317   0.3419   0.3282   0.3642   0.4255   0.5390   0.6580
+                 1.2  -0.1188  -0.0508   0.0311   0.1237   0.2258   0.3363   0.4141   0.3900   0.3771   0.4290   0.5599   0.7071
+                 1.4  -0.1983  -0.1352  -0.0423   0.0637   0.1802   0.3058   0.4397   0.4922   0.4258   0.4350   0.5796   0.7579
+                 1.6  -0.1714  -0.2314  -0.1358  -0.0148   0.1180   0.2608   0.4126   0.5722   0.5485   0.4699   0.5982   0.8108
+                 1.8  -0.1764  -0.2626  -0.2460  -0.1128   0.0382   0.2002   0.3721   0.5525   0.6816   0.5730   0.6153   0.8657
+                 2.0  -0.1965  -0.2439  -0.3428  -0.2313  -0.0600   0.1234   0.3174   0.5209   0.7326   0.7375   0.6325   0.9226
+                 2.2  -0.2349  -0.2621  -0.3483  -0.3651  -0.1773   0.0295   0.2480   0.4767   0.7145   0.8927   0.6602   0.9812
+                 2.4  -0.2829  -0.2991  -0.3453  -0.4649  -0.3142  -0.0818   0.1632   0.4195   0.6856   0.9535   0.7503   1.0414
+                 2.6  -0.3355  -0.3511  -0.3722  -0.4739  -0.4713  -0.2112   0.0627   0.3489   0.6457   0.9516   0.8987   1.1032
+                 2.8  -0.3920  -0.4133  -0.4195  -0.4748  -0.6189  -0.3589  -0.0539   0.2643   0.5942   0.9341   1.1086   1.1662
+                 3.0  -0.4523  -0.4809  -0.4821  -0.5058  -0.6542  -0.5254  -0.1871   0.1657   0.5310   0.9071   1.3388   1.2304
+                 3.2  -0.5164  -0.5533  -0.5572  -0.5557  -0.6515  -0.7109  -0.3370   0.0526   0.4557   0.8706   1.5145   1.2957
+                 3.4  -0.5843  -0.6302  -0.6395  -0.6226  -0.6808  -0.9157  -0.5039  -0.0752   0.3682   0.8242   1.6200   1.3619
+                 3.6  -0.6559  -0.7115  -0.7275  -0.7052  -0.7232  -0.9192  -0.6880  -0.2178   0.2682   0.7679   1.6890   1.4290
+                 3.8  -0.7313  -0.7974  -0.8207  -0.7999  -0.7855  -0.9234  -0.8895  -0.3755   0.1556   0.7013   1.7428   1.5016
+                 4.0  -0.8104  -0.8878  -0.9189  -0.9018  -0.8632  -0.9602  -1.1085  -0.5484   0.0302   0.6245   1.7778   1.5852
+                        </tableData>
+                    </table>
+                    <!-- Helical tip Mach losses for thin (6 %) steel tips: the P-38G tip runs at M 1.05-1.1
+                         near 400 mph at altitude, costing roughly a tenth of the propeller efficiency. -->
+                    <table name="CT_MACH" type="internal">
+                        <tableData>
+                            0.00  1.000
+                            0.85  1.000
+                            0.95  0.975
+                            1.05  0.935
+                            1.15  0.880
+                            1.30  0.780
+                        </tableData>
+                    </table>
+                    <table name="CP_MACH" type="internal">
+                        <tableData>
+                            0.00  1.000
+                            0.85  1.000
+                            0.95  1.010
+                            1.05  1.030
+                            1.15  1.050
+                            1.30  1.080
+                        </tableData>
+                    </table>
+                </propeller>
+            </thruster>
+        </engine>
+    </propulsion>
+
+    <flight_control name="FCS: p38g">
+        <property value="0.0">fcs/feather-left-norm</property>
+        <property value="0.0">fcs/feather-right-norm</property>
+        <property value="0.2">fcs/coolant-flap-left-norm</property>
+        <property value="0.2">fcs/coolant-flap-right-norm</property>
+        <property value="0.2">fcs/oil-shutter-left-norm</property>
+        <property value="0.2">fcs/oil-shutter-right-norm</property>
+
+        <channel name="Engine">
+            <!-- Bendix-Stromberg pressure carburettor with automatic mixture control: the cockpit
+                 lever only selects IDLE CUT-OFF, AUTO-LEAN or AUTO-RICH, and the AMC meters fuel
+                 to air mass so the equivalence ratio holds with altitude and boost. JSBSim's piston
+                 meters phi = 1.3 * mixture * p0 / p_amb, so the position written here is
+                 phi_target / 1.3 * p_amb / p0. -->
+            <switch name="fcs/mixture-phi-left">
+                <default value="1.25"/>
+                <test logic="AND" value="0.0"> fcs/mixture-cmd-norm[0] LT 0.08 </test>
+                <test logic="AND" value="1.0"> fcs/mixture-cmd-norm[0] LT 0.20 </test>
+            </switch>
+            <switch name="fcs/mixture-phi-right">
+                <default value="1.25"/>
+                <test logic="AND" value="0.0"> fcs/mixture-cmd-norm[1] LT 0.08 </test>
+                <test logic="AND" value="1.0"> fcs/mixture-cmd-norm[1] LT 0.20 </test>
+            </switch>
+            <fcs_function name="fcs/mixture-amc-left">
+                <function>
+                    <product>
+                        <property>fcs/mixture-phi-left</property>
+                        <property>atmosphere/P-psf</property>
+                        <value> 3.6349e-4 </value>
+                    </product>
+                </function>
+                <output>fcs/mixture-pos-norm[0]</output>
+            </fcs_function>
+            <fcs_function name="fcs/mixture-amc-right">
+                <function>
+                    <product>
+                        <property>fcs/mixture-phi-right</property>
+                        <property>atmosphere/P-psf</property>
+                        <value> 3.6349e-4 </value>
+                    </product>
+                </function>
+                <output>fcs/mixture-pos-norm[1]</output>
+            </fcs_function>
+            <!-- GE B-13 turbo + leading-edge intercooler, left engine. JSBSim prices the charge at
+                 ambient temperature; the real charge is compressor-heated (eta_c 0.65) and only
+                 partly intercooled (effectiveness 0.5; the 3 May 1943 AAF trial blames
+                 insufficient intercooling for the P-38G's altitude performance). The charge
+                 density loss scales volumetric efficiency, and the charge temperature is what
+                 the carburettor-air thermometer shows (57 degC limit). -->
+            <fcs_function name="propulsion/engine[0]/carb-pressure-ratio">
+                <function>
+                    <max>
+                        <value> 1.0 </value>
+                        <quotient>
+                            <property>propulsion/engine[0]/map-inhg</property>
+                            <product>
+                                <property>atmosphere/P-psf</property>
+                                <value> 0.014139 </value>
+                            </product>
+                        </quotient>
+                    </max>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[0]/carb-air-temp-degR">
+                <function>
+                    <product>
+                        <property>atmosphere/T-R</property>
+                        <sum>
+                            <value> 1.0 </value>
+                            <product>
+                                <value> 0.76923 </value>
+                                <difference>
+                                    <pow>
+                                        <property>propulsion/engine[0]/carb-pressure-ratio</property>
+                                        <value> 0.2857 </value>
+                                    </pow>
+                                    <value> 1.0 </value>
+                                </difference>
+                            </product>
+                        </sum>
+                    </product>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[0]/carb-air-temp-degC">
+                <function>
+                    <difference>
+                        <product>
+                            <property>propulsion/engine[0]/carb-air-temp-degR</property>
+                            <value> 0.5555556 </value>
+                        </product>
+                        <value> 273.15 </value>
+                    </difference>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[0]/charge-density-factor">
+                <function>
+                    <quotient>
+                        <property>atmosphere/T-R</property>
+                        <property>propulsion/engine[0]/carb-air-temp-degR</property>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[0]/charge-volumetric-efficiency">
+                <function>
+                    <product>
+                        <property>propulsion/engine[0]/charge-density-factor</property>
+                        <value> 0.86 </value>
+                    </product>
+                </function>
+                <output>propulsion/engine[0]/volumetric-efficiency</output>
+            </fcs_function>
+            <!-- GE B-13 turbo + leading-edge intercooler, right engine. JSBSim prices the charge at
+                 ambient temperature; the real charge is compressor-heated (eta_c 0.65) and only
+                 partly intercooled (effectiveness 0.5; the 3 May 1943 AAF trial blames
+                 insufficient intercooling for the P-38G's altitude performance). The charge
+                 density loss scales volumetric efficiency, and the charge temperature is what
+                 the carburettor-air thermometer shows (57 degC limit). -->
+            <fcs_function name="propulsion/engine[1]/carb-pressure-ratio">
+                <function>
+                    <max>
+                        <value> 1.0 </value>
+                        <quotient>
+                            <property>propulsion/engine[1]/map-inhg</property>
+                            <product>
+                                <property>atmosphere/P-psf</property>
+                                <value> 0.014139 </value>
+                            </product>
+                        </quotient>
+                    </max>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[1]/carb-air-temp-degR">
+                <function>
+                    <product>
+                        <property>atmosphere/T-R</property>
+                        <sum>
+                            <value> 1.0 </value>
+                            <product>
+                                <value> 0.76923 </value>
+                                <difference>
+                                    <pow>
+                                        <property>propulsion/engine[1]/carb-pressure-ratio</property>
+                                        <value> 0.2857 </value>
+                                    </pow>
+                                    <value> 1.0 </value>
+                                </difference>
+                            </product>
+                        </sum>
+                    </product>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[1]/carb-air-temp-degC">
+                <function>
+                    <difference>
+                        <product>
+                            <property>propulsion/engine[1]/carb-air-temp-degR</property>
+                            <value> 0.5555556 </value>
+                        </product>
+                        <value> 273.15 </value>
+                    </difference>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[1]/charge-density-factor">
+                <function>
+                    <quotient>
+                        <property>atmosphere/T-R</property>
+                        <property>propulsion/engine[1]/carb-air-temp-degR</property>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="propulsion/engine[1]/charge-volumetric-efficiency">
+                <function>
+                    <product>
+                        <property>propulsion/engine[1]/charge-density-factor</property>
+                        <value> 0.86 </value>
+                    </product>
+                </function>
+                <output>propulsion/engine[1]/volumetric-efficiency</output>
+            </fcs_function>
+            <!-- Curtiss Electric governor, left engine. The blade angle is the equilibrium
+                 angle at which the propeller absorbs the engine's power at the RPM the lever
+                 selects (2,200-3,000 engine rpm): beta(J, Cp), `propeller_bem.py ... beta` from the
+                 same spec as the propeller tables, held between the 16.8 and 51.8 deg (0.75R) governing stops,
+                 plus a slow integral trim on the remaining RPM error. The power fed forward is
+                 the larger of shaft power and what the manifold pressure can deliver (~37 hp per
+                 inHg of charge-density-corrected boost above the ~12 inHg the engine needs to
+                 overcome its own friction and pumping), so a windmilling start, whose shaft power
+                 is negative, does not settle on the fine-pitch stop. Being algebraic it holds
+                 through JSBSim's trim, whose 0.5 s steady-state steps make JSBSim's own
+                 RPM-error-times-step governor oscillate. The feathering switch runs the electric
+                 pitch motor to the 87 deg stop in about 5 s, and can do so with the engine
+                 stopped. The propeller keeps JSBSim's own governor (minrpm/maxrpm) only for
+                 the engine steady-state solve of a running start, which does not run the flight
+                 control system; in flight this angle is written before the propeller runs. -->
+            <fcs_function name="propulsion/engine[0]/governor-rpm-req">
+                <function>
+                    <sum>
+                        <value> 2200.0 </value>
+                        <product>
+                            <property>fcs/advance-cmd-norm[0]</property>
+                            <value> 800.0 </value>
+                        </product>
+                    </sum>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-advance-ratio-left">
+                <function>
+                    <quotient>
+                        <property>velocities/vt-fps</property>
+                        <product>
+                            <property>propulsion/engine[0]/governor-rpm-req</property>
+                            <value> 0.0958333 </value>
+                        </product>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-power-coefficient-left">
+                <function>
+                    <quotient>
+                        <product>
+                            <max>
+                                <property>propulsion/engine[0]/power-hp</property>
+                                <product>
+                                    <difference>
+                                        <property>propulsion/engine[0]/map-inhg</property>
+                                        <value> 12.0 </value>
+                                    </difference>
+                                    <property>propulsion/engine[0]/charge-density-factor</property>
+                                    <value> 37.0 </value>
+                                </product>
+                            </max>
+                            <value> 550.0 </value>
+                        </product>
+                        <product>
+                            <property>atmosphere/rho-slugs_ft3</property>
+                            <pow>
+                                <quotient>
+                                    <property>propulsion/engine[0]/governor-rpm-req</property>
+                                    <value> 120.0 </value>
+                                </quotient>
+                                <value> 3.0 </value>
+                            </pow>
+                            <value> 201135.0 </value>
+                        </product>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-rpm-trim-rate-left">
+                <function>
+                    <product>
+                        <difference>
+                            <property>propulsion/engine[0]/engine-rpm</property>
+                            <property>propulsion/engine[0]/governor-rpm-req</property>
+                        </difference>
+                        <value> 0.01 </value>
+                    </product>
+                </function>
+            </fcs_function>
+            <integrator name="fcs/governor-rpm-trim-left">
+                <input> fcs/governor-rpm-trim-rate-left </input>
+                <c1> 1.0 </c1>
+                <clipto>
+                    <min> -6.0 </min>
+                    <max>  6.0 </max>
+                </clipto>
+            </integrator>
+            <fcs_function name="fcs/feather-command-left">
+                <function>
+                    <ifthen>
+                        <ge>
+                            <property>fcs/feather-left-norm</property>
+                            <value> 0.5 </value>
+                        </ge>
+                        <value> 0.2 </value>
+                        <value> -0.2 </value>
+                    </ifthen>
+                </function>
+            </fcs_function>
+            <integrator name="fcs/feather-travel-left">
+                <input> fcs/feather-command-left </input>
+                <c1> 1.0 </c1>
+                <clipto>
+                    <min> 0.0 </min>
+                    <max> 1.0 </max>
+                </clipto>
+            </integrator>
+            <fcs_function name="fcs/governor-blade-angle-left">
+                <function>
+                    <sum>
+                        <product>
+                            <difference>
+                                <value> 1.0 </value>
+                                <property>fcs/feather-travel-left</property>
+                            </difference>
+                            <max>
+                                <value> 16.8 </value>
+                                <min>
+                                    <value> 51.8 </value>
+                                    <sum>
+                                        <table>
+                                            <independentVar lookup="row">fcs/governor-advance-ratio-left</independentVar>
+                                            <independentVar lookup="column">fcs/governor-power-coefficient-left</independentVar>
+                                            <tableData>
+                               0.00   0.02   0.05   0.08   0.12   0.16   0.20   0.25   0.30   0.40   0.55
+                         0.0  16.80  16.80  16.80  16.80  22.21  27.57  32.64  37.85  41.97  49.79  51.80
+                         0.2  16.80  16.80  16.80  16.96  23.01  28.99  36.10  43.74  49.68  51.80  51.80
+                         0.4  16.80  16.80  16.80  17.28  22.38  27.45  33.35  43.18  49.05  51.80  51.80
+                         0.6  16.80  16.80  16.80  19.12  22.94  26.51  30.84  39.80  48.97  51.80  51.80
+                         0.8  16.80  16.80  19.12  21.70  24.84  27.73  30.44  34.28  48.32  51.80  51.80
+                         1.0  18.90  20.44  22.61  24.65  27.21  29.63  31.93  34.68  37.30  51.80  51.80
+                         1.2  23.18  24.36  26.07  27.71  29.81  31.83  33.78  36.13  38.40  51.80  51.80
+                         1.4  27.06  28.00  29.38  30.72  32.47  34.16  35.81  37.82  39.77  43.55  51.80
+                         1.6  30.58  31.35  32.49  33.61  35.07  36.51  37.91  39.63  41.32  44.60  49.32
+                         1.8  33.77  34.42  35.38  36.32  37.56  38.79  39.99  41.48  42.94  45.79  49.93
+                         2.0  36.67  37.22  38.04  38.84  39.91  40.96  42.01  43.29  44.56  47.06  50.70
+                         2.2  39.30  39.78  40.48  41.18  42.10  43.02  43.92  45.05  46.16  48.35  51.56
+                         2.4  41.70  42.11  42.72  43.33  44.14  44.94  45.73  46.72  47.69  49.63  51.80
+                         2.6  43.88  44.24  44.77  45.31  46.02  46.72  47.42  48.29  49.16  50.87  51.80
+                         2.8  45.86  46.18  46.65  47.13  47.76  48.38  49.00  49.78  50.55  51.80  51.80
+                         3.0  47.68  47.96  48.38  48.80  49.36  49.92  50.48  51.17  51.80  51.80  51.80
+                         3.2  49.34  49.59  49.97  50.35  50.85  51.35  51.80  51.80  51.80  51.80  51.80
+                         3.4  50.86  51.09  51.43  51.77  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         3.6  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         3.8  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         4.0  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                                            </tableData>
+                                        </table>
+                                        <property>fcs/governor-rpm-trim-left</property>
+                                    </sum>
+                                </min>
+                            </max>
+                        </product>
+                        <product>
+                            <property>fcs/feather-travel-left</property>
+                            <value> 87.0 </value>
+                        </product>
+                    </sum>
+                </function>
+                <output>propulsion/engine[0]/blade-angle</output>
+            </fcs_function>
+            <!-- Curtiss Electric governor, right engine. The blade angle is the equilibrium
+                 angle at which the propeller absorbs the engine's power at the RPM the lever
+                 selects (2,200-3,000 engine rpm): beta(J, Cp), `propeller_bem.py ... beta` from the
+                 same spec as the propeller tables, held between the 16.8 and 51.8 deg (0.75R) governing stops,
+                 plus a slow integral trim on the remaining RPM error. The power fed forward is
+                 the larger of shaft power and what the manifold pressure can deliver (~37 hp per
+                 inHg of charge-density-corrected boost above the ~12 inHg the engine needs to
+                 overcome its own friction and pumping), so a windmilling start, whose shaft power
+                 is negative, does not settle on the fine-pitch stop. Being algebraic it holds
+                 through JSBSim's trim, whose 0.5 s steady-state steps make JSBSim's own
+                 RPM-error-times-step governor oscillate. The feathering switch runs the electric
+                 pitch motor to the 87 deg stop in about 5 s, and can do so with the engine
+                 stopped. The propeller keeps JSBSim's own governor (minrpm/maxrpm) only for
+                 the engine steady-state solve of a running start, which does not run the flight
+                 control system; in flight this angle is written before the propeller runs. -->
+            <fcs_function name="propulsion/engine[1]/governor-rpm-req">
+                <function>
+                    <sum>
+                        <value> 2200.0 </value>
+                        <product>
+                            <property>fcs/advance-cmd-norm[1]</property>
+                            <value> 800.0 </value>
+                        </product>
+                    </sum>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-advance-ratio-right">
+                <function>
+                    <quotient>
+                        <property>velocities/vt-fps</property>
+                        <product>
+                            <property>propulsion/engine[1]/governor-rpm-req</property>
+                            <value> 0.0958333 </value>
+                        </product>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-power-coefficient-right">
+                <function>
+                    <quotient>
+                        <product>
+                            <max>
+                                <property>propulsion/engine[1]/power-hp</property>
+                                <product>
+                                    <difference>
+                                        <property>propulsion/engine[1]/map-inhg</property>
+                                        <value> 12.0 </value>
+                                    </difference>
+                                    <property>propulsion/engine[1]/charge-density-factor</property>
+                                    <value> 37.0 </value>
+                                </product>
+                            </max>
+                            <value> 550.0 </value>
+                        </product>
+                        <product>
+                            <property>atmosphere/rho-slugs_ft3</property>
+                            <pow>
+                                <quotient>
+                                    <property>propulsion/engine[1]/governor-rpm-req</property>
+                                    <value> 120.0 </value>
+                                </quotient>
+                                <value> 3.0 </value>
+                            </pow>
+                            <value> 201135.0 </value>
+                        </product>
+                    </quotient>
+                </function>
+            </fcs_function>
+            <fcs_function name="fcs/governor-rpm-trim-rate-right">
+                <function>
+                    <product>
+                        <difference>
+                            <property>propulsion/engine[1]/engine-rpm</property>
+                            <property>propulsion/engine[1]/governor-rpm-req</property>
+                        </difference>
+                        <value> 0.01 </value>
+                    </product>
+                </function>
+            </fcs_function>
+            <integrator name="fcs/governor-rpm-trim-right">
+                <input> fcs/governor-rpm-trim-rate-right </input>
+                <c1> 1.0 </c1>
+                <clipto>
+                    <min> -6.0 </min>
+                    <max>  6.0 </max>
+                </clipto>
+            </integrator>
+            <fcs_function name="fcs/feather-command-right">
+                <function>
+                    <ifthen>
+                        <ge>
+                            <property>fcs/feather-right-norm</property>
+                            <value> 0.5 </value>
+                        </ge>
+                        <value> 0.2 </value>
+                        <value> -0.2 </value>
+                    </ifthen>
+                </function>
+            </fcs_function>
+            <integrator name="fcs/feather-travel-right">
+                <input> fcs/feather-command-right </input>
+                <c1> 1.0 </c1>
+                <clipto>
+                    <min> 0.0 </min>
+                    <max> 1.0 </max>
+                </clipto>
+            </integrator>
+            <fcs_function name="fcs/governor-blade-angle-right">
+                <function>
+                    <sum>
+                        <product>
+                            <difference>
+                                <value> 1.0 </value>
+                                <property>fcs/feather-travel-right</property>
+                            </difference>
+                            <max>
+                                <value> 16.8 </value>
+                                <min>
+                                    <value> 51.8 </value>
+                                    <sum>
+                                        <table>
+                                            <independentVar lookup="row">fcs/governor-advance-ratio-right</independentVar>
+                                            <independentVar lookup="column">fcs/governor-power-coefficient-right</independentVar>
+                                            <tableData>
+                               0.00   0.02   0.05   0.08   0.12   0.16   0.20   0.25   0.30   0.40   0.55
+                         0.0  16.80  16.80  16.80  16.80  22.21  27.57  32.64  37.85  41.97  49.79  51.80
+                         0.2  16.80  16.80  16.80  16.96  23.01  28.99  36.10  43.74  49.68  51.80  51.80
+                         0.4  16.80  16.80  16.80  17.28  22.38  27.45  33.35  43.18  49.05  51.80  51.80
+                         0.6  16.80  16.80  16.80  19.12  22.94  26.51  30.84  39.80  48.97  51.80  51.80
+                         0.8  16.80  16.80  19.12  21.70  24.84  27.73  30.44  34.28  48.32  51.80  51.80
+                         1.0  18.90  20.44  22.61  24.65  27.21  29.63  31.93  34.68  37.30  51.80  51.80
+                         1.2  23.18  24.36  26.07  27.71  29.81  31.83  33.78  36.13  38.40  51.80  51.80
+                         1.4  27.06  28.00  29.38  30.72  32.47  34.16  35.81  37.82  39.77  43.55  51.80
+                         1.6  30.58  31.35  32.49  33.61  35.07  36.51  37.91  39.63  41.32  44.60  49.32
+                         1.8  33.77  34.42  35.38  36.32  37.56  38.79  39.99  41.48  42.94  45.79  49.93
+                         2.0  36.67  37.22  38.04  38.84  39.91  40.96  42.01  43.29  44.56  47.06  50.70
+                         2.2  39.30  39.78  40.48  41.18  42.10  43.02  43.92  45.05  46.16  48.35  51.56
+                         2.4  41.70  42.11  42.72  43.33  44.14  44.94  45.73  46.72  47.69  49.63  51.80
+                         2.6  43.88  44.24  44.77  45.31  46.02  46.72  47.42  48.29  49.16  50.87  51.80
+                         2.8  45.86  46.18  46.65  47.13  47.76  48.38  49.00  49.78  50.55  51.80  51.80
+                         3.0  47.68  47.96  48.38  48.80  49.36  49.92  50.48  51.17  51.80  51.80  51.80
+                         3.2  49.34  49.59  49.97  50.35  50.85  51.35  51.80  51.80  51.80  51.80  51.80
+                         3.4  50.86  51.09  51.43  51.77  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         3.6  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         3.8  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                         4.0  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80  51.80
+                                            </tableData>
+                                        </table>
+                                        <property>fcs/governor-rpm-trim-right</property>
+                                    </sum>
+                                </min>
+                            </max>
+                        </product>
+                        <product>
+                            <property>fcs/feather-travel-right</property>
+                            <value> 87.0 </value>
+                        </product>
+                    </sum>
+                </function>
+                <output>propulsion/engine[1]/blade-angle</output>
+            </fcs_function>
+        </channel>
+        <channel name="Pitch">
+            <summer name="fcs/pitch-sum">
+                <input>fcs/elevator-cmd-norm</input>
+                <input>fcs/pitch-trim-cmd-norm</input>
+                <clipto>
+                    <min> -1.0 </min>
+                    <max>  1.0 </max>
+                </clipto>
+            </summer>
+            <aerosurface_scale name="fcs/elevator-control">
+                <input>fcs/pitch-sum</input>
+                <range>
+                    <min> -0.40 </min>
+                    <max>  0.38 </max>
+                </range>
+                <output>fcs/elevator-pos-rad</output>
+            </aerosurface_scale>
+        </channel>
+
+        <channel name="Roll">
+            <!-- P-38G unboosted cable-driven ailerons (T.O. 01-75F-1): no hydraulic aileron boost
+                 (unlike P-38J-25/L), so pilot control-wheel force limits achievable aileron travel
+                 at high dynamic pressure, while a cockpit aileron trim tab relieves steady roll moments. -->
+            <fcs_function name="fcs/aileron-stick-force-limited">
+                <function>
+                    <product>
+                        <property>fcs/aileron-cmd-norm</property>
+                        <table>
+                            <independentVar lookup="row">aero/qbar-psf</independentVar>
+                            <tableData>
+                                  0.0   1.000
+                                140.0   1.000
+                                200.0   0.760
+                                280.0   0.500
+                                380.0   0.300
+                                500.0   0.180
+                                650.0   0.120
+                            </tableData>
+                        </table>
+                    </product>
+                </function>
+            </fcs_function>
+            <aerosurface_scale name="fcs/left-aileron-control">
+                <input>fcs/aileron-stick-force-limited</input>
+                <range>
+                    <min> -0.35 </min>
+                    <max>  0.35 </max>
+                </range>
+                <output>fcs/left-aileron-pos-rad</output>
+            </aerosurface_scale>
+            <aerosurface_scale name="fcs/right-aileron-control">
+                <input>-fcs/aileron-stick-force-limited</input>
+                <range>
+                    <min> -0.35 </min>
+                    <max>  0.35 </max>
+                </range>
+                <output>fcs/right-aileron-pos-rad</output>
+            </aerosurface_scale>
+        </channel>
+
+        <channel name="Yaw">
+            <!-- Twin rudders mechanically linked to a single pedal system (no split left/right pedal
+                 authority), augmented by a dedicated cockpit rudder trim tab for single-engine flight. -->
+            <aerosurface_scale name="fcs/rudder-control">
+                <input>fcs/rudder-cmd-norm</input>
+                <range>
+                    <min> -0.45 </min>
+                    <max>  0.45 </max>
+                </range>
+                <output>fcs/rudder-pos-rad</output>
+            </aerosurface_scale>
+        </channel>
+
+        <channel name="Flaps">
+            <!-- Lockheed hydraulic Fowler flaps (T.O. 01-75F-1): UP (0 deg), MANEUVER (8 deg combat stop),
+                 Approach (22 deg), DOWN (40 deg), plus continuous hydraulic CLOSED hold position.
+                 Note: P-38G has NO compressibility / dive-recovery flaps. -->
+            <fcs_function name="fcs/flap-combat-detents">
+                <function>
+                    <table>
+                        <independentVar lookup="row">fcs/flap-cmd-norm</independentVar>
+                        <tableData>
+                            0.0000    0.0
+                            0.3333    8.0
+                            0.6667   22.0
+                            1.0000   40.0
+                        </tableData>
+                    </table>
+                </function>
+                <output>fcs/flap-pos-deg</output>
+            </fcs_function>
+            <aerosurface_scale name="fcs/flap-norm">
+                <input>fcs/flap-pos-deg</input>
+                <domain>
+                    <min>  0.0 </min>
+                    <max> 40.0 </max>
+                </domain>
+                <range>
+                    <min> 0.0 </min>
+                    <max> 1.0 </max>
+                </range>
+                <output>fcs/flap-pos-norm</output>
+            </aerosurface_scale>
+        </channel>
+    </flight_control>
+
+    <aerodynamics>
+        <axis name="LIFT">
+            <function name="aero/force/Lift_alpha">
+                <description>Lift due to alpha (NACA 23016 root / NACA 4412 tip) with transonic shock stall above M = 0.65</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">aero/alpha-rad</independentVar>
+                        <tableData>
+                            -0.3490  -0.960
+                            -0.2443  -0.880
+                            -0.1745  -0.680
+                            -0.0873  -0.220
+                            -0.0349   0.060
+                             0.0000   0.240
+                             0.0349   0.430
+                             0.0698   0.620
+                             0.1047   0.810
+                             0.1396   0.990
+                             0.1745   1.160
+                             0.2094   1.310
+                             0.2443   1.380
+                             0.2793   1.415
+                             0.2967   1.365
+                             0.3316   1.220
+                             0.4363   0.860
+                        </tableData>
+                    </table>
+                    <table>
+                        <independentVar lookup="row">velocities/mach</independentVar>
+                        <tableData>
+                            0.00   1.000
+                            0.64   1.000
+                            0.68   0.890
+                            0.72   0.740
+                            0.76   0.580
+                            0.80   0.450
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Lift_flap">
+                <description>Lockheed Fowler flap lift increment (8 deg combat stop to 40 deg landing)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">fcs/flap-pos-deg</independentVar>
+                        <tableData>
+                             0.0   0.000
+                             8.0   0.185
+                            22.0   0.370
+                            40.0   0.560
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Lift_combat_flap_stall_relief">
+                <description>Fowler slot boundary-layer energization at high alpha (Eglin Field May 3 1943 P-38G tactical trial: 25,000 ft turning stall IAS reduced from 145 mph to 110 mph with 8 deg Maneuver flaps)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">fcs/flap-pos-deg</independentVar>
+                        <tableData>
+                             0.0   0.000
+                             8.0   1.000
+                            22.0   1.150
+                            40.0   1.250
+                        </tableData>
+                    </table>
+                    <table>
+                        <independentVar lookup="row">aero/alpha-rad</independentVar>
+                        <tableData>
+                             0.0000   0.000
+                             0.1396   0.000
+                             0.2094   0.120
+                             0.2618   0.260
+                             0.3142   0.380
+                             0.3665   0.320
+                             0.4363   0.180
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Lift_elevator">
+                <description>Lift due to elevator deflection</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>fcs/elevator-pos-rad</property>
+                    <value> 0.420 </value>
+                </product>
+            </function>
+        </axis>
+
+        <axis name="DRAG">
+            <function name="aero/force/Drag_basic">
+                <description>Parasite and induced drag polar vs alpha</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">aero/alpha-rad</independentVar>
+                        <tableData>
+                            -0.3490   0.1850
+                            -0.1745   0.0560
+                            -0.0873   0.0285
+                            -0.0349   0.0228
+                             0.0000   0.0218
+                             0.0349   0.0252
+                             0.0698   0.0324
+                             0.1047   0.0435
+                             0.1396   0.0585
+                             0.1745   0.0780
+                             0.2094   0.1030
+                             0.2443   0.1350
+                             0.2793   0.1760
+                             0.3316   0.2500
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Drag_flap">
+                <description>Drag due to Fowler flaps (low-drag 8 deg combat flap stop)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">fcs/flap-pos-deg</independentVar>
+                        <tableData>
+                             0.0   0.0000
+                             8.0   0.0045
+                            22.0   0.0205
+                            40.0   0.0520
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Drag_cooling_flaps">
+                <description>Drag increment of the glycol radiator exit flaps and oil cooler shutters opened beyond the 0.2 neutral position, which the basic polar already includes (the AAF stall and speed tests flew them neutral)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <sum>
+                        <product>
+                            <sum>
+                                <property>fcs/coolant-flap-left-norm</property>
+                                <property>fcs/coolant-flap-right-norm</property>
+                                <value> -0.4 </value>
+                            </sum>
+                            <value> 0.0042 </value>
+                        </product>
+                        <product>
+                            <sum>
+                                <property>fcs/oil-shutter-left-norm</property>
+                                <property>fcs/oil-shutter-right-norm</property>
+                                <value> -0.4 </value>
+                            </sum>
+                            <value> 0.0018 </value>
+                        </product>
+                    </sum>
+                </product>
+            </function>
+            <function name="aero/force/Drag_gear">
+                <description>Drag due to extended tricycle landing gear and open wheel doors</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>gear/gear-pos-norm</property>
+                    <value> 0.0320 </value>
+                </product>
+            </function>
+            <function name="aero/force/Drag_mach">
+                <description>Transonic wave-drag divergence above Mcrit = 0.65</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <table>
+                        <independentVar lookup="row">velocities/mach</independentVar>
+                        <tableData>
+                            0.00   0.0000
+                            0.62   0.0000
+                            0.65   0.0030
+                            0.68   0.0180
+                            0.72   0.0550
+                            0.76   0.1080
+                            0.80   0.1680
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/force/Drag_beta">
+                <description>Drag due to sideslip</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>aero/mag-beta-rad</property>
+                    <value> 0.160 </value>
+                </product>
+            </function>
+        </axis>
+
+        <axis name="SIDE">
+            <function name="aero/force/Side_beta">
+                <description>Side force due to beta (twin booms + twin vertical tails)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>aero/beta-rad</property>
+                    <value> -0.680 </value>
+                </product>
+            </function>
+            <function name="aero/force/Side_rudder">
+                <description>Side force due to twin rudders</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>fcs/rudder-pos-rad</property>
+                    <value> 0.195 </value>
+                </product>
+            </function>
+        </axis>
+
+        <axis name="ROLL">
+            <function name="aero/moment/Roll_beta">
+                <description>Roll moment due to beta (5.4 deg wing dihedral)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>aero/beta-rad</property>
+                    <value> -0.105 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Roll_damp">
+                <description>Roll damping</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>aero/bi2vel</property>
+                    <property>velocities/p-aero-rad_sec</property>
+                    <value> -0.490 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Roll_yaw">
+                <description>Roll moment due to yaw rate</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>aero/bi2vel</property>
+                    <property>velocities/r-aero-rad_sec</property>
+                    <value> 0.125 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Roll_aileron">
+                <description>Roll moment due to manual unboosted ailerons (stick-force limited at high qbar)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>fcs/left-aileron-pos-rad</property>
+                    <value> 0.175 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Roll_trim_tab">
+                <description>Roll moment due to cockpit-adjustable aileron trim tab (present on unboosted P-38G, deleted on boosted J-25/L)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>fcs/roll-trim-cmd-norm</property>
+                    <value> 0.028 </value>
+                </product>
+            </function>
+        </axis>
+
+        <axis name="PITCH">
+            <function name="aero/moment/Pitch_zero">
+                <description>Zero-alpha pitching moment</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <value> 0.038 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_alpha">
+                <description>Pitch moment due to alpha</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <property>aero/alpha-rad</property>
+                    <value> -0.920 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_flap">
+                <description>Pitch moment due to Fowler flap extension</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <property>fcs/flap-pos-norm</property>
+                    <value> -0.095 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_mach_tuck">
+                <description>Severe nose-down transonic Mach tuck above M = 0.65 (P-38G without dive-recovery flaps)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <table>
+                        <independentVar lookup="row">velocities/mach</independentVar>
+                        <tableData>
+                            0.00    0.0000
+                            0.64    0.0000
+                            0.67   -0.0450
+                            0.70   -0.1100
+                            0.74   -0.1850
+                            0.78   -0.2400
+                            0.82   -0.2750
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_mach_alpha_tuck">
+                <description>Load-factor (alpha/G) and altitude/Mach compressibility buffet &amp; nose-down tuck during high-speed pull-outs (T.O. 01-75F-1 IAS/G dive restriction curves, e.g. 20,000 ft at ~360 mph IAS / M = 0.62-0.67)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <table>
+                        <independentVar lookup="row">velocities/mach</independentVar>
+                        <tableData>
+                            0.00    0.000
+                            0.58    0.000
+                            0.62    0.450
+                            0.66    1.000
+                            0.72    1.350
+                            0.80    1.550
+                        </tableData>
+                    </table>
+                    <table>
+                        <independentVar lookup="row">aero/alpha-rad</independentVar>
+                        <tableData>
+                            -0.1745   0.0000
+                             0.0175   0.0000
+                             0.0524  -0.0280
+                             0.0873  -0.0680
+                             0.1396  -0.1200
+                             0.2094  -0.1650
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_elevator">
+                <description>Pitch moment due to elevator (reduced above M = 0.66 by separated wing wake blanketing tailplane)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <property>fcs/elevator-pos-rad</property>
+                    <value> -1.280 </value>
+                    <table>
+                        <independentVar lookup="row">velocities/mach</independentVar>
+                        <tableData>
+                            0.00   1.000
+                            0.65   1.000
+                            0.68   0.800
+                            0.71   0.560
+                            0.75   0.350
+                            0.80   0.250
+                        </tableData>
+                    </table>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_trim_tab">
+                <description>Independent elevator trim tab pitching moment (cockpit trim wheel)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <property>fcs/pitch-trim-cmd-norm</property>
+                    <value> -0.085 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Pitch_damp">
+                <description>Pitch damping</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/cbarw-ft</property>
+                    <property>aero/ci2vel</property>
+                    <property>velocities/q-aero-rad_sec</property>
+                    <value> -15.40 </value>
+                </product>
+            </function>
+        </axis>
+
+        <axis name="YAW">
+            <function name="aero/moment/Yaw_beta">
+                <description>Weathercock directional stability (twin vertical fins)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>aero/beta-rad</property>
+                    <value> 0.142 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Yaw_damp">
+                <description>Yaw damping</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>aero/bi2vel</property>
+                    <property>velocities/r-aero-rad_sec</property>
+                    <value> -0.195 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Yaw_rudder">
+                <description>Yaw moment due to linked twin rudders</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>fcs/rudder-pos-rad</property>
+                    <value> -0.118 </value>
+                </product>
+            </function>
+            <function name="aero/moment/Yaw_trim_tab">
+                <description>Yaw moment due to twin rudder trim tabs (critical for single-engine cruise without pedal fatigue)</description>
+                <product>
+                    <property>aero/qbar-psf</property>
+                    <property>metrics/Sw-sqft</property>
+                    <property>metrics/bw-ft</property>
+                    <property>fcs/yaw-trim-cmd-norm</property>
+                    <value> -0.042 </value>
+                </product>
+            </function>
+        </axis>
+    </aerodynamics>
+
+</fdm_config>

@@ -16,12 +16,16 @@ pub enum OwnshipVisualKind {
     /// Cessna 172 Skyhawk (`c172.usdc`): the airframe asset the scene was built with.
     #[default]
     C172,
+    /// Procedural Lockheed P-38G Lightning twin-boom fighter (`UsdAircraftAsset::p38g`).
+    P38g,
     /// Procedural fixed-wing trainer / corridor UAV (`UsdAircraftAsset::fixed_wing_uav`).
     FixedWingUav,
     /// Procedural Holybro X500 quadrotor (`UsdAircraftAsset::x500_quadrotor`).
     QuadrotorX500,
     /// Procedural Apollo Lunar Module (`UsdAircraftAsset::lunar_lander`).
     LunarLander,
+    /// Single-stage multi-body test rocket `Raketa` (`UsdAircraftAsset::embedded_raketa`).
+    Raketa,
 }
 
 /// Which uploaded asset a draw's part index refers to.
@@ -29,12 +33,16 @@ pub enum OwnshipVisualKind {
 pub(crate) enum AssetKey {
     /// The asset the scene was built with.
     Scene,
+    /// [`UsdAircraftAsset::p38g`].
+    P38g,
     /// [`UsdAircraftAsset::fixed_wing_uav`].
     FixedWingUav,
     /// [`UsdAircraftAsset::x500_quadrotor`].
     QuadrotorX500,
     /// [`UsdAircraftAsset::lunar_lander`].
     LunarLander,
+    /// [`UsdAircraftAsset::embedded_raketa`].
+    Raketa,
     /// Groomed polar snow skiway mesh keyed by quantized runway dimensions.
     PolarSkiway(super::skiway::PolarSkiwayKey),
 }
@@ -45,9 +53,11 @@ impl OwnshipVisualKind {
         match self {
             Self::Hidden => None,
             Self::C172 => Some(AssetKey::Scene),
+            Self::P38g => Some(AssetKey::P38g),
             Self::FixedWingUav => Some(AssetKey::FixedWingUav),
             Self::QuadrotorX500 => Some(AssetKey::QuadrotorX500),
             Self::LunarLander => Some(AssetKey::LunarLander),
+            Self::Raketa => Some(AssetKey::Raketa),
         }
     }
 }
@@ -84,9 +94,11 @@ impl AircraftLibrary {
         kind: OwnshipVisualKind,
     ) -> Result<(), MapAdapterError> {
         let build: Option<fn() -> Result<UsdAircraftAsset, MapAdapterError>> = match kind {
+            OwnshipVisualKind::P38g => Some(UsdAircraftAsset::p38g),
             OwnshipVisualKind::FixedWingUav => Some(UsdAircraftAsset::fixed_wing_uav),
             OwnshipVisualKind::QuadrotorX500 => Some(UsdAircraftAsset::x500_quadrotor),
             OwnshipVisualKind::LunarLander => Some(UsdAircraftAsset::lunar_lander),
+            OwnshipVisualKind::Raketa => Some(UsdAircraftAsset::embedded_raketa),
             OwnshipVisualKind::Hidden | OwnshipVisualKind::C172 => None,
         };
         if let (Some(key), Some(build)) = (kind.asset_key(), build)

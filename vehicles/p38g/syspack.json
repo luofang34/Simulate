@@ -1,0 +1,310 @@
+{
+  "schema_version": 1,
+  "id": "p38g",
+  "name": "Lockheed P-38G-13-LO Lightning",
+  "version": "1.1.0",
+  "kind": "FixedWing",
+  "assets": {
+    "fdm/p38g.xml": {
+      "sha256": "6b5a5f5e0e8ff4f53e621ff97d06f961d5da3b2d409ce698292cb8db6680db53",
+      "size_bytes": 84891
+    },
+    "performance/airspeed_envelope.json": {
+      "sha256": "7fa9f8977d7cbfff421def525558d8d228a88d5b3b25f4ce280b92a5b78b6cd7",
+      "size_bytes": 543
+    },
+    "performance/pitot_static_calibration.json": {
+      "sha256": "ee5f2b65191e705ef80ed173ae50a8dfe05a06dfc3dc047d86825614f21016cc",
+      "size_bytes": 1858
+    },
+    "performance/poh_benchmarks.json": {
+      "sha256": "f684bf6b625160b1a609e5e469b399c770ef8eced2e7baf926bf79478eb3e225",
+      "size_bytes": 3368
+    },
+    "p38g-set.xml": {
+      "sha256": "8ac979f530db4586c93648929517e45b362aaf4c315bbdff51fa68d182c7a29a",
+      "size_bytes": 651
+    },
+    "Liveries/catalog.json": {
+      "sha256": "38a31b3fc400bc191b856d016cfec962a29263aeb2ccf06eb52c06dac704b5e1",
+      "size_bytes": 2444
+    },
+    "Models/Liveries/miss-virginia.xml": {
+      "sha256": "5fc09d52a74552fe9e508cf28b1a8eb1740eb93a06ca2f45007e188da3647f53",
+      "size_bytes": 1234
+    },
+    "Models/Liveries/bare-metal.xml": {
+      "sha256": "bd53c3f536e19b992f995cead79472895332519d28a86fc5a0079c0b4a4e42c9",
+      "size_bytes": 1202
+    },
+    "Models/Liveries/glacier-girl.xml": {
+      "sha256": "8ebdcf4773b5cf4f64cda3f2c3a1bf2e5986900e93562e72c841f2b8ce39063f",
+      "size_bytes": 1237
+    }
+  },
+  "components": [
+    {
+      "key": "fuselage_gondola",
+      "name": "Central Cockpit & Armament Gondola",
+      "parent": null,
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 2150.0,
+      "dry_inertia_body": [
+        [4200.0, 0.0, 0.0],
+        [0.0, 9400.0, 0.0],
+        [0.0, 0.0, 10800.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "wing_center_section",
+      "name": "Main Wing & Fowler Flap Assembly",
+      "parent": "fuselage_gondola",
+      "translation_m": [0.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 1135.982336,
+      "dry_inertia_body": [
+        [13800.0, 0.0, 0.0],
+        [0.0, 1850.0, 0.0],
+        [0.0, 0.0, 15200.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "left_boom_engine_v1710",
+      "name": "Left Tail Boom & Allison V-1710-51",
+      "parent": "wing_center_section",
+      "translation_m": [0.25, -2.3622, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 1260.0,
+      "dry_inertia_body": [
+        [7800.0, 0.0, 0.0],
+        [0.0, 9000.0, 0.0],
+        [0.0, 0.0, 16000.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "right_boom_engine_v1710",
+      "name": "Right Tail Boom & Allison V-1710-55",
+      "parent": "wing_center_section",
+      "translation_m": [0.25, 2.3622, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 1260.0,
+      "dry_inertia_body": [
+        [7800.0, 0.0, 0.0],
+        [0.0, 9000.0, 0.0],
+        [0.0, 0.0, 16000.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "left_wing_fuel_tank",
+      "name": "Left Main Wing Fuel Tank",
+      "parent": "wing_center_section",
+      "translation_m": [-0.10, -1.47, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 326.5865064,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "right_wing_fuel_tank",
+      "name": "Right Main Wing Fuel Tank",
+      "parent": "wing_center_section",
+      "translation_m": [-0.10, 1.47, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 326.5865064,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "payload_station",
+      "name": "Pilot & Nose Armament Bay",
+      "parent": "fuselage_gondola",
+      "translation_m": [1.50, 0.0, 0.15],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 353.8020486,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "imu_mount",
+      "name": "IMU mount",
+      "parent": "fuselage_gondola",
+      "translation_m": [0.45, 0.0, -0.25],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "baro_mount",
+      "name": "Barometer mount",
+      "parent": "fuselage_gondola",
+      "translation_m": [0.45, 0.0, -0.25],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "fpv_camera_mount",
+      "name": "Nose Gun Camera Mount",
+      "parent": "fuselage_gondola",
+      "translation_m": [2.25, 0.0, -0.05],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": {
+    "JsbsimXml": {
+      "aircraft_dir": "aircraft",
+      "model_name": "p38g",
+      "entry_asset": "fdm/p38g.xml",
+      "virtual_path": "aircraft/p38g/p38g.xml",
+      "additional_assets": []
+    }
+  },
+  "controls": {
+    "has_magnetos": true,
+    "has_starter": true,
+    "has_mixture": true,
+    "has_prop_pitch": true,
+    "has_fuel_cutoff": true,
+    "has_flaps": true,
+    "has_retractable_gear": true,
+    "has_wheel_brakes": true
+  },
+  "devices": [
+    {
+      "id": "imu",
+      "site": "imu_mount",
+      "kind": {
+        "Icm42688": {
+          "seed": 3801
+        }
+      }
+    },
+    {
+      "id": "barometer",
+      "site": "baro_mount",
+      "kind": {
+        "Bmp390": {
+          "bus_id": 0,
+          "i2c_addr": 118
+        }
+      }
+    },
+    {
+      "id": "fpv_camera",
+      "site": "fpv_camera_mount",
+      "kind": {
+        "PinholeCamera": {
+          "offset_body_m": [2.25, 0.0, -0.05],
+          "body_to_camera_xyzw": [0.5, 0.5, -0.5, 0.5],
+          "width": 800,
+          "height": 600,
+          "fx": 600.0,
+          "fy": 600.0,
+          "cx": 399.5,
+          "cy": 299.5,
+          "rate_hz": 30
+        }
+      }
+    },
+    {
+      "id": "pitot_static",
+      "site": "wing_center_section",
+      "kind": {
+        "PitotStatic": {
+          "pitot_body_m": [
+            0.72,
+            -5.715,
+            0.44
+          ],
+          "static_body_m": [
+            -0.24,
+            -5.715,
+            0.44
+          ],
+          "probe": "kollsman_d2_pitot_static_head_left_outer_wing",
+          "total_line_tau_s": 0.15,
+          "static_line_tau_s": 0.3
+        }
+      }
+    }
+  ],
+  "instrument_pack": {
+    "id": "usaaf-1943-fighter",
+    "version": "1.0.0",
+    "manifest_sha256": "419cf47e686d68c5eb3339a2e3d0619b91d9e81ccdc894d57ad3e23920cba324"
+  }
+}

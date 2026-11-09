@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <model>
+      <livery>
+        <id type="string">miss-virginia</id>
+        <name type="string">P-38G-13-LO "Miss Virginia" (White 147 / s/n 43-2264)</name>
+        <texture type="string">Liveries/miss-virginia.png</texture>
+        <variant type="string">P-38G-13-LO</variant>
+        <serial_number type="string">43-2264</serial_number>
+        <tail_code type="string">32264</tail_code>
+        <tactical_number type="string">147</tactical_number>
+        <unit type="string">339th Fighter Squadron, 347th Fighter Group, 13th Air Force</unit>
+        <pilot type="string">1st Lt. Rex T. Barber (Operation Vengeance, April 18, 1943)</pilot>
+        <upper_surface_ana type="string">ANA 613 Olive Drab No. 41</upper_surface_ana>
+        <lower_surface_ana type="string">ANA 603 Neutral Gray No. 43</lower_surface_ana>
+        <upper_rgb type="string">0.235, 0.245, 0.175</upper_rgb>
+        <lower_rgb type="string">0.460, 0.480, 0.500</lower_rgb>
+        <accent_rgb type="string">0.840, 0.140, 0.110</accent_rgb>
+        <metallic type="double">0.14</metallic>
+        <roughness type="double">0.62</roughness>
+      </livery>
+    </model>
+  </sim>
+</PropertyList>

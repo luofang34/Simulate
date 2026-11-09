@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 sim-core = { workspace = true }
 sim-geo = { workspace = true }
 sim-indicate = { workspace = true }
+sim-p38g = { workspace = true }
 sim-scenery = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

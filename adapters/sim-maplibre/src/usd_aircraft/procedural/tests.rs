@@ -3,10 +3,11 @@ use sim_core::AirframeArticulation;
 
 use crate::{PartRole, SlotCameraRole, UsdAircraftAsset, UsdMeshPart};
 
-fn builtins() -> [(&'static str, UsdAircraftAsset); 3] {
+fn builtins() -> [(&'static str, UsdAircraftAsset); 4] {
     [
         ("x500", UsdAircraftAsset::x500_quadrotor().unwrap()),
         ("fixed_wing", UsdAircraftAsset::fixed_wing_uav().unwrap()),
+        ("p38g", UsdAircraftAsset::p38g().unwrap()),
         ("lander", UsdAircraftAsset::lunar_lander().unwrap()),
     ]
 }
@@ -54,6 +55,7 @@ fn every_builtin_has_finite_non_empty_geometry_and_plausible_size() {
         let expected = match name {
             "x500" => 0.5..1.0,
             "fixed_wing" => 3.0..3.6,
+            "p38g" => 15.5..16.5,
             _ => 8.0..10.0,
         };
         assert!(expected.contains(&span), "{name}: span {span}");
@@ -83,7 +85,7 @@ fn prim_paths_are_unique_and_rooted_per_vehicle() {
 
 #[test]
 fn articulation_roles_are_tagged_on_each_builtin() {
-    let [(_, x500), (_, uav), (_, lander)] = builtins();
+    let [(_, x500), (_, uav), (_, p38), (_, lander)] = builtins();
     for role in [
         PartRole::PropellerSpinner,
         PartRole::PropellerBlades,
@@ -91,6 +93,7 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     ] {
         assert_eq!(count(&x500, role), 4, "{role:?}");
         assert_eq!(count(&uav, role), 1, "{role:?}");
+        assert!(count(&p38, role) >= 2, "{role:?}");
         assert_eq!(count(&lander, role), 0, "{role:?}");
     }
     assert_eq!(count(&x500, PartRole::CabinGlass), 1);
@@ -106,8 +109,62 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     ] {
         assert_eq!(count(&uav, role), 1, "{role:?}");
     }
+    for role in [
+        PartRole::AileronLeft,
+        PartRole::AileronRight,
+        PartRole::Elevator,
+        PartRole::CabinGlass,
+        PartRole::LandingLight,
+    ] {
+        assert_eq!(count(&p38, role), 1, "{role:?}");
+    }
+    for role in [
+        PartRole::FlapLeft,
+        PartRole::FlapRight,
+        PartRole::Rudder,
+        PartRole::NoseWheel,
+        PartRole::WheelLeft,
+        PartRole::WheelRight,
+    ] {
+        assert_eq!(count(&p38, role), 2, "{role:?}");
+    }
+    assert!(count(&p38, PartRole::GearStruts) >= 4);
     assert!(count(&lander, PartRole::GearStruts) >= 1);
     assert_eq!(count(&lander, PartRole::CabinGlass), 1);
+}
+
+#[test]
+fn p38g_retracted_gear_stows_struts_wheels_and_landing_lights() {
+    let p38 = UsdAircraftAsset::p38g().unwrap();
+    let down = p38.evaluate_draws(&AirframeArticulation::default(), SlotCameraRole::External);
+    let up = p38.evaluate_draws(
+        &AirframeArticulation {
+            gear_pos_norm: 0.0,
+            landing_light_norm: 0.0,
+            ..AirframeArticulation::default()
+        },
+        SlotCameraRole::External,
+    );
+    assert!(
+        down.len() > up.len(),
+        "retracting gear must stow gear struts, wheels, and retractable landing lights: down={}, up={}",
+        down.len(),
+        up.len()
+    );
+    for draw in &up {
+        let role = p38.parts()[draw.part_index].role;
+        assert!(
+            !matches!(
+                role,
+                PartRole::GearStruts
+                    | PartRole::NoseWheel
+                    | PartRole::WheelLeft
+                    | PartRole::WheelRight
+                    | PartRole::LandingLight
+            ),
+            "unexpected gear/light role {role:?} visible when gear_pos_norm == 0"
+        );
+    }
 }
 
 #[test]
@@ -249,4 +306,32 @@ fn ailerons_deflect_their_trailing_edges() {
     let l = trailing_edge_shift(&uav, "/FixedWingUav/Wing/AileronLeft", &art);
     let r = trailing_edge_shift(&uav, "/FixedWingUav/Wing/AileronRight", &art);
     assert!(l.z < -0.01 && r.z > 0.01, "{l:?} {r:?}");
+}
+
+#[test]
+fn p38g_curtiss_electric_blades_feather_and_fowler_and_coolant_flaps_articulate() {
+    let p38 = UsdAircraftAsset::p38g().unwrap();
+    let feathered = AirframeArticulation {
+        propeller_rpm: 0.0,
+        propeller_blade_angle_deg: 85.0,
+        propeller_feathered: [true, false],
+        flap_deg: 8.0,
+        coolant_flap_norm: [0.85, 0.85],
+        ..AirframeArticulation::default()
+    };
+    let blade_shift = trailing_edge_shift(&p38, "/P38g/PropLeft/Blade0", &feathered);
+    assert!(
+        blade_shift.length() > 0.05,
+        "feathering port Curtiss Electric blade to 85 deg must rotate blade chord about its radial axis: {blade_shift:?}"
+    );
+    let fowler_shift = trailing_edge_shift(&p38, "/P38g/Wing/FlapInboardLeft", &feathered);
+    assert!(
+        fowler_shift.y < -0.02 && fowler_shift.z < -0.02,
+        "8 deg Maneuver Fowler flap must both translate aft (-Y) and deflect down (-Z): {fowler_shift:?}"
+    );
+    let coolant_shift = trailing_edge_shift(&p38, "/P38g/Cooling/CoolantFlapLeftOut", &feathered);
+    assert!(
+        coolant_shift.x.abs() > 0.02,
+        "opening hydraulic glycol radiator exit flaps must swing trailing edge outward: {coolant_shift:?}"
+    );
 }

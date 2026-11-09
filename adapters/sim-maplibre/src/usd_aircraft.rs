@@ -51,10 +51,12 @@ pub enum PartRole {
     WingStructure,
     /// Diagonal wing lift struts and pitot hardware.
     WingStrut,
-    /// Fixed landing-gear struts.
+    /// Fixed or retractable landing-gear struts and open wheel-bay doors.
     GearStruts,
     /// Flashing red anti-collision fin beacon lens.
     BeaconLight,
+    /// Retractable under-wing or leading-edge landing light assembly.
+    LandingLight,
     /// Translucent cabin windshield and side/rear windows.
     CabinGlass,
     /// Polished nose spinner cone rotating with the propeller hub.
@@ -98,6 +100,7 @@ impl PartRole {
             "wing_strut" => Self::WingStrut,
             "gear_struts" => Self::GearStruts,
             "beacon_light" => Self::BeaconLight,
+            "landing_light" => Self::LandingLight,
             "cabin_glass" => Self::CabinGlass,
             "propeller_spinner" => Self::PropellerSpinner,
             "propeller_blades" => Self::PropellerBlades,
@@ -199,6 +202,10 @@ pub struct UsdPartDraw {
 /// Embedded BSD-3-Clause Cessna 172 Skyhawk binary OpenUSD Crate (`c172.usdc`).
 pub const EMBEDDED_C172_USDC: &[u8] = include_bytes!("../../../vehicles/c172/usd/c172.usdc");
 
+/// Embedded `Raketa` single-stage test rocket OpenUSD stage (`retro_rocket_v4.usd`).
+pub const EMBEDDED_RAKETA_USD: &[u8] =
+    include_bytes!("../../../vehicles/raketa/assets/retro_rocket_v4.usd");
+
 /// Composed OpenUSD aircraft model ready for GPU upload and kinematic evaluation.
 #[derive(Clone, Debug)]
 pub struct UsdAircraftAsset {
@@ -209,6 +216,11 @@ impl UsdAircraftAsset {
     /// Decodes and composes the embedded BSD-3-Clause Cessna 172 (`c172.usdc`) OpenUSD stage.
     pub fn embedded_c172() -> Result<Self, MapAdapterError> {
         Self::from_usd_bytes("c172.usdc", EMBEDDED_C172_USDC)
+    }
+
+    /// Decodes and composes the embedded `Raketa` (`retro_rocket_v4.usd`) OpenUSD stage.
+    pub fn embedded_raketa() -> Result<Self, MapAdapterError> {
+        Self::from_usd_bytes("retro_rocket_v4.usd", EMBEDDED_RAKETA_USD)
     }
 
     /// Decodes and composes an OpenUSD aircraft stage from in-memory `.usdc` or `.usda` bytes.
@@ -242,7 +254,6 @@ impl UsdAircraftAsset {
         articulation: &AirframeArticulation,
         camera_role: SlotCameraRole,
     ) -> Vec<UsdPartDraw> {
-        let prop_vis = articulation.propeller_visual(1.0 / 60.0);
         let mount_vib = mount_vibration_matrix(articulation.engine_vibration_rad);
         let mut draws = Vec::with_capacity(self.parts.len());
 
@@ -250,21 +261,35 @@ impl UsdAircraftAsset {
             if !role_visible_to_camera(part.role, camera_role) {
                 continue;
             }
+            if articulation.gear_pos_norm < 0.03
+                && matches!(
+                    part.role,
+                    PartRole::GearStruts
+                        | PartRole::NoseWheel
+                        | PartRole::WheelLeft
+                        | PartRole::WheelRight
+                        | PartRole::LandingLight
+                )
+            {
+                continue;
+            }
+            let engine_idx = usize::from(part.prim_path.contains("PropRight"));
+            let prop_vis = articulation.propeller_visual_for_engine(engine_idx, 1.0 / 60.0);
+            let beacon_emissive = (0.15 + 2.55 * articulation.beacon_flash_norm) as f32;
+            let land_emissive =
+                (0.08 + 3.20 * articulation.landing_light_norm.clamp(0.0, 1.0)) as f32;
             let (opacity, emissive_scale, is_prop_disc) = match part.role {
-                PartRole::PropellerBlades => (prop_vis.blade_opacity, 0.0, false),
-                PartRole::PropellerDisc => (prop_vis.disc_opacity, 0.0, true),
-                PartRole::BeaconLight => (
-                    part.material.opacity,
-                    (0.15 + 2.55 * articulation.beacon_flash_norm) as f32,
-                    false,
-                ),
+                PartRole::PropellerBlades => (prop_vis.blade_opacity, 1.0, false),
+                PartRole::PropellerDisc => (prop_vis.disc_opacity, 1.0, true),
+                PartRole::BeaconLight => (part.material.opacity, beacon_emissive, false),
+                PartRole::LandingLight => (part.material.opacity, land_emissive, false),
                 _ => (part.material.opacity, 1.0, false),
             };
             if opacity <= 0.005 {
                 continue;
             }
-            let local_joint = joint_delta_matrix(part, articulation);
-            let part_to_aircraft = mount_vib * part.rest_to_aircraft * local_joint;
+            let part_to_aircraft =
+                mount_vib * part.rest_to_aircraft * joint_delta_matrix(part, articulation);
             draws.push(UsdPartDraw {
                 part_index,
                 part_to_aircraft,
@@ -288,9 +313,9 @@ pub(crate) struct EmbeddedUsdResolver {
 
 impl EmbeddedUsdResolver {
     pub(crate) fn single(name: &str, bytes: AssetBuffer) -> Self {
-        let mut assets = BTreeMap::new();
-        assets.insert(normalize_asset_key(name), bytes);
-        Self { assets }
+        Self {
+            assets: BTreeMap::from([(normalize_asset_key(name), bytes)]),
+        }
     }
 
     #[cfg(test)]
@@ -331,8 +356,8 @@ impl Resolver for EmbeddedUsdResolver {
 
     fn get_modification_timestamp(
         &self,
-        _asset_path: &str,
-        _resolved_path: &ResolvedPath,
+        _path: &str,
+        _resolved: &ResolvedPath,
     ) -> Option<SystemTime> {
         None
     }
@@ -343,27 +368,28 @@ impl Resolver for EmbeddedUsdResolver {
 }
 
 fn normalize_asset_key(path: &str) -> String {
-    let trimmed = path.trim_start_matches("./").trim_start_matches('/');
-    trimmed.to_owned()
+    path.trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_owned()
 }
 
 fn role_visible_to_camera(role: PartRole, camera: SlotCameraRole) -> bool {
+    use PartRole::{
+        CabinExterior, CabinGlass, CabinInterior, PropellerBlades, PropellerDisc, PropellerSpinner,
+    };
     match camera {
         SlotCameraRole::External => true,
         SlotCameraRole::HudForward | SlotCameraRole::BellyNadir => false,
-        SlotCameraRole::CockpitInterior => matches!(
-            role,
-            PartRole::PropellerSpinner | PartRole::PropellerBlades | PartRole::PropellerDisc
-        ),
-        SlotCameraRole::LeftCabinWindow => !matches!(
-            role,
-            PartRole::CabinExterior | PartRole::CabinInterior | PartRole::CabinGlass
-        ),
+        SlotCameraRole::CockpitInterior => {
+            matches!(role, PropellerSpinner | PropellerBlades | PropellerDisc)
+        }
+        SlotCameraRole::LeftCabinWindow => {
+            !matches!(role, CabinExterior | CabinInterior | CabinGlass)
+        }
     }
 }
 
-fn mount_vibration_matrix(vib_rad: [f64; 3]) -> DMat4 {
-    let [rx, ry, rz] = vib_rad;
+fn mount_vibration_matrix([rx, ry, rz]: [f64; 3]) -> DMat4 {
     DMat4::from_quat(
         DQuat::from_rotation_y(rx) * DQuat::from_rotation_x(ry) * DQuat::from_rotation_z(-rz),
     )
@@ -372,13 +398,17 @@ fn mount_vibration_matrix(vib_rad: [f64; 3]) -> DMat4 {
 fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
     let [comp_nose, comp_left, comp_right] = art.gear_compression_m;
     let [spin_nose, spin_left, spin_right] = art.wheel_phase_rad;
+    let retract = (1.0 - art.gear_pos_norm.clamp(0.0, 1.0)).max(0.0);
     match part.role {
-        PartRole::PropellerSpinner | PartRole::PropellerBlades => {
-            let spin = -art.propeller_sense * art.propeller_phase_rad;
-            DMat4::from_rotation_y(spin)
-        }
+        PartRole::PropellerSpinner | PartRole::PropellerBlades => propeller_joint_matrix(part, art),
         PartRole::FlapLeft | PartRole::FlapRight => {
-            DMat4::from_rotation_x(art.flap_deg.to_radians())
+            let rot = DMat4::from_rotation_x(art.flap_deg.to_radians());
+            let f = (art.flap_deg / 40.0).clamp(0.0, 1.0);
+            if part.prim_path.contains("P38") {
+                DMat4::from_translation(DVec3::new(0.0, -0.22 * f, -0.045 * f)) * rot
+            } else {
+                rot
+            }
         }
         PartRole::AileronLeft => DMat4::from_rotation_x(art.left_aileron_rad),
         PartRole::AileronRight => DMat4::from_rotation_x(art.right_aileron_rad),
@@ -386,29 +416,85 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
         PartRole::RuddervatorLeft => DMat4::from_rotation_x(art.elevator_rad - art.rudder_rad),
         PartRole::RuddervatorRight => DMat4::from_rotation_x(art.elevator_rad + art.rudder_rad),
         PartRole::Rudder => {
+            let default_axis = DVec3::new(0.0, -0.261_309, 0.965_255);
             let axis = part
                 .custom_hinge_axis
-                .unwrap_or_else(|| DVec3::new(0.0, -0.261_309, 0.965_255))
+                .unwrap_or(default_axis)
                 .normalize_or_zero();
-            if axis.length_squared() > 0.5 {
-                DMat4::from_axis_angle(axis, -art.rudder_rad)
-            } else {
-                DMat4::from_rotation_z(-art.rudder_rad)
-            }
+            DMat4::from_axis_angle(axis, -art.rudder_rad)
+        }
+        PartRole::GearStruts if retract > 1e-4 => {
+            DMat4::from_translation(DVec3::new(0.0, -retract * 0.45, retract * 1.15))
+        }
+        PartRole::LandingLight if retract > 1e-4 => {
+            DMat4::from_translation(DVec3::new(0.0, 0.0, retract * 0.08))
+                * DMat4::from_rotation_x(-retract * 1.35)
         }
         PartRole::NoseWheel => {
-            DMat4::from_translation(DVec3::new(0.0, 0.0, comp_nose))
+            DMat4::from_translation(DVec3::new(0.0, -retract * 0.72, comp_nose + retract * 1.16))
+                * DMat4::from_rotation_x(-retract * 1.35)
                 * DMat4::from_rotation_z(-art.nosewheel_steer_rad)
                 * DMat4::from_rotation_x(-spin_nose)
         }
-        PartRole::WheelLeft => {
-            DMat4::from_translation(DVec3::new(0.0, 0.0, comp_left))
-                * DMat4::from_rotation_x(-spin_left)
+        PartRole::WheelLeft | PartRole::WheelRight => {
+            let (comp, spin) = if part.role == PartRole::WheelLeft {
+                (comp_left, spin_left)
+            } else {
+                (comp_right, spin_right)
+            };
+            let t = DVec3::new(0.0, -retract * 0.78, comp + retract * 1.22);
+            DMat4::from_translation(t) * DMat4::from_rotation_x(-retract * 1.35 - spin)
         }
-        PartRole::WheelRight => {
-            DMat4::from_translation(DVec3::new(0.0, 0.0, comp_right))
-                * DMat4::from_rotation_x(-spin_right)
-        }
-        _ => DMat4::IDENTITY,
+        _ => articulate_auxiliary_part(part, art),
+    }
+}
+
+fn propeller_joint_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
+    let r = part.prim_path.contains("PropRight");
+    let s = if r {
+        art.propeller_sense_right
+    } else {
+        art.propeller_sense
+    };
+    let ph = if r {
+        art.propeller_phase_right_rad
+    } else {
+        art.propeller_phase_rad
+    };
+    let deg = if r {
+        art.propeller_blade_angle_right_deg
+    } else {
+        art.propeller_blade_angle_deg
+    };
+    let spin = DMat4::from_rotation_y(-s * ph);
+    if part.role == PartRole::PropellerBlades
+        && part.custom_hinge_axis.is_some_and(|a| a.x.abs() > 0.9)
+    {
+        spin * DMat4::from_rotation_x((deg - 24.0).to_radians())
+    } else {
+        spin
+    }
+}
+
+fn articulate_auxiliary_part(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
+    let [cl, cr] = art.coolant_flap_norm;
+    let [ol, or] = art.oil_shutter_norm;
+    let [tr, tp, ty] = art.trim_tab_rad;
+    let path = part.prim_path.as_str();
+    let sign = part.custom_hinge_axis.map_or(1.0, |a| a.z.signum());
+    if path.contains("CoolantFlap") {
+        let v = if path.contains("Left") { cl } else { cr };
+        DMat4::from_rotation_z(sign * v.clamp(0.0, 1.0) * 0.48)
+    } else if path.contains("OilShutter") {
+        let v = if path.contains("Left") { ol } else { or };
+        DMat4::from_rotation_x(-v.clamp(0.0, 1.0) * 0.45)
+    } else if path.contains("ElevatorTrimTab") {
+        DMat4::from_rotation_x(art.elevator_rad - tp)
+    } else if path.contains("AileronTrimTab") {
+        DMat4::from_rotation_x(art.left_aileron_rad - tr)
+    } else if path.contains("RudderTrimTab") {
+        DMat4::from_rotation_z(-(art.rudder_rad - ty))
+    } else {
+        DMat4::IDENTITY
     }
 }

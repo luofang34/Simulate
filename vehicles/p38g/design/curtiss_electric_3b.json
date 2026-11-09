@@ -1,0 +1,13 @@
+{
+  "name": "Curtiss Electric 3-blade, 11 ft 6 in, P-38G (V-1710-51/-55, 2:1)",
+  "blades": 3,
+  "diameter_in": 138.0,
+  "hub_fraction": 0.18,
+  "design_advance_ratio": 2.3,
+  "chord_over_diameter": { "base": 0.055, "bulge": 0.030, "tip_taper": 0.02 },
+  "thickness_over_chord": { "root": 0.30, "tip": 0.06 },
+  "elements": 40,
+  "table_betas_deg": [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 87],
+  "governing_stops_deg": [16.8, 51.8],
+  "governor_cp_columns": [0.0, 0.02, 0.05, 0.08, 0.12, 0.16, 0.20, 0.25, 0.30, 0.40, 0.55]
+}

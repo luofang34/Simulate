@@ -1,0 +1,19 @@
+{
+  "type_designator": "P38",
+  "reference_document": "Stall IAS from FS-M-19-1492-A (P-38G 42-12690, power off, 14,800 lb): 98 mph clean, 78 mph flaps and gear down; other limits from AAF T.O. 01-75FF-1 as transcribed",
+  "reference_mass_kg": 6713.21,
+  "positive_limit_g": 6.67,
+  "negative_limit_g": -3.0,
+  "vs0_kt": 67.8,
+  "vs1_kt": 85.2,
+  "vfe_kt": 130.0,
+  "vfe_takeoff_kt": 215.0,
+  "vr_kt": 96.0,
+  "vx_kt": 122.0,
+  "vy_kt": 148.0,
+  "vg_kt": 135.0,
+  "va_ref_kt": 210.0,
+  "vref_kt": 105.0,
+  "vno_kt": 295.0,
+  "vne_kt": 365.0
+}

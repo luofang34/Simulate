@@ -4,7 +4,7 @@
 use glam::{DMat3, DVec3};
 use sim_core::{
     Block, ControlInputs, EngineStartMode, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock, JsbsimFdmConfig,
-    KinematicInput,
+    KinematicInput, SystemControls,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, ecef_to_geodetic};
 use sim_pack::LoadedSyspack;
@@ -43,6 +43,13 @@ pub(super) fn build_jsbsim_fdm(
         field_elev_m,
     )
     .map_err(sim_scenario::ScenarioError::from)?;
+    if speed_m_s >= 75.0 {
+        fdm.set_system_controls(SystemControls {
+            gear_down: false,
+            landing_light: false,
+            ..SystemControls::running_defaults()
+        });
+    }
     drop(fdm.trim_level_flight());
     let state = fdm.output();
     let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(state.position_ecef);
@@ -113,12 +120,12 @@ pub(super) fn step_jsbsim_with_force(
     controls: ControlInputs,
     surface: &WorldSurfaceHandle,
 ) -> Result<(), AppSimError> {
-    let prev = fdm.output();
-    let geo = ecef_to_geodetic(prev.position_ecef);
-    if let Some(ground_m) = surface.ellipsoidal_ground_m(&geo) {
-        fdm.sync_ground_elevation_m(ground_m)
+    let probe_geo = ecef_to_geodetic(fdm.output().position_ecef);
+    if let Some((ground_m, version)) = surface.ellipsoidal_ground_and_version(&probe_geo) {
+        fdm.sync_ground_versioned_m(ground_m, version)
             .map_err(sim_scenario::ScenarioError::from)?;
     }
+    let prev = fdm.output();
     fdm.step(&KinematicInput { controls })
         .map_err(sim_scenario::ScenarioError::from)?;
     let next = fdm.output();

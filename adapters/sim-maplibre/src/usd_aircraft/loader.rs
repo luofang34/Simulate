@@ -93,9 +93,12 @@ fn decode_mesh_prim(
         .ok()
         .flatten()
         .map_or_else(String::new, |t| t.as_str().to_owned());
-    let role = PartRole::from_token(&role_tok);
+    let mut role = PartRole::from_token(&role_tok);
     let custom_hinge_axis = resolve_hinge_axis(stage, path);
-    let material = resolve_material(stage, prim)?;
+    let material = resolve_material(stage, path, prim)?;
+    if role == PartRole::CabinExterior && material.opacity < 0.99 {
+        role = PartRole::CabinGlass;
+    }
     let (vertices, indices) = triangulate_usd_mesh(&points, &normals, &uvs, &counts, &raw_indices);
     if indices.is_empty() {
         return Ok(None);
@@ -127,30 +130,108 @@ fn resolve_hinge_axis(stage: &Stage, path: &sdf::Path) -> Option<DVec3> {
 
 fn resolve_material(
     stage: &Stage,
+    path: &sdf::Path,
     prim: &openusd::usd::Prim,
 ) -> Result<PbrMaterial, MapAdapterError> {
+    let Some(mat_path) = find_bound_material_path(stage, path, prim) else {
+        return Ok(PbrMaterial::default());
+    };
+    if let Ok(Some(surface)) = shade::read_preview_surface(stage, &mat_path) {
+        let mut mat = PbrMaterial::default();
+        if let Some(c) = surface.diffuse_color.value() {
+            mat.diffuse_rgb = [c.x, c.y, c.z];
+        }
+        if let Some(e) = surface.emissive_color.value() {
+            mat.emissive_rgb = [e.x, e.y, e.z];
+        }
+        if let Some(&m) = surface.metallic.value() {
+            mat.metallic = m.clamp(0.0, 1.0);
+        }
+        if let Some(&r) = surface.roughness.value() {
+            mat.roughness = r.clamp(0.04, 1.0);
+        }
+        if let Some(&o) = surface.opacity.value() {
+            mat.opacity = o.clamp(0.0, 1.0);
+        }
+        if mat.opacity >= 0.99
+            && (mat_path.to_string().ends_with("/Glass")
+                || path.to_string().ends_with("/Window/Glass"))
+        {
+            mat.opacity = 0.32;
+        }
+        return Ok(mat);
+    }
+    let mut mat = read_fallback_pbr_shader(stage, &mat_path)?;
+    if mat.opacity >= 0.99
+        && (mat_path.to_string().ends_with("/Glass") || path.to_string().ends_with("/Window/Glass"))
+    {
+        mat.opacity = 0.32;
+    }
+    Ok(mat)
+}
+
+fn find_bound_material_path(
+    stage: &Stage,
+    path: &sdf::Path,
+    prim: &openusd::usd::Prim,
+) -> Option<sdf::Path> {
+    if let Some(p) = direct_or_rel_material(prim) {
+        return Some(p);
+    }
+    let ancestors: Vec<sdf::Path> = path.ancestors_below_root().collect();
+    for anc in ancestors.into_iter().rev() {
+        if let Ok(anc_prim) = stage.prim(anc)
+            && let Some(p) = direct_or_rel_material(&anc_prim)
+        {
+            return Some(p);
+        }
+    }
+    None
+}
+
+fn direct_or_rel_material(prim: &openusd::usd::Prim) -> Option<sdf::Path> {
     let binding = shade::MaterialBindingAPI::from_prim_unchecked(prim.clone());
-    let Ok(Some(mat_path)) = binding.direct_binding(shade::tokens::ALL_PURPOSE) else {
-        return Ok(PbrMaterial::default());
-    };
-    let preview = shade::read_preview_surface(stage, &mat_path).map_err(schema_err)?;
-    let Some(surface) = preview else {
-        return Ok(PbrMaterial::default());
-    };
+    if let Ok(Some(p)) = binding.direct_binding(shade::tokens::ALL_PURPOSE) {
+        return Some(p);
+    }
+    if let Ok(targets) = prim.relationship("material:binding").targets()
+        && let Some(first) = targets.first()
+    {
+        return Some(first.clone());
+    }
+    None
+}
+
+fn read_fallback_pbr_shader(
+    stage: &Stage,
+    mat_path: &sdf::Path,
+) -> Result<PbrMaterial, MapAdapterError> {
     let mut mat = PbrMaterial::default();
-    if let Some(c) = surface.diffuse_color.value() {
+    let Ok(shader_path) = mat_path.append_path("PbrShader") else {
+        return Ok(mat);
+    };
+    let Ok(shader_prim) = stage.prim(shader_path) else {
+        return Ok(mat);
+    };
+    if let Ok(Some(c)) = shader_prim
+        .attribute("inputs:diffuseColor")
+        .get::<gf::Vec3f>()
+    {
         mat.diffuse_rgb = [c.x, c.y, c.z];
     }
-    if let Some(e) = surface.emissive_color.value() {
+    if let Ok(Some(e)) = shader_prim
+        .attribute("inputs:emissiveColor")
+        .get::<gf::Vec3f>()
+    {
         mat.emissive_rgb = [e.x, e.y, e.z];
     }
-    if let Some(&m) = surface.metallic.value() {
+    if let Ok(Some(m)) = shader_prim.attribute("inputs:metallic").get::<f32>() {
         mat.metallic = m.clamp(0.0, 1.0);
     }
-    if let Some(&r) = surface.roughness.value() {
+    if let Ok(Some(r)) = shader_prim.attribute("inputs:roughness").get::<f32>() {
         mat.roughness = r.clamp(0.04, 1.0);
     }
-    if let Some(&o) = surface.opacity.value() {
+    if let Ok(Some(o)) = shader_prim.attribute("inputs:opacity").get::<f32>() {
         mat.opacity = o.clamp(0.0, 1.0);
     }
     Ok(mat)

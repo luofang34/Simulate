@@ -61,6 +61,7 @@ struct Nodes {
     throttle: NodeId,
     velocity_body: [NodeId; 3],
     rate_body: [NodeId; 3],
+    h_agl_ft: NodeId,
     terrain_elevation_asl_ft: NodeId,
     system: SystemNodes,
     articulation: ArticulationNodes,
@@ -92,6 +93,7 @@ impl Nodes {
                 node("velocities/q-rad_sec")?,
                 node("velocities/r-rad_sec")?,
             ],
+            h_agl_ft: node("position/h-agl-ft")?,
             terrain_elevation_asl_ft: node("position/terrain-elevation-asl-ft")?,
             system: SystemNodes::resolve(fdm)?,
             articulation: ArticulationNodes::resolve(fdm)?,
@@ -107,6 +109,7 @@ pub struct JsbsimFdmSnapshot {
     engine: EngineStatus,
     articulation: AirframeArticulation,
     system: SystemControls,
+    ground_version: Option<u64>,
 }
 
 /// A JSBSim aircraft as a flight dynamics [`Block`], with the same input and
@@ -163,13 +166,8 @@ impl JsbsimFdmBlock {
     }
 
     /// [`Self::new`] with the ground at `terrain_elevation_m` above the WGS84
-    /// ellipsoid before the initial conditions run.
-    ///
-    /// JSBSim seeds its integrator history from the forces at the initial
-    /// conditions, so an aircraft parked below the default ground would start
-    /// with its gear crushed far into it and every history slot full of that
-    /// spring force, and one parked above it would start in free fall. Setting
-    /// the ground first lets a parked aircraft start at rest on its gear.
+    /// ellipsoid before the initial conditions run, so a parked aircraft
+    /// starts at rest on its gear rather than buried or in free fall.
     pub fn new_on_terrain(
         config: &JsbsimFdmConfig<'_>,
         terrain_elevation_m: f64,
@@ -221,11 +219,12 @@ impl JsbsimFdmBlock {
             EngineStartMode::ColdAndDark => SystemControls::cold_and_dark(),
             EngineStartMode::Running => SystemControls::running_defaults(),
         };
-        nodes.system.write(&mut fdm, system)?;
+        nodes.system.write_and_sync_gear(&mut fdm, system)?;
         if config.engine_start == EngineStartMode::Running {
             nodes.system.set_running(&mut fdm)?;
         }
         fdm.run_ic().map_err(fdm_error)?;
+        nodes.system.sync_gear_pos(&mut fdm, system)?;
         let mut block = Self {
             fdm,
             nodes,
@@ -244,6 +243,7 @@ impl JsbsimFdmBlock {
                 },
                 articulation: AirframeArticulation::default(),
                 system,
+                ground_version: None,
             },
             last_ground_sync_m: terrain_elevation_m,
         };
@@ -296,6 +296,37 @@ impl JsbsimFdmBlock {
         Ok(())
     }
 
+    /// Updates terrain elevation to `ellipsoidal_height_m` while preserving the landing gear's
+    /// exact height above ground when `surface_version` changes beneath a parked or
+    /// weight-on-wheels aircraft.
+    pub fn sync_ground_versioned_m(
+        &mut self,
+        ellipsoidal_height_m: f64,
+        surface_version: u64,
+    ) -> Result<(), BlockError> {
+        let version_changed = match self.latest.ground_version {
+            Some(prev) => prev != surface_version,
+            None => self
+                .last_ground_sync_m
+                .is_some_and(|prev| (ellipsoidal_height_m - prev).abs() > 0.05),
+        };
+        let wow = self.latest.articulation.gear_wow.into_iter().any(|w| w);
+        let agl_ft = self.fdm.read_node(self.nodes.h_agl_ft).map_err(fdm_error)?;
+        let parked_low =
+            self.latest.output.velocity_ecef.length_squared() < 4.0 && (0.0..8.0).contains(&agl_ft);
+        if version_changed && (wow || parked_low) {
+            self.sync_ground_elevation_m(ellipsoidal_height_m)?;
+            self.fdm
+                .write_node(self.nodes.h_agl_ft, agl_ft.max(0.1))
+                .map_err(fdm_error)?;
+            self.latest.ground_version = Some(surface_version);
+            return self.capture(0.0);
+        }
+        self.sync_ground_elevation_m(ellipsoidal_height_m)?;
+        self.latest.ground_version = Some(surface_version);
+        Ok(())
+    }
+
     /// The ground height above the WGS84 ellipsoid this block was last given,
     /// at construction or since; `None` while the ground is still JSBSim's
     /// default at the ellipsoid.
@@ -334,8 +365,13 @@ impl JsbsimFdmBlock {
     /// is where the pitch solution stays. On failure the aircraft is back at
     /// its initial conditions.
     pub fn trim_level_flight(&mut self) -> Result<ControlInputs, BlockError> {
-        self.nodes.system.write(&mut self.fdm, self.latest.system)?;
+        self.nodes
+            .system
+            .write_and_sync_gear(&mut self.fdm, self.latest.system)?;
         let trimmed = self.fdm.do_trim(TrimMode::Full).map(|_| ());
+        self.nodes
+            .system
+            .sync_gear_pos(&mut self.fdm, self.latest.system)?;
         self.capture(0.0)?;
         trimmed.map_err(fdm_error)?;
         Ok(ControlInputs {
@@ -373,7 +409,12 @@ impl JsbsimFdmBlock {
         for (node, value) in commands {
             self.fdm.write_node(node, value).map_err(fdm_error)?;
         }
-        self.nodes.system.write(&mut self.fdm, self.latest.system)
+        self.nodes.system.write_step(
+            &mut self.fdm,
+            controls.throttle,
+            self.latest.system,
+            self.period.as_seconds(),
+        )
     }
 
     /// Reads the output and takes the snapshot of this instant.
@@ -403,10 +444,12 @@ impl JsbsimFdmBlock {
             .map_err(fdm_error)?;
         self.latest.output = output;
         self.latest.engine = self.nodes.system.engine_status(&mut self.fdm)?;
-        self.latest.articulation =
-            self.nodes
-                .articulation
-                .sample(&mut self.fdm, &self.latest.articulation, dt_s)?;
+        self.latest.articulation = self.nodes.articulation.sample(
+            &mut self.fdm,
+            &self.latest.articulation,
+            self.latest.system,
+            dt_s,
+        )?;
         Ok(())
     }
 

@@ -1,0 +1,19 @@
+[package]
+name = "sim-p38g"
+description = "Lockheed P-38G-13-LO Lightning: station-calibrated airframe geometry, Allison V-1710-51/-55 and GE B-13 turbosupercharger powerplant, cockpit interior station contract, OpenUSD stage, and the verified p38g syspack"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+glam = { workspace = true }
+
+[dev-dependencies]
+image = { workspace = true }
+openusd = { workspace = true }
+openusd-schemas = { workspace = true }
+syspack = { workspace = true }
+thiserror = { workspace = true }

@@ -123,7 +123,11 @@ pub(super) fn pack_draws(
 fn pack_part(part: &UsdMeshPart, draw: &UsdPartDraw, rig: &StudioRig) -> (bool, f64, HangarDraw) {
     let translucent = draw.is_prop_disc || draw.opacity < 0.999;
     let kind = if draw.is_prop_disc {
-        2.0
+        if part.prim_path.contains("P38") {
+            3.0
+        } else {
+            2.0
+        }
     } else if translucent {
         1.0
     } else {
