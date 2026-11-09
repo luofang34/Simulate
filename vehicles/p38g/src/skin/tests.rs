@@ -56,7 +56,7 @@ fn traced_wing_joints_land_on_the_drawings_wing_stations() {
 
 #[test]
 fn the_nose_number_reads_forward_from_starboard_and_aft_from_port() {
-    let anchors = Anchors::measure(&crate::p38g_mesh_prims());
+    let anchors = Anchors::measure(&crate::p38g_mesh_prims()).unwrap();
     let number = |side: f32| Marking {
         art: Art::Numerals {
             text: "147",
@@ -151,4 +151,15 @@ fn a_panel_is_bounded_by_the_breaks_round_it() {
     );
     // Outside the panel the region is open on one side.
     assert_eq!(bounds(Vec2::new(12.0, 3.0))[0], None);
+}
+
+#[test]
+fn a_missing_anchor_prim_is_an_error_not_a_guess() {
+    let prims: Vec<_> = crate::p38g_mesh_prims()
+        .into_iter()
+        .filter(|p| !p.prim_path.contains("TurboBucketWheels"))
+        .collect();
+    let err = super::P38Skin::new(&prims).unwrap_err();
+    assert!(err.to_string().contains("TurboBucketWheels"), "{err}");
+    assert!(super::P38Skin::new(&crate::p38g_mesh_prims()).is_ok());
 }

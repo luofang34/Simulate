@@ -3,6 +3,7 @@
 
 use glam::{Vec2, Vec3};
 
+use super::P38SkinError;
 use crate::mesh::P38MeshPrim;
 
 /// Metres per inch.
@@ -10,6 +11,14 @@ pub(crate) const M_PER_IN: f32 = 0.0254;
 /// The fuselage reference line lies this far below the thrust line
 /// (AN 01-75F-2 p.2, side view: 5.078 in).
 const FRL_BELOW_THRUST_IN: f32 = 5.078;
+/// The prims the skin measures its anchors from: the gondola's upper skin
+/// (nose tip), the booms' upper skin (boom line), the turbosupercharger
+/// wheels and the wing's upper skin (edges per span).
+const GONDOLA: &str = "/P38g/Gondola/UpperOlive";
+const BOOMS: &str = "/P38g/Booms/UpperOlive";
+const TURBO_WHEELS: &str = "/P38g/Powerplant/TurboBucketWheels";
+const WING: &str = "/P38g/Wing/UpperOlive";
+
 /// Span bins of the wing's measured leading and trailing edges.
 const WING_BIN_M: f32 = 0.10;
 
@@ -49,31 +58,33 @@ fn centroid(points: impl Iterator<Item = Vec3>) -> Option<Vec3> {
 
 impl Anchors {
     /// Measures the anchors of `prims`.
-    pub(crate) fn measure(prims: &[P38MeshPrim]) -> Self {
-        let nose_y = points(prims, "/P38g/Gondola/UpperOlive")
-            .chain(points(prims, "/P38g/Gondola/LowerGray"))
+    ///
+    /// # Errors
+    /// [`P38SkinError::MissingAnchor`] when a prim the skin measures is
+    /// absent or empty, as after a rename: the skin is not placed by guess.
+    pub(crate) fn measure(prims: &[P38MeshPrim]) -> Result<Self, P38SkinError> {
+        let missing = |prim: &'static str| P38SkinError::MissingAnchor { prim };
+        let nose_y = points(prims, GONDOLA)
             .map(|p| p.y)
             .fold(f32::NEG_INFINITY, f32::max);
-        let side = |path: &str, sign: f32| {
-            centroid(points(prims, path).filter(|p| p.x * sign > 0.0)).unwrap_or(Vec3::ZERO)
+        if !nose_y.is_finite() {
+            return Err(missing(GONDOLA));
+        }
+        let side = |path: &'static str, sign: f32| {
+            centroid(points(prims, path).filter(|p| p.x * sign > 0.0)).ok_or(missing(path))
         };
-        let booms = side("/P38g/Booms/UpperOlive", 1.0);
-        // The turbine wheels, under either name the airframe has given them.
-        let turbo = |sign: f32| {
-            let wheels = side("/P38g/Powerplant/TurboBucketWheels", sign);
-            if wheels == Vec3::ZERO {
-                side("/P38g/Powerplant/TurboBucketWheels", sign)
-            } else {
-                wheels
-            }
-        };
-        Self {
-            nose_y: if nose_y.is_finite() { nose_y } else { 0.0 },
+        let booms = side(BOOMS, 1.0)?;
+        let wing_edges = wing_edges(prims);
+        if wing_edges.is_empty() {
+            return Err(missing(WING));
+        }
+        Ok(Self {
+            nose_y,
             frl_z: crate::PROP_HUB_Z - FRL_BELOW_THRUST_IN * M_PER_IN,
             boom_x: booms.x.abs(),
-            turbo: [turbo(-1.0), turbo(1.0)],
-            wing_edges: wing_edges(prims),
-        }
+            turbo: [side(TURBO_WHEELS, -1.0)?, side(TURBO_WHEELS, 1.0)?],
+            wing_edges,
+        })
     }
 
     /// Fuselage station of `y`, inches aft of the nose.
@@ -98,7 +109,7 @@ impl Anchors {
 /// Leading (`x`) and trailing (`y`) edge of the upper wing skin per span bin.
 fn wing_edges(prims: &[P38MeshPrim]) -> Vec<Vec2> {
     let mut edges: Vec<Vec2> = Vec::new();
-    for p in points(prims, "/P38g/Wing/UpperOlive") {
+    for p in points(prims, WING) {
         let bin = (p.x.abs() / WING_BIN_M).floor() as usize;
         if edges.len() <= bin {
             edges.resize(bin + 1, Vec2::new(f32::NEG_INFINITY, f32::INFINITY));

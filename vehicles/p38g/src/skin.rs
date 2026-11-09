@@ -60,6 +60,17 @@ pub struct SkinPaint {
     pub normal: Vec3,
 }
 
+/// Why a skin could not be measured against an airframe.
+#[derive(Debug, thiserror::Error)]
+pub enum P38SkinError {
+    /// A prim the skin places its paint against is missing or empty.
+    #[error("P-38G skin anchor prim {prim} is missing or has no vertices on the side it needs")]
+    MissingAnchor {
+        /// USD path of the prim.
+        prim: &'static str,
+    },
+}
+
 /// The P-38G's skin, measured against one build of its geometry.
 #[derive(Clone, Debug)]
 pub struct P38Skin {
@@ -69,12 +80,15 @@ pub struct P38Skin {
 
 impl P38Skin {
     /// The skin of the airframe built as `prims`.
-    #[must_use]
-    pub fn new(prims: &[P38MeshPrim]) -> Self {
-        Self {
-            anchors: Anchors::measure(prims),
+    ///
+    /// # Errors
+    /// [`P38SkinError::MissingAnchor`] when `prims` lacks a prim the skin
+    /// is placed against.
+    pub fn new(prims: &[P38MeshPrim]) -> Result<Self, P38SkinError> {
+        Ok(Self {
+            anchors: Anchors::measure(prims)?,
             seams: Seams::new(),
-        }
+        })
     }
 
     /// Whether the part at `path` is painted by the skin: the stressed skin

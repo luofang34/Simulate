@@ -40,7 +40,9 @@ impl UsdAircraftAsset {
     /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`).
     pub fn p38g() -> Result<Self, MapAdapterError> {
         let prims = sim_p38g::p38g_mesh_prims();
-        let skin = sim_p38g::P38Skin::new(&prims);
+        let skin = sim_p38g::P38Skin::new(&prims).map_err(|err| MapAdapterError::OpenUsd {
+            detail: format!("P-38G skin: {err}"),
+        })?;
         let parts = prims
             .into_iter()
             .map(|prim| UsdMeshPart {
