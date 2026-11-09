@@ -9,7 +9,8 @@
 //! [`AuthoritativeWorldSurface`] combines a catalog, runway strips and the
 //! geoid into the one ground every consumer queries through
 //! [`WorldSurfaceQuery`]; a [`LiveDemBridge`] streams Terrarium tiles into
-//! it from loader threads. [`AerodromeRegistry`] lists the aerodromes a
+//! it from loader threads, and a [`RunwayDatum`] lays every charted runway
+//! into both that ground and the terrain tiles the renderer draws. [`AerodromeRegistry`] lists the aerodromes a
 //! world can be entered at, and [`render_luma_view`] is a CPU pinhole camera
 //! over a catalog for headless sensor simulation.
 //! Photogrammetry is deferred: its source is a [`Deferred`] stub that fails
@@ -25,6 +26,7 @@ mod live_dem;
 mod lunar;
 mod mercator;
 mod noise;
+mod runway_datum;
 mod sensor_render;
 mod sources;
 mod terrarium;
@@ -56,6 +58,7 @@ pub use lunar::{
 pub use mercator::{
     MAX_MERCATOR_LAT_DEG, MAX_TILE_ZOOM, TileCoord, project_to_tile, tile_point_to_geodetic,
 };
+pub use runway_datum::{MIN_STAMP_ZOOM, RunwayDatum};
 pub use sensor_render::{LumaImage, render_luma_view};
 pub use sources::{
     ElevationSource, EllipsoidSurface, ImageryRaster, ImagerySource, MeshNode,

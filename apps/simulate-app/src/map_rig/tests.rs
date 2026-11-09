@@ -28,7 +28,13 @@ fn real_world_ownship_sits_at_its_msl_altitude_not_its_ellipsoidal_height() {
     );
     let vehicle =
         VehicleState::level_flight(&Geodetic::from_degrees(lat, lon, ellipsoidal), 0.0, 0.0);
-    let ownship = ownship_aircraft(&vehicle, AirframeArticulation::default(), n, None);
+    let ownship = ownship_aircraft(
+        &vehicle,
+        glam::DVec3::ZERO,
+        AirframeArticulation::default(),
+        n,
+        None,
+    );
     let altitude = ownship.placement.altitude_meters;
     assert!(
         (altitude - msl).abs() < 0.05,

@@ -113,13 +113,7 @@ pub(crate) fn ownship_shadow(
         .w_axis
         .truncate();
     let to_sun = view.sun_enu.try_normalize()?;
-    let ground = ground_receiver(
-        instance,
-        view,
-        centre,
-        to_sun,
-        (radius, asset.lowest_point_z_m()),
-    );
+    let ground = ground_receiver(instance, view, centre, to_sun, radius);
     let reach = ground.map_or(0.0, |(_, along_light)| along_light);
     // The volume spans the airframe and, past it, the ground the shadow falls on; a
     // receiver beyond the far plane clamps to it and still reads as shadowed.
@@ -156,16 +150,9 @@ fn ground_receiver(
     view: &AircraftSlotView<'_>,
     centre: DVec3,
     to_sun: DVec3,
-    (radius, lowest_z_m): (f64, f32),
+    radius: f64,
 ) -> Option<(GroundReceiver, f64)> {
-    // A host's ground sample can lag the drawn terrain (tiles stream in after the plant
-    // settled), so an aircraft standing on its gear puts its shadow at its wheels.
-    let on_gear = instance.articulation.gear_wow.iter().any(|&wow| wow);
-    let ground_msl = if on_gear {
-        instance.placement.altitude_meters + f64::from(lowest_z_m)
-    } else {
-        instance.ground_height_m?
-    };
+    let ground_msl = instance.ground_height_m?;
     let height = instance.placement.altitude_meters - ground_msl;
     if !(-1.0..=MAX_GROUND_HEIGHT_M).contains(&height) {
         return None;

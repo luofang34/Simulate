@@ -151,6 +151,15 @@ impl SharedMapRuntime {
         self.tokio_runtime.block_on(future)
     }
 
+    /// Runs `future` on the tile worker pool without waiting for it.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn spawn_detached<F>(&self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let _task = self.tokio_runtime.spawn(future);
+    }
+
     pub(crate) fn with_runtime_context<R>(&self, f: impl FnOnce() -> R) -> R {
         #[cfg(not(target_arch = "wasm32"))]
         {

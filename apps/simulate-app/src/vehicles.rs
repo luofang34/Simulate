@@ -291,6 +291,27 @@ impl FreeFlightPlant {
         }
     }
 
+    /// The centre of gravity in the flight model's structural frame (inches, `x` aft, `y`
+    /// right, `z` up) on JSBSim-backed aircraft.
+    #[must_use]
+    pub fn cg_structural_in(&self) -> Option<DVec3> {
+        match self {
+            Self::Jsbsim { fdm, .. } => Some(fdm.cg_structural_in()),
+            Self::AviateFixedWing(rig) => Some(rig.fdm.cg_structural_in()),
+            Self::AviateX500(_) | Self::Kinematic(_) => None,
+        }
+    }
+
+    /// The ellipsoidal ground height the JSBSim plant was last given.
+    #[cfg(test)]
+    pub fn fdm_ground_m(&self) -> Option<f64> {
+        match self {
+            Self::Jsbsim { fdm, .. } => fdm.last_ground_sync_m(),
+            Self::AviateFixedWing(rig) => rig.fdm.last_ground_sync_m(),
+            Self::AviateX500(_) | Self::Kinematic(_) => None,
+        }
+    }
+
     /// Current engine running state and propeller RPM on JSBSim-backed aircraft.
     #[must_use]
     pub fn engine_status(&self) -> Option<EngineStatus> {

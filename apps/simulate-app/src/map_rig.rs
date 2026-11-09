@@ -16,9 +16,7 @@ use sim_maplibre::{
 };
 use sim_render::Camera;
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
-use sim_scenery::{
-    CatalogScenery, LandingRunwayGeometry, LiveDemBridge, OsmAerodromeDiagram, TileId,
-};
+use sim_scenery::{CatalogScenery, LandingRunwayGeometry, OsmAerodromeDiagram, TileId};
 
 use crate::environment::TruthSky;
 use crate::error::AppSimError;
@@ -27,10 +25,11 @@ use crate::supervisor_rig::SupervisorRig;
 use crate::vehicles::FreeFlightVehicle;
 use crate::world_surface::WorldSurfaceHandle;
 
-mod aircraft;
+pub(crate) mod aircraft;
 mod charts;
 mod efb;
 mod globe;
+mod live_ground;
 mod preset;
 mod scenery;
 mod stamps;
@@ -57,6 +56,8 @@ pub struct MapFrameInput<'a> {
     pub active_vehicle: Option<FreeFlightVehicle>,
     /// Display-interpolated truth: the physical scene's ownship.
     pub vehicle: VehicleState,
+    /// Body FRD metres from `vehicle`'s position (its CG) to its drawn model's origin.
+    pub model_origin_from_cg_frd_m: glam::DVec3,
     /// Ellipsoidal ground height under ownship, which receives its sun shadow.
     pub ground_m: Option<f64>,
     /// Display-interpolated navigation solution: the instrument maps' ownship.
@@ -81,7 +82,7 @@ pub struct MapLibreRig {
     endpoints: SceneryEndpoints,
     aerodrome_geojson: Value,
     catalog: Option<CatalogScenery>,
-    live_dem: Option<LiveDemBridge>,
+    live_ground: Option<live_ground::LiveGround>,
     truth: TruthSceneMap,
     avionics: AvionicsMapSet,
     preset: AvionicsPreset,
@@ -117,8 +118,8 @@ impl MapLibreRig {
             loader,
             endpoints,
             catalog,
-            live_dem,
-        } = source.loader(charts.clone())?;
+            live_ground,
+        } = source.loader(charts.clone(), surface.runway_datum())?;
         let runtime = SharedMapRuntime::new(
             gpu,
             default_device_tier(),
@@ -151,7 +152,7 @@ impl MapLibreRig {
             endpoints,
             aerodrome_geojson,
             catalog,
-            live_dem,
+            live_ground,
             truth,
             preset,
             window_px,
@@ -289,8 +290,9 @@ impl MapLibreRig {
         input: &MapFrameInput<'_>,
     ) -> Result<Option<LandingRunwayGeometry>, AppSimError> {
         let _ = self.aux_virtual_camera_slot;
-        if let Some(bridge) = &self.live_dem {
-            let _resident = self.surface.drain(bridge);
+        if let Some(ground) = self.live_ground.as_mut() {
+            let ownship = ecef_to_geodetic(input.vehicle.position_ecef);
+            ground.sync(&self.surface, &self.truth, &self.runtime, ownship);
         }
         self.window_px = clamp_window(input.surface_size);
         let [w, h] = self.window_px;
@@ -309,7 +311,7 @@ impl MapLibreRig {
                 .max(0.0),
         );
         self.step_truth_world(input, sim_dur)?;
-        let landing_runway = self.active_onboard_landing_runway(input);
+        let landing_runway = self.active_landing_runway(input);
         self.step_instrument_maps(input, sim_dur, landing_runway.as_ref())?;
         self.step_efb(input, sim_dur, landing_runway.as_ref())?;
         Ok(landing_runway)
@@ -375,12 +377,7 @@ impl MapLibreRig {
             .transpose()?;
         let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
         let mut aircraft = aircraft::traffic_aircraft(&truth_entities, sim_dur.as_secs_f64());
-        aircraft.push(aircraft::ownship_aircraft(
-            &input.vehicle,
-            input.articulation,
-            undulation_m,
-            input.ground_m,
-        ));
+        aircraft.push(aircraft::ownship_of(input, undulation_m));
         let sensor_role = aircraft::virtual_camera_role(&cam_spec);
         let window_role = if mode == OperatorViewportMode::SensorAperture {
             sensor_role

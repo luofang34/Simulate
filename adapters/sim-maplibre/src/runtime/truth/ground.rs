@@ -1,0 +1,59 @@
+//! The terrain height the physical scene draws, so hosts can check that what stands on
+//! the ground stands on the ground they see.
+
+use std::collections::BTreeSet;
+
+use maplibre::{coords::LatLon, terrain::TerrainCoverageIndex};
+use sim_scenery::TileId;
+
+use super::TruthSceneMap;
+
+impl TruthSceneMap {
+    /// Height above mean sea level of the terrain the last frame drew at a place; `None`
+    /// outside the drawn tiles or before their DEM has loaded.
+    #[must_use]
+    pub fn drawn_ground_msl(&self, lat_deg: f64, lon_deg: f64) -> Option<f64> {
+        self.map
+            .context()
+            .drawn_ground_cached(LatLon::new(lat_deg, lon_deg))
+            .ok()
+            .flatten()
+    }
+
+    /// Height above mean sea level at a place from the finest DEM tile loaded so far, drawn
+    /// or not; `None` before any tile covering it has arrived.
+    #[must_use]
+    pub fn loaded_ground_msl(&self, lat_deg: f64, lon_deg: f64) -> Option<f64> {
+        self.map
+            .context()
+            .loaded_ground_cached(LatLon::new(lat_deg, lon_deg))
+    }
+}
+
+impl TruthSceneMap {
+    /// The DEM tiles the last frame drew terrain from, each drawn tile's own or the
+    /// coarser ancestor standing in for it.
+    #[must_use]
+    pub fn drawn_dem_tiles(&self) -> BTreeSet<TileId> {
+        let Some(index) = self
+            .map
+            .context()
+            .world
+            .resources
+            .get::<TerrainCoverageIndex>()
+        else {
+            return BTreeSet::new();
+        };
+        index
+            .rendered_tiles()
+            .filter_map(|tile| index.loaded_dem_for(tile))
+            .filter_map(|coords| {
+                Some(TileId {
+                    zoom: u8::from(coords.z),
+                    x: u32::try_from(coords.x).ok()?,
+                    y: u32::try_from(coords.y).ok()?,
+                })
+            })
+            .collect()
+    }
+}

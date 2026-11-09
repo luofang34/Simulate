@@ -10,9 +10,10 @@ use sim_geo::{
 
 use crate::{
     AerodromeId, CatalogScenery, CatalogVerticalDatum, ElevationSource, LunarTranquilityScenery,
-    OsmAerodromeDiagram, SceneryError, TerrariumTile, TileId,
+    OsmAerodromeDiagram, RunwayDatum, SceneryError, TerrariumTile, TileId,
 };
 
+mod compose;
 mod datum;
 mod live_dem;
 mod raycast;
@@ -23,6 +24,7 @@ mod tests;
 
 use live_dem::LiveDem;
 pub use runway::RunwayStrip;
+pub(crate) use runway::surface_ecef;
 
 /// Half the baseline of the central differences behind a surface normal.
 const NORMAL_HALF_BASELINE_M: f64 = 5.0;
@@ -126,11 +128,13 @@ struct Earth {
     runways: Vec<RunwayStrip>,
     /// Runways registered at run time, replaced as a whole.
     extra_runways: Vec<RunwayStrip>,
+    /// Every charted runway, laid over the terrain as the drawn terrain carries it.
+    runway_datum: Option<RunwayDatum>,
     polar_elevations_m: Option<[f64; 2]>,
     fallback_m: Option<f64>,
     datum: CatalogVerticalDatum,
-    /// The renderer draws the live DEM unflattened, so a runway must never
-    /// sit below it.
+    /// The renderer draws the live DEM as served, so where it is resident the
+    /// ground is that DEM, runway datum and all.
     unflattened_visual_dem: bool,
 }
 
@@ -404,54 +408,18 @@ impl AuthoritativeWorldSurface {
     }
 }
 
-impl Earth {
-    /// Height in [`Self::datum`]: the live overlay, the catalog DEM, the polar
-    /// cap datum beyond Web Mercator's `±85.0511°` limit, or the fallback,
-    /// blended toward any runway strip covering the point.
-    fn raw_height(&self, position: &Geodetic) -> Option<(f64, SurfaceSampleSource)> {
-        let base = self
-            .live
-            .height_in(position, self.datum)
-            .or_else(|| {
-                self.catalog
-                    .as_ref()
-                    .and_then(|catalog| catalog.raw_height_and_zoom(position))
-            })
-            .map(|(height, zoom)| (height, SurfaceSampleSource::ResidentDem { zoom }))
-            .or_else(|| {
-                self.polar_height_m(position)
-                    .map(|height| (height, SurfaceSampleSource::FallbackElevation))
-            })
-            .or_else(|| {
-                self.fallback_m
-                    .map(|height| (height, SurfaceSampleSource::FallbackElevation))
-            });
-        let runway = runway::strongest(self.runways.iter().chain(&self.extra_runways), position);
-        match (base, runway) {
-            (base, None) => base,
-            (None, Some((height, _))) => Some((height, SurfaceSampleSource::RunwaySurface)),
-            (Some((terrain, source)), Some((height, weight))) => {
-                // When the renderer drapes imagery over an unflattened resident
-                // DEM, gear contact must sit on that exact DEM relief rather
-                // than floating above a lower DEM or sinking beneath a higher one.
-                let unflattened = self.unflattened_visual_dem
-                    && matches!(source, SurfaceSampleSource::ResidentDem { .. });
-                let target = if unflattened { terrain } else { height };
-                Some((
-                    terrain + (target - terrain) * weight,
-                    SurfaceSampleSource::RunwaySurface,
-                ))
-            }
-        }
-    }
-}
-
 impl WorldSurfaceQuery for AuthoritativeWorldSurface {
     fn world_version(&self) -> u64 {
         match &self.body {
-            Body::Earth(earth) => earth.catalog.as_ref().map_or(self.version, |catalog| {
-                self.version.wrapping_add(catalog.version())
-            }),
+            Body::Earth(earth) => self
+                .version
+                .wrapping_add(earth.catalog.as_ref().map_or(0, CatalogScenery::version))
+                .wrapping_add(
+                    earth
+                        .runway_datum
+                        .as_ref()
+                        .map_or(0, RunwayDatum::generation),
+                ),
             _ => self.version,
         }
     }

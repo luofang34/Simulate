@@ -145,6 +145,23 @@ fn assert_rests_on_gear(flight: &mut Flight, label: &str, gear_m: f64) {
     );
 }
 
+/// On a runway the ground under the gear is the charted runway: the datum every map lays
+/// into the terrain it draws, in mean-sea-level metres whatever the geoid there.
+fn assert_stands_on_the_runway_datum(flight: &Flight, label: &str) {
+    let geo = ecef_to_geodetic(flight.vehicle_state().position_ecef);
+    let Some((charted, 1.0)) = sim_scenery::RunwayDatum::builtin().height_and_weight(&geo) else {
+        return;
+    };
+    let ground = flight
+        .surface
+        .orthometric_ground_m(&geo)
+        .expect("runway ground");
+    assert!(
+        (ground - charted).abs() < 0.02,
+        "{label}: ground {ground:.3} m MSL vs charted runway {charted:.3} m"
+    );
+}
+
 #[test]
 fn parked_aircraft_rest_on_their_gear_at_airports_worldwide() {
     use crate::vehicles::{C172_GEAR_HEIGHT_M, P38G_GEAR_HEIGHT_M};
@@ -159,7 +176,7 @@ fn parked_aircraft_rest_on_their_gear_at_airports_worldwide() {
         (FreeFlightVehicle::JsbsimP38g, P38G_GEAR_HEIGHT_M),
     ] {
         flight.select_vehicle(vehicle).expect("vehicle");
-        for code in ["KEWR", "47N", "EGLL", "RJTT"] {
+        for code in ["KEWR", "47N", "EGLL", "RJTT", "KDEN", "VCBI"] {
             let (_, record) = db.by_code(code).expect("airport");
             for mode in [SpawnMode::Threshold, SpawnMode::Ramp] {
                 flight
@@ -167,6 +184,7 @@ fn parked_aircraft_rest_on_their_gear_at_airports_worldwide() {
                     .expect("spawn");
                 let label = format!("{} {code} {}", vehicle.title(), mode.title());
                 assert_rests_on_gear(&mut flight, &label, gear_m);
+                assert_stands_on_the_runway_datum(&flight, &label);
             }
         }
     }

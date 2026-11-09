@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use glam::DVec3;
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{
     AirframeArticulation, CameraPoseEcef, ControlInputs, RateAdapter, RealTimeClock,
@@ -460,12 +459,14 @@ impl Flight {
         }
     }
 
-    /// Aboard pilot eye pose in body-fixed ECEF coordinates.
+    /// Aboard pilot eye pose in body-fixed ECEF coordinates, the eye mounted on the drawn
+    /// airframe.
     pub fn aboard_eye_pose(&self) -> Result<CameraPoseEcef, AppSimError> {
         match &self.mode {
             Mode::Free {
                 vehicle, session, ..
-            } => Ok(pilot_eye_mount_for(*vehicle).pose(&session.truth_state(), DVec3::ZERO)),
+            } => Ok(pilot_eye_mount_for(*vehicle)
+                .pose(&session.truth_state(), -self.model_origin_from_cg_frd_m())),
             Mode::Scenario(run) => Ok(run.eye_pose()?),
         }
     }

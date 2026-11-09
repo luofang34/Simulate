@@ -6,10 +6,10 @@ use super::model::{AerodromeTier, AirportIdx, AirportRecord};
 use super::{AirportDatabase, rank_records};
 
 /// Cell size, degrees.
-const CELL_DEG: f64 = 2.0;
+pub(crate) const CELL_DEG: f64 = 2.0;
 /// Cells around a parallel and along a meridian.
-const LON_CELLS: usize = 180;
-const LAT_CELLS: usize = 90;
+pub(crate) const LON_CELLS: usize = 180;
+pub(crate) const LAT_CELLS: usize = 90;
 /// Visible cap radius at and below [`FULL_GLOBE_ZOOM`], degrees.
 const FULL_GLOBE_RADIUS_DEG: f64 = 82.0;
 const FULL_GLOBE_ZOOM: f64 = 2.5;
@@ -80,7 +80,7 @@ impl GlobeGrid {
         Self { starts, entries }
     }
 
-    fn cell(&self, lat: usize, lon: usize) -> &[AirportIdx] {
+    pub(crate) fn cell(&self, lat: usize, lon: usize) -> &[AirportIdx] {
         let cell = lat * LON_CELLS + lon;
         let start = self.starts.get(cell).map_or(0, |&s| s as usize);
         let end = self.starts.get(cell + 1).map_or(start, |&e| e as usize);

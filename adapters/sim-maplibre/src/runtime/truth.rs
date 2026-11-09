@@ -40,6 +40,7 @@ use crate::{
 };
 
 mod celestial;
+mod ground;
 mod ownship;
 mod slots;
 #[cfg(test)]

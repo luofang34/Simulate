@@ -5,8 +5,8 @@ use sim_geo::{EllipsoidalHeightM, Geodetic, OrthometricHeightM, egm96_undulation
 
 use crate::terrarium::bilinear;
 use crate::{
-    ElevationSource, ImageryRaster, ImagerySource, SceneryError, TerrariumTile, TileId,
-    project_to_tile,
+    ElevationSource, ImageryRaster, ImagerySource, RunwayDatum, SceneryError, TerrariumTile,
+    TileId, project_to_tile,
 };
 
 mod manifest;
@@ -101,6 +101,31 @@ impl CatalogScenery {
         self.imagery.insert(tile, raster);
         self.version = self.version.wrapping_add(1);
         Ok(())
+    }
+
+    /// This catalog with `datum` laid into every elevation tile it reaches
+    /// ([`RunwayDatum::stamp_terrarium`]), so terrain drawn from the catalog carries the
+    /// charted runways. Runways not yet given a profile take it from this catalog's
+    /// terrain first.
+    #[must_use]
+    pub fn with_runway_datum(mut self, datum: &RunwayDatum) -> Self {
+        let airports: BTreeSet<_> = self
+            .elevation
+            .keys()
+            .flat_map(|&id| datum.unresolved_airports_reaching(id))
+            .collect();
+        let terrain = |position: &Geodetic| self.raw_height_and_zoom(position).map(|(h, _)| h);
+        for airport in airports {
+            datum.resolve_airport(airport, &terrain);
+        }
+        let mut stamped = false;
+        for (&id, tile) in &mut self.elevation {
+            stamped |= datum.stamp_terrarium(id, tile);
+        }
+        if stamped {
+            self.version = self.version.wrapping_add(1);
+        }
+        self
     }
 
     /// The datum the elevation tiles are measured from.

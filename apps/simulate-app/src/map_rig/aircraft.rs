@@ -1,7 +1,7 @@
 //! OpenUSD aircraft the physical scene draws: ownship and traffic, and which ownship
 //! parts each camera sees.
 
-use glam::{DMat3, DQuat};
+use glam::{DMat3, DQuat, DVec3};
 use sim_core::{AirframeArticulation, VehicleState, VirtualCameraSpec};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_maplibre::{
@@ -15,18 +15,31 @@ use crate::vehicles::FreeFlightVehicle;
 /// Cruise propeller speed of drawn traffic, rpm.
 const TRAFFIC_PROP_RPM: f64 = 2_350.0;
 
-/// Ownship at its true state, with its own articulation. The placement is `AboveMsl`, so
-/// the WGS84 ellipsoidal height becomes orthometric by subtracting `undulation_m`
-/// (`H = h − N`); without it a real-world airframe sits `N` metres off its runway. The
-/// ellipsoidal `ground_m` beneath, when known, takes the same correction and receives the
-/// airframe's sun shadow.
+/// The ownship [`input`](super::MapFrameInput) draws, by [`ownship_aircraft`].
+pub(super) fn ownship_of(input: &super::MapFrameInput<'_>, undulation_m: f64) -> AircraftInstance {
+    ownship_aircraft(
+        &input.vehicle,
+        input.model_origin_from_cg_frd_m,
+        input.articulation,
+        undulation_m,
+        input.ground_m,
+    )
+}
+
+/// Ownship at its true state, with its own articulation, its model's origin
+/// `origin_from_cg_frd_m` (body FRD metres) from the state's position, the CG. The
+/// placement is `AboveMsl`, so the WGS84 ellipsoidal height becomes orthometric by
+/// subtracting `undulation_m` (`H = h − N`); without it a real-world airframe sits `N`
+/// metres off its runway. The ellipsoidal `ground_m` beneath, when known, takes the same
+/// correction and receives the airframe's sun shadow.
 pub fn ownship_aircraft(
     vehicle: &VehicleState,
+    origin_from_cg_frd_m: DVec3,
     articulation: AirframeArticulation,
     undulation_m: f64,
     ground_m: Option<f64>,
 ) -> AircraftInstance {
-    let geo = ecef_to_geodetic(vehicle.position_ecef);
+    let geo = ecef_to_geodetic(vehicle.position_ecef + vehicle.attitude * origin_from_cg_frd_m);
     let ecef_to_ned = LocalFrame::at(&geo).ned_to_ecef().transpose();
     let ned_from_body =
         DQuat::from_mat3(&(ecef_to_ned * DMat3::from_quat(vehicle.attitude))).normalize();

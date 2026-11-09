@@ -17,11 +17,8 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
     ] {
         let mut plant = FreeFlightPlant::new_on_ground(vehicle, ground, 1.2, cold).expect("parked");
         let mut plant_ground = ground;
-        if let Ok(surface) = sim_scenery::AuthoritativeWorldSurface::regional_earth_shared()
-            && let Ok(Some(sample)) =
-                sim_scenery::WorldSurfaceQuery::sample_surface(surface, &ground)
-        {
-            plant_ground.height_m = sample.ellipsoidal_height_m.0;
+        if let Some(height_m) = world.ellipsoidal_ground_m(&ground) {
+            plant_ground.height_m = height_m;
             plant =
                 FreeFlightPlant::new_on_ground(vehicle, plant_ground, 1.2, cold).expect("parked");
         }
@@ -51,3 +48,4 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
         }
     }
 }
+mod gear_datum;

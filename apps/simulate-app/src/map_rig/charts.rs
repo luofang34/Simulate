@@ -13,24 +13,26 @@ use sim_maplibre::{
 use sim_scenario::{OperatorViewportMode, ScenarioProfile};
 use sim_scenery::{AerodromeId, LandingRunwayGeometry};
 
-use super::{AIRPORT_SURFACE_MAP, MapFrameInput, MapLibreRig, PFD_SVS_MAP};
+use super::{AIRPORT_SURFACE_MAP, MapFrameInput, MapLibreRig};
 use crate::error::AppSimError;
 use crate::supervisor_rig::SupervisorRig;
 
 impl MapLibreRig {
     /// Samples orthometric elevation (`metres above MSL`) from the onboard `PFD_SVS_MAP`
     /// terrain cache (`None` when the tile has not arrived yet or SVS is inactive).
+    #[cfg(test)]
     #[must_use]
     pub fn sample_svs_dem_msl(&self, lat_deg: f64, lon_deg: f64) -> Option<f64> {
         self.avionics
-            .get(PFD_SVS_MAP)?
+            .get(super::PFD_SVS_MAP)?
             .sample_resident_dem_msl(lat_deg, lon_deg)
     }
 
-    /// Surveyed landing runway refined vertically against the onboard SVS DEM within
-    /// DO-315B integrity bounds (`ARP` + surveyed endpoints).
+    /// The active landing runway laid on the runway datum every map lays into the terrain
+    /// it draws ([`sim_scenery::RunwayDatum::touchdown_plane`]), so the conformal runway
+    /// sits on the drawn one.
     #[must_use]
-    pub(super) fn active_onboard_landing_runway(
+    pub(super) fn active_landing_runway(
         &self,
         input: &MapFrameInput<'_>,
     ) -> Option<LandingRunwayGeometry> {
@@ -38,7 +40,7 @@ impl MapLibreRig {
         input
             .supervisor
             .active_landing_runway(input.profile)
-            .map(|rwy| rwy.with_onboard_dem(datum, |lat, lon| self.sample_svs_dem_msl(lat, lon)))
+            .map(|rwy| self.surface.runway_datum().touchdown_plane(&rwy, datum))
     }
 }
 

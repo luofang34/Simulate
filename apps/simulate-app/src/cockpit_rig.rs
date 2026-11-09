@@ -320,7 +320,7 @@ impl CockpitRig {
         let runway = if map_sphere_active {
             earth_runway
         } else {
-            self.active_onboard_runway(earth, profile)
+            self.active_landing_runway(earth, profile)
         };
         let dock_panel_px = self.dock_panel_px(earth, viewport_mode);
         let datum = self.supervisor.vertical_datum();
@@ -390,6 +390,7 @@ impl CockpitRig {
                     profile: flight.profile(),
                     active_vehicle: flight.free_vehicle(),
                     vehicle: flight.display_vehicle_state(),
+                    model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
                     ground_m: flight.display_ground_height_m(),
                     estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
                     sensor_exposures,
@@ -426,7 +427,7 @@ impl CockpitRig {
         layout::dock_panel_px(self.surface_size, has_dock_chart)
     }
 
-    fn active_onboard_runway(
+    fn active_landing_runway(
         &self,
         earth: bool,
         profile: Option<sim_scenario::ScenarioProfile>,
@@ -435,12 +436,7 @@ impl CockpitRig {
         earth
             .then(|| self.supervisor.active_landing_runway(profile))
             .flatten()
-            .map(|rwy| match self.maps.as_ref() {
-                Some(maps) => {
-                    rwy.with_onboard_dem(datum, |lat, lon| maps.sample_svs_dem_msl(lat, lon))
-                }
-                None => rwy,
-            })
+            .map(|rwy| self.surface.runway_datum().touchdown_plane(&rwy, datum))
     }
 
     /// Assembles the ordered zero-copy [`OverlayQuad`] stack for [`Renderer::render_composite`].

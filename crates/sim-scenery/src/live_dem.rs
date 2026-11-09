@@ -42,6 +42,13 @@ impl RecentTiles {
         self.order.push_back(id);
         true
     }
+
+    /// Forgets `id`, so the next fetch of it is ingested again.
+    fn remove(&mut self, id: TileId) {
+        if self.present.remove(&id) {
+            self.order.retain(|&queued| queued != id);
+        }
+    }
 }
 
 /// A cheap-to-clone queue between any number of tile loaders and the one
@@ -149,14 +156,29 @@ impl LiveDemBridge {
             Err(TryLockError::Poisoned(poisoned)) => std::mem::take(&mut *poisoned.into_inner()),
             Err(TryLockError::WouldBlock) => return 0,
         };
-        drained
+        let resident = drained
             .into_iter()
             .filter(|(id, tile)| {
                 surface
                     .insert_shared_terrarium_tile(*id, Arc::clone(tile))
                     .is_ok()
             })
-            .count()
+            .count();
+        self.forget_evicted(surface);
+        resident
+    }
+
+    /// Forgets the tiles `surface` has evicted, so a loader fetching one again hands it
+    /// over again instead of dropping it as already seen.
+    pub fn forget_evicted(&self, surface: &mut AuthoritativeWorldSurface) {
+        let evicted = surface.take_evicted_live_tiles();
+        if evicted.is_empty() {
+            return;
+        }
+        let mut recent = self.recent.lock().unwrap_or_else(PoisonError::into_inner);
+        for id in evicted {
+            recent.remove(id);
+        }
     }
 
     fn push(&self, id: TileId, tile: Arc<TerrariumTile>) {

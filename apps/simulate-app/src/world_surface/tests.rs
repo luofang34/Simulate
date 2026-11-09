@@ -60,7 +60,7 @@ fn catalog_source_restores_the_synthetic_regional_ground() {
 }
 
 #[test]
-fn extra_runways_survive_a_scenery_switch_in_either_datum() {
+fn every_charted_runway_has_its_charted_ground_in_either_datum() {
     let db = sim_scenery::AirportDatabase::builtin();
     let (_, egll) = db.by_code("EGLL").unwrap();
     let end = &egll.runways[0].ends[0];
@@ -72,11 +72,9 @@ fn extra_runways_survive_a_scenery_switch_in_either_datum() {
         surface.vertical_datum(),
         CatalogVerticalDatum::EllipsoidWgs84
     );
-    assert_eq!(surface.ellipsoidal_ground_m(&threshold), None);
-    surface.set_extra_runways(egll.runway_strips(surface.vertical_datum()));
     let synthetic = surface.ellipsoidal_ground_m(&threshold).unwrap();
     assert!(
-        (synthetic - charted).abs() < 0.5,
+        (synthetic - charted).abs() < 0.01,
         "{synthetic} vs {charted}"
     );
 
@@ -92,14 +90,13 @@ fn extra_runways_survive_a_scenery_switch_in_either_datum() {
     );
     let real = surface.ellipsoidal_ground_m(&threshold).unwrap();
     let expected = surface.msl_to_ellipsoidal_m(threshold.lat_rad, threshold.lon_rad, charted);
-    assert!((real - expected).abs() < 0.5, "{real} vs {expected}");
+    assert!((real - expected).abs() < 0.01, "{real} vs {expected}");
     let msl = surface.orthometric_ground_m(&threshold).unwrap();
-    assert!((msl - charted).abs() < 0.5, "{msl} vs {charted}");
+    assert!((msl - charted).abs() < 0.01, "{msl} vs {charted}");
 
-    surface.set_extra_runways(Vec::new());
-    assert_eq!(surface.ellipsoidal_ground_m(&threshold), None);
-    surface.configure(&ScenerySource::Catalog).unwrap();
-    assert_eq!(surface.ellipsoidal_ground_m(&threshold), None);
+    // Two kilometres off the airfield there is no runway, and no tile has streamed in.
+    let beside = Geodetic::from_degrees(end.lat_deg + 0.03, end.lon_deg, 0.0);
+    assert_eq!(surface.ellipsoidal_ground_m(&beside), None);
 }
 
 #[test]

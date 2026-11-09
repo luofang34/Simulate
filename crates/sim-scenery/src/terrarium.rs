@@ -125,6 +125,15 @@ impl TerrariumTile {
         self.heights_m.get(index).copied()
     }
 
+    /// Replaces every pixel's height with `f(x, y, height)`, row by row.
+    pub(crate) fn map_heights(&mut self, mut f: impl FnMut(u32, u32, f64) -> f64) {
+        let width = self.width.max(1) as usize;
+        for (index, height) in self.heights_m.iter_mut().enumerate() {
+            let (x, y) = (index % width, index / width);
+            *height = f(x as u32, y as u32, *height);
+        }
+    }
+
     /// Bilinear height at the tile fraction `(u, v)`. Beyond the outermost
     /// pixel centres the edge pixels hold their value.
     pub fn sample_bilinear(&self, u: f64, v: f64) -> Option<f64> {

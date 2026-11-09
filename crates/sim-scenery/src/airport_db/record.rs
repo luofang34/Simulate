@@ -14,7 +14,7 @@ use super::geometry::{bearing_and_distance, offset_deg};
 use super::model::{
     AirportRecord, CompactCode, FrequencyRole, RunwayEndRecord, RunwayRecord, RunwaySurfaceKind,
 };
-use crate::{AerodromeId, CatalogVerticalDatum, OsmAerodromeDiagram, RunwayStrip};
+use crate::{AerodromeId, CatalogVerticalDatum, OsmAerodromeDiagram};
 
 /// Default visual/instrument glidepath when none is published (`3.0°`).
 const DEFAULT_GLIDEPATH_DEG: f64 = 3.0;
@@ -218,7 +218,10 @@ impl RunwayRecord {
     /// runway end with the height `height_m` gives it, bearing and length
     /// measured between the surveyed ends. `None` for an end whose designator
     /// `Flightbag` rejects.
-    fn end_specs(&self, height_m: impl Fn(&RunwayEndRecord) -> f64) -> [Option<RunwayEndSpec>; 2] {
+    pub(crate) fn end_specs(
+        &self,
+        height_m: impl Fn(&RunwayEndRecord) -> f64,
+    ) -> [Option<RunwayEndSpec>; 2] {
         let [a, b] = &self.ends;
         let (bearing_ab, length) =
             bearing_and_distance((a.lat_deg, a.lon_deg), (b.lat_deg, b.lon_deg));
@@ -320,28 +323,6 @@ impl AirportRecord {
                 .find(|frequency| frequency.role == role)
                 .map(|frequency| (role, frequency.mhz()))
         })
-    }
-
-    /// The runway strips an [`crate::AuthoritativeWorldSurface`] read in
-    /// `datum` should hold, for
-    /// [`crate::AuthoritativeWorldSurface::set_extra_runways`]. A surface
-    /// reads its runway heights as charted — MSL in an orthometric world, the
-    /// same number taken as ellipsoidal in a synthetic one — so every strip
-    /// carries its surveyed MSL threshold elevations in either datum.
-    #[must_use]
-    pub fn runway_strips(&self, datum: CatalogVerticalDatum) -> Vec<RunwayStrip> {
-        let charted = |end: &RunwayEndRecord| match datum {
-            CatalogVerticalDatum::OrthometricMslEgm96 | CatalogVerticalDatum::EllipsoidWgs84 => {
-                f64::from(end.elevation_msl_m)
-            }
-        };
-        let ends: Vec<RunwayEndSpec> = self
-            .runways
-            .iter()
-            .flat_map(|runway| runway.end_specs(charted))
-            .flatten()
-            .collect();
-        RunwayStrip::from_ends(&ends)
     }
 
     /// The `Flightbag` surface graph with every height a true WGS84
