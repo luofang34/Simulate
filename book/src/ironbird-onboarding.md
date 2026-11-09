@@ -3,7 +3,7 @@
 `ironbird` (`apps/ironbird`) supports two complementary ways to onboard a new aircraft:
 
 1. **Zero-Recompile Directory Onboarding (`--package-dir`)** — load any `syspack` directory directly from disk for closed-loop Tier-0 flight, performance/range estimation, or POH calibration.
-2. **Built-In Workspace Registration** — embed the `syspack` bytes into `sim-pack` so the aircraft is available in `wasm32` browser builds, `ironbird` named modes, and the `simulate-app` free-flight roster.
+2. **Built-In Workspace Registration** — embed the `syspack` bytes into `sim-pack` so the aircraft loads without filesystem access (including `wasm32` browser builds), then wire it into `ironbird` named modes and, if it should be flyable interactively, the `simulate-app` free-flight roster. `simulate-app` only flies built-in packages; on-disk directories are an `ironbird` feature.
 
 ---
 
@@ -36,7 +36,7 @@ Under the hood, `ironbird`:
 1. Loads and verifies the directory via `LoadedSyspack::load(&DirectoryPackageSource::new(dir))`.
 2. Determines the nominal cruise trim speed from `package.airspeed_envelope()` (`0.40 * vno_kt` in $\text{m/s}$, or `50.0 m/s` when no envelope is present).
 3. Instantiates `JsbsimPlant::from_package(&package, origin, speed_m_s)` at `120 Hz` (`JSBSIM_DEFAULT_PERIOD`).
-4. Couples the plant to `AviateDirectRunner` (`build_direct_fixed_wing_kernel()`) inside a `sim_core::SimSession` with a `30 Hz` optical exposure channel (`OPTICAL_CHANNEL`), logging executed physics steps, wall-clock speedup (`>1,000x` real-time), final geodetic altitude, and optical exposure count.
+4. Couples the plant to `AviateDirectRunner` (`build_direct_fixed_wing_kernel()`) inside a `sim_core::SimSession` with a `30 Hz` optical exposure channel (`OPTICAL_CHANNEL`), logging executed physics steps, simulated and wall-clock seconds, real-time speed-up, and final geodetic altitude.
 
 ### 3. Run Closed-Loop POH & Empirical Calibration (`calibrate-dir`)
 
@@ -81,7 +81,7 @@ Expose `builtin_my_aircraft_source()` and `builtin_my_aircraft_package() -> Resu
 
 ### 2. Add a Variant to `ironbird::FixedWingVehicle`
 
-In `apps/ironbird/src/plant.rs`, add your variant to `FixedWingVehicle` with its `nominal_cruise_speed_m_s()`, and wire it into `JsbsimPlant::new_cruise` and `run_tier0_fixed_wing_cruise`. This immediately enables both Tier-0 cruise and Tier-2 `MAVLink v2 HIL` TCP/UDP closed-loop testing for the new aircraft.
+In `apps/ironbird/src/plant.rs`, add your variant to `FixedWingVehicle` with its `nominal_cruise_speed_m_s()`, and wire it into `JsbsimPlant::new_cruise` and `run_tier0_fixed_wing_cruise`. The library entry points (`run_tier0_fixed_wing_cruise`, `run_tier2_mavlink_fixed_wing`) then accept it. The CLI modes in `apps/ironbird/src/cli.rs` name their vehicle explicitly (the Tier-2 MAVLink modes fly the C172), so add a `--mode` there for the new aircraft and list it in the [CLI reference](cli-and-schema-reference.md).
 
 ### 3. Add Regression Tests in `crates/sim-pack/tests/`
 

@@ -2,6 +2,16 @@
 
 [Introduction](introduction.md)
 
+# User Guide
+
+- [Getting Started](getting-started.md)
+- [Flying the Simulator](flying.md)
+- [Flying an External Autopilot](external-autopilots.md)
+
+# Architecture
+
+- [Architecture](architecture.md)
+
 # Aircraft Packages (`syspack`)
 
 - [The `syspack` Vehicle Contract](syspack-contract.md)
