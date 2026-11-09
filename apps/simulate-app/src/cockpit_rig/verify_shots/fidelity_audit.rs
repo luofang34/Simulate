@@ -305,7 +305,7 @@ fn render_fidelity_audit_ortho_overlays() -> Result<(), AppSimError> {
         return Ok(());
     };
     let p38 = load_model(HangarModel::P38g)?;
-    for view in ortho::p38g_sheet_views() {
+    for view in ortho::p38g_sheet_views()? {
         ortho::write_sheet_overlay(&p38, &view, &dir)?;
     }
     let c172 = load_model(HangarModel::C172)?;

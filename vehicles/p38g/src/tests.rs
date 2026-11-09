@@ -1,78 +1,18 @@
+mod calibration;
+mod silhouette;
+
 use std::{f32::consts::TAU, path::PathBuf};
 
 use glam::{DVec3, Vec3};
 use image::{Rgba, RgbaImage};
 
 use crate::{
-    BOOM_STATIONS, BOOM_X, FIN_PROFILE, GONDOLA_STATIONS, OVERALL_HEIGHT_M, OVERALL_LENGTH_M,
-    OVERALL_SPAN_M, P38PartRole, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M, ROOT_CHORD_M, SEMI_SPAN,
-    TIP_CHORD_M, WING_AREA_M2, WING_DIHEDRAL_DEG, boom_point, gondola_point, interpolate_gondola,
+    BOOM_STATIONS, BOOM_X, FIN_PROFILE, GONDOLA_STATIONS, P38PartRole, PROP_HUB_Y, PROP_HUB_Z,
+    PROP_RADIUS_M, SEMI_SPAN, boom_point, gondola_point, interpolate_gondola,
     p38g_cockpit_contract, p38g_mesh_prims, p38g_package_source, p38g_usda,
     three_view_boom_outline_x, three_view_gondola_outline_x, three_view_wing_leading_y,
-    three_view_wing_trailing_y, verify_p38g_three_view_and_stations, wing_surface_point,
+    three_view_wing_trailing_y, wing_surface_point,
 };
-
-#[test]
-fn p38g_three_view_and_station_calibration_matches_lockheed_blueprint() {
-    let rpt = verify_p38g_three_view_and_stations();
-    assert!(
-        (rpt.measured_span_m - OVERALL_SPAN_M).abs() < 0.02,
-        "span {} != {}",
-        rpt.measured_span_m,
-        OVERALL_SPAN_M
-    );
-    assert!(
-        (rpt.measured_airframe_length_m - OVERALL_LENGTH_M).abs() < 0.04,
-        "length {} != {}",
-        rpt.measured_airframe_length_m,
-        OVERALL_LENGTH_M
-    );
-    assert!(
-        (rpt.measured_overall_height_m - OVERALL_HEIGHT_M).abs() < 0.10,
-        "height {} != {}",
-        rpt.measured_overall_height_m,
-        OVERALL_HEIGHT_M
-    );
-    assert!(
-        (rpt.measured_root_chord_m - ROOT_CHORD_M).abs() < 0.01,
-        "root chord {} != {}",
-        rpt.measured_root_chord_m,
-        ROOT_CHORD_M
-    );
-    assert!(
-        (rpt.measured_tip_chord_m - TIP_CHORD_M).abs() < 0.01,
-        "tip chord {} != {}",
-        rpt.measured_tip_chord_m,
-        TIP_CHORD_M
-    );
-    assert!(
-        (rpt.measured_wing_area_m2 - WING_AREA_M2).abs() < 0.80,
-        "wing area {} != {}",
-        rpt.measured_wing_area_m2,
-        WING_AREA_M2
-    );
-    assert!(
-        (rpt.measured_dihedral_deg - WING_DIHEDRAL_DEG).abs() < 0.15,
-        "dihedral {} != {}",
-        rpt.measured_dihedral_deg,
-        WING_DIHEDRAL_DEG
-    );
-    assert!(
-        (rpt.measured_boom_spacing_m - 2.0 * BOOM_X).abs() < 0.01,
-        "boom spacing {} != {}",
-        rpt.measured_boom_spacing_m,
-        2.0 * BOOM_X
-    );
-    assert!(
-        (rpt.measured_spinner_tip_y_m - 3.18).abs() < 0.02,
-        "spinner tip y {} != 3.18 m",
-        rpt.measured_spinner_tip_y_m
-    );
-    assert_eq!(rpt.gondola_station_count, 14);
-    assert_eq!(rpt.boom_station_count, 14);
-    assert!(rpt.prim_count >= 50);
-    assert!(rpt.total_triangles >= 8_000);
-}
 
 #[test]
 fn powerplant_and_cockpit_reservation_prims_are_present() {

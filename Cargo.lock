@@ -4993,6 +4993,7 @@ dependencies = [
  "image",
  "openusd",
  "openusd-schemas",
+ "serde_json",
  "syspack",
  "thiserror 2.0.21",
 ]

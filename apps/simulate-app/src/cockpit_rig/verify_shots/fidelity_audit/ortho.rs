@@ -168,21 +168,41 @@ fn outline_silhouette(img: &mut RgbaImage) {
 /// Inches to metres.
 const IN: f64 = 0.0254;
 
-/// AN 01-75F-2 p.2 general arrangement (P-38 through P-38G-15), `1967 x 2447` scan.
-/// Anchors: gondola nose tip and fuselage reference line (side), ship centreline and
-/// nose tip (plan), ship centreline and fuselage reference line (front). The model's
-/// thrust line is `z = +0.04 m` and the FRL lies `5.078 in` below it.
-pub(super) fn p38g_sheet_views() -> [SheetView; 3] {
+/// AN 01-75F-2 p.2 general arrangement (P-38 through P-38G-15), `1967 x 2447` scan, with
+/// the per-view registration (anchor pixel and per-axis scale) the outlines in
+/// `vehicles/p38g/design/an01-75f-2_general_arrangement.json` were digitised with: the
+/// side and front views are anchored on the drawn fuselage reference line, the side and
+/// plan views on fuselage station 0, and the plan and front views on the ship centreline.
+pub(super) fn p38g_sheet_views() -> Result<[SheetView; 3], AppSimError> {
+    use sim_p38g::drawing::{FRL_Z_M, GENERAL_ARRANGEMENT_JSON, NOSE_Y_M};
+    let doc: serde_json::Value =
+        serde_json::from_str(GENERAL_ARRANGEMENT_JSON).map_err(|e| AppSimError::Screenshot {
+            detail: format!("AN 01-75F-2 registration: {e}"),
+        })?;
+    let sheet = |view: &str| -> Result<([f64; 2], [f64; 2]), AppSimError> {
+        let pair = |key: &str| {
+            let v = doc.pointer(&format!("/views/{view}/registration/{key}"))?;
+            Some([v.get(0)?.as_f64()?, v.get(1)?.as_f64()?])
+        };
+        pair("anchor_px")
+            .zip(pair("px_per_in"))
+            .ok_or_else(|| AppSimError::Screenshot {
+                detail: format!("AN 01-75F-2 {view} view has no registration"),
+            })
+    };
     const SHEET: [u32; 2] = [1967, 2447];
-    let frl_z = 0.04 - 5.078 * IN;
-    [
+    let (nose, frl) = (f64::from(NOSE_Y_M), f64::from(FRL_Z_M));
+    let ((side_px, side_s), (plan_px, plan_s), (front_px, front_s)) =
+        (sheet("side")?, sheet("plan")?, sheet("front")?);
+    let per_m = |s: [f64; 2]| [s[0] / IN, s[1] / IN];
+    Ok([
         SheetView {
             name: "p38g_ortho_side_on_AN01-75F-2",
             sheet_px: SHEET,
             h_axis: (1, -1.0),
             v_axis: (2, 1.0),
-            px_per_m: [2.4365 / IN; 2],
-            anchor: (DVec3::new(0.0, 3.55, frl_z), [324.5, 337.0]),
+            px_per_m: per_m(side_s),
+            anchor: (DVec3::new(0.0, nose, frl), side_px),
             toward_viewer: -1.0,
         },
         SheetView {
@@ -190,8 +210,8 @@ pub(super) fn p38g_sheet_views() -> [SheetView; 3] {
             sheet_px: SHEET,
             h_axis: (0, -1.0),
             v_axis: (1, -1.0),
-            px_per_m: [2.439 / IN; 2],
-            anchor: (DVec3::new(0.0, 3.55, 0.0), [975.0, 1810.0]),
+            px_per_m: per_m(plan_s),
+            anchor: (DVec3::new(0.0, nose, 0.0), plan_px),
             toward_viewer: 1.0,
         },
         SheetView {
@@ -199,11 +219,11 @@ pub(super) fn p38g_sheet_views() -> [SheetView; 3] {
             sheet_px: SHEET,
             h_axis: (0, -1.0),
             v_axis: (2, 1.0),
-            px_per_m: [2.425 / IN; 2],
-            anchor: (DVec3::new(0.0, 0.0, frl_z), [975.0, 2162.0]),
+            px_per_m: per_m(front_s),
+            anchor: (DVec3::new(0.0, 0.0, frl), front_px),
             toward_viewer: 1.0,
         },
-    ]
+    ])
 }
 
 /// Cessna 172S Information Manual Figure 1-1 at 300 dpi. The figure is a sketch whose

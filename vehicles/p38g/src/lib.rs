@@ -12,16 +12,19 @@
 //! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, 24 individual
 //!   exhaust ejector stacks, recessed dorsal GE B-13 turbosuperchargers, wing leading-edge
 //!   intercooler louvers, chin oil cooler, and aft-boom glycol radiator ducts with splitter plates,
-//! - [`package`]: Embedded `syspack.json` source, OpenUSD `.usda` stage export, and 3-view
-//!   orthographic blueprint verification.
+//! - [`package`]: Embedded `syspack.json` source and OpenUSD `.usda` stage export,
+//! - [`drawing`]: the digitised AN 01-75F-2 general arrangement and its station callouts,
+//!   against which [`verify_p38g_three_view_and_stations`] measures the built mesh.
 
 mod airframe;
 mod articulated;
+mod calibration;
 mod canopy_frames;
 mod cockpit_controls;
 mod cockpit_opening;
 mod cockpit_reservation;
 mod decals;
+pub mod drawing;
 mod instrument_panel;
 mod mesh;
 mod package;
@@ -31,14 +34,12 @@ mod stations;
 #[cfg(test)]
 mod tests;
 
+pub use calibration::{P38BlueprintCalibrationReport, verify_p38g_three_view_and_stations};
 pub use cockpit_reservation::{
     CockpitInteriorContract, PanelMountFrame, StationBulkheadSpec, p38g_cockpit_contract,
 };
 pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
-pub use package::{
-    P38BlueprintCalibrationReport, P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda,
-    verify_p38g_three_view_and_stations,
-};
+pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
 pub use stations::{
     AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, HTAIL_Z,
     OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,

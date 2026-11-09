@@ -18,18 +18,19 @@ pub const OVERALL_SPAN_M: f32 = 15.850;
 pub const SEMI_SPAN: f32 = 7.925;
 /// Exact Lockheed P-38G overall length (`37 ft 10 in` = `11.530 m`, `y = +3.55..-7.98 m`).
 pub const OVERALL_LENGTH_M: f32 = 11.530;
-/// Exact Lockheed P-38G overall ground height (`12 ft 10 in` = `3.910 m`).
-pub const OVERALL_HEIGHT_M: f32 = 3.910;
-/// Theoretical centerline root chord (`115.7 in` = `2.940 m`, `NACA 23016`).
-pub const ROOT_CHORD_M: f32 = 2.940;
+/// Airframe height on AN 01-75F-2, fin top to the drawing's inclined static ground line
+/// (`9 ft 10 3/8 in` = `3.007 m`). The sheet's `12 ft 10 1/8 in` is the propeller arc.
+pub const OVERALL_HEIGHT_M: f32 = 118.375 * 0.0254;
+/// Root chord on the ship centreline (AN 01-75F-2 `ROOT CHORD 117 NACA 23016`, `2.972 m`).
+pub const ROOT_CHORD_M: f32 = 117.0 * 0.0254;
 /// Wingtip station (`WS 288`) chord (`40.2 in` = `1.020 m`, `NACA 4412`).
 pub const TIP_CHORD_M: f32 = 1.020;
 /// Reference wing area (`327.5 sq ft` = `30.43 m²`).
 pub const WING_AREA_M2: f32 = 30.43;
 /// Outer-wing geometric dihedral angle (`5° 40'` = `5.67°`).
 pub const WING_DIHEDRAL_DEG: f32 = 5.67;
-/// Twin boom lateral centerline (`93.0 in` = `2.3622 m` from aircraft symmetry plane).
-pub const BOOM_X: f32 = 2.3622;
+/// Boom centreline from the ship centreline (AN 01-75F-2 plan view `96` in = `2.4384 m`).
+pub const BOOM_X: f32 = 96.0 * 0.0254;
 /// Aft end of the GE B-13 turbosupercharger exhaust nozzle on each boom's top (`y`).
 pub const TURBO_NOZZLE_Y: f32 = -1.62;
 /// Outboard end of differential aileron (`WS 282` = `7.16 m`).
