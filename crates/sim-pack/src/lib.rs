@@ -11,6 +11,7 @@ pub mod calibration;
 mod envelope;
 mod error;
 mod instruments;
+mod landmarks;
 mod livery;
 mod loaded;
 mod pec;
@@ -34,6 +35,10 @@ pub use calibration::{
 pub use envelope::{AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, ResolvedAirspeedEnvelope};
 pub use error::PackError;
 pub use instruments::{BUILTIN_INSTRUMENT_PACKS, builtin_instrument_pack_source};
+pub use landmarks::{
+    HeightReference, MeshFeature, STRUCTURAL_LANDMARKS_ASSET, StructuralLandmark,
+    StructuralLandmarks,
+};
 pub use livery::{LIVERY_CATALOG_ASSET, LiveryCatalog, VehicleLivery};
 pub use loaded::{CotsDevice, LoadedSyspack, MountedCotsDevice, PackageCamera};
 pub use pec::{

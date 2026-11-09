@@ -89,7 +89,7 @@ pub use usd_aircraft::{
     UsdCameraSample, UsdMeshPart, UsdMeshVertex, UsdPartDraw, UsdRunwaySample, UsdSceneExportInput,
     export_scene_usda,
 };
-pub use usd_pass::{OwnshipVisualKind, USD_AIRCRAFT_PASS};
+pub use usd_pass::{OwnshipVisualKind, StructuralDatum, USD_AIRCRAFT_PASS};
 pub use volume_patch::{
     TerrainVolumeRequest, VolumetricMeshPatch, emit_terrain_volume_with_patch,
     encode_terrain_patch_aux, extract_volumetric_mesh_patch,

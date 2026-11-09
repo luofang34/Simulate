@@ -111,9 +111,9 @@ fn assert_parked_wheels_touch(
     Ok(())
 }
 
-/// Within tolerance once drawn from its structural datum; the static check
-/// (`c172_wheels_meet_the_fdm_gear_red_until_the_model_wheelbase_matches`) still sees the
-/// model's mains 14 cm aft of the flight model's.
+/// Within tolerance once drawn from its structural datum; the static per-leg check
+/// (`c172_wheels_meet_the_fdm_gear_red_while_the_mesh_wheelbase_is_70_in`) still sees
+/// the mesh's wheels off the flight model's gear fore and aft.
 #[test]
 #[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
 fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
@@ -123,11 +123,11 @@ fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
     )
 }
 
-/// Red until the P-38G's model gear and flight model gear agree: the model's wheels reach
-/// 22 cm below the flight model's contact points.
+/// Red while the P-38G flight model's gear is 8.7 in short of the Lockheed geometry: the
+/// drawn wheels reach 22 cm below the ground the flight model stands on.
 #[test]
 #[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
-fn p38g_parked_wheels_touch_the_drawn_terrain_red_until_the_gear_geometry_agrees()
+fn p38g_parked_wheels_touch_the_drawn_terrain_red_while_the_fdm_gear_is_short()
 -> Result<(), AppSimError> {
     assert_parked_wheels_touch(FreeFlightVehicle::JsbsimP38g, &UsdAircraftAsset::p38g()?)
 }

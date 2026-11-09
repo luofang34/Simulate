@@ -143,7 +143,7 @@ impl Flight {
 
     /// Body FRD metres from the centre of gravity, which the vehicle position tracks, to
     /// the drawn airframe's origin at its fixed structural datum
-    /// ([`sim_maplibre::OwnshipVisualKind::structural_origin_in`]), so loading and fuel burn
+    /// ([`crate::vehicles::ModelOrigins`]), so loading and fuel burn
     /// move the CG inside the model rather than the model against its wheels. Zero for a
     /// model or plant without a structural frame.
     #[must_use]
@@ -156,12 +156,12 @@ impl Flight {
         };
         let visual = crate::map_rig::aircraft::ownship_visual(None, Some(*vehicle));
         let (Some(origin), Some(cg)) = (
-            visual.structural_origin_in(),
+            self.model_origins.origin_in(visual),
             session.block().plant().cg_structural_in(),
         ) else {
             return DVec3::ZERO;
         };
-        let aft_right_up = DVec3::from_array(origin) - cg;
+        let aft_right_up = origin - cg;
         DVec3::new(-aft_right_up.x, aft_right_up.y, -aft_right_up.z) * METRES_PER_INCH
     }
 

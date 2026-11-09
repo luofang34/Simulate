@@ -79,6 +79,7 @@ pub struct Flight {
     gauges: PanelGauges,
     time_scales: Arc<TimeScaleCatalog>,
     epoch: SimEpoch,
+    model_origins: crate::vehicles::ModelOrigins,
 }
 
 impl Flight {
@@ -117,6 +118,7 @@ impl Flight {
             gauges: PanelGauges::default(),
             time_scales,
             epoch,
+            model_origins: crate::vehicles::ModelOrigins::default(),
         };
         flight.begin_flight()?;
         Ok(flight)

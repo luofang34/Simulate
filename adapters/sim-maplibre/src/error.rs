@@ -102,6 +102,12 @@ pub enum MapAdapterError {
         /// Diagnostic description.
         detail: String,
     },
+    /// A vehicle's structural landmark names a feature its drawn model does not have.
+    #[error("the model has no feature for structural landmark {landmark:?}")]
+    MissingLandmarkFeature {
+        /// The landmark's name.
+        landmark: String,
+    },
     /// A conformal call reached a chart surface, or a chart call a conformal one.
     #[error("instrument map {id} cannot draw {requested} frames")]
     InstrumentModeMismatch {

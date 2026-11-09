@@ -12,8 +12,8 @@ use sim_core::{
 use sim_geo::Geodetic;
 use sim_pack::{
     AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, LoadedSyspack,
-    MemoryPackageSource, PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource, SyspackError,
-    builtin_c172_package, builtin_c172_source,
+    MemoryPackageSource, PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource,
+    STRUCTURAL_LANDMARKS_ASSET, SyspackError, builtin_c172_package, builtin_c172_source,
 };
 
 const DT_S: f64 = 1.0 / 120.0;
@@ -287,6 +287,7 @@ fn tampered_or_unordered_airspeed_envelope_fails_closed() -> Result<(), Box<dyn 
     let fdm = source.read_asset_bytes("fdm/c172_class_reference.xml")?;
     let pec = source.read_asset_bytes(PITOT_STATIC_CALIBRATION_ASSET)?;
     let bench = source.read_asset_bytes(CALIBRATION_SUITE_ASSET)?;
+    let landmarks = source.read_asset_bytes(STRUCTURAL_LANDMARKS_ASSET)?;
     let mut env_bytes = source.read_asset_bytes(AIRSPEED_ENVELOPE_ASSET)?;
     if let Some(first) = env_bytes.iter_mut().find(|b| **b == b'4') {
         *first = b'5';
@@ -298,6 +299,7 @@ fn tampered_or_unordered_airspeed_envelope_fails_closed() -> Result<(), Box<dyn 
             (AIRSPEED_ENVELOPE_ASSET.to_owned(), env_bytes),
             (PITOT_STATIC_CALIBRATION_ASSET.to_owned(), pec),
             (CALIBRATION_SUITE_ASSET.to_owned(), bench),
+            (STRUCTURAL_LANDMARKS_ASSET.to_owned(), landmarks),
         ]),
     );
     assert!(matches!(

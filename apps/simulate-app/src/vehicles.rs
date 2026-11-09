@@ -12,8 +12,11 @@ use crate::world_surface::WorldSurfaceHandle;
 
 mod aviate_rigs;
 mod jsbsim;
+mod structural;
 #[cfg(test)]
 mod tests;
+
+pub use structural::ModelOrigins;
 
 /// Height the X500 hovers over a ground spawn, metres.
 pub const X500_GROUND_HOVER_M: f64 = 3.0;

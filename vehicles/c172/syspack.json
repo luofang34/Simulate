@@ -5,6 +5,10 @@
   "version": "0.0.0",
   "kind": "FixedWing",
   "assets": {
+    "geometry/landmarks.json": {
+      "sha256": "657158c45edf04e20884269267d942ad9f9968fe694c7cad5f5b65d68e09bc40",
+      "size_bytes": 1346
+    },
     "fdm/c172_class_reference.xml": {
       "sha256": "433ffe16b5080aa99bb3656494702f7159d8b910d3a0cc6f23ccfb4fc8483ab7",
       "size_bytes": 24332

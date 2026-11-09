@@ -1,0 +1,35 @@
+{
+  "source_station_offset_in": 78.8787,
+  "source_frame": "Cessna 172S Information Manual (POH) fuselage stations, inches aft of the front face of the firewall; the flight model's structural x is the POH station + 78.8787 in.",
+  "height": {
+    "feature": { "rule": "propeller_disc_centre" },
+    "structural_up_in": 0.0,
+    "source": "flight model thruster on the structural z = 0 line"
+  },
+  "landmarks": [
+    {
+      "name": "propeller disc",
+      "station_in": -38.4,
+      "source": "POH Fig. 6-9 ch. 61, propeller arm -38.4 in",
+      "feature": { "rule": "propeller_disc_centre" }
+    },
+    {
+      "name": "main axles",
+      "station_in": 58.2,
+      "source": "POH Fig. 6-9 item 32-01-R, main wheel assembly and tire arm 58.2 in (a wheel's centroid is its axle; brakes 54.5)",
+      "feature": { "rule": "main_axles_centre" }
+    },
+    {
+      "name": "nose axle",
+      "station_in": -6.8,
+      "source": "POH Fig. 6-9 item 32-02-R, nose wheel and tire arm -6.8 in (consistent with Fig. 1-1 note 2, WHEEL BASE LENGTH IS 65 in)",
+      "feature": { "rule": "nose_axle_centre" }
+    },
+    {
+      "name": "wing leading edge",
+      "station_in": 25.90,
+      "source": "POH Fig. 6-1 LEMAC FS 25.90 on the unswept leading edge",
+      "feature": { "rule": "wing_leading_edge", "span_from_m": 0.6, "span_to_m": 2.5 }
+    }
+  ]
+}

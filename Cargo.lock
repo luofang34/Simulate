@@ -4913,6 +4913,7 @@ dependencies = [
  "sim-geo",
  "sim-indicate",
  "sim-p38g",
+ "sim-pack",
  "sim-scenery",
  "thiserror 2.0.21",
  "tokio",
