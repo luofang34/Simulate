@@ -123,7 +123,7 @@ fn an_aircraft_ahead_lands_mid_screen_inside_the_reversed_depth_range() {
 }
 
 #[test]
-fn ownship_shows_only_its_nose_from_the_cockpit_and_nothing_from_the_belly() {
+fn ownship_shows_its_airframe_from_the_cockpit_and_nothing_from_the_belly() {
     let asset = UsdAircraftAsset::embedded_c172().unwrap();
     let target = Geodetic::from_degrees(40.69, -74.17, 300.0);
     let stamp = stamp_looking_north_at(&target);
@@ -142,7 +142,9 @@ fn ownship_shows_only_its_nose_from_the_cockpit_and_nothing_from_the_belly() {
         view.ownship_role = SlotCameraRole::External;
         pack_slot_draws(&asset, &own, None, &view)
     };
-    assert!(!cockpit.is_empty() && cockpit.len() < external.len());
+    assert!(!cockpit.is_empty() && cockpit.len() <= external.len());
+    view.ownship_role = SlotCameraRole::HudForward;
+    assert!(pack_slot_draws(&asset, &own, None, &view).is_empty());
     view.ownship_role = SlotCameraRole::BellyNadir;
     assert!(pack_slot_draws(&asset, &own, None, &view).is_empty());
 }

@@ -40,9 +40,14 @@ fn embedded_c172_composes_articulation_and_usda_export_roundtrips() {
     let hud_draws = asset.evaluate_draws(&art, SlotCameraRole::HudForward);
     let cockpit_draws = asset.evaluate_draws(&art, SlotCameraRole::CockpitInterior);
     let nadir_draws = asset.evaluate_draws(&art, SlotCameraRole::BellyNadir);
-    assert!(ext_draws.len() > cockpit_draws.len());
+    assert!(ext_draws.len() >= cockpit_draws.len());
     assert!(hud_draws.is_empty());
-    assert!(!cockpit_draws.is_empty());
+    let seen = |role: PartRole| {
+        cockpit_draws
+            .iter()
+            .any(|d| asset.parts()[d.part_index].role == role)
+    };
+    assert!(seen(PartRole::NoseCowling) && seen(PartRole::WingStructure));
     assert!(nadir_draws.is_empty());
 
     let usda = export_scene_usda(&kewr_scene(origin, state, art));

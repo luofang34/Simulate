@@ -35,8 +35,8 @@ const PERIOD: TickSpan = JSBSIM_DEFAULT_PERIOD;
 const C172_START_SPEED_M_S: f64 = 39.5;
 const C172_START_ALPHA_RAD: f64 = 0.055;
 const SEA_LEVEL_MIXTURE_NORM: f64 = 0.88;
-/// Left-seat eye in FRD body axes at the C172 structural eyepoint (`1.36 m` AGL on gear).
-const COCKPIT_EYE_BODY_M: DVec3 = DVec3::new(0.10, -0.26, -0.12);
+/// Left-seat eye in FRD body axes, matching `simulate-app`'s C172 pilot-eye mount.
+const COCKPIT_EYE_BODY_M: DVec3 = DVec3::new(0.10, -0.26, -0.45);
 const MAX_SINGLE_CIRCUIT_DURATION_S: f64 = 420.0;
 
 /// Standard rectangular airport pattern turn direction.

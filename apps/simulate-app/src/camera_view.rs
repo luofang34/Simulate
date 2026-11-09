@@ -37,11 +37,12 @@ const VOLUMETRIC_UP_M: f64 = 85.0;
 /// take their bearing from the vehicle's other forward axis (`|cos|` of the angle to up).
 const NEAR_VERTICAL_COS: f64 = 0.7;
 
-/// Left-seat pilot eye in FRD body axes at the C172 structural eyepoint (`1.36 m` AGL on gear,
-/// `-3.0°` over the cowling).
+/// Left-seat pilot eye in FRD body axes, looking `-3.0°` over the cowling: about 0.8 m above
+/// the airframe mesh's seat cushion, so the eye clears its glareshield (top `0.386 m` above
+/// the body origin) and sees the cowl beyond it.
 pub fn pilot_eye_mount() -> CameraMount {
     CameraMount::oblique(
-        DVec3::new(0.10, -0.26, -0.12),
+        DVec3::new(0.10, -0.26, -0.45),
         0.0,
         -3.0_f64.to_radians(),
         0.0,

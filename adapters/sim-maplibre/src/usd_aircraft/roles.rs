@@ -5,7 +5,8 @@
 pub enum SlotCameraRole {
     /// Unobstructed forward HUD / boresight view hiding all ownship airframe and propeller parts.
     HudForward,
-    /// Pilot eye inside the cabin looking forward through the windshield and propeller arc.
+    /// Pilot eye inside a closed cabin: sees the cabin, the cowl over the glareshield and the
+    /// wing and strut through the windows, but not the pilot's own body.
     CockpitInterior,
     /// Pilot eye in an open-view cockpit (a fighter's bubble canopy), which sees the
     /// whole airframe around it but not the pilot's own body.
@@ -143,17 +144,11 @@ impl PartRole {
 }
 
 pub(super) fn role_visible_to_camera(role: PartRole, camera: SlotCameraRole) -> bool {
-    use PartRole::{
-        CabinExterior, CabinGlass, CabinInterior, CockpitControl, PilotFigure, PropellerBlades,
-        PropellerDisc, PropellerSpinner,
-    };
+    use PartRole::{CabinExterior, CabinGlass, CabinInterior, CockpitControl, PilotFigure};
     match camera {
         SlotCameraRole::External => true,
         SlotCameraRole::HudForward | SlotCameraRole::BellyNadir => false,
-        SlotCameraRole::CockpitInterior => {
-            matches!(role, PropellerSpinner | PropellerBlades | PropellerDisc)
-        }
-        SlotCameraRole::PilotEye => role != PilotFigure,
+        SlotCameraRole::CockpitInterior | SlotCameraRole::PilotEye => role != PilotFigure,
         SlotCameraRole::LeftCabinWindow => !matches!(
             role,
             CabinExterior | CabinInterior | CockpitControl | CabinGlass | PilotFigure

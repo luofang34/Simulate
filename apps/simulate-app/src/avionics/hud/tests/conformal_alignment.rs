@@ -138,7 +138,7 @@ impl Pipeline {
         });
         let vehicle = build_vehicle_at_station(&rwy, along_m, agl_m, pitch_deg, roll_deg);
 
-        // Non-zero C172 left-seat pilot eye lever arm `[+0.10, -0.26, -0.12]`.
+        // Non-zero C172 left-seat pilot eye lever arm.
         let cam = scenario_camera(pilot_eye_mount().pose(&vehicle, DVec3::ZERO));
         let surface = ConformalSurface::earth_globe();
         let view = HudView {

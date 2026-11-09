@@ -167,6 +167,7 @@ fn render_airframe(
         .supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Cockpit);
     for (yaw, pitch, what) in [
+        (0.0, -5.0, "look_forward"),
         (-75.0, -10.0, "look_left"),
         (75.0, -10.0, "look_right"),
         (0.0, 35.0, "look_up_canopy"),

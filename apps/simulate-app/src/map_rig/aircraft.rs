@@ -85,14 +85,16 @@ pub fn traffic_aircraft(entities: &[DynamicEntity3D], elapsed_s: f64) -> Vec<Air
         .collect()
 }
 
-/// Which ownship parts the main window sees in `mode` flying `visual`: a bubble-canopy
-/// fighter's pilot sees the airframe around the seat, a cabin pilot looks past it.
+/// Which ownship parts the main window sees in `mode` flying `visual`: the P-38's and the
+/// C172's pilots see the airframe around the seat; other vehicles' cockpit views look
+/// past theirs.
 pub const fn window_camera_role(
     mode: OperatorViewportMode,
     visual: OwnshipVisualKind,
 ) -> SlotCameraRole {
     match (mode, visual) {
         (OperatorViewportMode::Cockpit, OwnshipVisualKind::P38g) => SlotCameraRole::PilotEye,
+        (OperatorViewportMode::Cockpit, OwnshipVisualKind::C172) => SlotCameraRole::CockpitInterior,
         (OperatorViewportMode::Cockpit, _) => SlotCameraRole::HudForward,
         (
             OperatorViewportMode::Chase
