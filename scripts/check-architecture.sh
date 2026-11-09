@@ -3,7 +3,8 @@
 #   1. Enforces Cargo dependency DAG: sim-spacetime, sim-orbital, sim-analysis, and sim-mission
 #      must never pull in sim-core, jsbsim, sim-scenery, flightbag, sim-render, wgpu,
 #      navigate-*, or hifitime, and must respect the strict DAG
-#      sim-spacetime -> {sim-orbital, sim-analysis} -> sim-mission.
+#      sim-spacetime -> {sim-orbital, sim-analysis} -> sim-mission, and sim-core reaches
+#      the orbital stack only through sim-universe.
 #   2. Verifies cross-repo path dependencies in root Cargo.toml carry explicit `version`
 #      and pinned `[workspace.metadata.external_sources]` git/rev entries.
 #   3. Verifies top-level lib.rs in sim-spacetime, sim-orbital, sim-analysis, and sim-mission
@@ -121,6 +122,20 @@ if "sim-analysis" in id_by_name:
             errors.append(
                 f"`sim-analysis` must remain propagator-agnostic and not depend on `{peer}`"
             )
+
+# Flight dynamics and orbital propagation meet only in sim-universe, which
+# owns the one frame change between them; a second bridge would hand vessels
+# over with its own orientation model and they would jump.
+if "sim-core" in id_by_name:
+    core_closure = runtime_closure("sim-core")
+    for orbital in ("sim-orbital", "sim-mission", "sim-universe"):
+        if orbital in core_closure:
+            errors.append(f"`sim-core` must not depend on `{orbital}`; bridge through sim-universe")
+if "sim-universe" in id_by_name:
+    uni_closure = runtime_closure("sim-universe")
+    for req in ("sim-core", "sim-orbital", "sim-spacetime"):
+        if req not in uni_closure:
+            errors.append(f"`sim-universe` must depend on `{req}`")
 
 if "sim-mission" in id_by_name:
     mis_closure = runtime_closure("sim-mission")

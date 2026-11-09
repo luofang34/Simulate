@@ -43,6 +43,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-analysis-contract` | `crates/sim-analysis-contract` | Versioned analysis request and result types |
 | `sim-analysis` | `crates/sim-analysis` | Geometric relations, constraints, and access windows |
 | `sim-mission` | `crates/sim-mission` | Spaceflight mission plans and segment propagation |
+| `sim-universe` | `crates/sim-universe` | Vessels on one clock across flight and orbital tiers, and the handoff between them |
 | `sim-geo` | `crates/sim-geo` | WGS84 and lunar geodesy, local frames, floating origin, pinhole intrinsics |
 | `sim-atmosphere` | `crates/sim-atmosphere` | Atmosphere and cloud fields |
 | `sim-core` | `crates/sim-core` | Master clock, the `Block` contract, vehicle state, rigid-body and JSBSim dynamics, XIL bridges |

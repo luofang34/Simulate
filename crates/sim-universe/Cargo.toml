@@ -1,0 +1,21 @@
+[package]
+name = "sim-universe"
+description = "Vessels on one master clock across fidelity tiers, and the exact handoff between body-fixed flight dynamics and inertial orbital propagation"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+glam = { workspace = true }
+sim-core = { workspace = true }
+sim-geo = { workspace = true }
+sim-orbital = { workspace = true }
+sim-spacetime = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+mbd-core = { workspace = true }
+sim-atmosphere = { workspace = true }

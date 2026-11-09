@@ -5133,6 +5133,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-universe"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "mbd-core",
+ "sim-atmosphere",
+ "sim-core",
+ "sim-geo",
+ "sim-orbital",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sim-xil"
 version = "0.1.0"
 dependencies = [

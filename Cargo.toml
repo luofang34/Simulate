@@ -21,6 +21,7 @@ members = [
     "crates/sim-scenario",
     "crates/sim-scenery",
     "crates/sim-spacetime",
+    "crates/sim-universe",
     "crates/sim-core",
     "crates/sim-xil",
     "vehicles/apollo-11",
@@ -58,6 +59,7 @@ sim-render = { path = "crates/sim-render" }
 sim-scenario = { path = "crates/sim-scenario", default-features = false }
 sim-scenery = { path = "crates/sim-scenery" }
 sim-spacetime = { path = "crates/sim-spacetime" }
+sim-universe = { path = "crates/sim-universe" }
 sim-core = { path = "crates/sim-core" }
 sim-xil = { path = "crates/sim-xil" }
 
