@@ -6,8 +6,9 @@ use glam::{DQuat, DVec3};
 use sim_atmosphere::{AtmosphereField, AtmosphereSample, GeoidStandardAtmosphere};
 use sim_core::{ControlInputs, KinematicInput, SimInstant, TickSpan, VehicleState};
 use sim_devices::WhiteNoise;
-use sim_geo::{Geodetic, LocalFrame, UtcTime, ecef_to_geodetic};
+use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic};
 use sim_scenery::{AuthoritativeWorldSurface, WorldSurfaceQuery};
+use sim_spacetime::SimEpoch;
 
 use crate::corridor::dynamics::Source;
 use crate::run::snapshot::FdmSnapshot;
@@ -98,6 +99,7 @@ pub struct EpisodeSnapshot {
 /// A stick-driven episode on a fixed-wing scenario's start.
 pub struct EpisodeEnv {
     config: EpisodeConfig,
+    epoch: SimEpoch,
     start: VehicleState,
     source: Option<Source>,
     step: u64,
@@ -121,6 +123,7 @@ impl EpisodeEnv {
             .take_manual_control_state();
         Ok(Self {
             config,
+            epoch: config.profile.sim_epoch()?,
             start,
             source: None,
             step: 0,
@@ -173,7 +176,7 @@ impl EpisodeEnv {
             .agl_clearance_m(&position)?
             .map(|agl| agl.0);
         let atmosphere = GeoidStandardAtmosphere::new()
-            .sample(&position, UtcTime::from_unix_seconds(0.0))
+            .sample(&position, self.epoch.utc_at(self.now)?)
             .ok();
         Ok(EpisodeObservation {
             step: self.step,

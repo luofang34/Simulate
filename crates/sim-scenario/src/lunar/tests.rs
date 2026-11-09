@@ -126,3 +126,17 @@ fn two_landings_fly_the_same_bits() {
     assert_eq!(one.now(), two.now());
     assert_eq!(one.report(), two.report());
 }
+
+/// Eagle's contact light lit at `1969-07-20T20:17:40Z`; the scenario's clock
+/// starts early enough that its own touchdown lands within a few seconds of it.
+#[test]
+fn touchdown_happens_at_the_historical_minute() {
+    let run = land(&LunarLandingConfig::default());
+    let contact_utc = run.epoch.utc_at(run.now()).unwrap().unix_seconds();
+    let historical = -14_182_940.0;
+    assert!(
+        (contact_utc - historical).abs() < 5.0,
+        "touchdown at unix {contact_utc}, {} s after start",
+        run.now().duration_since(SimInstant::START).as_seconds()
+    );
+}

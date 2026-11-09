@@ -10,9 +10,10 @@ use sim_core::{
     Block, CameraMount, CameraPoseEcef, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput,
     SimInstant, TICKS_PER_SECOND, ThrusterWrench, TickSpan, VehicleState,
 };
-use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
+use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform};
+use sim_spacetime::SimEpoch;
 
-use crate::ScenarioError;
+use crate::{ScenarioError, ScenarioProfile};
 
 pub(crate) mod snapshot;
 mod steering;
@@ -26,8 +27,6 @@ const BODY: BodyEllipsoid = BodyEllipsoid::WGS84;
 const STEP_HZ: u64 = 50;
 const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(STEP_HZ));
 const PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / STEP_HZ);
-/// 24 July 1969, 16:35 UTC, the morning of Apollo 11's entry.
-const EPOCH_UNIX_S: f64 = -13_854_300.0;
 
 /// Entry interface, 400,000 ft, near where Columbia met the atmosphere.
 const ENTRY_LAT_DEG: f64 = -3.2;
@@ -97,6 +96,7 @@ pub struct CapsuleReentryRun {
     imu: ThreeGimbalImuBlock,
     ems: EntryMonitorBlock,
     panel: CockpitInstrumentPanel,
+    epoch: SimEpoch,
     wanted_bank_rad: f64,
     report: CapsuleReentryReport,
     trim_incidence_sum_rad: f64,
@@ -128,20 +128,16 @@ fn entry_state(trim: f64) -> VehicleState {
     }
 }
 
-fn utc_at(now: SimInstant) -> UtcTime {
-    UtcTime::from_unix_seconds(EPOCH_UNIX_S)
-        .advanced_by(now.duration_since(SimInstant::START).as_seconds())
-}
-
 impl CapsuleReentryRun {
     /// The capsule at entry interface, the Service Module already jettisoned.
     pub fn new() -> Result<Self, ScenarioError> {
+        let epoch = ScenarioProfile::Apollo11CapsuleReentry.sim_epoch()?;
         let trim = cm_analytic_trim_incidence_rad()?;
         let mut vehicle = RigidBody6DofBlock::new(
             RigidBodyConfig {
                 body: BODY,
                 period: PERIOD,
-                epoch: UtcTime::from_unix_seconds(EPOCH_UNIX_S),
+                epoch: epoch.start_utc()?,
                 initial: entry_state(trim),
             },
             build_apollo_csm_tree()?,
@@ -149,7 +145,7 @@ impl CapsuleReentryRun {
             Box::new(ReentryAtmosphere),
         )?;
         vehicle.separate_stage(CSM_SERVICE_MODULE)?;
-        let inertial = InertialTransform::earth_at(utc_at(SimInstant::START));
+        let inertial = InertialTransform::earth_at(epoch.start_utc()?);
         let imu_site = InertialSiteSample::of(&vehicle, CM_IMU, &inertial)?;
         let mut run = Self {
             imu: ThreeGimbalImuBlock::new(ThreeGimbalImuConfig::nominal(
@@ -162,6 +158,7 @@ impl CapsuleReentryRun {
                 initial_delta_v_m_s: EMS_INITIAL_DELTA_V_M_S,
             })?,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
+            epoch,
             wanted_bank_rad: 0.0,
             report: CapsuleReentryReport {
                 peak_g_load: 0.0,
@@ -250,7 +247,7 @@ impl CapsuleReentryRun {
             }],
             ..Default::default()
         })?;
-        let inertial = InertialTransform::earth_at(utc_at(self.now()));
+        let inertial = InertialTransform::earth_at(self.epoch.utc_at(self.now())?);
         self.imu
             .step(&InertialSiteSample::of(&self.vehicle, CM_IMU, &inertial)?)?;
         self.ems

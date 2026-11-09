@@ -4,6 +4,7 @@ use sim_pack::PackError;
 #[cfg(feature = "render")]
 use sim_render::RenderError;
 use sim_scenery::SceneryError;
+use sim_spacetime::TimeError;
 
 /// Why a scenario could not be set up or advanced. The larger causes are boxed
 /// so that stepping, which returns this every period, passes a small value.
@@ -21,6 +22,9 @@ pub enum ScenarioError {
     /// The visual-navigation harness refused a frame.
     #[error("the visual harness refused a frame")]
     Visual(#[source] Box<VisualHarnessError>),
+    /// The scenario's start time is outside the time-scale record.
+    #[error("the scenario clock failed")]
+    Time(#[from] TimeError),
     /// The scenery has no data or is malformed.
     #[error("the scenario scenery failed")]
     Scenery(#[from] SceneryError),

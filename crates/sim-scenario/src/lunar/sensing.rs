@@ -8,7 +8,7 @@ use sim_core::{Block, SimInstant};
 use sim_geo::InertialTransform;
 use sim_scenery::ElevationSource;
 
-use super::{BODY, LunarLandingRun, PERIOD, up_at, utc_at};
+use super::{BODY, LunarLandingRun, PERIOD, up_at};
 use crate::ScenarioError;
 
 impl LunarLandingRun {
@@ -17,7 +17,7 @@ impl LunarLandingRun {
     pub(super) fn sense(&mut self) -> Result<(), ScenarioError> {
         let now = self.now();
         if now != SimInstant::START {
-            let inertial = InertialTransform::moon_at(utc_at(now));
+            let inertial = InertialTransform::moon_at(self.epoch.utc_at(now)?);
             self.imu
                 .step(&InertialSiteSample::of(&self.vehicle, LM_IMU, &inertial)?)?;
             self.asa

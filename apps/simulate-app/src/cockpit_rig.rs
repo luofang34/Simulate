@@ -298,8 +298,9 @@ impl CockpitRig {
         let estimated = sensed.estimated_vehicle;
         let profile = flight.profile();
         self.surface_size = surface_size;
+        let start_utc = flight.sim_epoch().start_utc()?;
         self.supervisor
-            .sync(truth_vehicle.position_ecef, now, profile);
+            .sync(truth_vehicle.position_ecef, now, start_utc, profile);
 
         let body = flight.world().body();
         let earth = body == BodyEllipsoid::WGS84;
@@ -343,6 +344,7 @@ impl CockpitRig {
             &AvionicsFrameInput {
                 profile,
                 timestamp: now,
+                utc: flight.sim_epoch().utc_at(now).ok(),
                 vehicle: estimated,
                 cockpit: sensed.cockpit,
                 air_data: sensed.air_data,

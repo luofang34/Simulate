@@ -1,4 +1,7 @@
-use crate::ScenarioWorld;
+use sim_geo::UtcTime;
+use sim_spacetime::SimEpoch;
+
+use crate::{ScenarioError, ScenarioWorld};
 
 /// One of the deterministic flights.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -67,6 +70,33 @@ impl ScenarioProfile {
             Self::Airport47NUncontrolledPattern => "47N C172 Pattern (CTAF)",
             Self::AirportKewrToweredPattern => "KEWR C172 Pattern (Tower)",
         }
+    }
+
+    /// UTC at the profile's first tick, as Unix seconds. This is the only table
+    /// of scenario start times: dynamics, sensors, sky and displays all read
+    /// their time through [`Self::sim_epoch`].
+    pub const fn start_utc_unix_s(self) -> f64 {
+        match self {
+            // 2026-07-01T00:00:00Z.
+            Self::CorridorNominalCruise
+            | Self::CorridorOffSeedAcquisition
+            | Self::CorridorAggressiveBank
+            | Self::CorridorSameCellLoiter
+            | Self::Airport47NUncontrolledPattern
+            | Self::AirportKewrToweredPattern => 1_782_864_000.0,
+            // 1969-07-20T20:14:57Z, so the approach's own touchdown, 163 s
+            // later, falls on Eagle's contact light at 20:17:40Z.
+            Self::Apollo11LunarLanding => -14_183_103.0,
+            // 1969-07-24T16:35:05Z, Columbia's entry interface (GET 195:03:06).
+            Self::Apollo11CapsuleReentry => -13_850_695.0,
+        }
+    }
+
+    /// The profile's clock: its start time on the built-in time scales.
+    pub fn sim_epoch(self) -> Result<SimEpoch, ScenarioError> {
+        Ok(SimEpoch::builtin_from_utc(UtcTime::from_unix_seconds(
+            self.start_utc_unix_s(),
+        ))?)
     }
 
     /// The terrain the profile flies over.

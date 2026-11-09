@@ -23,6 +23,7 @@ sim-atmosphere = { workspace = true }
 sim-aviate = { workspace = true }
 sim-core = { workspace = true }
 sim-geo = { workspace = true }
+sim-spacetime = { workspace = true }
 sim-indicate = { workspace = true }
 sim-input = { workspace = true }
 sim-maplibre = { workspace = true }

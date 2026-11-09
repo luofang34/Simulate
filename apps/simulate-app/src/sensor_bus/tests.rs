@@ -115,10 +115,10 @@ fn air_data_is_geoid_aware_airspeed_through_the_air_mass() {
     let truth = VehicleState::level_flight(&geo, 0.0, 50.0);
     let bus = OnboardSensorBus::new(SensorRealism::Ideal);
     let reading = bus
-        .air_data(SimInstant::START, &truth, &bus.current())
+        .air_data(SimInstant::START, test_utc(), &truth, &bus.current())
         .expect("air data");
     let geoid = GeoidStandardAtmosphere::new()
-        .sample(&geo, UtcTime::from_unix_seconds(AIR_DATA_EPOCH_UNIX_S))
+        .sample(&geo, test_utc())
         .expect("geoid ISA");
     assert!((reading.value.density_kg_m3 - geoid.density_kg_m3).abs() < 1e-9);
     let pressure = reading.value.static_pressure_pa.expect("static");
@@ -131,7 +131,7 @@ fn air_data_is_geoid_aware_airspeed_through_the_air_mass() {
         ..bus
     };
     let into_wind = windy
-        .air_data(SimInstant::START, &truth, &bus.current())
+        .air_data(SimInstant::START, test_utc(), &truth, &bus.current())
         .expect("air data");
     assert!((into_wind.value.true_airspeed_m_s - 60.0).abs() < 1e-3);
     let ground_ned = LocalFrame::at(&geo).ecef_to_ned_vector(truth.velocity_ecef);
@@ -144,6 +144,17 @@ fn static_port_goes_silent_in_near_space() {
     let low = VehicleState::level_flight(&Geodetic::from_degrees(0.0, 0.0, 40_000.0), 0.0, 300.0);
     let high = VehicleState::level_flight(&Geodetic::from_degrees(0.0, 0.0, 60_000.0), 0.0, 300.0);
     let quiet = SensorErrors::default();
-    assert!(bus.air_data(SimInstant::START, &low, &quiet).is_some());
-    assert!(bus.air_data(SimInstant::START, &high, &quiet).is_none());
+    assert!(
+        bus.air_data(SimInstant::START, test_utc(), &low, &quiet)
+            .is_some()
+    );
+    assert!(
+        bus.air_data(SimInstant::START, test_utc(), &high, &quiet)
+            .is_none()
+    );
+}
+
+/// 2026-07-01T00:00:00Z, a fixed instant so air data is reproducible.
+fn test_utc() -> UtcTime {
+    UtcTime::from_unix_seconds(1_782_864_000.0)
 }

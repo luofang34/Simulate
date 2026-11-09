@@ -101,8 +101,7 @@ impl Flight {
     pub(super) fn respawn_free(&mut self, spawn: FreeSpawn) -> Result<(), AppSimError> {
         self.mode = Mode::free(self.preferred_vehicle, spawn, &self.surface)?;
         self.free_spawn = spawn;
-        self.begin_flight();
-        Ok(())
+        self.begin_flight()
     }
 
     /// Hands the pilot the stick: in a scripted scenario, starts free flight on the

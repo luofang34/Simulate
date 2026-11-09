@@ -16,10 +16,7 @@ use crate::{
         IauPckCatalog, LunarTargetFrame, OrientationError, OrientationPolicy,
         StackedOrientationCatalog,
     },
-    time::{
-        EarthEopTable, FutureUtcPolicy, LeapSecondTable, OutOfEopPolicy, TdbEpoch, TimeError,
-        TimeScaleCatalog,
-    },
+    time::{TdbEpoch, TimeError, TimeScaleCatalog},
 };
 
 /// Embedded `de440s + mar099s` `2026..2028` binary SPK subset (`819,200 B`).
@@ -61,11 +58,11 @@ pub const MOON_DE440_FK_BYTES: &[u8] = include_bytes!("../data/moon_de440_250416
 pub const MOON_DE440_FK_SHA256: &str =
     "a47c71e9c9f33796bdafb2c9d69a7ee447b6016ecad80f71cd6f3e479f9cf768";
 
-/// Embedded NASA NAIF `naif0012.tls` leap-second kernel (`5,257 B`).
-pub const NAIF0012_TLS_BYTES: &[u8] = include_bytes!("../data/naif0012.tls");
+/// Embedded NASA NAIF `naif0012.tls` leap-second kernel (`5,257 B`), shared
+/// with every flight through [`TimeScaleCatalog::builtin`].
+pub const NAIF0012_TLS_BYTES: &[u8] = sim_spacetime::BUILTIN_LSK_BYTES;
 /// Expected SHA-256 hex of [`NAIF0012_TLS_BYTES`].
-pub const NAIF0012_TLS_SHA256: &str =
-    "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b";
+pub const NAIF0012_TLS_SHA256: &str = sim_spacetime::BUILTIN_LSK_SHA256;
 
 /// Why loading or verifying [`BuiltinSolarSystem2026_2028`] failed.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
@@ -188,16 +185,7 @@ impl BuiltinSolarSystem2026_2028 {
             OrientationPolicy::AllowApproximateIau,
         )?;
 
-        let lsk = LeapSecondTable::from_naif_lsk_bytes(NAIF0012_TLS_BYTES)?;
-        // IERS Bulletin C currently freezes TAI-UTC = 37 s since 2017-01-01; record explicit freeze horizon.
-        let time_scales = TimeScaleCatalog::new(
-            lsk,
-            FutureUtcPolicy::FreezeLastTaiOffset {
-                expires_tai_j2000_s: TdbEpoch::JAN_1_2026_00Z_TDB.as_j2000_seconds_f64(),
-            },
-            EarthEopTable::empty(),
-            OutOfEopPolicy::ZeroDeltaUt1Fallback,
-        );
+        let time_scales = TimeScaleCatalog::builtin()?;
 
         Ok(Self {
             ephemeris,

@@ -24,6 +24,7 @@ mbd-core = { workspace = true }
 sim-pack = { workspace = true }
 sim-render = { workspace = true, optional = true }
 sim-scenery = { workspace = true }
+sim-spacetime = { workspace = true }
 sim-core = { workspace = true }
 world = { workspace = true }
 glam = { workspace = true }
