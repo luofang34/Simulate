@@ -26,10 +26,18 @@ pub const FBW_GROUND_FALLBACK_AGL_M: f64 = 150.0;
 /// its gear, metres: the wheels reach 1.30 m below the reference line, the high wing
 /// tanks lift the CG 0.08 m above it, and the gear compresses about 0.05 m.
 pub const C172_GEAR_HEIGHT_M: f64 = 1.324;
-/// Static height of the Lockheed P-38G Lightning's JSBSim reference point above level ground
-/// on its tricycle gear, metres (`76.5 in` bogeys less `0.258 ft` static compression). The
-/// mesh origin rides on that point, so this puts AN 01-75F-2's static ground under the mesh.
-pub const P38G_GEAR_HEIGHT_M: f64 = 1.8644;
+/// Height of the P-38G's loaded centre of gravity above its fuselage reference line in
+/// the flight model (`vehicles/p38g/fdm/p38g.xml`, 15,000 lb with full internal fuel),
+/// inches.
+pub const P38G_LOADED_CG_ABOVE_FRL_IN: f64 = 5.345;
+/// Static height of the Lockheed P-38G Lightning's JSBSim reference point (its CG) above
+/// level ground on its tricycle gear, metres: AN 01-75F-2 puts the ground `54.575 + 15.300 in`
+/// below the fuselage reference line with the oleos static, and the CG sits
+/// [`P38G_LOADED_CG_ABOVE_FRL_IN`] above that line.
+pub const P38G_GEAR_HEIGHT_M: f64 = (sim_p38g::drawing::MAIN_AXLE_BELOW_FRL_STATIC_IN as f64
+    + sim_p38g::drawing::MAIN_ROLLING_RADIUS_IN as f64
+    + P38G_LOADED_CG_ABOVE_FRL_IN)
+    * 0.0254;
 /// Height a parked kinematic vehicle sits above the ground, metres: the C172's, so the
 /// pilot eye is at a cockpit's height over the runway.
 pub const KINEMATIC_PARKED_HEIGHT_M: f64 = C172_GEAR_HEIGHT_M;

@@ -35,20 +35,35 @@ fn the_c172_is_placed_by_its_poh_landmarks_within_bounds() {
     assert!((origin.z + 0.055 / 0.0254).abs() < 0.01, "{origin}");
 }
 
+/// How far any P-38G landmark may sit from its AN 01-75F-2 station: the mesh is built
+/// on those stations, so only facet sampling separates them.
+const P38G_RESIDUAL_BOUND_IN: f64 = 0.25;
+
 #[test]
-fn the_p38g_is_placed_by_its_thrusters_until_drawing_stations_land() {
+fn the_p38g_is_placed_by_its_drawing_stations() {
     let package = builtin_p38g_package().unwrap();
     let landmarks = package.structural_landmarks().unwrap();
     let datum = StructuralDatum::fit(landmarks, &UsdAircraftAsset::p38g().unwrap()).unwrap();
+    let residuals = datum.residuals_aft_in();
+    assert_eq!(residuals.len(), 4);
     assert!(
-        datum
-            .residuals_aft_in()
+        residuals
             .iter()
-            .all(|(_, aft)| aft.abs() < 1e-9)
+            .all(|(_, aft)| aft.abs() < P38G_RESIDUAL_BOUND_IN),
+        "P-38G landmarks off their drawing stations: {residuals:?}"
     );
+    // The model's origin is the drawing point it is built around.
     let origin = datum.origin_in();
-    assert!((origin.x - (36.0 + 2.63 / 0.0254)).abs() < 0.01, "{origin}");
-    assert!((origin.z + 0.04 / 0.0254).abs() < 0.01, "{origin}");
+    let (nose_y, frl_z, inch) = (
+        f64::from(sim_p38g::drawing::NOSE_Y_M),
+        f64::from(sim_p38g::drawing::FRL_Z_M),
+        f64::from(sim_p38g::drawing::INCH_M),
+    );
+    assert!(
+        (origin.x - nose_y / inch).abs() < P38G_RESIDUAL_BOUND_IN,
+        "{origin}"
+    );
+    assert!((origin.z + frl_z / inch).abs() < 0.01, "{origin}");
 }
 
 #[test]
