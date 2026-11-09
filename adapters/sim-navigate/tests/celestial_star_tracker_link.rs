@@ -13,8 +13,9 @@ use navigate_camera::{ImageView, Pixels};
 use navigate_contract::{SourceEpoch, SourceId, WrappingSequence};
 use navigate_fusion::{InertialConfig, IngestOutcome};
 use navigate_startrack::{
-    AttitudePrior, AttitudeSolution, DetectConfig, IdentifyConfig, SolveConfig, catalogue_ecef,
-    detect_stars, identify_stars, line_of_sight_observations, solve_attitude,
+    AttitudePrior, AttitudeSolution, DetectConfig, IdentifyConfig, IdentifyMode, PairCatalogue,
+    SolveConfig, catalogue_ecef, detect_stars, identify_stars, line_of_sight_observations,
+    solve_attitude,
 };
 use sim_core::{CameraMount, SimInstant, TickSpan, VehicleState};
 use sim_geo::{Geodetic, UtcTime};
@@ -33,6 +34,9 @@ const EXPOSURE_S: u64 = 600;
 const SKY_FAINTEST_V: f64 = 6.5;
 /// Faintest star of Navigate's reference catalogue.
 const CATALOGUE_FAINTEST_V: f64 = 6.0;
+/// Faintest star of the lost-in-space pair table: the stars the camera
+/// detects reliably, so a pyramid is built from stars that are in the image.
+const LOST_IN_SPACE_FAINTEST_V: f64 = 5.5;
 /// One standard deviation of the attitude prior, and the size of its error.
 const PRIOR_SIGMA_RAD: f64 = 0.017_453_292_5;
 /// Camera-to-body alignment knowledge, radians RMS, added to each sighting.
@@ -138,7 +142,7 @@ struct Sighting {
 }
 
 #[cfg(test)]
-fn sight_stars(counts: &SensorCounts, now: SimInstant, prior: &AttitudePrior) -> Sighting {
+fn sight_stars(counts: &SensorCounts, now: SimInstant, mode: IdentifyMode<'_>) -> Sighting {
     let imager = imager_model(&StarCameraConfig::star_tracker_1024().intrinsics).unwrap();
     let (sim_mount, cg_body_m) = mount();
     let nav_mount = navigate_mount(&sim_mount, cg_body_m);
@@ -152,15 +156,8 @@ fn sight_stars(counts: &SensorCounts, now: SimInstant, prior: &AttitudePrior) ->
     let epoch = star_camera_epoch(UtcTime::from_unix_seconds(START_UNIX_S), now);
     let catalogue = catalogue_ecef(epoch, CATALOGUE_FAINTEST_V).unwrap();
     let identify = IdentifyConfig::default();
-    let matches = identify_stars(
-        &centroids,
-        &imager,
-        &nav_mount,
-        Some(prior),
-        &catalogue,
-        &identify,
-    )
-    .unwrap();
+    let matches =
+        identify_stars(&centroids, &imager, &nav_mount, mode, &catalogue, &identify).unwrap();
     let solve = SolveConfig::default();
     let solution = solve_attitude(
         &matches, &centroids, &imager, &nav_mount, &catalogue, &solve,
@@ -219,7 +216,7 @@ fn navigate_solves_the_true_attitude_from_simulated_star_counts() {
         ecef_from_body: truth_ecef_from_body * seeded_rotation(13, PRIOR_SIGMA_RAD),
         sigma_rad: PRIOR_SIGMA_RAD,
     };
-    let sighting = sight_stars(&counts, now, &prior);
+    let sighting = sight_stars(&counts, now, IdentifyMode::Prior(prior));
 
     // Navigate's convention: truth = solved · exp(δθ), δθ in body axes.
     let solved = sighting.solution.get();
@@ -266,4 +263,45 @@ fn navigate_solves_the_true_attitude_from_simulated_star_counts() {
         outcomes.len()
     ));
     assert_eq!(admitted, solved.matches.len());
+}
+
+/// The lost-in-space pair table for the star camera's diagonal field of
+/// view, from the stars the camera detects reliably.
+#[cfg(test)]
+fn pair_table(now: SimInstant) -> PairCatalogue {
+    let intrinsics = StarCameraConfig::star_tracker_1024().intrinsics;
+    let half_diagonal_px = f64::from(intrinsics.width).hypot(f64::from(intrinsics.height)) / 2.0;
+    let diagonal_rad = 2.0 * (half_diagonal_px / intrinsics.fx).atan();
+    let epoch = star_camera_epoch(UtcTime::from_unix_seconds(START_UNIX_S), now);
+    let catalogue = catalogue_ecef(epoch, LOST_IN_SPACE_FAINTEST_V).unwrap();
+    PairCatalogue::new(&catalogue, diagonal_rad, LOST_IN_SPACE_FAINTEST_V).unwrap()
+}
+
+/// A cold start: the first frame is identified from the star geometry alone,
+/// with no attitude prior of any kind.
+#[test]
+fn the_first_fix_needs_no_attitude_prior() {
+    let now = SimInstant::START.advanced(TickSpan::from_seconds_and_subsec_ticks(EXPOSURE_S, 0));
+    let (counts, truth) = simulate(now);
+    let pairs = pair_table(now);
+    let sighting = sight_stars(&counts, now, IdentifyMode::LostInSpace(&pairs));
+    let solved = sighting.solution.get();
+    let truth_ecef_from_body = to_nalgebra(truth.get().attitude);
+    let error_body = (solved.ecef_from_body.inverse() * truth_ecef_from_body).scaled_axis();
+    let boresight_body = sighting.mount.cam_from_body.inverse() * Vector3::z();
+    let cross_rad = (error_body - boresight_body * error_body.dot(&boresight_body)).norm();
+    let information = solved.covariance_body_rad2.try_inverse().unwrap();
+    let nees = (error_body.transpose() * information * error_body).x;
+    log(&format!(
+        "lost in space: {} pairs, {} centroids, {} identified, {} in solution, \
+         error {:.2}\" across the boresight, NEES {nees:.2}",
+        pairs.pair_count(),
+        sighting.centroids,
+        sighting.identified,
+        solved.matches.len(),
+        cross_rad * ARCSEC_PER_RAD,
+    ));
+    assert!(solved.matches.len() >= 10);
+    assert!(cross_rad * ARCSEC_PER_RAD < 5.0);
+    assert!(nees < 16.27, "attitude NEES {nees}");
 }

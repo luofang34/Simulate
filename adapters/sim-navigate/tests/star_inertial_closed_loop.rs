@@ -1,8 +1,11 @@
 //! Celestial navigation as its minimal unit, star camera plus INS, under
 //! acceleration. The simulator renders a roof star camera at 1 Hz along a
-//! corridor flight; Navigate detects, identifies with an attitude prior
-//! taken from the navigator's own solution and covariance, solves, and feeds
-//! each sighting as a line of sight to the inertial filter. The same IMU
+//! corridor flight, moving from its true pose at the shutter's opening to its
+//! pose at the closing, so stars streak. Navigate detects; identifies the
+//! first frame lost in space and later ones with an attitude prior taken from
+//! the navigator's own solution and covariance at mid-exposure; solves; and
+//! at readout feeds each sighting, stamped at mid-exposure, as a line of
+//! sight to the inertial filter. The same IMU
 //! stream also runs unaided, and both are scored against truth outside the
 //! filters.
 //!
@@ -14,36 +17,52 @@
 
 use glam::{DQuat, DVec3};
 use nalgebra::{Quaternion, UnitQuaternion};
-use navigate_camera::{CameraMount as NavigateMount, ImageView, ImagerModel, Pixels};
-use navigate_celestial::StarSight;
+use navigate_camera::{CameraMount as NavigateMount, ImagerModel};
 use navigate_contract::{NavigationSolution, SourceEpoch, SourceId, WrappingSequence};
 use navigate_fusion::IngestOutcome;
 use navigate_startrack::{
-    AttitudePrior, DetectConfig, IdentifyConfig, SolveConfig, StarCentroid, catalogue_ecef,
-    detect_stars, identify_stars, line_of_sight_observations, solve_attitude,
+    AttitudePrior, IdentifyConfig, IdentifyMode, PairCatalogue, SolveConfig, identify_stars,
+    line_of_sight_observations, solve_attitude,
 };
-use sim_core::{CameraMount, SimInstant, VehicleState};
+use sim_core::{SimInstant, VehicleState};
 use sim_devices::ImuGrade;
-use sim_geo::{LocalFrame, UtcTime, ecef_to_geodetic};
+use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_navigate::{
     InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth, TruthGravity,
-    camera_stars, compare_attitude_with_truth, compare_with_truth, imager_model, inertial_config,
-    navigate_mount, solution_position_ecef, star_camera_epoch,
+    compare_attitude_with_truth, compare_with_truth, imager_model, inertial_config, navigate_mount,
+    solution_position_ecef,
 };
-use sim_render::{CameraPose, StarCamera, StarCameraConfig};
+use sim_render::StarCameraConfig;
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
+
+#[cfg(test)]
+#[path = "star_inertial_closed_loop/scene.rs"]
+mod scene;
+#[cfg(test)]
+use scene::{Exposure, StarFrame, pair_table, sim_mount, star_frames};
 
 /// 2026-03-20T02:00:00Z, a night over the Delaware corridor.
 const START_UNIX_S: f64 = 1_773_972_000.0;
 const FLIGHT_S: f64 = 60.0;
+/// Simulation steps per second.
+const STEP_HZ: f64 = 120.0;
 /// Simulation steps between star frames: 1 Hz at 120 Hz.
 const STAR_PERIOD_STEPS: usize = 120;
 /// Simulation steps between scores: 10 Hz.
 const SCORE_PERIOD_STEPS: usize = 12;
 const SKY_FAINTEST_V: f64 = 6.5;
 const CATALOGUE_FAINTEST_V: f64 = 6.0;
+/// Faintest star of the lost-in-space pair table: brighter than the
+/// catalogue, so the stars a pyramid is built from are ones the camera
+/// detects reliably.
+const LIS_FAINTEST_V: f64 = 5.5;
 /// Camera-to-body alignment knowledge, radians RMS, added to each sighting.
 const MOUNT_ALIGNMENT_RAD: f64 = 2.0e-5;
+/// Streak below which every frame must solve. The roof camera's 12 mm,
+/// 0.1 s exposure keeps enough stars above threshold up to about 20 px of
+/// smear, a camera turn of about 0.07 rad/s; beyond about 60 px it detects
+/// almost none.
+const ASSURED_STREAK_PX: f64 = 15.0;
 const IMU_SOURCE: SourceId = SourceId::new(80);
 const STAR_SOURCE: SourceId = SourceId::new(81);
 const IMU_SEED: u64 = 0x5_7A2;
@@ -69,60 +88,6 @@ fn flight(profile: ScenarioProfile) -> Vec<Truth<(SimInstant, VehicleState)>> {
         truth.push(Truth::new((run.now(), run.vehicle())));
     }
     truth
-}
-
-/// A star camera on the cabin roof, a little off the zenith toward the nose
-/// and right wing, and the centre of gravity in the mount's axes.
-#[cfg(test)]
-fn sim_mount() -> (CameraMount, DVec3) {
-    let forward_body = DVec3::new(0.25, 0.12, -1.0).normalize();
-    let mount = CameraMount::looking_along(DVec3::new(4.2, 0.6, -2.1), forward_body, DVec3::X);
-    (mount, DVec3::new(1.1, 0.0, 0.3))
-}
-
-/// What the navigator has of one exposure: centroids from the counts and the
-/// catalogue at the exposure epoch. The counts come from the true pose; that
-/// is the scene, not an input to the navigator.
-#[cfg(test)]
-struct StarFrame {
-    step: usize,
-    at: SimInstant,
-    centroids: Vec<StarCentroid>,
-    catalogue: Vec<StarSight>,
-}
-
-#[cfg(test)]
-fn star_frames(truth: &[Truth<(SimInstant, VehicleState)>]) -> Vec<StarFrame> {
-    let config = StarCameraConfig::star_tracker_1024();
-    let camera = StarCamera::new(StarCameraConfig { seed: 7, ..config }).unwrap();
-    let (mount, cg_body_m) = sim_mount();
-    let start = UtcTime::from_unix_seconds(START_UNIX_S);
-    let frames = truth.iter().enumerate().skip(1).step_by(STAR_PERIOD_STEPS);
-    frames
-        .map(|(step, sample)| {
-            let (at, vehicle) = *sample.get();
-            let pose = mount.pose(&vehicle, cg_body_m);
-            let sky = camera_stars(start, at, SKY_FAINTEST_V).unwrap();
-            let pose = CameraPose {
-                position_ecef: pose.position_ecef,
-                orientation: pose.orientation,
-            };
-            let image = camera.expose(&pose, &sky, step as u64).image;
-            let pixels = Pixels::Gray16 {
-                data: &image.counts,
-                stride: image.width as usize,
-                significant_bits: image.significant_bits,
-            };
-            let view = ImageView::new(image.width, image.height, pixels).unwrap();
-            let epoch = star_camera_epoch(start, at);
-            StarFrame {
-                step,
-                at,
-                centroids: detect_stars(&view, &DetectConfig::default()).unwrap_or_default(),
-                catalogue: catalogue_ecef(epoch, CATALOGUE_FAINTEST_V).unwrap(),
-            }
-        })
-        .collect()
 }
 
 /// The navigator's own attitude belief, as an identification prior: its
@@ -156,6 +121,13 @@ struct Flown {
     scored: u64,
     frames_solved: u64,
     frames_unsolved: u64,
+    lost_in_space_tried: u64,
+    lost_in_space_solved: u64,
+    first_frame_solved: bool,
+    /// The shortest streak of a frame that did not solve, pixels.
+    shortest_unsolved_streak_px: Option<f64>,
+    /// The longest streak of a frame that solved, pixels.
+    longest_solved_streak_px: f64,
     admitted: u64,
     refused: u64,
 }
@@ -171,54 +143,92 @@ impl Flown {
     }
 }
 
-/// The navigator side of the star camera: the declared camera models.
+/// The navigator side of the star camera: the declared camera models, the
+/// lost-in-space table, and the prior held from mid-exposure until the image
+/// is read out.
 #[cfg(test)]
-struct StarTracker {
+struct StarTracker<'a> {
     imager: ImagerModel,
     mount: NavigateMount,
+    pairs: &'a PairCatalogue,
     next: WrappingSequence,
+    held_prior: Option<AttitudePrior>,
+    locked: bool,
 }
 
 #[cfg(test)]
-impl StarTracker {
-    fn new() -> Self {
+impl<'a> StarTracker<'a> {
+    fn new(pairs: &'a PairCatalogue) -> Self {
         let (mount, cg_body_m) = sim_mount();
         Self {
             imager: imager_model(&StarCameraConfig::star_tracker_1024().intrinsics).unwrap(),
             mount: navigate_mount(&mount, cg_body_m),
+            pairs,
             next: WrappingSequence::new(0),
+            held_prior: None,
+            locked: false,
         }
     }
 
-    /// Sights `frame` from the navigator's own prior and offers every line
-    /// of sight to it.
-    fn aid(&mut self, frame: &StarFrame, navigator: &mut InertialNavigator, flown: &mut Flown) {
-        let solution = navigator.solution(frame.at).unwrap().unwrap();
-        let prior = own_prior(&solution);
-        let matches = identify_stars(
+    /// At mid-exposure: the navigator's own attitude belief, once a frame
+    /// has locked the tracker onto the sky; before that there is none.
+    fn hold_prior(&mut self, navigator: &mut InertialNavigator, at: SimInstant) {
+        self.held_prior = self
+            .locked
+            .then(|| own_prior(&navigator.solution(at).unwrap().unwrap()));
+    }
+
+    /// At readout: sights `frame`, lost in space while unlocked, and offers
+    /// every line of sight stamped at mid-exposure.
+    fn aid(
+        &mut self,
+        frame: &StarFrame,
+        navigator: &mut InertialNavigator,
+        now: SimInstant,
+        flown: &mut Flown,
+    ) {
+        let first = flown.frames_solved + flown.frames_unsolved == 0;
+        let mode = match self.held_prior.take() {
+            Some(prior) => IdentifyMode::Prior(prior),
+            None => {
+                flown.lost_in_space_tried += 1;
+                IdentifyMode::LostInSpace(self.pairs)
+            }
+        };
+        let lost = matches!(mode, IdentifyMode::LostInSpace(_));
+        let solved = identify_stars(
             &frame.centroids,
             &self.imager,
             &self.mount,
-            Some(&prior),
+            mode,
             &frame.catalogue,
             &IdentifyConfig::default(),
         )
-        .unwrap();
-        let Ok(sighting) = solve_attitude(
-            &matches,
-            &frame.centroids,
-            &self.imager,
-            &self.mount,
-            &frame.catalogue,
-            &SolveConfig::default(),
-        ) else {
+        .and_then(|matches| {
+            solve_attitude(
+                &matches,
+                &frame.centroids,
+                &self.imager,
+                &self.mount,
+                &frame.catalogue,
+                &SolveConfig::default(),
+            )
+        });
+        let streak_px = *frame.streak_px.get();
+        let Ok(sighting) = solved else {
             flown.frames_unsolved += 1;
+            let shortest = flown.shortest_unsolved_streak_px.get_or_insert(streak_px);
+            *shortest = shortest.min(streak_px);
             return;
         };
+        flown.longest_solved_streak_px = flown.longest_solved_streak_px.max(streak_px);
         flown.frames_solved += 1;
+        flown.lost_in_space_solved += u64::from(lost);
+        flown.first_frame_solved |= first;
+        self.locked = true;
         let clock = MasterClockBridge::default();
         let stamp = clock
-            .stamp(STAR_SOURCE, SourceEpoch::new(0), self.next, frame.at)
+            .stamp(STAR_SOURCE, SourceEpoch::new(0), self.next, frame.mid)
             .unwrap();
         let variance = sighting.direction_sigma_rad.powi(2) + MOUNT_ALIGNMENT_RAD.powi(2);
         let frame_id = navigator.filter().frame();
@@ -226,7 +236,7 @@ impl StarTracker {
             line_of_sight_observations(&sighting, stamp, frame_id, variance).unwrap();
         for observation in &observations {
             self.next = self.next.next();
-            match navigator.observe(observation, frame.at).unwrap() {
+            match navigator.observe(observation, now).unwrap() {
                 IngestOutcome::Accepted => flown.admitted += 1,
                 IngestOutcome::Rejected(_) => flown.refused += 1,
             }
@@ -239,7 +249,7 @@ impl StarTracker {
 fn fly(
     truth: &[Truth<(SimInstant, VehicleState)>],
     grade: ImuGrade,
-    frames: Option<&[StarFrame]>,
+    frames: Option<(&[StarFrame], &PairCatalogue)>,
 ) -> Flown {
     let spec = grade.spec();
     let clock = MasterClockBridge::default();
@@ -250,15 +260,22 @@ fn fly(
         .align(&ALIGNMENT.measure(&initial), start)
         .unwrap();
     assert!(imu.sense(start, &initial).unwrap().is_none());
-    let mut tracker = StarTracker::new();
-    let mut pending = frames.unwrap_or_default().iter().peekable();
+    let (frames, pairs) = frames.map_or((&[][..], None), |(f, p)| (f, Some(p)));
+    let mut tracker = pairs.map(StarTracker::new);
+    let mut opening = frames.iter().peekable();
+    let mut reading = frames.iter().peekable();
     let mut flown = Flown::default();
     for (step, sample) in truth.iter().enumerate().skip(1) {
         let (at, vehicle) = *sample.get();
         let increment = imu.sense(at, &vehicle).unwrap().unwrap();
         navigator.ingest(&increment, at).unwrap();
-        if let Some(frame) = pending.next_if(|frame| frame.step == step) {
-            tracker.aid(frame, &mut navigator, &mut flown);
+        if let Some(tracker) = tracker.as_mut() {
+            if opening.next_if(|frame| frame.mid_step == step).is_some() {
+                tracker.hold_prior(&mut navigator, at);
+            }
+            if let Some(frame) = reading.next_if(|frame| frame.end_step == step) {
+                tracker.aid(frame, &mut navigator, at, &mut flown);
+            }
         }
         if step % SCORE_PERIOD_STEPS == 0 || step == truth.len() - 1 {
             score(&mut flown, &mut navigator, at, &vehicle);
@@ -302,6 +319,10 @@ fn log(profile: ScenarioProfile, grade: ImuGrade, means: &str, flown: &Flown) {
         attitude_nees = flown.mean_attitude_nees(),
         frames_solved = flown.frames_solved,
         frames_unsolved = flown.frames_unsolved,
+        lost_in_space_tried = flown.lost_in_space_tried,
+        lost_in_space_solved = flown.lost_in_space_solved,
+        shortest_unsolved_streak_px = flown.shortest_unsolved_streak_px,
+        longest_solved_streak_px = flown.longest_solved_streak_px,
         admitted = flown.admitted,
         refused = flown.refused,
         "star + INS vs dead reckoning"
@@ -309,22 +330,34 @@ fn log(profile: ScenarioProfile, grade: ImuGrade, means: &str, flown: &Flown) {
 }
 
 /// Flies `profile` with and without stars on each grade and checks what the
-/// stars can bound.
+/// stars can bound; returns the star-aided runs.
 #[cfg(test)]
-fn compare(profile: ScenarioProfile) {
-    init_tracing();
+fn compare(profile: ScenarioProfile, exposure: Exposure, pairs: &PairCatalogue) -> Vec<Flown> {
     let truth = flight(profile);
-    let frames = star_frames(&truth);
+    let frames = star_frames(&truth, exposure);
+    let mut aided_runs = Vec::new();
     for grade in [ImuGrade::Tactical, ImuGrade::ConsumerMems] {
         let unaided = fly(&truth, grade, None);
-        let aided = fly(&truth, grade, Some(&frames));
+        let aided = fly(&truth, grade, Some((&frames, pairs)));
         log(profile, grade, "dead reckoning", &unaided);
-        log(profile, grade, "star + INS", &aided);
+        log(profile, grade, &format!("star + INS, {exposure:?}"), &aided);
+        // The first frame locks on with no prior at all.
+        assert!(
+            aided.first_frame_solved && aided.lost_in_space_solved >= 1,
+            "{aided:?}"
+        );
         assert!(aided.admitted > 0, "{aided:?}");
         // Stars bound attitude, heading included, whatever the gyro: within a
         // milliradian once the gyro bias is learnt, against hundreds of
         // milliradians unaided on a consumer part.
-        assert_eq!(aided.frames_unsolved, 0, "{aided:?}");
+        // Smear is the only thing that loses a frame: a streak spreads a
+        // star's light until it falls below the detection threshold.
+        assert!(
+            aided
+                .shortest_unsolved_streak_px
+                .is_none_or(|streak| streak > ASSURED_STREAK_PX),
+            "{aided:?}"
+        );
         assert!(aided.final_attitude_rad < 1e-3, "{aided:?}");
         assert!(aided.final_attitude_rad < unaided.final_attitude_rad);
         for flown in [&unaided, &aided] {
@@ -337,15 +370,42 @@ fn compare(profile: ScenarioProfile) {
                 "{flown:?}"
             );
         }
+        aided_runs.push(aided);
     }
+    aided_runs
 }
 
 #[test]
 fn stars_bound_attitude_through_the_aggressive_bank() {
-    compare(ScenarioProfile::CorridorAggressiveBank);
+    init_tracing();
+    let aided = compare(
+        ScenarioProfile::CorridorAggressiveBank,
+        Exposure::Moving,
+        &pair_table(),
+    );
+    // The bank turns the camera fast enough to smear most frames away.
+    assert!(aided.iter().all(|flown| flown.frames_unsolved > 0));
+}
+
+/// The same bank with the camera held at its mid-exposure pose, to show
+/// what the smear costs.
+#[test]
+fn a_frozen_exposure_solves_every_frame_of_the_bank() {
+    init_tracing();
+    let aided = compare(
+        ScenarioProfile::CorridorAggressiveBank,
+        Exposure::Frozen,
+        &pair_table(),
+    );
+    assert!(aided.iter().all(|flown| flown.frames_unsolved == 0));
 }
 
 #[test]
 fn stars_bound_attitude_in_cruise() {
-    compare(ScenarioProfile::CorridorNominalCruise);
+    init_tracing();
+    compare(
+        ScenarioProfile::CorridorNominalCruise,
+        Exposure::Moving,
+        &pair_table(),
+    );
 }
