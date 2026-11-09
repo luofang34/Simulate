@@ -1,5 +1,9 @@
 # Simulate
 
+> [!WARNING]
+> Work in progress. APIs, file formats, and vehicle packages change without
+> notice, and nothing here is fit for real-world flight or navigation use.
+
 A flight simulator in Rust that runs natively (Metal, Vulkan, DX12) and in the
 browser (WebGPU, with WebGL2 fallback) from one code base.
 
