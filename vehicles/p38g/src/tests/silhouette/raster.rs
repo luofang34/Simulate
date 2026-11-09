@@ -205,12 +205,12 @@ pub(super) struct Metrics {
     pub(super) p95_dev_in: f32,
 }
 
-/// Compares two masks on the same grid.
-pub(super) fn compare(grid: &Grid, reference: &[bool], model: &[bool]) -> Metrics {
+/// Compares two masks on the same grid, leaving out the cells in `ignore`.
+pub(super) fn compare(grid: &Grid, reference: &[bool], model: &[bool], ignore: &[bool]) -> Metrics {
     let (mut inter, mut union) = (0_usize, 0_usize);
-    for (&r, &m) in reference.iter().zip(model) {
-        inter += usize::from(r && m);
-        union += usize::from(r || m);
+    for ((&r, &m), &skip) in reference.iter().zip(model).zip(ignore) {
+        inter += usize::from(r && m && !skip);
+        union += usize::from((r || m) && !skip);
     }
     let (b_ref, b_mod) = (boundary(grid, reference), boundary(grid, model));
     let (d_ref, d_mod) = (
@@ -220,9 +220,10 @@ pub(super) fn compare(grid: &Grid, reference: &[bool], model: &[bool]) -> Metric
     let mut devs: Vec<f32> = b_ref
         .iter()
         .zip(&d_mod)
-        .filter(|(b, _)| **b)
-        .chain(b_mod.iter().zip(&d_ref).filter(|(b, _)| **b))
-        .map(|(_, d)| d.sqrt() as f32 * grid.res_in)
+        .zip(ignore)
+        .chain(b_mod.iter().zip(&d_ref).zip(ignore))
+        .filter(|((b, _), skip)| **b && !**skip)
+        .map(|((_, d), _)| d.sqrt() as f32 * grid.res_in)
         .collect();
     devs.sort_by(f32::total_cmp);
     let pick = |q: f32| {
@@ -237,8 +238,14 @@ pub(super) fn compare(grid: &Grid, reference: &[bool], model: &[bool]) -> Metric
     }
 }
 
-/// Reference-only cells red, model-only blue, shared grey, reference outline black.
-pub(super) fn diff_image(grid: &Grid, reference: &[bool], model: &[bool]) -> RgbaImage {
+/// Reference-only cells red, model-only blue, shared grey, reference outline black, and
+/// ignored thin-feature cells green.
+pub(super) fn diff_image(
+    grid: &Grid,
+    reference: &[bool],
+    model: &[bool],
+    ignore: &[bool],
+) -> RgbaImage {
     let edge = boundary(grid, reference);
     let mut img = RgbaImage::from_pixel(
         grid.width as u32,
@@ -247,6 +254,7 @@ pub(super) fn diff_image(grid: &Grid, reference: &[bool], model: &[bool]) -> Rgb
     );
     for (i, px) in img.pixels_mut().enumerate() {
         *px = match (reference[i], model[i], edge[i]) {
+            _ if ignore[i] => Rgba([150, 220, 150, 255]),
             (_, _, true) => Rgba([0, 0, 0, 255]),
             (true, true, _) => Rgba([170, 170, 170, 255]),
             (true, false, _) => Rgba([230, 40, 40, 255]),

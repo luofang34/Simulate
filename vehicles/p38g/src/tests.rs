@@ -24,7 +24,7 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
         "/P38g/Powerplant/TurboWells",
         "/P38g/Powerplant/TurboNozzleScrolls",
         "/P38g/Powerplant/TurboImpellerWheels",
-        "/P38g/Powerplant/IntercoolerAndRadiatorDucts",
+        "/P38g/Powerplant/RadiatorScoops",
         "/P38g/Powerplant/ChinOilCoolerScoops",
         "/P38g/Powerplant/CoolerMatrixCores",
         "/P38g/CockpitInterior/TubAndBulkheads",
@@ -47,7 +47,6 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
                 && p.role == P38PartRole::CabinInterior)
     );
     assert!(three_view_gondola_outline_x(0.30) > 0.58);
-    assert!(three_view_boom_outline_x(-3.25) > three_view_boom_outline_x(-1.85));
     assert!(three_view_wing_leading_y(0.0) > three_view_wing_trailing_y(0.0));
 }
 

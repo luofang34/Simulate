@@ -7,6 +7,7 @@ use std::f32::consts::{PI, TAU};
 use glam::{DMat4, DVec3, Vec3};
 
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, glowing, part};
+use crate::radiators::radiator_prims;
 use crate::stations::{
     BOOM_X, CHROME_OLEO, EXHAUST_RUST, GUNMETAL, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK,
     TURBO_NOZZLE_Y, TURBO_STEEL, boom_point, wing_surface_point,
@@ -17,8 +18,9 @@ pub(crate) fn powerplant_prims() -> Vec<P38MeshPrim> {
     build_allison_exhaust_and_gearboxes(&mut prims);
     build_ge_b13_turbosuperchargers(&mut prims);
     build_intercooler_louvers(&mut prims);
-    build_chin_and_radiator_ducts(&mut prims);
-    build_cooling_flaps(&mut prims);
+    build_chin_oil_coolers(&mut prims);
+    build_oil_shutters(&mut prims);
+    prims.extend(radiator_prims());
     build_exterior_lights(&mut prims);
     prims
 }
@@ -220,8 +222,7 @@ fn build_intercooler_louvers(prims: &mut Vec<P38MeshPrim>) {
     ));
 }
 
-fn build_chin_and_radiator_ducts(prims: &mut Vec<P38MeshPrim>) {
-    let mut olive_ducts = MeshBuilder::new();
+fn build_chin_oil_coolers(prims: &mut Vec<P38MeshPrim>) {
     let mut gray_scoops = MeshBuilder::new();
     let mut cores = MeshBuilder::new();
 
@@ -252,25 +253,8 @@ fn build_chin_and_radiator_ducts(prims: &mut Vec<P38MeshPrim>) {
             Vec3::new(bx - 0.14, 1.467, -0.59),
             Vec3::new(bx + 0.14, 1.594, -0.45),
         );
-
-        for out_sign in [-1.0_f32, 1.0] {
-            let rx = bx + out_sign * 0.42;
-            olive_ducts.cuboid(
-                Vec3::new(rx - 0.008, -2.95, -0.16),
-                Vec3::new(rx + 0.008, -2.54, 0.26),
-            );
-            let cx0 = (rx + out_sign * 0.02).min(rx + out_sign * 0.16);
-            let cx1 = (rx + out_sign * 0.02).max(rx + out_sign * 0.16);
-            cores.cuboid(Vec3::new(cx0, -2.82, -0.12), Vec3::new(cx1, -2.58, 0.22));
-        }
     }
 
-    prims.push(fixed(
-        "/P38g/Powerplant/IntercoolerAndRadiatorDucts",
-        P38PartRole::WingStrut,
-        OLIVE_DRAB,
-        olive_ducts,
-    ));
     prims.push(fixed(
         "/P38g/Powerplant/ChinOilCoolerScoops",
         P38PartRole::CabinExterior,
@@ -285,25 +269,9 @@ fn build_chin_and_radiator_ducts(prims: &mut Vec<P38MeshPrim>) {
     ));
 }
 
-fn build_cooling_flaps(prims: &mut Vec<P38MeshPrim>) {
+fn build_oil_shutters(prims: &mut Vec<P38MeshPrim>) {
     for (label, side) in [("Left", -1.0_f32), ("Right", 1.0_f32)] {
         let bx = side * BOOM_X;
-        for (sub, out_sign) in [("In", -1.0_f32), ("Out", 1.0_f32)] {
-            let mut flap = MeshBuilder::new();
-            flap.cuboid(Vec3::new(-0.012, -0.34, -0.20), Vec3::new(0.012, 0.0, 0.20));
-            let rest =
-                DMat4::from_translation(DVec3::new(f64::from(bx + out_sign * 0.56), -3.72, 0.06));
-            let mut prim = part(
-                &format!("/P38g/Cooling/CoolantFlap{label}{sub}"),
-                P38PartRole::CabinExterior,
-                OLIVE_DRAB,
-                rest,
-                flap,
-            );
-            prim.custom_hinge_axis = Some(DVec3::new(0.0, 0.0, f64::from(-out_sign)));
-            prims.push(prim);
-        }
-
         let mut oil = MeshBuilder::new();
         oil.cuboid(Vec3::new(-0.18, -0.22, -0.014), Vec3::new(0.18, 0.0, 0.014));
         let rest = DMat4::from_translation(DVec3::new(f64::from(bx), 0.578, -0.62));

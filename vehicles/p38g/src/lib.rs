@@ -11,7 +11,8 @@
 //!   quadrant, right flap/cooling console, `FS 154` pilot armor bulkhead, and `FS 182` radio bay),
 //! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, 24 individual
 //!   exhaust ejector stacks, recessed dorsal GE B-13 turbosuperchargers, wing leading-edge
-//!   intercooler louvers, chin oil cooler, and aft-boom glycol radiator ducts with splitter plates,
+//!   intercooler louvers and chin oil cooler; [`radiators`]: the glycol radiator scoops on the
+//!   tail booms and their exit flaps,
 //! - [`package`]: Embedded `syspack.json` source and OpenUSD `.usda` stage export,
 //! - [`drawing`]: the digitised AN 01-75F-2 general arrangement and its station callouts,
 //!   against which [`verify_p38g_three_view_and_stations`] measures the built mesh.
@@ -30,6 +31,7 @@ mod instrument_panel;
 mod mesh;
 mod package;
 mod powerplant;
+mod radiators;
 mod role;
 mod stations;
 #[cfg(test)]

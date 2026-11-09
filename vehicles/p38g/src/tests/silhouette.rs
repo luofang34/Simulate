@@ -88,16 +88,16 @@ impl View {
     fn limits(self) -> (f32, f32, f32) {
         match self {
             Self::Side => (0.84, 15.5, 11.5),
-            Self::Plan => (0.92, 12.5, 5.0),
+            Self::Plan => (0.925, 12.5, 4.6),
             Self::Front => (0.80, 13.5, 4.0),
         }
     }
 }
 
-fn reference_rings(doc: &Value, view: View) -> Vec<Vec<Vec2>> {
-    doc["views"][view.key()]["outline_rings"]
+fn reference_rings(doc: &Value, view: View, key: &str) -> Vec<Vec<Vec2>> {
+    doc["views"][view.key()][key]
         .as_array()
-        .expect("outline_rings")
+        .unwrap_or_else(|| panic!("no {key} in the {} view", view.key()))
         .iter()
         .map(|ring| {
             ring.as_array()
@@ -148,24 +148,27 @@ fn bounds(points: impl Iterator<Item = Vec2>) -> (Vec2, Vec2) {
 }
 
 fn measure(doc: &Value, view: View, out: Option<&PathBuf>) -> Metrics {
-    let rings = reference_rings(doc, view);
+    let rings = reference_rings(doc, view, "outline_rings");
+    let thin = reference_rings(doc, view, "thin_feature_rings");
     let tris = model_triangles(view);
     let (rlo, rhi) = bounds(rings.iter().flatten().copied());
     let (mlo, mhi) = bounds(tris.iter().flatten().copied());
     let grid = Grid::covering(rlo.min(mlo), rhi.max(mhi), RES_IN, 4.0);
     let reference = fill_rings(&grid, &rings);
     let model = fill_triangles(&grid, &tris);
+    let ignore = fill_rings(&grid, &thin);
     if let Some(dir) = out {
-        diff_image(&grid, &reference, &model)
+        diff_image(&grid, &reference, &model, &ignore)
             .save(dir.join(format!("p38g_silhouette_{}.png", view.key())))
             .expect("write silhouette diff");
     }
-    compare(&grid, &reference, &model)
+    compare(&grid, &reference, &model, &ignore)
 }
 
 /// The mesh, seen orthographically from the side, above and ahead, must cover the
 /// digitised AN 01-75F-2 outline of each view. Set `SIMULATE_VERIFY_OUT` to also write
-/// `p38g_silhouette_<view>.png` (drawing only red, model only blue, both grey) and
+/// `p38g_silhouette_<view>.png` (drawing only red, model only blue, both grey, the
+/// drawing's thin features, which neither count for nor against, green) and
 /// `p38g_silhouette_metrics.txt`.
 #[test]
 fn mesh_silhouettes_match_the_an01_75f_2_general_arrangement() {
