@@ -30,19 +30,13 @@ unpushed="$(commit "$scratch/ahead" unpushed)"
 newer="$(commit "$up" newer)"
 git -C "$scratch/built" fetch -q origin
 
-# Repositories in UNPUBLISHED that a case does not exercise stay plain git entries.
-others='Aviate'
-
+# Each case pins two repositories; a git-only entry (no path) is never checked.
 write_manifest() {
-    local maplibre="$1" jsbsim="$2" omit="${3:-}"
     mkdir -p "$scratch/tree"
     {
         printf '[workspace.metadata.external_sources]\n'
-        printf 'maplibre-rs-experimental = { git = "u", %s, version = "0" }\n' "$maplibre"
-        printf 'jsbsim-rs = { git = "u", %s, version = "0" }\n' "$jsbsim"
-        for name in $others; do
-            [ "$name" = "$omit" ] || printf '%s = { git = "u", rev = "r", version = "0" }\n' "$name"
-        done
+        printf 'first = { git = "u", %s, version = "0" }\n' "$1"
+        printf 'second = { git = "u", %s, version = "0" }\n' "$2"
     } > "$scratch/tree/Cargo.toml"
 }
 
@@ -72,8 +66,20 @@ expect_reject "a newer pin the checkout does not build" "$(built "$newer")" "$gi
 expect_reject "an unpushed pin" "rev = \"$unpushed\", path = \"../ahead\"" "$git_only"
 expect_reject "a pin unknown to the checkout" \
     "$(built 0123456789abcdef0123456789abcdef01234567)" "$git_only"
-expect_reject "a published pin still in UNPUBLISHED" "$(built "$published")" "$(built "$published")"
-expect_reject "an UNPUBLISHED pin without a checkout" "$(built "$published")" \
-    'rev = "r", path = "../absent"'
-expect_reject "a stale UNPUBLISHED entry" "$(built "$published")" "$git_only" Aviate
+expect_pass "two repositories pinned to the same published checkout" "$(built "$published")" "$(built "$published")"
+expect_reject "a pin without a checkout" "$(built "$published")" 'rev = "r", path = "../absent"'
+expect_reject "a good pin beside an unpushed one" "$(built "$published")" \
+    "rev = \"$unpushed\", path = \"../ahead\""
+expect_reject_member() {
+    write_manifest "$(built "$published")" "$git_only"
+    mkdir -p "$scratch/tree/crates/member"
+    printf '[package]\nname = "member"\n[dependencies]\nsibling = { path = "../../../built" }\n' \
+        > "$scratch/tree/crates/member/Cargo.toml"
+    if "$script" "$scratch/tree" > /dev/null 2>&1; then
+        echo "FAIL: a member path leaving the repository was not rejected"
+        exit 1
+    fi
+    rm -rf "$scratch/tree/crates"
+}
+expect_reject_member
 echo "check-external-sources tests passed"
