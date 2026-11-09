@@ -102,23 +102,25 @@ pub(crate) const ARMOR_GLASS: P38Material = P38Material {
     opacity: 0.44,
 };
 
-/// Central gondola bulkhead station (`FS 0..248`, `y = +3.55..-2.75 m`):
+/// Central gondola bulkhead stations (`FS 0..238`, `y = +3.55..-2.50 m`). The keel
+/// (`z_bot_hull`) follows the AN 01-75F-2 side view, down to `30 in` below the fuselage
+/// reference line under the cockpit:
 /// `(y, z_mid, half_w, z_top_hull, z_bot_hull, z_canopy_top, w_canopy)`.
 pub const GONDOLA_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
     (3.55, 0.02, 0.03, 0.05, -0.01, 0.05, 0.03), // FS 0: Nose tip
-    (3.40, 0.02, 0.18, 0.16, -0.13, 0.16, 0.18), // FS 6: Cannon muzzle port
-    (3.15, 0.02, 0.32, 0.29, -0.26, 0.29, 0.32), // FS 16: Staggered .50 cal ports
-    (2.76, 0.03, 0.44, 0.41, -0.37, 0.41, 0.44), // FS 31: Forward ammo bay
-    (2.20, 0.04, 0.53, 0.49, -0.45, 0.49, 0.53), // FS 53: Nose wheel well & gun breech bay
-    (1.68, 0.05, 0.57, 0.52, -0.49, 0.52, 0.46), // FS 74: Windscreen base arch
-    (1.16, 0.06, 0.60, 0.53, -0.51, 0.90, 0.44), // FS 94: Armored flat windshield top
-    (0.58, 0.06, 0.62, 0.54, -0.52, 0.98, 0.45), // FS 117: Forward canopy / pilot head
-    (0.06, 0.05, 0.62, 0.54, -0.50, 0.95, 0.44), // FS 137: Main wing spar carry-through
-    (-0.42, 0.04, 0.59, 0.50, -0.46, 0.80, 0.38), // FS 156: Aft pilot armor bulkhead
-    (-0.90, 0.04, 0.53, 0.45, -0.41, 0.56, 0.30), // FS 175: Radio compartment & canopy tail
-    (-1.56, 0.03, 0.41, 0.35, -0.31, 0.35, 0.22), // FS 201: Gondola aft fairing
-    (-2.22, 0.03, 0.24, 0.21, -0.18, 0.21, 0.14), // FS 227: Wing trailing-edge intersection
-    (-2.75, 0.03, 0.04, 0.07, -0.01, 0.07, 0.04), // FS 248: Gondola tailcone tip
+    (3.40, 0.02, 0.18, 0.16, -0.356, 0.16, 0.18), // FS 6: Cannon muzzle port
+    (3.15, 0.02, 0.32, 0.29, -0.546, 0.29, 0.32), // FS 16: Staggered .50 cal ports
+    (2.76, 0.03, 0.44, 0.41, -0.671, 0.41, 0.44), // FS 31: Forward ammo bay
+    (2.20, 0.04, 0.53, 0.49, -0.767, 0.49, 0.53), // FS 53: Nose wheel well & gun breech bay
+    (1.68, 0.05, 0.57, 0.52, -0.823, 0.52, 0.46), // FS 74: Windscreen base arch
+    (1.16, 0.06, 0.60, 0.53, -0.846, 0.90, 0.44), // FS 94: Armored flat windshield top
+    (0.58, 0.06, 0.62, 0.54, -0.848, 0.98, 0.45), // FS 117: Forward canopy / pilot head
+    (0.06, 0.05, 0.62, 0.54, -0.815, 0.95, 0.44), // FS 137: Main wing spar carry-through
+    (-0.42, 0.04, 0.59, 0.50, -0.749, 0.80, 0.38), // FS 156: Aft pilot armor bulkhead
+    (-0.90, 0.04, 0.53, 0.45, -0.658, 0.56, 0.30), // FS 175: Radio compartment & canopy tail
+    (-1.56, 0.03, 0.41, 0.35, -0.546, 0.35, 0.22), // FS 201: Gondola aft fairing
+    (-2.22, 0.03, 0.24, 0.21, -0.419, 0.21, 0.14), // FS 227: Wing trailing-edge intersection
+    (-2.495, 0.03, 0.04, 0.07, -0.05, 0.07, 0.04), // FS 238: Gondola tailcone tip at the wing TE
 ];
 
 /// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..440`, `y = +1.74..-7.63 m`); the

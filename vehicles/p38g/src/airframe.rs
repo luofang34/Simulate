@@ -148,6 +148,14 @@ fn build_nose_armament(prims: &mut Vec<P38MeshPrim>) {
     build_shell_chutes(prims);
 }
 
+/// Height of the gondola's lower skin at lateral offset `x` and station `y`.
+pub(crate) fn keel_z_at(x: f32, y: f32) -> f32 {
+    (0..=64)
+        .map(|i| gondola_point(y, PI * (0.5 + 0.5 * i as f32 / 64.0)))
+        .min_by(|a, b| (a.x - x).abs().total_cmp(&(b.x - x).abs()))
+        .map_or(0.0, |p| p.z)
+}
+
 fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
     let mut chutes = MeshBuilder::new();
     for (cx, cy) in [
@@ -157,9 +165,10 @@ fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
         (0.09, 2.42),
         (0.18, 2.48),
     ] {
+        let z = keel_z_at(cx, cy);
         chutes.cuboid(
-            Vec3::new(cx - 0.016, cy - 0.06, -0.47),
-            Vec3::new(cx + 0.016, cy + 0.06, -0.41),
+            Vec3::new(cx - 0.016, cy - 0.06, z - 0.03),
+            Vec3::new(cx + 0.016, cy + 0.06, z + 0.03),
         );
     }
     prims.push(fixed(

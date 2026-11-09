@@ -5,6 +5,7 @@ use std::f32::consts::TAU;
 
 use glam::{DMat4, DVec3, Vec3};
 
+use crate::airframe::keel_z_at;
 use crate::drawing::{
     FRL_ABOVE_GROUND_NOSE_STATIC_IN, FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN,
     MAIN_AXLE_FS_IN, MAIN_TREAD_IN, NOSE_AXLE_FS_IN, NOSE_ROLLING_RADIUS_IN, NOSE_Y_M,
@@ -28,16 +29,18 @@ const NOSE_AXLE_Z: f32 =
 /// Main and nose tyres: `36 in` and `27 in` (AN 01-75F-2).
 const MAIN_TYRE_DIAMETER_IN: f32 = 36.0;
 const NOSE_TYRE_DIAMETER_IN: f32 = 27.0;
-/// Where the oleo struts leave the gear wells.
+/// Where the main oleo struts leave the boom gear wells.
 const STRUT_TOP_Z: f32 = -0.36;
 /// Main tyre centre off the ship centreline: half the `198 in` tread.
 const MAIN_HALF_TREAD_M: f32 = 0.5 * MAIN_TREAD_IN * INCH_M;
 
 pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
     let mut wells = MeshBuilder::new();
+    // The nose leg leaves the gondola keel, which drops 30 in below the reference line.
+    let nose_top = keel_z_at(0.0, NOSE_AXLE_Y - 0.08) + 0.04;
     wells.cuboid(
-        Vec3::new(-0.20, NOSE_AXLE_Y - 0.79, -0.44),
-        Vec3::new(0.20, NOSE_AXLE_Y - 0.03, -0.34),
+        Vec3::new(-0.20, NOSE_AXLE_Y - 0.79, nose_top - 0.10),
+        Vec3::new(0.20, NOSE_AXLE_Y - 0.03, nose_top),
     );
     for side in [-1.0_f32, 1.0] {
         let bx = side * BOOM_X;
@@ -56,13 +59,20 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
     let nose_rest = DMat4::from_translation(DVec3::new(
         0.0,
         f64::from(NOSE_AXLE_Y - 0.08),
-        f64::from(STRUT_TOP_Z),
+        f64::from(nose_top),
     ));
     let mut n_strut = MeshBuilder::new();
-    n_strut.tube(Vec3::ZERO, Vec3::new(0.0, 0.06, -0.82), 0.044, 0.036, 12);
+    let leg = NOSE_AXLE_Z - nose_top;
     n_strut.tube(
-        Vec3::new(0.0, 0.06, -0.82),
-        Vec3::new(0.06, 0.08, NOSE_AXLE_Z - STRUT_TOP_Z),
+        Vec3::ZERO,
+        Vec3::new(0.0, 0.06, 0.6 * leg),
+        0.044,
+        0.036,
+        12,
+    );
+    n_strut.tube(
+        Vec3::new(0.0, 0.06, 0.6 * leg),
+        Vec3::new(0.06, 0.08, leg),
         0.032,
         0.028,
         12,
