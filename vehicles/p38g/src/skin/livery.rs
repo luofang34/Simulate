@@ -13,10 +13,14 @@ const STARBOARD: f32 = 1.0;
 /// aircraft national insignia"). The form is Spec 24102-K Amendment 3,
 /// in force 28 May 1942 to 29 June 1943, its star's points touching the
 /// circle (secondary sources quoting the spec and T.O. 07-1-1 of 10 July
-/// 1942; the documents themselves were not reached). No size rule in force
-/// before July 1943 was found: the 45 in wing diameter at WS 205 is
-/// carried from the earlier model and is unsourced.
-const WING_STAR: Art = Art::Insignia { diameter_in: 45.0 };
+/// 1942; the documents themselves were not reached). The wing star's
+/// centre, WS 266, is where photographs of P-38Gs and Hs put it, close to
+/// the tip (p38-views' photo matches of 42-12842 and 42-67079: x of
+/// −7.1 m and −6.4 m by two methods, averaged). No size rule in force
+/// before July 1943 was found: 32 in, about three quarters of the
+/// drawing's local chord there, is an assumption after the July 1943 rule
+/// (T.O. 07-1-1C, as quoted by secondary sources).
+const WING_STAR: Art = Art::Insignia { diameter_in: 32.0 };
 /// The boom insignia measured on 41-7631 (USAAF, RAF Goxhill 1942) against
 /// its 36 in main tyre: about 25 in, centred about 24 in aft of the wing's
 /// trailing edge.
@@ -38,12 +42,14 @@ const NOSE_NUMBER: Art = Art::Numerals {
 /// with a stroke of about a sixth of their height, sized only to read from
 /// about 150 yd (T.O. 07-1-1 as quoted by secondary sources). Which fin
 /// faces 147 carried it is not documented; the outboard faces are assumed.
-/// Its size and place follow 41-7631: on 41-7631 about 9 in tall against the 82 in fin, run across
-/// fin and rudder at mid-chord, its centre about 18 in above the boom's
-/// centreline.
+/// Its size and place follow p38-views' photo matches of 41-7631, 42-12842,
+/// 42-13545 and 42-67079 (four photos on the drawing-corrected airframe):
+/// the digit block centred at FS 425, WL 42 (aircraft frame y −7.24 m,
+/// z 0.98 m) and about 0.9 m long, some 55 % of the fin's chord, which
+/// sets the numerals 12 in tall, across fin and rudder.
 const CALL_NUMBER: Art = Art::Numerals {
     text: "32264",
-    height_in: 9.0,
+    height_in: 12.0,
     stroke: 0.167,
     colour: Colour::Yellow,
 };
@@ -63,7 +69,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Wing {
             side: PORT,
             upper: true,
-            ws_in: 205.0,
+            ws_in: 266.0,
             chord: 0.45,
         },
     },
@@ -72,7 +78,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Wing {
             side: STARBOARD,
             upper: false,
-            ws_in: 205.0,
+            ws_in: 266.0,
             chord: 0.45,
         },
     },
@@ -131,8 +137,8 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Fin {
             side: PORT,
             outboard: true,
-            fs_in: 410.0,
-            wl_in: 27.0,
+            fs_in: 425.0,
+            wl_in: 42.0,
         },
     },
     Marking {
@@ -140,8 +146,8 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Fin {
             side: STARBOARD,
             outboard: true,
-            fs_in: 410.0,
-            wl_in: 27.0,
+            fs_in: 425.0,
+            wl_in: 42.0,
         },
     },
 ];
