@@ -128,6 +128,23 @@ impl Flight {
             .direction_fixed(body, about, observer_fixed_m, at)
     }
 
+    /// Dynamics ephemeris and orientation adapter implementing `navigate_celestial::Ephemeris`
+    /// so the sky rig evaluates sights from the dynamics kernels first and falls back to
+    /// `Navigate`'s analytic ephemeris outside kernel coverage.
+    #[must_use]
+    pub fn celestial_observer_adapter(
+        &self,
+    ) -> sim_navigate::CelestialObserverAdapter<
+        '_,
+        dyn sim_orbital::EphemerisCatalog + '_,
+        dyn sim_orbital::BodyOrientationCatalog + '_,
+    > {
+        sim_navigate::CelestialObserverAdapter {
+            ephemeris: self.solar.ephemeris(),
+            orientation: self.solar.orientation(),
+        }
+    }
+
     /// Body FRD specific force (`m/s²`), when provided by the plant.
     #[must_use]
     pub fn specific_force_frd_m_s2(&self) -> Option<DVec3> {

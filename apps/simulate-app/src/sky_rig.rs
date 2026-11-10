@@ -1,6 +1,7 @@
-//! Live astronomical sky from `Navigate`'s analytic ephemeris: Sun, Moon, eclipses, Earth's
-//! shadow, twilight, and the bright starfield, evaluated each frame for the truth scene, the
-//! instrument maps' relief lighting, and the fallback `GlobeScene`.
+//! Live astronomical sky evaluated from the dynamics ephemeris first and falling back to
+//! `Navigate`'s analytic ephemeris outside SPK coverage: Sun, Moon, eclipses, Earth's
+//! shadow, twilight, and the bright starfield, evaluated each frame for the truth scene,
+//! the instrument maps' relief lighting, and the fallback `GlobeScene`.
 
 use glam::DVec3;
 use sim_core::SimInstant;
@@ -148,7 +149,8 @@ impl SkyRig {
                 bodies: Some(sky_bodies(&cached.frame, None)),
             };
         }
-        let frame = self.clock.evaluate(
+        let frame = self.clock.evaluate_with_ephemeris(
+            &flight.celestial_observer_adapter(),
             self.mode,
             body,
             observer_fixed_m,

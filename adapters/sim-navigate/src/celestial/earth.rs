@@ -1,5 +1,5 @@
 use glam::DVec3;
-use navigate_celestial::{Epoch, moon_ecef, sun_ecef};
+use navigate_celestial::{AnalyticEphemeris, Ephemeris, Epoch, moon_ecef_with, sun_ecef_with};
 
 use super::frame::{CelestialFrame, EarthShadowSample, MoonDiscSample};
 
@@ -14,14 +14,29 @@ const SHADOW_ENLARGEMENT: f64 = 1.02;
 const DANJON_UMBRA_EDGE: f32 = 3.0;
 const DANJON_UMBRA_CENTRE: f32 = 1.0;
 
+/// The sky for an observer at `observer_ecef_m`, evaluated with `provider`
+/// first and falling back to [`AnalyticEphemeris`] outside `provider`'s coverage.
+pub(super) fn frame_with<P: Ephemeris>(
+    provider: &P,
+    epoch: Epoch,
+    observer_ecef_m: DVec3,
+) -> Option<CelestialFrame> {
+    frame_from(provider, epoch, observer_ecef_m)
+        .or_else(|| frame_from(&AnalyticEphemeris, epoch, observer_ecef_m))
+}
+
 /// The sky for an observer at `observer_ecef_m`. Sun and Moon are
 /// topocentric: the Moon's parallax reaches about 1°, which decides whether
 /// an eclipse is total at a given site.
-pub(super) fn frame(epoch: Epoch, observer_ecef_m: DVec3) -> Option<CelestialFrame> {
+fn frame_from<P: Ephemeris>(
+    provider: &P,
+    epoch: Epoch,
+    observer_ecef_m: DVec3,
+) -> Option<CelestialFrame> {
     let observer = Some(observer_ecef_m.to_array());
-    let sun = sun_ecef(epoch, observer).ok()?;
-    let moon = moon_ecef(epoch, observer).ok()?;
-    let moon_geocentric = moon_ecef(epoch, None).ok()?;
+    let sun = sun_ecef_with(provider, epoch, observer).ok()?;
+    let moon = moon_ecef_with(provider, epoch, observer).ok()?;
+    let moon_geocentric = moon_ecef_with(provider, epoch, None).ok()?;
     let sun_direction = DVec3::from_array(sun.direction);
     let moon_direction = DVec3::from_array(moon.direction);
     let sun_radius_deg = sun.angular_radius_rad.to_degrees();

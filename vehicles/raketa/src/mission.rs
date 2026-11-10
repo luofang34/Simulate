@@ -14,6 +14,7 @@
 
 mod continuous;
 mod landing;
+mod transfer;
 
 pub use continuous::{RaketaContinuousTransferSummary, run_continuous_pad_to_transfer};
 
@@ -63,6 +64,20 @@ pub enum RaketaMissionError {
     TouchdownDidNotSettle {
         /// Destination surface body.
         body: NaifId,
+    },
+    /// A transfer burn did not finish within its step budget.
+    #[error("transfer burn did not finish by {epoch:?}")]
+    TransferBurnDidNotConverge {
+        /// Epoch at which the burn gave up.
+        epoch: TdbEpoch,
+    },
+    /// A transfer coast did not enter the destination's sphere of influence in time.
+    #[error("transfer to {target} ended {distance_m:.0} m out")]
+    TransferDidNotArrive {
+        /// Destination body.
+        target: NaifId,
+        /// Distance to the destination at the end of the window (`m`).
+        distance_m: f64,
     },
     /// Continuous end-to-end mission stopped at a phase transition that is not yet implemented
     /// without synthetic scenario state re-initialization.
@@ -151,35 +166,28 @@ pub type RaketaMissionSummary = RaketaStagedDemoSummary;
 
 /// Attempts to execute a continuous, zero-state-reset surface-to-surface mission.
 ///
-/// Propagates `EarthPadPinned` $\to$ `EarthLiftoff` $\to$ `GravityTurnAscent` purely through
-/// physical contact and `DOP853` integration without overwriting `state`, and then returns
-/// [`RaketaMissionError::IncompleteContinuousMission`] because full continuous orbital insertion,
-/// multi-day cislunar/interplanetary cruise, and continuous entry-to-landing guidance without
-/// scenario state initialization are not yet implemented.
+/// Propagates `EarthPadPinned` $\to$ `EarthLiftoff` $\to$ `GravityTurnAscent` $\to$
+/// `TransInjectionBurn` $\to$ `DeepSpaceTransfer` purely through physical contact and
+/// `DOP853` integration into the destination's sphere of influence without overwriting
+/// `state`, and then returns [`RaketaMissionError::IncompleteContinuousMission`] because
+/// continuous arrival capture, atmospheric entry, and powered-descent landing from the
+/// arrival trajectory without scenario state initialization are not yet implemented.
 pub fn run_uninterrupted_mission(
     solar: &BuiltinSolarSystem2026_2028,
     force_model: &ForceModel,
     start_epoch: TdbEpoch,
-    _target: RaketaMissionTarget,
+    target: RaketaMissionTarget,
 ) -> Result<RaketaStagedDemoSummary, RaketaMissionError> {
-    let mut phases = vec![RaketaMissionPhase::EarthPadPinned];
-    let (mut epoch, mut state, liftoff_peak, pad_lock) =
-        execute_earth_pad_liftoff(solar, force_model, start_epoch)?;
-    phases.push(RaketaMissionPhase::EarthLiftoff);
-
-    let ascent_a = propagate_earth_ascent_arc(solar, force_model, &mut epoch, &mut state)?;
-    let peak_a = liftoff_peak.max(ascent_a);
-    phases.push(RaketaMissionPhase::GravityTurnAscent);
-
+    let transfer = run_continuous_pad_to_transfer(solar, force_model, start_epoch, target)?;
     Err(RaketaMissionError::IncompleteContinuousMission {
-        completed_phases: phases,
-        missing_transition_from: RaketaMissionPhase::GravityTurnAscent,
-        missing_transition_to: RaketaMissionPhase::TransInjectionBurn,
-        terminal_epoch: epoch,
-        terminal_state: Box::new(state),
-        peak_proper_accel_g: peak_a / STANDARD_GRAVITY_G0_M_S2,
-        fin_lock_verified: pad_lock,
-        reason: "continuous closed-loop orbital circularization, full multi-day transfer integration, and continuous entry-to-autoland handover without scenario state initialization are not yet implemented",
+        completed_phases: transfer.phases_completed,
+        missing_transition_from: RaketaMissionPhase::DeepSpaceTransfer,
+        missing_transition_to: RaketaMissionPhase::ArrivalBrakingOrEntry,
+        terminal_epoch: transfer.terminal_epoch,
+        terminal_state: Box::new(transfer.terminal_state),
+        peak_proper_accel_g: transfer.peak_proper_accel_g,
+        fin_lock_verified: transfer.fin_lock_verified,
+        reason: "continuous arrival capture, atmospheric entry, and powered-descent landing from the arrival trajectory are not yet implemented",
     })
 }
 

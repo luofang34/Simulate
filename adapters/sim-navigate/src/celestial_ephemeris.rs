@@ -45,14 +45,18 @@ pub enum CelestialAdapterError {
 
 /// Combined ephemeris + orientation adapter implementing [`navigate_celestial::Ephemeris`]
 /// for observers expressed in either `J2000 (1)` or body-fixed frames (`ITRF93`, `MOON_ME`, `IAU_*`).
-pub struct CelestialObserverAdapter<'a, E: EphemerisCatalog, O: BodyOrientationCatalog> {
+pub struct CelestialObserverAdapter<
+    'a,
+    E: EphemerisCatalog + ?Sized,
+    O: BodyOrientationCatalog + ?Sized,
+> {
     /// Geometric SPK ephemeris provider.
     pub ephemeris: &'a E,
     /// Body orientation provider.
     pub orientation: &'a O,
 }
 
-impl<E: EphemerisCatalog, O: BodyOrientationCatalog> NavEphemeris
+impl<E: EphemerisCatalog + ?Sized, O: BodyOrientationCatalog + ?Sized> NavEphemeris
     for CelestialObserverAdapter<'_, E, O>
 {
     type Error = CelestialAdapterError;
@@ -109,12 +113,12 @@ impl<E: EphemerisCatalog, O: BodyOrientationCatalog> NavEphemeris
 }
 
 /// Pure `J2000` ephemeris adapter implementing [`navigate_celestial::Ephemeris`] for any [`EphemerisCatalog`].
-pub struct PureEphemerisNavAdapter<'a, E: EphemerisCatalog> {
+pub struct PureEphemerisNavAdapter<'a, E: EphemerisCatalog + ?Sized> {
     /// Geometric SPK ephemeris provider.
     pub ephemeris: &'a E,
 }
 
-impl<E: EphemerisCatalog> NavEphemeris for PureEphemerisNavAdapter<'_, E> {
+impl<E: EphemerisCatalog + ?Sized> NavEphemeris for PureEphemerisNavAdapter<'_, E> {
     type Error = EphemerisError;
 
     fn barycentric_state(&self, state: State) -> Result<State, Self::Error> {

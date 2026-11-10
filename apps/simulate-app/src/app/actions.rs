@@ -67,6 +67,12 @@ impl FlightApp {
     }
 
     fn cycle_avionics_preset(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(frame) = self.flight.cycle_space_reference_frame() {
+            info!(
+                frame = frame.label(),
+                "selected spaceflight reference frame"
+            );
+        }
         let Some(rig) = self.cockpit_rig.as_mut() else {
             return;
         };

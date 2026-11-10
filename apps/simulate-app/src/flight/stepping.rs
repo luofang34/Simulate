@@ -11,12 +11,21 @@ use crate::error::AppSimError;
 const FLOWN_WARP_LIMIT: f64 = 4.0;
 
 impl Flight {
-    /// `factor`, held to [`FLOWN_WARP_LIMIT`] unless a spaceflight is coasting in orbital
-    /// propagation, which strides over any span at once.
+    /// `factor`, governed by [`Flight::space_warp_status`] when a spaceflight is flying,
+    /// and held to [`FLOWN_WARP_LIMIT`] whenever flight dynamics carry the vehicle.
     pub(super) fn governed_warp(&self, factor: f64, controls: ControlInputs) -> f64 {
+        if factor <= 0.0 {
+            return 0.0;
+        }
         match &self.mode {
-            Mode::Space(world) if world.coasting(controls) => factor,
-            Mode::Space(_) | Mode::Free { .. } | Mode::Scenario(_) => factor.min(FLOWN_WARP_LIMIT),
+            Mode::Space(world) if world.coasting(controls) => self
+                .space_warp_status(factor, controls)
+                .map_or(factor, |status| status.achieved_warp),
+            Mode::Space(_) => self
+                .space_warp_status(factor, controls)
+                .map_or(factor, |status| status.achieved_warp)
+                .min(FLOWN_WARP_LIMIT),
+            Mode::Free { .. } | Mode::Scenario(_) => factor.min(FLOWN_WARP_LIMIT),
         }
     }
 

@@ -28,6 +28,8 @@ use crate::world_surface::WorldSurfaceHandle;
 
 /// The vessel the pilot flies.
 const OWNSHIP: VesselId = VesselId(1);
+/// A JWST-like observatory held near the Sun–Earth $L_2$ libration point.
+const JWST_L2: VesselId = VesselId(2);
 
 /// How fast a full stick deflection swings the commanded nose direction,
 /// rad/s.
@@ -77,7 +79,8 @@ impl SpaceWorld {
         )
         .map_err(|e| universe_error(UniverseError::LocalPlant(Box::new(e))))?;
         let mut universe =
-            Universe::new(epoch, solar.context()).with_tier_policy(TierPolicy::standard());
+            Universe::new(epoch.clone(), solar.context()).with_tier_policy(TierPolicy::standard());
+        spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
         universe
             .insert_local(OWNSHIP, Box::new(plant), RaketaPlant::factory(environment))
             .map_err(universe_error)?;
@@ -210,6 +213,14 @@ impl SpaceWorld {
 
     pub(super) const fn ownship_id() -> VesselId {
         OWNSHIP
+    }
+
+    pub(super) const fn jwst_l2_id() -> VesselId {
+        JWST_L2
+    }
+
+    pub(super) fn jwst_l2_state(&self) -> Option<ContinuousPlantState> {
+        self.universe.inertial_state(JWST_L2).ok()
     }
 
     /// Hands the flight to ascent guidance, or to the pilot. A spaceflight
@@ -359,4 +370,70 @@ fn aircraft_axes(state: VehicleState) -> VehicleState {
 
 fn universe_error(error: UniverseError) -> AppSimError {
     AppSimError::Universe(Box::new(error))
+}
+
+fn spawn_jwst_l2(
+    universe: &mut Universe,
+    epoch: &SimEpoch,
+    solar: &SolarSystem,
+    environment: &sim_raketa::RaketaEnvironment,
+) -> Result<(), AppSimError> {
+    let tdb_start = epoch.tdb_at(SimInstant::START);
+    let Ok(frame) = sim_orbital::SynodicFrame::from_ephemeris(
+        NaifId::SUN,
+        NaifId::EARTH,
+        tdb_start,
+        solar.ephemeris(),
+    ) else {
+        return Ok(());
+    };
+    let ctx = solar.context();
+    let mu_sun = ctx
+        .force_model
+        .constants()
+        .require_mu(NaifId::SUN)
+        .unwrap_or(1.327_124_400_41e20);
+    let mu_earth = ctx
+        .force_model
+        .constants()
+        .require_mu(NaifId::EARTH)
+        .unwrap_or(3.986_004_418e14);
+    let l2_seed =
+        sim_orbital::approximate_l2_libration_seed(&frame, mu_sun, mu_earth, 120_000_000.0, true);
+    let (pos_rel_earth, vel_rel_earth) = frame.synodic_to_icrf_rel_secondary(
+        l2_seed.pos_syn_rel_secondary_m,
+        l2_seed.vel_syn_rel_secondary_m_s,
+    );
+    let jwst_state = ContinuousPlantState {
+        primary_body: NaifId::EARTH,
+        pos_rel_icrf_m: pos_rel_earth,
+        vel_rel_icrf_m_s: vel_rel_earth,
+        q_body_to_icrf: DQuat::IDENTITY,
+        omega_body_rad_s: DVec3::ZERO,
+        propellant_mass_kg: 150.0,
+        h_rw_body_nms: DVec3::ZERO,
+    };
+    let jwst_cfg = sim_orbital::VesselConfig {
+        mass_model: sim_orbital::MassPropertiesModel::diagonal(
+            6_200.0,
+            [45_000.0, 45_000.0, 25_000.0],
+            [0.0; 3],
+        ),
+        propellant_mode: sim_orbital::PropellantMode::InfiniteConstantMass,
+        rw_mode: sim_orbital::ReactionWheelMode::ConserveMomentum {
+            h_max_nms: 0.0,
+            tau_max_nm: 0.0,
+        },
+        tolerances: ctx.tolerances,
+        bounding_radius_m: 11.0,
+        auto_soi_switch: false,
+    };
+    universe
+        .insert_orbital(
+            JWST_L2,
+            jwst_cfg,
+            jwst_state,
+            RaketaPlant::factory(environment.clone()),
+        )
+        .map_err(universe_error)
 }

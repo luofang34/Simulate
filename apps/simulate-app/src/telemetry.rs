@@ -3,7 +3,7 @@ use sim_core::SourceValidity;
 use sim_scenario::{OperatorViewportMode, SimTimeScale};
 use tracing::{debug, info};
 
-use crate::flight::Flight;
+use crate::flight::{Flight, SpaceLinkStatus, SpaceReferenceFrame};
 
 /// Reports what changed on the panel since `previous`.
 pub fn log_changes(previous: &CockpitInstrumentSnapshot, current: &CockpitInstrumentSnapshot) {
@@ -102,6 +102,7 @@ pub fn title(
         };
         add(nav_mode.to_owned());
     }
+    append_space_status(flight, viewport_mode, time_scale, &mut add);
     append_apollo_status(cockpit, &mut add);
     add(pacing_label(flight));
     line
@@ -158,5 +159,82 @@ fn append_apollo_status(cockpit: &CockpitInstrumentSnapshot, add: &mut impl FnMu
     }
     if cockpit.contact_light {
         add("CONTACT LIGHT".to_owned());
+    }
+}
+
+fn append_space_status(
+    flight: &Flight,
+    viewport_mode: OperatorViewportMode,
+    time_scale: SimTimeScale,
+    add: &mut impl FnMut(String),
+) {
+    if let (Some(frame), Some((pos, vel))) = (
+        flight.space_reference_frame(),
+        flight.space_state_in_reference_frame(),
+    ) {
+        let frame_label = match frame {
+            SpaceReferenceFrame::BodyInertial
+            | SpaceReferenceFrame::BodyFixed
+            | SpaceReferenceFrame::SunEarthSynodic => frame.label(),
+        };
+        add(format!(
+            "{frame_label} {:.0} km {:.0} m/s",
+            pos.length() * 1.0e-3,
+            vel.length()
+        ));
+    }
+    if let Some(fdai) = flight.space_fdai_navball() {
+        let prograde_deg = fdai
+            .prograde
+            .dir_body
+            .y
+            .clamp(-1.0, 1.0)
+            .acos()
+            .to_degrees();
+        add(format!("FDAI {prograde_deg:.0}°"));
+    }
+    if let Some(plume) = flight.space_aerospike_plume()
+        && plume.visible
+    {
+        add(format!("Plume {:.1}x", plume.expansion_ratio));
+    }
+    if let SimTimeScale::Warp(w) = time_scale
+        && let Some(warp) = flight.space_warp_status(w, sim_core::ControlInputs::default())
+        && warp.achieved_warp < warp.requested_warp
+    {
+        add(format!(
+            "Warp {:.0}x/{:.0}x ({:?})",
+            warp.achieved_warp, warp.requested_warp, warp.bottleneck_reason
+        ));
+    }
+    if let Some(dsn) = flight.space_dsn_link_status() {
+        append_dsn_link(&dsn, add);
+    }
+    if matches!(
+        viewport_mode,
+        OperatorViewportMode::ChartMap | OperatorViewportMode::VolumetricScene
+    ) && let Some(nodes) = flight.space_orrery_projection(
+        glam::DVec3::new(0.0, 0.0, 2.0e9),
+        glam::DQuat::IDENTITY,
+        1.0,
+        1.5,
+    ) {
+        let visible = nodes.iter().filter(|n| n.depth_m > 0.0).count();
+        add(format!("Orrery {visible}/{}", nodes.len()));
+    }
+}
+
+fn append_dsn_link(dsn: &SpaceLinkStatus, add: &mut impl FnMut(String)) {
+    let el_deg = dsn.elevation_at_station_rad.to_degrees();
+    let range_mm = dsn.slant_range_m * 1.0e-6;
+    if dsn.accessible {
+        add(format!(
+            "DSN {:.2}s {range_mm:.0}Mm {el_deg:.0}°",
+            dsn.light_time_s
+        ));
+    } else if let Some(body) = dsn.occulted_by {
+        add(format!("DSN OCC ({})", body.0));
+    } else {
+        add(format!("DSN MASK ({el_deg:.0}°)"));
     }
 }

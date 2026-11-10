@@ -332,3 +332,99 @@ fn a_martian_crater_rim_occults_low_elevation_links_and_shifts_downlink_edges_by
             )
     );
 }
+
+#[cfg(test)]
+fn build_mars_relay_orbiter_trajectory(
+    start: TdbEpoch,
+) -> sim_spacetime::SampledKinematicTrajectory {
+    use glam::{DQuat, DVec3};
+    use sim_spacetime::{
+        DynamicalModelIdentity, KinematicTrajectoryNode, SampledKinematicTrajectory,
+    };
+
+    let traj_start = start.advanced_seconds(-3_600.0);
+    let nodes = (0..=48)
+        .map(|k| {
+            let ep = traj_start.advanced_seconds(f64::from(k) * 300.0);
+            let theta = f64::from(k) * 0.08;
+            let (r, v) = (3_796_000.0, 3_360.0);
+            KinematicTrajectoryNode {
+                epoch: ep,
+                pos_m: DVec3::new(r * theta.cos(), r * theta.sin(), 0.0),
+                vel_m_s: DVec3::new(-v * theta.sin(), v * theta.cos(), 0.0),
+                q_body_to_axes: DQuat::IDENTITY,
+                omega_body_rad_s: DVec3::ZERO,
+            }
+        })
+        .collect();
+    SampledKinematicTrajectory::from_icrf_nodes(
+        202,
+        NaifId::MARS,
+        DynamicalModelIdentity::PlanetaryKinematicOrFlight { body: NaifId::MARS },
+        nodes,
+    )
+    .expect("orbiter trajectory")
+}
+
+#[test]
+fn two_hop_mars_rover_to_orbiter_to_dsn_relay_chains_light_time_across_both_hops() {
+    use sim_analysis::{VehicleSensorModel, evaluate_geometric_relay_access};
+
+    let link = Link::new();
+    let start = TdbEpoch::new(820_497_600 + 424 * 86_400, 0);
+    let orbiter_traj = build_mars_relay_orbiter_trajectory(start);
+    let omni = VehicleSensorModel::omnidirectional_at_cg(1, "Omni");
+    let rover_ep = AnalysisEndpoint::SurfaceStation {
+        station: &link.rover,
+        altitude_spec: None,
+    };
+    let orbiter_ep = AnalysisEndpoint::MovingPlatform {
+        endpoint_id: 202,
+        label: "Mars Relay Orbiter",
+        host_body: NaifId::MARS,
+        ellipsoid: BodyEllipsoid::MARS_IAU,
+        trajectory: &orbiter_traj,
+        attitude: None,
+        sensor: &omni,
+        min_local_elevation_rad: None,
+    };
+    let dsn_ep = AnalysisEndpoint::SurfaceStation {
+        station: &link.goldstone,
+        altitude_spec: None,
+    };
+    let query = AccessQuerySpec {
+        query_interval: ValidEpochInterval::new(start, start.advanced_seconds(7_200.0)),
+        sample_step_s: 120.0,
+        boundary_time_tolerance_s: 1.0,
+        min_range_m: None,
+        max_range_m: None,
+        signal_time: SignalTimeModel::LightTime,
+    };
+    let report = evaluate_geometric_relay_access(
+        rover_ep,
+        orbiter_ep,
+        orbiter_ep,
+        dsn_ep,
+        Some(rover_ep),
+        &link.bodies,
+        None,
+        &query,
+        &link.solar.ephemeris,
+        &link.solar.orientation,
+    )
+    .expect("2-hop light-time relay");
+    let sample = report.samples.first().expect("relay sample");
+    let lt1 = sample.hop1_aircraft_to_satellite.light_time_s.expect("lt1");
+    let lt2 = sample.hop2_satellite_to_ground.light_time_s.expect("lt2");
+    assert!((0.001..0.05).contains(&lt1));
+    assert!((300.0..420.0).contains(&lt2));
+    assert!(
+        (sample
+            .hop1_aircraft_to_satellite
+            .epoch
+            .signed_offset_seconds_from(sample.epoch)
+            + lt2)
+            .abs()
+            < 1.0e-6
+    );
+}
