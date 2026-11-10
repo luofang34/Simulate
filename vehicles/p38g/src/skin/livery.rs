@@ -30,8 +30,15 @@ const BOOM_STAR: Art = Art::Insignia { diameter_in: 25.0 };
 
 /// White nose number, measured on 43-2242's "129" (USAAF 342-FH-3A43614):
 /// about 11 in tall against the nose's section, its strokes about a
-/// seventh of the height, starting just aft of the nose-cap break, high on
-/// the olive side.
+/// seventh of the height, starting just aft of the nose-cap break, on the
+/// olive side with its centre about two fifths of the nose's depth below
+/// the crown, as 43-2239's "138" sits (USAAF photo, Fighter Two, 1943): on
+/// the drawn gondola (crown WL 20, gray from WL −2 down at FS 48) that is
+/// WL 5, the numerals' feet just clear of the gray.
+///
+/// No anti-glare panel is painted: none shows on the noses or inner cowls
+/// of 43-2239, 42-12842 or 42-67079 in the photo matches, where the olive
+/// drab runs unbroken to the windscreen.
 const NOSE_NUMBER: Art = Art::Numerals {
     text: "147",
     height_in: 11.0,
@@ -57,7 +64,8 @@ const CALL_NUMBER: Art = Art::Numerals {
 };
 
 /// Petit's two flags and the ship (see `victories`): placement and size
-/// are assumptions, a row 3 in tall centred over the nose number.
+/// are assumptions, a row 3 in tall centred over the nose number, an inch and a half
+/// clear of it.
 const VICTORIES: Art = Art::Victories {
     flags: 2,
     ships: 1,
@@ -107,7 +115,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Nose {
             side: PORT,
             fs_in: 48.0,
-            wl_in: 9.5,
+            wl_in: 5.0,
         },
     },
     Marking {
@@ -115,7 +123,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Nose {
             side: STARBOARD,
             fs_in: 48.0,
-            wl_in: 9.5,
+            wl_in: 5.0,
         },
     },
     Marking {
@@ -123,7 +131,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Nose {
             side: PORT,
             fs_in: 48.0,
-            wl_in: 18.5,
+            wl_in: 13.5,
         },
     },
     Marking {
@@ -131,7 +139,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
         place: Place::Nose {
             side: STARBOARD,
             fs_in: 48.0,
-            wl_in: 18.5,
+            wl_in: 13.5,
         },
     },
     Marking {

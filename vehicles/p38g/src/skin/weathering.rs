@@ -18,6 +18,10 @@ use super::scheme::Coat;
 const ALUMINIUM: Vec3 = Vec3::new(0.55, 0.56, 0.57);
 /// Turbo exhaust soot.
 const SOOT: Vec3 = Vec3::new(0.025, 0.024, 0.022);
+/// Distance aft of a turbo over which its soot thins to a third: the stain on
+/// 339th FS booms runs most of the way to the radiators (USAAF photos of
+/// 43-2239 and 43-2242, Fighter Two, 1943).
+const SOOT_REACH_M: f32 = 3.2;
 /// Engine oil and the dust it gathers.
 const OIL: Vec3 = Vec3::new(0.05, 0.04, 0.025);
 
@@ -54,6 +58,7 @@ pub(crate) fn wear(anchors: &Anchors, at: &Exposure, albedo: Vec3, roughness: f3
     grime(&mut worn, at);
     soot(&mut worn, anchors, p, at.normal);
     oil(&mut worn, anchors, p, at.normal);
+    cowl_streaks(&mut worn, anchors, p, at.normal);
     chips(&mut worn, anchors, at);
     worn
 }
@@ -99,12 +104,12 @@ fn soot(worn: &mut Worn, anchors: &Anchors, p: Vec3, n: Vec3) {
         let lateral = (p.x - turbo.x).abs();
         let above = (p.z - (turbo.z - 0.25)).max(0.0);
         let streaks = 0.55 + 0.45 * noise::value(Vec3::new(p.x * 22.0, p.y * 0.8, 3.0));
-        let deposit = (-aft.max(0.0) / 2.4).exp()
+        let deposit = (-aft.max(0.0) / SOOT_REACH_M).exp()
             * smooth(spread, spread * 0.4, lateral)
             * smooth(0.0, 0.12, above)
             * smooth(-0.3, 0.3, n.z)
             * streaks;
-        let d = (deposit * 0.95).clamp(0.0, 1.0);
+        let d = (deposit * 1.6).clamp(0.0, 0.97);
         worn.albedo = worn.albedo.lerp(SOOT, d);
         worn.roughness += (0.9 - worn.roughness) * d;
     }
@@ -127,6 +132,25 @@ fn oil(worn: &mut Worn, anchors: &Anchors, p: Vec3, n: Vec3) {
     worn.roughness += (0.25 - worn.roughness) * d * 0.8;
 }
 
+/// Oil, exhaust and hand grime down the nacelles' sides from the cowl
+/// seams and exhaust shrouds, running aft and down in soft streaks: the
+/// blotched cowls of 43-2239 (USAAF photo, Fighter Two, 1943).
+fn cowl_streaks(worn: &mut Worn, anchors: &Anchors, p: Vec3, n: Vec3) {
+    let lateral = (p.x.abs() - anchors.boom_x).abs();
+    if lateral > 0.7 || n.z.abs() > 0.75 {
+        return;
+    }
+    // From just aft of the spinner to the wing's trailing edge.
+    let along = smooth(anchors.nose_y - 0.2, anchors.nose_y - 0.9, p.y) * smooth(-2.2, -0.6, p.y);
+    // The streak pattern is sheared so each run falls as it trails aft.
+    let lines = noise::value(Vec3::new((p.y + 1.4 * p.z) * 6.0, p.x.signum() * 3.0, 11.0));
+    let blotch = noise::fractal(p, 2.2);
+    let d = (along * (0.7 * smooth(0.4, 0.75, lines) + 0.5 * smooth(0.45, 0.7, blotch)))
+        .clamp(0.0, 0.85);
+    worn.albedo = worn.albedo.lerp(OIL, d);
+    worn.roughness += (0.4 - worn.roughness) * d * 0.6;
+}
+
 /// Paint worn through to aluminium: the inner wing walkways either side of
 /// the gondola, and the leading edges the slipstream sandblasts.
 fn chips(worn: &mut Worn, anchors: &Anchors, at: &Exposure) {
@@ -146,7 +170,7 @@ fn chips(worn: &mut Worn, anchors: &Anchors, at: &Exposure) {
     let leading = smooth(0.2, 0.75, at.normal.y) * smooth(-0.2, 0.3, at.normal.z + 0.3);
     let edge = smooth(1.2, 0.2, at.seam_in) * at.normal.z.clamp(0.0, 1.0);
     let grain = noise::fractal(p, 34.0);
-    let exposure = (walkway * 0.55 + leading * 0.3 + edge * 0.35).clamp(0.0, 1.0);
+    let exposure = (walkway * 0.8 + leading * 0.3 + edge * 0.35).clamp(0.0, 1.0);
     let chipped = smooth(1.0 - exposure * 0.45, 1.0 - exposure * 0.45 + 0.03, grain);
     if chipped > 0.0 {
         worn.albedo = worn.albedo.lerp(ALUMINIUM, chipped);
