@@ -395,3 +395,77 @@ fn verify_bounded_rollback_cost(solar: &BuiltinSolarSystem2026_2028) {
     assert!(metrics.binary_search_probes <= 7);
     assert!(metrics.replayed_steps <= 2);
 }
+
+#[test]
+fn one_advance_longer_than_the_speculative_buffer_matches_many_short_ones() {
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let one_second = TickSpan::from_seconds_and_subsec_ticks(1, 0);
+    let seconds = (MAX_SPECULATIVE_SEGMENTS as u64) * 3;
+    let build = || {
+        let mut uni =
+            build_test_universe(&solar).with_horizon_quantum_ticks(one_second.ticks_u128());
+        populate_three_vessel_fleet(&mut uni);
+        uni
+    };
+    let mut one_call = build();
+    let mut many_calls = build();
+
+    let end = SimInstant::START.advanced(TickSpan::from_seconds_and_subsec_ticks(seconds, 0));
+    one_call
+        .advance_committed_to(end)
+        .expect("one long advance");
+    let mut t = SimInstant::START;
+    while t < end {
+        t = t.advanced(one_second);
+        many_calls.advance_committed_to(t).expect("short advance");
+    }
+    assert_eq!(one_call.committed_instant(), end);
+    assert_eq!(one_call.universe_hash(), many_calls.universe_hash());
+}
+
+#[test]
+fn a_removed_vessel_leaves_at_the_committed_instant_with_its_events() {
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let mut uni = build_test_universe(&solar);
+    populate_three_vessel_fleet(&mut uni);
+    let ids: Vec<VesselId> = uni.vessel_ids().collect();
+    let gone = ids[0];
+    let mid =
+        SimInstant::START.advanced(TickSpan::from_seconds_and_subsec_ticks(7, 13_824_000_000));
+    uni.advance_committed_to(mid).expect("advance");
+    uni.stamp_player_command(
+        mid.advanced(TickSpan::from_seconds_and_subsec_ticks(5, 0)),
+        gone,
+        PlayerCommandPayload::SetNosecone {
+            carrier_rad: 0.1,
+            wrist_rad: 0.0,
+        },
+    )
+    .expect("stamp");
+    uni.set_active_camera_vessel(Some(gone));
+    let sampled = uni.sample_vessel_state(gone, mid).expect("sample");
+
+    let (_config, checkpoint) = uni.remove_vessel(gone).expect("remove");
+    assert_eq!(checkpoint.instant, mid);
+    let miss = (checkpoint.plant.pos_rel_icrf_m - sampled.pos_rel_icrf_m).length();
+    assert!(
+        miss < 1.0e-3,
+        "integrated and dense states differ by {miss} m"
+    );
+    assert_eq!(uni.active_camera_vessel(), None);
+    assert!(uni.vessel_ids().all(|id| id != gone));
+    assert_eq!(
+        uni.remove_vessel(gone),
+        Err(SchedulerError::UnknownVessel(gone))
+    );
+
+    let end = mid.advanced(TickSpan::from_seconds_and_subsec_ticks(10, 0));
+    uni.advance_committed_to(end)
+        .expect("advance past the dropped command");
+    assert!(
+        uni.fired_events()
+            .iter()
+            .all(|key| key.instant <= mid || !key.participants.contains(&gone)),
+        "an event of the removed vessel fired after it left"
+    );
+}

@@ -272,10 +272,15 @@ impl OrbitalUniverse {
                 _ => target,
             };
 
-            if !self.all_vessels_covered_through(step_goal) {
-                self.speculate_missing_vessels_once(step_goal)?;
+            let step_goal = if self.all_vessels_covered_through(step_goal) {
+                step_goal
+            } else if self.speculate_missing_vessels_once(step_goal)? {
                 continue;
-            }
+            } else {
+                // Every lagging vessel's speculative buffer is full. Committing up to
+                // the earliest frontier drains it, and no event lies before that instant.
+                self.earliest_frontier().min(step_goal)
+            };
 
             self.committed_instant = step_goal;
             let clock = self.clock;
@@ -309,7 +314,17 @@ impl OrbitalUniverse {
             .all(|tl| tl.frontier_instant() >= goal)
     }
 
-    fn speculate_missing_vessels_once(&mut self, goal: SimInstant) -> Result<(), SchedulerError> {
+    fn earliest_frontier(&self) -> SimInstant {
+        self.vessels
+            .values()
+            .map(VesselTimeline::frontier_instant)
+            .min()
+            .unwrap_or(self.committed_instant)
+    }
+
+    /// Speculates each vessel short of `goal` one horizon further. `false` when no vessel
+    /// had room in its speculative buffer.
+    fn speculate_missing_vessels_once(&mut self, goal: SimInstant) -> Result<bool, SchedulerError> {
         let clock = self.clock;
         let orient = self.orientation.clone();
         for tl in self.vessels.values_mut() {
@@ -319,7 +334,7 @@ impl OrbitalUniverse {
         }
         let reqs = self.build_worker_requests(goal);
         if reqs.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         let prev_frontiers: Vec<(VesselId, SimInstant)> = reqs
             .iter()
@@ -341,7 +356,7 @@ impl OrbitalUniverse {
                 });
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     fn has_events_at_committed(&self) -> bool {

@@ -84,6 +84,7 @@ fn coaster(
         block,
         BodyEllipsoid::WGS84,
         start,
+        2.0,
     )))
 }
 
@@ -169,7 +170,7 @@ fn results_do_not_depend_on_how_time_is_sliced() {
 }
 
 #[test]
-fn handoffs_off_the_quantum_grid_and_duplicates_are_refused() {
+fn handoffs_between_local_steps_and_duplicates_are_refused() {
     let mut universe = universe_with(&[1]);
     assert!(matches!(
         universe.insert_local(
@@ -179,7 +180,8 @@ fn handoffs_off_the_quantum_grid_and_duplicates_are_refused() {
         ),
         Err(UniverseError::DuplicateVessel(_))
     ));
-    universe.advance_to(seconds(1).advanced(STEP)).unwrap();
+    let half_step = TickSpan::from_ticks(STEP.ticks() / 2);
+    universe.advance_to(seconds(1).advanced(half_step)).unwrap();
     assert!(matches!(
         universe.promote_to_orbital(VesselId(1)),
         Err(UniverseError::BetweenSteps { .. })
@@ -192,4 +194,25 @@ fn handoffs_off_the_quantum_grid_and_duplicates_are_refused() {
         universe.advance_to(SimInstant::START),
         Err(UniverseError::Backwards)
     ));
+}
+
+#[test]
+fn a_vessel_can_change_tier_at_any_instant_its_local_step_reaches() {
+    let mut universe = universe_with(&[1]);
+    let off_grid = seconds(1).advanced(STEP);
+    universe.advance_to(off_grid).unwrap();
+    let before = universe.vehicle_state(VesselId(1)).unwrap();
+    universe.promote_to_orbital(VesselId(1)).unwrap();
+    let promoted = universe.vehicle_state(VesselId(1)).unwrap();
+    assert!((promoted.position_ecef - before.position_ecef).length() < 1e-6);
+    assert!((promoted.velocity_ecef - before.velocity_ecef).length() < 1e-9);
+
+    let later = off_grid.advanced(TickSpan::from_ticks(TICKS_PER_SECOND / 3));
+    universe.advance_to(later).unwrap();
+    let orbital = universe.vehicle_state(VesselId(1)).unwrap();
+    universe.demote_to_local(VesselId(1)).unwrap();
+    assert_eq!(universe.tier(VesselId(1)).unwrap(), Tier::Local);
+    let demoted = universe.vehicle_state(VesselId(1)).unwrap();
+    let jump = (demoted.position_ecef - orbital.position_ecef).length();
+    assert!(jump < 1e-3, "the vessel jumped {jump} m at the handoff");
 }

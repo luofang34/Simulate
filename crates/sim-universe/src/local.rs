@@ -22,6 +22,9 @@ pub trait LocalPlant {
     /// Total mass, kg, and inertia about the centre of gravity in body axes,
     /// kg·m², which an inertial tier needs to carry the attitude on.
     fn mass_and_inertia(&self) -> (f64, DMat3);
+    /// Radius of a sphere about the centre of gravity that encloses the
+    /// vessel, m: what the orbital tier's proximity checks treat it as.
+    fn bounding_radius_m(&self) -> f64;
     /// Advances one period.
     fn step(&mut self) -> Result<(), UniverseError>;
 }
@@ -39,13 +42,25 @@ pub struct CoastingRigidBody {
     block: RigidBody6DofBlock,
     body: BodyEllipsoid,
     start: SimInstant,
+    bounding_radius_m: f64,
 }
 
 impl CoastingRigidBody {
-    /// `block`, whose first tick is `start` on the universe's clock.
+    /// `block`, whose first tick is `start` on the universe's clock, inside
+    /// a sphere of `bounding_radius_m` about its centre of gravity.
     #[must_use]
-    pub fn new(block: RigidBody6DofBlock, body: BodyEllipsoid, start: SimInstant) -> Self {
-        Self { block, body, start }
+    pub fn new(
+        block: RigidBody6DofBlock,
+        body: BodyEllipsoid,
+        start: SimInstant,
+        bounding_radius_m: f64,
+    ) -> Self {
+        Self {
+            block,
+            body,
+            start,
+            bounding_radius_m,
+        }
     }
 }
 
@@ -70,6 +85,10 @@ impl LocalPlant for CoastingRigidBody {
     fn mass_and_inertia(&self) -> (f64, DMat3) {
         let mass = self.block.mass_properties();
         (mass.total_mass_kg, mass.inertia_cg_body)
+    }
+
+    fn bounding_radius_m(&self) -> f64 {
+        self.bounding_radius_m
     }
 
     fn step(&mut self) -> Result<(), UniverseError> {

@@ -7,9 +7,9 @@ use std::sync::Arc;
 use sim_core::{SimInstant, TickSpan, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
-    BodyOrientationCatalog, CoastControlLaw, ContinuousPlantState, Dop853Tolerances,
-    EphemerisCatalog, ForceModel, MassPropertiesModel, NaifId, PropellantMode, ReactionWheelMode,
-    VesselId, propagate_plant_interval,
+    BodyOrientationCatalog, ContentHash, Dop853Tolerances, EphemerisCatalog, ForceModel,
+    MassPropertiesModel, NaifId, OrbitalUniverse, PropellantMode, ReactionWheelMode,
+    SimulationManifestDigest, VesselCheckpoint, VesselConfig, VesselId,
 };
 use sim_spacetime::{BodyRotationState, SimEpoch};
 
@@ -35,23 +35,18 @@ pub struct OrbitalContext {
     pub orientation: Arc<dyn BodyOrientationCatalog>,
     /// Gravity the orbital tier integrates.
     pub force_model: ForceModel,
-    /// The orbital tier advances in whole quanta from quantum boundaries, so
-    /// its states do not depend on how a frame loop slices time.
+    /// The orbital tier's integration steps end on this grid, so its states
+    /// do not depend on how a frame loop slices time.
     pub quantum: TickSpan,
     /// Integrator tolerances.
     pub tolerances: Dop853Tolerances,
 }
 
-struct OrbitalVessel {
-    state: ContinuousPlantState,
-    body: BodyEllipsoid,
-    mass: MassPropertiesModel,
-    now: SimInstant,
-}
-
 enum Flight {
     Local(Box<dyn LocalPlant>),
-    Orbital(Box<OrbitalVessel>),
+    /// Held by the orbital scheduler, about the body whose fixed frame the
+    /// vessel reports its state in.
+    Orbital(BodyEllipsoid),
 }
 
 struct Vessel {
@@ -61,12 +56,16 @@ struct Vessel {
 
 /// Every vessel of a run, advanced together on the master clock.
 ///
-/// Vessels step in id order, each on its own period (local) or quantum
-/// (orbital), so the result depends only on the instants asked for, never on
-/// the order vessels were added or how the caller slices time.
+/// Local vessels step in id order, each on its own period. Orbital vessels
+/// belong to one [`OrbitalUniverse`], which owns their events, commands and
+/// integration grid. Either way the result depends only on the instants
+/// asked for, never on the order vessels were added or how the caller
+/// slices time.
 pub struct Universe {
     epoch: SimEpoch,
-    orbital: OrbitalContext,
+    orbital: OrbitalUniverse,
+    orientation: Arc<dyn BodyOrientationCatalog>,
+    tolerances: Dop853Tolerances,
     vessels: BTreeMap<VesselId, Vessel>,
     now: SimInstant,
 }
@@ -74,10 +73,31 @@ pub struct Universe {
 impl Universe {
     /// An empty universe on `epoch`'s clock.
     #[must_use]
-    pub fn new(epoch: SimEpoch, orbital: OrbitalContext) -> Self {
+    pub fn new(epoch: SimEpoch, context: OrbitalContext) -> Self {
+        let clock = epoch.clock();
+        let manifest = SimulationManifestDigest::compute(
+            clock.base_tdb(),
+            context.ephemeris.content_hash(),
+            context.force_model.constants().content_hash(),
+            context.orientation.content_hash(),
+            epoch.scales().content_hash(),
+            ContentHash::of_bytes(b"sim-universe:no-collision-terrain"),
+            context.force_model.content_hash(),
+            context.tolerances.content_hash(),
+        );
+        let orbital = OrbitalUniverse::new(
+            manifest,
+            clock,
+            context.force_model,
+            context.ephemeris,
+            Arc::clone(&context.orientation),
+        )
+        .with_horizon_quantum_ticks(context.quantum.ticks_u128());
         Self {
             epoch,
             orbital,
+            orientation: context.orientation,
+            tolerances: context.tolerances,
             vessels: BTreeMap::new(),
             now: SimInstant::START,
         }
@@ -93,6 +113,13 @@ impl Universe {
     #[must_use]
     pub const fn epoch(&self) -> &SimEpoch {
         &self.epoch
+    }
+
+    /// The scheduler that owns every orbital-tier vessel: its events,
+    /// stamped commands, snapshots and render samples.
+    #[must_use]
+    pub const fn orbital(&self) -> &OrbitalUniverse {
+        &self.orbital
     }
 
     /// Adds a vessel flown by `plant`; `rebuild` makes its local tier again
@@ -128,76 +155,88 @@ impl Universe {
     pub fn vehicle_state(&self, id: VesselId) -> Result<VehicleState, UniverseError> {
         match &self.vessel(id)?.flight {
             Flight::Local(plant) => Ok(plant.state()),
-            Flight::Orbital(orbit) => {
-                let (naif, rotation) = self.rotation(orbit.body, orbit.now)?;
-                Ok(to_body_fixed(&orbit.state, naif, &rotation)?.0)
+            Flight::Orbital(body) => {
+                let plant = self
+                    .orbital
+                    .sample_vessel_state(id, self.now)
+                    .ok_or(UniverseError::UnknownVessel(id))?;
+                let (naif, rotation) = self.rotation(*body, self.now)?;
+                Ok(to_body_fixed(&plant, naif, &rotation)?.0)
             }
         }
     }
 
     /// Advances every vessel to `until`: local tiers by whole periods, the
-    /// orbital tier by whole quanta.
+    /// orbital tier to exactly `until`.
     pub fn advance_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
         if until < self.now {
             return Err(UniverseError::Backwards);
         }
         for vessel in self.vessels.values_mut() {
-            match &mut vessel.flight {
-                Flight::Local(plant) => {
-                    while plant.now().advanced(plant.period()) <= until {
-                        plant.step()?;
-                    }
-                }
-                Flight::Orbital(orbit) => {
-                    advance_orbit(orbit, until, &self.orbital, &self.epoch)?;
+            if let Flight::Local(plant) = &mut vessel.flight {
+                while plant.now().advanced(plant.period()) <= until {
+                    plant.step()?;
                 }
             }
         }
+        self.orbital
+            .advance_committed_to(until)
+            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
         self.now = until;
         Ok(())
     }
 
-    /// Hands `id` from flight dynamics to orbital propagation, at the
-    /// instant its local tier has reached. That instant must be on the
-    /// orbital quantum grid.
+    /// Hands `id` from flight dynamics to orbital propagation. Its local
+    /// tier must have reached [`Self::now`], so both tiers describe the same
+    /// instant.
     pub fn promote_to_orbital(&mut self, id: VesselId) -> Result<(), UniverseError> {
         let Flight::Local(plant) = &self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
         };
-        let at = plant.now();
-        if !on_grid(at, self.orbital.quantum) {
+        if plant.now() != self.now {
             return Err(UniverseError::BetweenSteps { vessel: id });
         }
         let body = plant.body();
-        let (naif, rotation) = self.rotation(body, at)?;
+        let (naif, rotation) = self.rotation(body, self.now)?;
         let state = to_inertial(&plant.state(), naif, &rotation, InertialExtras::default());
         let (mass_kg, inertia) = plant.mass_and_inertia();
-        let mass = MassPropertiesModel {
-            dry_mass_kg: mass_kg,
-            dry_inertia_cols: inertia.to_cols_array_2d(),
-            propellant_inertia_per_kg_cols: [[0.0; 3]; 3],
-            uncompensated_idot_factor: 0.0,
+        let config = VesselConfig {
+            mass_model: MassPropertiesModel {
+                dry_mass_kg: mass_kg,
+                dry_inertia_cols: inertia.to_cols_array_2d(),
+                propellant_inertia_per_kg_cols: [[0.0; 3]; 3],
+                uncompensated_idot_factor: 0.0,
+            },
+            propellant_mode: PropellantMode::InfiniteConstantMass,
+            rw_mode: ReactionWheelMode::ConserveMomentum {
+                h_max_nms: 0.0,
+                tau_max_nm: 0.0,
+            },
+            tolerances: self.tolerances,
+            bounding_radius_m: plant.bounding_radius_m(),
+            auto_soi_switch: false,
         };
-        let orbit = OrbitalVessel {
-            state,
-            body,
-            mass,
-            now: at,
-        };
-        self.vessel_mut(id)?.flight = Flight::Orbital(Box::new(orbit));
+        let checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        self.orbital
+            .insert_vessel(config, checkpoint)
+            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
+        self.vessel_mut(id)?.flight = Flight::Orbital(body);
         Ok(())
     }
 
     /// Hands `id` from orbital propagation back to flight dynamics, built by
-    /// the vessel's factory at the orbital tier's current instant.
+    /// the vessel's factory at [`Self::now`].
     pub fn demote_to_local(&mut self, id: VesselId) -> Result<(), UniverseError> {
-        let vessel = self.vessel(id)?;
-        let Flight::Orbital(orbit) = &vessel.flight else {
+        let Flight::Orbital(body) = self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
         };
-        let (naif, rotation) = self.rotation(orbit.body, orbit.now)?;
-        let (state, _extras) = to_body_fixed(&orbit.state, naif, &rotation)?;
-        let plant = (vessel.rebuild)(&state, orbit.now, &self.epoch)?;
+        let (naif, rotation) = self.rotation(body, self.now)?;
+        let (_config, checkpoint) = self
+            .orbital
+            .remove_vessel(id)
+            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
+        let (state, _extras) = to_body_fixed(&checkpoint.plant, naif, &rotation)?;
+        let plant = (self.vessel(id)?.rebuild)(&state, self.now, &self.epoch)?;
         self.vessel_mut(id)?.flight = Flight::Local(plant);
         Ok(())
     }
@@ -209,7 +248,6 @@ impl Universe {
     ) -> Result<(NaifId, BodyRotationState), UniverseError> {
         let naif = naif_body(body).ok_or(UniverseError::UnmodelledBody)?;
         let rotation = self
-            .orbital
             .orientation
             .body_rotation(naif, self.epoch.tdb_at(at))?;
         Ok((naif, rotation))
@@ -226,43 +264,6 @@ impl Universe {
             .get_mut(&id)
             .ok_or(UniverseError::UnknownVessel(id))
     }
-}
-
-fn on_grid(at: SimInstant, quantum: TickSpan) -> bool {
-    let q = quantum.ticks_u128();
-    q != 0 && at.ticks_u128().is_multiple_of(q)
-}
-
-fn advance_orbit(
-    orbit: &mut OrbitalVessel,
-    until: SimInstant,
-    context: &OrbitalContext,
-    epoch: &SimEpoch,
-) -> Result<(), UniverseError> {
-    while orbit.now.advanced(context.quantum) <= until {
-        let next = orbit.now.advanced(context.quantum);
-        let out = propagate_plant_interval(
-            &orbit.state,
-            epoch.tdb_at(orbit.now),
-            epoch.tdb_at(next),
-            None,
-            &context.tolerances,
-            &orbit.mass,
-            PropellantMode::InfiniteConstantMass,
-            ReactionWheelMode::ConserveMomentum {
-                h_max_nms: 0.0,
-                tau_max_nm: 0.0,
-            },
-            &context.force_model,
-            context.ephemeris.as_ref(),
-            context.orientation.as_ref(),
-            &CoastControlLaw,
-        )
-        .map_err(|e| UniverseError::Propagation(Box::new(e)))?;
-        orbit.state = out.final_state;
-        orbit.now = next;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

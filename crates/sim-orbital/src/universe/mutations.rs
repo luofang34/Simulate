@@ -3,7 +3,7 @@
 use sim_spacetime::SimInstant;
 
 use crate::{
-    checkpoint::VesselCheckpoint,
+    checkpoint::{VesselCheckpoint, VesselConfig},
     ephemeris::EphemerisCatalog,
     events::{
         EventOrderKey, PlayerCommandPayload, ScheduledEvent, UniverseEventPayload, phase_ranks,
@@ -11,7 +11,7 @@ use crate::{
     gravity::ForceModel,
     ids::{NaifId, VesselId},
     time::TdbEpoch,
-    universe::SchedulerError,
+    universe::{OrbitalUniverse, SchedulerError},
 };
 
 pub(crate) fn apply_checkpoint_event_mutation(
@@ -157,4 +157,30 @@ fn switch_cp_primary(
     cp.plant.vel_rel_icrf_m_s = new_v;
     cp.pinned_surface = None;
     Ok(())
+}
+
+impl OrbitalUniverse {
+    /// Takes `vessel_id` out of the universe at `committed_instant`, returning its
+    /// configuration and a checkpoint integrated to exactly that instant, so another
+    /// dynamics tier can carry the vessel on without a state jump. Its queued events are
+    /// dropped and it stops being the camera focus.
+    pub fn remove_vessel(
+        &mut self,
+        vessel_id: VesselId,
+    ) -> Result<(VesselConfig, VesselCheckpoint), SchedulerError> {
+        if !self.vessels.contains_key(&vessel_id) {
+            return Err(SchedulerError::UnknownVessel(vessel_id));
+        }
+        self.rollback_vessel(vessel_id, self.committed_instant)?;
+        let timeline = self
+            .vessels
+            .remove(&vessel_id)
+            .ok_or(SchedulerError::UnknownVessel(vessel_id))?;
+        self.event_queue
+            .retain(|key, _| !key.participants.contains(&vessel_id));
+        if self.active_camera_vessel == Some(vessel_id) {
+            self.active_camera_vessel = None;
+        }
+        Ok((timeline.config, timeline.committed_checkpoint))
+    }
 }
