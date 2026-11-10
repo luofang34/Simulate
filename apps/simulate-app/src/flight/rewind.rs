@@ -11,6 +11,7 @@ use std::collections::VecDeque;
 use sim_apollo::CockpitInstrumentPanel;
 use sim_core::{ControlInputs, SimInstant, TimelineCheckpoint};
 use sim_scenario::{ScenarioError, ScenarioSnapshot};
+use sim_universe::UniverseCheckpoint;
 
 use tracing::info;
 
@@ -31,6 +32,7 @@ enum CheckpointState {
     Free {
         plant: Box<TimelineCheckpoint<PlantSnapshot>>,
         latched: ControlInputs,
+        universe: Box<UniverseCheckpoint>,
         panel: Box<CockpitInstrumentPanel>,
     },
     Scenario(Box<ScenarioSnapshot>),
@@ -45,23 +47,28 @@ pub(super) struct FlightCheckpoint {
 }
 
 impl FlightCheckpoint {
-    /// Captures `mode` and its onboard `sensors` at the mode's current instant.
-    pub(super) fn capture(mode: &Mode, sensors: &OnboardSensorBus) -> Self {
+    /// Captures `mode` and its onboard `sensors` at the mode's current instant, or
+    /// `None` while the free-flight ownship has no session to checkpoint.
+    pub(super) fn capture(mode: &Mode, sensors: &OnboardSensorBus) -> Option<Self> {
         match mode {
-            Mode::Free { session, panel, .. } => Self {
-                at: session.physics_time(),
-                state: CheckpointState::Free {
-                    plant: Box::new(session.checkpoint()),
-                    latched: *session.latched_input(),
-                    panel: panel.clone(),
-                },
-                sensors: *sensors,
-            },
-            Mode::Scenario(run) => Self {
+            Mode::Free { world, panel, .. } => {
+                let session = world.session()?;
+                Some(Self {
+                    at: session.physics_time(),
+                    state: CheckpointState::Free {
+                        plant: Box::new(session.checkpoint()),
+                        latched: *session.latched_input(),
+                        universe: Box::new(world.checkpoint()),
+                        panel: panel.clone(),
+                    },
+                    sensors: *sensors,
+                })
+            }
+            Mode::Scenario(run) => Some(Self {
                 at: run.now(),
                 state: CheckpointState::Scenario(Box::new(run.snapshot())),
                 sensors: *sensors,
-            },
+            }),
         }
     }
 
@@ -76,17 +83,18 @@ impl FlightCheckpoint {
     pub(super) fn restore_into(&self, mode: &mut Mode) -> Result<(), AppSimError> {
         match (mode, &self.state) {
             (
-                Mode::Free { session, panel, .. },
+                Mode::Free { world, panel, .. },
                 CheckpointState::Free {
                     plant,
                     latched,
+                    universe,
                     panel: saved_panel,
                 },
             ) => {
-                session.rewind_timeline(plant, *latched);
-                if let Some(fault) = session.block().take_fault() {
-                    return Err(fault);
-                }
+                world.restore(universe, |session| {
+                    session.rewind_timeline(plant, *latched);
+                    session.block().take_fault().map_or(Ok(()), Err)
+                })?;
                 panel.clone_from(saved_panel);
                 Ok(())
             }
@@ -311,9 +319,10 @@ impl Flight {
     }
 
     fn pin_live_head(&mut self) {
-        if self.history.is_live() {
-            self.history
-                .pin_live_head(FlightCheckpoint::capture(&self.mode, &self.sensors));
+        if self.history.is_live()
+            && let Some(live) = FlightCheckpoint::capture(&self.mode, &self.sensors)
+        {
+            self.history.pin_live_head(live);
         }
     }
 

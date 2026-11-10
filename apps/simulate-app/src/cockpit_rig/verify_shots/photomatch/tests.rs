@@ -9,7 +9,7 @@ use super::{
 
 #[test]
 fn the_mesh_yields_every_landmark_on_its_own_side() {
-    let marks = p38g_landmarks();
+    let marks = p38g_landmarks(false);
     assert_eq!(marks.len(), 17, "{marks:?}");
     for (id, at) in &marks {
         assert!(at.is_finite(), "{id}");
@@ -52,7 +52,7 @@ fn the_mesh_yields_every_landmark_on_its_own_side() {
 
 #[test]
 fn resection_recovers_a_known_camera_from_noisy_landmarks() {
-    let marks = p38g_landmarks();
+    let marks = p38g_landmarks(false);
     for (eye, focal_px, free) in [
         (DVec3::new(-14.0, 18.0, 2.0), 2600.0, false),
         (DVec3::new(20.0, -9.0, 9.0), 1500.0, true),
@@ -212,7 +212,7 @@ fn a_projected_point_back_projects_onto_its_plane_and_triangulates_from_two_phot
 #[test]
 fn a_spinner_pixel_back_projects_onto_the_spinner_mesh() {
     let prims = sim_p38g::p38g_mesh_prims();
-    let marks = p38g_landmarks();
+    let marks = p38g_landmarks(false);
     let spinner = marks.iter().find(|(id, _)| *id == "spinner_r").unwrap().1;
     let pose = looking_at(DVec3::new(9.0, 14.0, 1.5), spinner, 2400.0);
     let (hit, path) =
@@ -298,10 +298,42 @@ fn features_the_photos_place_against_the_model() {
     }
 }
 
+/// The nose guns stand where the photographs put their muzzles: each photo's ray
+/// through a picked muzzle passes within 6 cm of the model's (the two cameras' own
+/// resection errors put the same muzzle up to 5 cm apart).
+#[test]
+fn the_nose_guns_sit_where_the_photographs_put_their_muzzles() {
+    let matches: Vec<_> = super::photos()
+        .iter()
+        .filter_map(super::match_photo)
+        .collect();
+    let placed = super::features::place_features(&matches);
+    for id in [
+        "mg_inner_r",
+        "mg_inner_l",
+        "cannon",
+        "mg_outer_r",
+        "mg_outer_l",
+    ] {
+        let gun = placed.iter().find(|f| f.id == id).unwrap();
+        assert!(
+            !gun.ray_misses_m.is_empty() && gun.model.is_some(),
+            "{gun:?}"
+        );
+        writeln!(
+            std::io::stderr(),
+            "{id:>11}: model {:.3?}, rays miss by {:.3?} m",
+            gun.model,
+            gun.ray_misses_m
+        )
+        .ok();
+        assert!(gun.ray_misses_m.iter().all(|&m| m < 0.06), "{gun:?}");
+    }
+}
+
 /// Side edges of the tyres' outlines measured on photograph 02 (the 339th FS's 43-2239,
 /// port front quarter), in photo pixels: `(prim path suffix, edge, pixel)`. The tops are
-/// left out: the tyres stand flattened on the ground while the mesh's are round, and the
-/// cameras are resected on the round tyres' lowest points.
+/// left out: the tyres stand flattened on the ground while the mesh's are round.
 const TYRE_EDGES_02: [(&str, char, f64); 5] = [
     ("/Gear/NoseWheel", 'L', 1270.0),
     ("/Gear/NoseWheel", 'R', 1420.0),
@@ -337,4 +369,21 @@ fn the_tyres_fill_their_outlines_in_the_photograph() {
             "{suffix} {edge}: photo {px:.0} px, model {model:.0} px"
         );
     }
+}
+
+/// A parked photograph's wheel landmarks are the tyres' ground contacts: the drawn
+/// static deflection above the round tyres' lowest points (2.7 in mains, 1.9 in nose).
+#[test]
+fn parked_wheel_landmarks_are_the_ground_contacts() {
+    let (flying, parked) = (p38g_landmarks(false), p38g_landmarks(true));
+    for (id, lift_in) in [("wheel_l", 2.7), ("wheel_r", 2.7), ("nose_wheel", 1.9)] {
+        let at = |marks: &[(&str, DVec3)]| marks.iter().find(|(m, _)| *m == id).unwrap().1;
+        let lift = (at(&parked) - at(&flying)).z / 0.0254;
+        assert!((lift - lift_in).abs() < 0.01, "{id} lifted {lift} in");
+    }
+    let unmoved = |id: &str| {
+        let find = |marks: &[(&str, DVec3)]| marks.iter().find(|(m, _)| *m == id).unwrap().1;
+        find(&parked) == find(&flying)
+    };
+    assert!(unmoved("nose_tip") && unmoved("fin_top_l"));
 }

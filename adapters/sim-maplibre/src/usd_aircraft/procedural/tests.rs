@@ -109,9 +109,9 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     ] {
         assert_eq!(count(&uav, role), 1, "{role:?}");
     }
-    for role in [PartRole::CabinGlass, PartRole::LandingLight] {
-        assert_eq!(count(&p38, role), 1, "{role:?}");
-    }
+    assert_eq!(count(&p38, PartRole::LandingLight), 1);
+    // Windscreen, hatch, a window either side of it, and the rear glazing.
+    assert_eq!(count(&p38, PartRole::CabinGlass), 5);
     // The P-38's ailerons, elevator and flaps are olive drab over a neutral-gray
     // underside part that deflects with them.
     for role in [
@@ -401,7 +401,7 @@ fn p38_stressed_skin_is_painted_by_its_bake_and_the_c172_has_none() {
         }
     }
     assert_eq!(
-        part("/P38g/Canopy/Glazing").surface,
+        part("/P38g/Canopy/Glazing/Hatch").surface,
         crate::PartSurface::Material
     );
     assert!(

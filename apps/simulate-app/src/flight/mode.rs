@@ -6,6 +6,7 @@ use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
 use sim_scenario::{FlightDynamics, ScenarioProfile, ScenarioRun};
 use sim_spacetime::{SimEpoch, TimeScaleCatalog};
 
+use super::free_world::{FreeWorld, SolarSystem};
 use super::plant_block::PlantBlock;
 use super::sensors::{OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD};
 use crate::error::AppSimError;
@@ -39,11 +40,11 @@ pub(super) enum FreeSpawn {
 }
 
 /// What the vehicle is doing: flown by hand on a selectable plant inside a deterministic
-/// [`SimSession`], or playing a scripted scenario.
+/// [`SimSession`] that a [`FreeWorld`] owns, or playing a scripted scenario.
 pub(super) enum Mode {
     Free {
         vehicle: FreeFlightVehicle,
-        session: Box<SimSession<PlantBlock>>,
+        world: Box<FreeWorld>,
         panel: Box<CockpitInstrumentPanel>,
     },
     Scenario(Box<ScenarioRun>),
@@ -53,16 +54,10 @@ impl Mode {
     /// A scenario flies its own clock; free flight starts at the wall-clock
     /// second it begins, so the sky matches the pilot's day and then follows
     /// sim time.
-    pub(super) fn sim_epoch(
-        &self,
-        scales: &Arc<TimeScaleCatalog>,
-    ) -> Result<SimEpoch, AppSimError> {
+    pub(super) fn sim_epoch(&self) -> SimEpoch {
         match self {
-            Self::Scenario(run) => Ok(run.sim_epoch().clone()),
-            Self::Free { .. } => {
-                let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
-                Ok(SimEpoch::from_utc(start, Arc::clone(scales))?)
-            }
+            Self::Scenario(run) => run.sim_epoch().clone(),
+            Self::Free { world, .. } => world.epoch().clone(),
         }
     }
 
@@ -70,6 +65,8 @@ impl Mode {
         vehicle: FreeFlightVehicle,
         spawn: FreeSpawn,
         surface: &WorldSurfaceHandle,
+        scales: &Arc<TimeScaleCatalog>,
+        solar: &SolarSystem,
     ) -> Result<Self, AppSimError> {
         let plant = match spawn {
             FreeSpawn::Delaware => FreeFlightPlant::new(vehicle)?,
@@ -91,9 +88,11 @@ impl Mode {
             ControlInputs::default(),
         );
         session.register_sensor(OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD)?;
+        let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
+        let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
         Ok(Self::Free {
             vehicle,
-            session: Box::new(session),
+            world: Box::new(FreeWorld::new(session, epoch, solar)?),
             panel,
         })
     }
@@ -107,14 +106,14 @@ impl Mode {
 
     pub(super) fn vehicle(&self) -> VehicleState {
         match self {
-            Self::Free { session, .. } => session.truth_state(),
+            Self::Free { world, .. } => world.truth_state(),
             Self::Scenario(run) => run.vehicle(),
         }
     }
 
     pub(super) fn period(&self) -> TickSpan {
         match self {
-            Self::Free { session, .. } => session.block().plant().period(),
+            Self::Free { world, .. } => world.period(),
             Self::Scenario(run) => run.period(),
         }
     }
@@ -122,7 +121,7 @@ impl Mode {
     /// Physics instant of the latest completed step.
     pub(super) fn now(&self) -> SimInstant {
         match self {
-            Self::Free { session, .. } => session.physics_time(),
+            Self::Free { world, .. } => world.physics_time(),
             Self::Scenario(run) => run.now(),
         }
     }

@@ -14,6 +14,7 @@ fn view<'a>(stamp: &'a crate::ConformalFrameStamp, daylight: f32) -> AircraftSlo
         daylight,
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
     }
 }
 

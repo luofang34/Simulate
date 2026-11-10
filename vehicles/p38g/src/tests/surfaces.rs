@@ -113,3 +113,29 @@ fn drawn_blades_follow_the_propeller_design_file() {
             < 0.002
     );
 }
+
+/// Metal parts reflect no more than their metal can: every chromed gear part stays at
+/// chromium's normal-incidence reflectance.
+#[test]
+fn chromium_plate_reflects_like_chromium() {
+    let prims = p38g_mesh_prims();
+    let chromed: Vec<_> = prims
+        .iter()
+        .filter(|p| p.prim_path.starts_with("/P38g/Gear/") && p.material.metallic > 0.9)
+        .collect();
+    assert!(!chromed.is_empty(), "no chromed gear part");
+    for part in chromed {
+        for (channel, chromium) in part
+            .material
+            .diffuse_rgb
+            .into_iter()
+            .zip([0.549, 0.556, 0.554])
+        {
+            assert!(
+                (channel - chromium).abs() < 0.005,
+                "{}: {channel} vs {chromium}",
+                part.prim_path
+            );
+        }
+    }
+}

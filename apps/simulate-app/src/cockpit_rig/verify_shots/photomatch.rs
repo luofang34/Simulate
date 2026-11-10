@@ -27,6 +27,8 @@ mod render;
 mod resection;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tone;
 
 const PHOTOS_JSON: &str = include_str!("photomatch/photos.json");
 
@@ -41,6 +43,13 @@ struct Photo {
     /// Sun `(azimuth from the view direction, elevation)`, degrees: azimuth `0` lights
     /// the subject from behind the camera, `+90` from the camera's right.
     sun_deg: Option<(f64, f64)>,
+    /// Direction to the Sun in mesh axes (`x` right, `y` forward, `z` up), where the
+    /// shadows the airframe casts on itself give it; it overrides [`Self::sun_deg`], which
+    /// cannot express a banked aircraft's light.
+    sun_airframe: Option<DVec3>,
+    /// Named patches of the airframe whose tone is compared on their own, as
+    /// `[x0, y0, x1, y1]` fractions of the photo's frame.
+    tone_patches: Vec<(String, [f64; 4])>,
     landmarks_px: Vec<(String, [f64; 2])>,
     /// Features identified on the photo, placed in 3D by [`features::place_features`].
     features_px: Vec<(String, [f64; 2])>,
@@ -69,6 +78,16 @@ fn photo(v: &Value) -> Option<Photo> {
             s.get("elevation_deg")?.as_f64()?,
         ))
     });
+    let sun_airframe = v
+        .get("sun")
+        .and_then(|s| s.get("to_sun_airframe"))
+        .and_then(|d| {
+            Some(DVec3::new(
+                d.get(0)?.as_f64()?,
+                d.get(1)?.as_f64()?,
+                d.get(2)?.as_f64()?,
+            ))
+        });
     let points = |key: &str| -> Vec<(String, [f64; 2])> {
         v.get(key)
             .and_then(Value::as_object)
@@ -79,6 +98,18 @@ fn photo(v: &Value) -> Option<Photo> {
             })
             .unwrap_or_default()
     };
+    let tone_patches = v
+        .get("tone_patches")
+        .and_then(Value::as_object)
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, r)| {
+                    let at = |i: usize| r.get(i)?.as_f64();
+                    Some((k.clone(), [at(0)?, at(1)?, at(2)?, at(3)?]))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let landmarks_px = points("landmarks_px");
     let features_px = points("features_px");
     Some(Photo {
@@ -88,6 +119,8 @@ fn photo(v: &Value) -> Option<Photo> {
         airborne: flag("airborne")?,
         gear_down: flag("gear_down")?,
         sun_deg: sun,
+        sun_airframe,
+        tone_patches,
         landmarks_px,
         features_px,
     })
@@ -96,7 +129,7 @@ fn photo(v: &Value) -> Option<Photo> {
 /// Solves `photo`'s camera on the current mesh's landmarks; `None` when too few of its
 /// measured landmarks exist on the mesh.
 fn match_photo(photo: &Photo) -> Option<Match> {
-    let mesh = p38g_landmarks();
+    let mesh = p38g_landmarks(!photo.airborne);
     let used: Vec<(String, DVec3, [f64; 2])> = photo
         .landmarks_px
         .iter()

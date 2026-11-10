@@ -56,6 +56,11 @@ const FEATURES: &[(&str, Option<ModelFeature>)] = &[
         "canopy_mirror_base",
         centroid("/Canopy/MirrorFairing", [-0.3, -0.3, 0.8], [0.3, 0.6, 1.3]),
     ),
+    ("mg_inner_r", muzzle([0.05, 3.0, 0.1], [0.2, 3.9, 0.3])),
+    ("mg_inner_l", muzzle([-0.2, 3.0, 0.1], [-0.05, 3.9, 0.3])),
+    ("cannon", muzzle([-0.05, 3.0, -0.1], [0.05, 3.9, 0.1])),
+    ("mg_outer_r", muzzle([0.2, 2.0, 0.0], [0.3, 3.9, 0.2])),
+    ("mg_outer_l", muzzle([-0.3, 2.0, 0.0], [-0.2, 3.9, 0.2])),
     (
         "deck_mast_base",
         Some(ModelFeature::Prim {
@@ -71,6 +76,15 @@ const fn centroid(prim: &'static str, lo: [f64; 3], hi: [f64; 3]) -> Option<Mode
         prim,
         within: (lo, hi),
         toward: None,
+    })
+}
+
+/// The forward end of the nose gun whose barrel lies inside the box.
+const fn muzzle(lo: [f64; 3], hi: [f64; 3]) -> Option<ModelFeature> {
+    Some(ModelFeature::Prim {
+        prim: "/Gondola/NoseArmament",
+        within: (lo, hi),
+        toward: Some([0.0, 1.0, 0.0]),
     })
 }
 
@@ -93,6 +107,8 @@ pub(super) struct PlacedFeature {
     pub(super) on_centreline: Option<DVec3>,
     /// Where the model has it; `None` when the model lacks it.
     pub(super) model: Option<DVec3>,
+    /// How far each photo's ray passes from the model's point, metres.
+    pub(super) ray_misses_m: Vec<f64>,
 }
 
 impl PlacedFeature {
@@ -119,8 +135,14 @@ pub(super) fn place_features(matches: &[Match]) -> Vec<PlacedFeature> {
                     Some(ray_through(&m.solved.pose, *px))
                 })
                 .collect();
+            let model = model.as_ref().and_then(|f| model_point(&prims, &sites, f));
             PlacedFeature {
                 id,
+                ray_misses_m: model.map_or_else(Vec::new, |point| {
+                    rays.iter()
+                        .map(|r| (point - r.origin).cross(r.dir).length())
+                        .collect()
+                }),
                 surface_hits: rays
                     .iter()
                     .filter_map(|r| hit_mesh(r, &prims).map(|(p, _)| p))
@@ -129,7 +151,7 @@ pub(super) fn place_features(matches: &[Match]) -> Vec<PlacedFeature> {
                 on_centreline: rays
                     .first()
                     .and_then(|r| hit_plane(r, DVec3::ZERO, DVec3::X)),
-                model: model.as_ref().and_then(|f| model_point(&prims, &sites, f)),
+                model,
             }
         })
         .collect()

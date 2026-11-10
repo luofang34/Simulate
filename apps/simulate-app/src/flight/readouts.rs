@@ -116,7 +116,9 @@ impl Flight {
     #[must_use]
     pub fn specific_force_frd_m_s2(&self) -> Option<DVec3> {
         match &self.mode {
-            Mode::Free { session, .. } => session.block().plant().specific_force_frd_m_s2(),
+            Mode::Free { world, .. } => world
+                .session()
+                .and_then(|session| session.block().plant().specific_force_frd_m_s2()),
             Mode::Scenario(_) => None,
         }
     }
@@ -125,7 +127,9 @@ impl Flight {
     #[must_use]
     pub fn system_controls(&self) -> Option<SystemControls> {
         match &self.mode {
-            Mode::Free { session, .. } => session.block().system_controls(),
+            Mode::Free { world, .. } => world
+                .session()
+                .and_then(|session| session.block().system_controls()),
             Mode::Scenario(_) => None,
         }
     }
@@ -133,7 +137,8 @@ impl Flight {
     /// Applies `f` to the [`SystemControls`] on JSBSim free-flight aircraft; the change
     /// takes effect at the start of the next physics step.
     pub fn update_system_controls(&mut self, f: impl FnOnce(&mut SystemControls)) {
-        if let Mode::Free { session, .. } = &self.mode
+        if let Mode::Free { world, .. } = &self.mode
+            && let Some(session) = world.session()
             && let Some(mut sys) = session.block().system_controls()
         {
             f(&mut sys);
@@ -148,16 +153,15 @@ impl Flight {
     /// model or plant without a structural frame.
     #[must_use]
     pub fn model_origin_from_cg_frd_m(&self) -> DVec3 {
-        let Mode::Free {
-            vehicle, session, ..
-        } = &self.mode
-        else {
+        let Mode::Free { vehicle, world, .. } = &self.mode else {
             return DVec3::ZERO;
         };
         let visual = crate::map_rig::aircraft::ownship_visual(None, Some(*vehicle));
         let (Some(origin), Some(cg)) = (
             self.model_origins.origin_in(visual),
-            session.block().plant().cg_structural_in(),
+            world
+                .session()
+                .and_then(|session| session.block().plant().cg_structural_in()),
         ) else {
             return DVec3::ZERO;
         };
@@ -169,7 +173,9 @@ impl Flight {
     #[cfg(test)]
     pub fn fdm_ground_m(&self) -> Option<f64> {
         match &self.mode {
-            Mode::Free { session, .. } => session.block().plant().fdm_ground_m(),
+            Mode::Free { world, .. } => world
+                .session()
+                .and_then(|session| session.block().plant().fdm_ground_m()),
             Mode::Scenario(_) => None,
         }
     }
@@ -178,7 +184,9 @@ impl Flight {
     #[must_use]
     pub fn engine_status(&self) -> Option<EngineStatus> {
         match &self.mode {
-            Mode::Free { session, .. } => session.block().plant().engine_status(),
+            Mode::Free { world, .. } => world
+                .session()
+                .and_then(|session| session.block().plant().engine_status()),
             Mode::Scenario(run) => {
                 let art = run.articulation();
                 (art.engine_running || art.propeller_rpm.abs() > 1.0).then_some(EngineStatus {
@@ -193,9 +201,13 @@ impl Flight {
     #[must_use]
     pub fn articulation(&self) -> AirframeArticulation {
         match &self.mode {
-            Mode::Free { session, .. } => {
-                let elapsed_s = seconds(session.physics_time());
-                session.block().plant().articulation(elapsed_s)
+            Mode::Free { world, .. } => {
+                world
+                    .session()
+                    .map_or_else(AirframeArticulation::default, |session| {
+                        let elapsed_s = seconds(session.physics_time());
+                        session.block().plant().articulation(elapsed_s)
+                    })
             }
             Mode::Scenario(run) => run.articulation(),
         }
@@ -205,7 +217,9 @@ impl Flight {
     #[must_use]
     pub fn aviate_armed(&self) -> Option<bool> {
         match &self.mode {
-            Mode::Free { session, .. } => session.block().plant().aviate_armed(),
+            Mode::Free { world, .. } => world
+                .session()
+                .and_then(|session| session.block().plant().aviate_armed()),
             Mode::Scenario(_) => None,
         }
     }

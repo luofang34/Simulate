@@ -7,7 +7,7 @@
 use std::num::NonZeroU64;
 
 use super::{SHADOW_BYTES, SHADOW_MAP_SIZE};
-use crate::usd_pass::vertex;
+use crate::usd_pass::{sky::SKY_BYTES, vertex};
 
 const MAP_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -33,6 +33,8 @@ pub(crate) struct ShadowGpu {
 /// One slot's `Shadow` block and its two bind groups.
 pub(crate) struct SlotShadow {
     pub(crate) block: wgpu::Buffer,
+    /// The slot's `Sky` block (`usd_pass::sky`), read through the receiver group.
+    pub(crate) sky: wgpu::Buffer,
     pub(crate) caster_group: wgpu::BindGroup,
     pub(crate) receiver_group: wgpu::BindGroup,
 }
@@ -82,28 +84,7 @@ impl ShadowGpu {
             label: Some("usd aircraft shadow caster"),
             entries: &[block_entry],
         });
-        let receiver_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("usd aircraft shadow receiver"),
-            entries: &[
-                block_entry,
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                    count: None,
-                },
-            ],
-        });
+        let receiver_layout = receiver_layout(device, block_entry);
         let caster = caster_pipeline(device, draw_layout, &caster_layout, module);
         let ground = ground_pipeline(device, draw_layout, &receiver_layout, module, attachments);
         Self {
@@ -117,6 +98,12 @@ impl ShadowGpu {
     }
 
     pub(crate) fn slot(&self, device: &wgpu::Device) -> SlotShadow {
+        let sky = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("usd aircraft slot sky"),
+            size: SKY_BYTES as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let block = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("usd aircraft slot shadow"),
             size: SHADOW_BYTES as u64,
@@ -147,14 +134,58 @@ impl ShadowGpu {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: sky.as_entire_binding(),
+                },
             ],
         });
         SlotShadow {
             block,
+            sky,
             caster_group,
             receiver_group,
         }
     }
+}
+
+/// `@group(1)` of the slot's pipelines: shadow block, shadow map, comparison sampler, sky.
+fn receiver_layout(
+    device: &wgpu::Device,
+    block_entry: wgpu::BindGroupLayoutEntry,
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("usd aircraft shadow receiver"),
+        entries: &[
+            block_entry,
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: NonZeroU64::new(SKY_BYTES as u64),
+                },
+                count: None,
+            },
+        ],
+    })
 }
 
 /// Opens the depth-only pass that refills the shadow map.

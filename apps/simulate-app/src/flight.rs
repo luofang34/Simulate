@@ -23,6 +23,7 @@ use crate::world_surface::WorldSurfaceHandle;
 mod airport_spawn;
 mod display;
 mod estimate;
+mod free_world;
 mod manual;
 mod mode;
 mod pacing;
@@ -39,6 +40,8 @@ mod spawn_tests;
 mod tests;
 mod views;
 
+use free_world::SolarSystem;
+pub use free_world::SolarSystemError;
 pub use manual::SpawnMode;
 use mode::{FreeSpawn, Mode};
 pub use pacing::{PacingMonitor, PacingSession, PacingStats};
@@ -79,6 +82,7 @@ pub struct Flight {
     sensors: OnboardSensorBus,
     gauges: PanelGauges,
     time_scales: Arc<TimeScaleCatalog>,
+    solar: Arc<SolarSystem>,
     epoch: SimEpoch,
     model_origins: crate::vehicles::ModelOrigins,
 }
@@ -94,9 +98,16 @@ impl Flight {
     /// contact and spawn heights on `surface` (shared with the app's maps).
     pub fn with_surface(surface: WorldSurfaceHandle) -> Result<Self, AppSimError> {
         let preferred_vehicle = FreeFlightVehicle::default();
-        let mode = Mode::free(preferred_vehicle, FreeSpawn::Delaware, &surface)?;
         let time_scales = Arc::new(TimeScaleCatalog::builtin()?);
-        let epoch = mode.sim_epoch(&time_scales)?;
+        let solar = SolarSystem::load()?;
+        let mode = Mode::free(
+            preferred_vehicle,
+            FreeSpawn::Delaware,
+            &surface,
+            &time_scales,
+            &solar,
+        )?;
+        let epoch = mode.sim_epoch();
         let prev_vehicle = mode.vehicle();
         let mut flight = Self {
             steps: RateAdapter::new(mode.period()),
@@ -118,6 +129,7 @@ impl Flight {
             sensors: OnboardSensorBus::new(SensorRealism::default()),
             gauges: PanelGauges::default(),
             time_scales,
+            solar,
             epoch,
             model_origins: crate::vehicles::ModelOrigins::default(),
         };
@@ -129,7 +141,7 @@ impl Flight {
     pub fn select(&mut self, profile: Option<ScenarioProfile>) -> Result<(), AppSimError> {
         self.mode = match profile {
             Some(profile) => Mode::scenario(profile)?,
-            None => Mode::free(self.preferred_vehicle, self.free_spawn, &self.surface)?,
+            None => self.free_mode(self.free_spawn)?,
         };
         self.begin_flight()
     }
@@ -152,7 +164,7 @@ impl Flight {
     pub fn restart(&mut self) -> Result<(), AppSimError> {
         self.mode = match self.profile() {
             Some(profile) => Mode::scenario(profile)?,
-            None => Mode::free(self.preferred_vehicle, self.free_spawn, &self.surface)?,
+            None => self.free_mode(self.free_spawn)?,
         };
         self.begin_flight()
     }
@@ -190,12 +202,13 @@ impl Flight {
 
     /// A new flight began: fresh clocks and history, one checkpoint at its start.
     fn begin_flight(&mut self) -> Result<(), AppSimError> {
-        self.epoch = self.mode.sim_epoch(&self.time_scales)?;
+        self.epoch = self.mode.sim_epoch();
         self.sensors = OnboardSensorBus::new(self.sensors.realism());
         self.gauges = PanelGauges::for_pack(self.instrument_pack());
         self.history.clear();
-        self.history
-            .push(FlightCheckpoint::capture(&self.mode, &self.sensors));
+        if let Some(start) = FlightCheckpoint::capture(&self.mode, &self.sensors) {
+            self.history.push(start);
+        }
         self.after_discontinuity();
         Ok(())
     }
@@ -309,12 +322,12 @@ impl Flight {
             self.submit_control_at(self.master_now(), controls);
         }
         let steps = match &mut self.mode {
-            Mode::Free { session, panel, .. } => {
-                let steps = session
-                    .advance(ticks)
-                    .map_err(|err| session.block().take_fault().unwrap_or(err.into()))?;
-                self.exposures.extend(session.take_exposures());
-                mode::observe(panel, session.block().plant(), session.physics_time());
+            Mode::Free { world, panel, .. } => {
+                let steps = world.advance(ticks)?;
+                self.exposures.extend(world.take_exposures());
+                if let Some(session) = world.session() {
+                    mode::observe(panel, session.block().plant(), session.physics_time());
+                }
                 for _ in 0..steps {
                     self.sensors.step(step_s);
                 }
@@ -360,16 +373,18 @@ impl Flight {
             }
             self.commit_live_branch();
         }
-        if steps > 0 && self.history.due(self.now()) {
-            self.history
-                .push(FlightCheckpoint::capture(&self.mode, &self.sensors));
+        if steps > 0
+            && self.history.due(self.now())
+            && let Some(checkpoint) = FlightCheckpoint::capture(&self.mode, &self.sensors)
+        {
+            self.history.push(checkpoint);
         }
     }
 
     /// Master-clock instant handed to the flight so far (at or after [`Self::now`]).
     fn master_now(&self) -> SimInstant {
         match &self.mode {
-            Mode::Free { session, .. } => session.now(),
+            Mode::Free { world, .. } => world.now(),
             Mode::Scenario(run) => run.now(),
         }
     }
@@ -380,7 +395,7 @@ impl Flight {
     pub fn submit_control_at(&mut self, at: SimInstant, controls: ControlInputs) -> SimInstant {
         self.last_submitted = Some(controls);
         match &mut self.mode {
-            Mode::Free { session, .. } => session.submit_at(at, controls),
+            Mode::Free { world, .. } => world.submit_at(at, controls),
             Mode::Scenario(_) => at,
         }
     }
@@ -408,7 +423,7 @@ impl Flight {
     #[must_use]
     pub fn display_vehicle_state(&self) -> VehicleState {
         match &self.mode {
-            Mode::Free { session, .. } => session.display_state(),
+            Mode::Free { world, .. } => world.display_state(),
             Mode::Scenario(run) => {
                 display::interpolate(&self.prev_vehicle, &run.vehicle(), self.steps.phase())
             }
@@ -428,15 +443,7 @@ impl Flight {
     /// completed physics step, in plant periods.
     fn display_phase(&self) -> f64 {
         match &self.mode {
-            Mode::Free { session, .. } => {
-                let ahead = session.now().duration_since(session.physics_time());
-                let period = self.mode.period().ticks_u128();
-                if period == 0 {
-                    0.0
-                } else {
-                    ahead.ticks_u128() as f64 / period as f64
-                }
-            }
+            Mode::Free { world, .. } => world.display_phase(),
             Mode::Scenario(_) => self.steps.phase(),
         }
     }
@@ -466,10 +473,8 @@ impl Flight {
     /// airframe.
     pub fn aboard_eye_pose(&self) -> Result<CameraPoseEcef, AppSimError> {
         match &self.mode {
-            Mode::Free {
-                vehicle, session, ..
-            } => Ok(pilot_eye_mount_for(*vehicle)
-                .pose(&session.truth_state(), -self.model_origin_from_cg_frd_m())),
+            Mode::Free { vehicle, world, .. } => Ok(pilot_eye_mount_for(*vehicle)
+                .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m())),
             Mode::Scenario(run) => Ok(run.eye_pose()?),
         }
     }

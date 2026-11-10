@@ -58,18 +58,27 @@ pub const RUDDER_HINGE_Y: f32 = 3.55 - 428.4 * 0.0254;
 pub const HTAIL_Z: f32 = crate::drawing::frl_to_z(crate::drawing::TAILPLANE_ABOVE_FRL_IN);
 
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
-/// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
-pub(crate) const OLIVE_DRAB: P38Material = mat([0.16, 0.165, 0.095], 0.0, 0.70);
-/// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
-pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);
-pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
+/// Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric). Linear reflectance of
+/// sRGB `(84, 79, 61)`, the value Wikipedia's "Olive (color)" gives FS 595 33070, the
+/// chip secondary sources usually quote as nearest it (the pairing is theirs; no
+/// spectrophotometry of a period sample was reached).
+pub(crate) const OLIVE_DRAB: P38Material = mat([0.089, 0.078, 0.047], 0.0, 0.70);
+/// Neutral Gray No. 43, the semi-flat underside lacquer: a mid grey of about 19 %
+/// reflectance, faintly blue (assumed; FS 595 36173 is the match usually quoted, and no
+/// measured value of it was reached).
+pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.175, 0.19, 0.205], 0.0, 0.62);
+/// The canopy's frames, painted with the airframe: olive drab over their metal.
+pub(crate) const CANOPY_FRAME: P38Material = mat(OLIVE_DRAB.diffuse_rgb, 0.12, 0.62);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
 /// Insignia Blue: a dark navy that prints near black on the period's
 /// orthochromatic film (the boom stars of 43-2239); approximate.
 pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.022, 0.032, 0.085], 0.06, 0.46);
 pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
 pub(crate) const STENCIL_YELLOW: P38Material = mat([0.88, 0.68, 0.10], 0.05, 0.48);
-pub(crate) const CHROME_OLEO: P38Material = mat([0.84, 0.86, 0.89], 0.92, 0.16);
+/// Chromium plate on the oleo pistons and hubs: chromium's normal-incidence reflectance
+/// (0.549, 0.556, 0.554 linear; Akenine-Möller, Haines and Hoffman, *Real-Time
+/// Rendering*, 4th ed., table 9.2).
+pub(crate) const CHROME_OLEO: P38Material = mat([0.549, 0.556, 0.554], 0.92, 0.16);
 /// Aluminised lacquer on the gear legs, forks and struts (light in the 339th FS
 /// photographs; the reflectance is assumed).
 pub(crate) const GEAR_ALUMINIUM: P38Material = mat([0.52, 0.53, 0.54], 0.35, 0.48);
@@ -80,11 +89,17 @@ pub(crate) const EXHAUST_RUST: P38Material = mat([0.30, 0.22, 0.18], 0.58, 0.54)
 pub(crate) const PROP_BLACK: P38Material = mat([0.03, 0.03, 0.032], 0.0, 0.55);
 pub(crate) const PROP_YELLOW: P38Material = mat([0.92, 0.74, 0.08], 0.08, 0.36);
 pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92);
+/// Primer inside the gear bays. Assumed yellow zinc chromate: no source says which
+/// primer Lockheed used in the P-38G's wheel wells.
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
 pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
 pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
-pub(crate) const LEATHER_BROWN: P38Material = mat([0.34, 0.21, 0.12], 0.05, 0.72);
-pub(crate) const PILOT_SUIT: P38Material = mat([0.42, 0.36, 0.24], 0.04, 0.78);
+/// The pilot's khaki cotton flying suit (assumed: a 25 % khaki, matte cloth).
+pub(crate) const PILOT_SUIT: P38Material = mat([0.30, 0.24, 0.13], 0.0, 0.9);
+/// His leather flying helmet (assumed: dark russet leather, worn satin).
+pub(crate) const PILOT_HELMET: P38Material = mat([0.11, 0.065, 0.035], 0.0, 0.6);
+/// His inflatable life vest, yellow rubberised cotton dulled by use (assumed).
+pub(crate) const LIFE_VEST: P38Material = mat([0.50, 0.33, 0.045], 0.0, 0.85);
 
 pub(crate) const CANOPY_GLASS: P38Material = P38Material {
     diffuse_rgb: [0.64, 0.78, 0.84],

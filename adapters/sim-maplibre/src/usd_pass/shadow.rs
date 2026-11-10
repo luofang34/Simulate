@@ -30,8 +30,6 @@ const MAX_RECEIVER_HALF_M: f64 = 160.0;
 /// Penumbra width per metre between occluder and receiver: the Sun's 0.53° disc widened
 /// by forward scatter, the softness seen in photographs.
 const PENUMBRA_PER_M: f32 = 0.018;
-/// Darkening of sunlit ground at full daylight; sky light still reaches the shadow.
-const GROUND_STRENGTH: f32 = 0.5;
 
 /// The ground receiver: a quad on the local ground plane, in the slot's anchor ENU.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -183,7 +181,7 @@ fn ground_receiver(
         centre: shadow_centre.as_vec3(),
         half_u: (along * half_along).as_vec3(),
         half_v: (across * half_across).as_vec3(),
-        strength: GROUND_STRENGTH * view.daylight * fade,
+        strength: view.daylight * fade,
     };
     Some((receiver, along_light))
 }

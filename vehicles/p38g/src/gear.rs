@@ -28,10 +28,14 @@ const NOSE_AXLE_Z: f32 = FRL_Z_M - NOSE_AXLE_BELOW_FRL_STATIC_IN * INCH_M;
 /// Main and nose tyres: `36 in` and `27 in` (AN 01-75F-2).
 const MAIN_TYRE_DIAMETER_IN: f32 = 36.0;
 const NOSE_TYRE_DIAMETER_IN: f32 = 27.0;
-/// Tyre half-widths, fitted to the tyres' outlines in the 339th FS photograph of
-/// 43-2239 (`13.2 in` and `9.8 in` wide: smooth-contour sections).
-const MAIN_TYRE_HALF_WIDTH_M: f32 = 0.168;
-const NOSE_TYRE_HALF_WIDTH_M: f32 = 0.125;
+/// Nose tyre section width: the 27 in Type I (smooth contour) tyre is `9.75 in` wide
+/// inflated (Goodyear Aviation data book, Type I table, which also gives the `11.6 in`
+/// loaded radius the drawing calls out).
+const NOSE_TYRE_HALF_WIDTH_M: f32 = 0.5 * 9.75 * INCH_M;
+/// Main tyre section width. No table found lists the 36 in Type I tyre; it is taken at
+/// the 27 in tyre's proportions (`9.75 x 36 / 27 = 13.0 in`). The 339th FS photograph
+/// of 43-2239 fits `13.2 in`.
+const MAIN_TYRE_HALF_WIDTH_M: f32 = 0.5 * 13.0 * INCH_M;
 /// Where the main oleo struts leave the boom gear wells.
 const STRUT_TOP_Z: f32 = -0.36;
 /// Main tyre centre off the ship centreline: half the `198 in` tread.

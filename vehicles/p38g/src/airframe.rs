@@ -11,7 +11,7 @@ use crate::bays::{NOSE_BAY, main_bay, skin_with_bay};
 use crate::canopy::canopy_prims;
 use crate::cockpit_opening::upper_gondola_skin;
 use crate::cockpit_reservation::SEAT_ARMOUR_FS_IN;
-use crate::drawing::{FRL_Z_M, INCH_M, WINDSCREEN_BASE_FS_IN, fs_to_y, y_to_fs};
+use crate::drawing::{INCH_M, WINDSCREEN_BASE_FS_IN, fs_to_y, y_to_fs};
 use crate::fillets::fillet_prims;
 use crate::gondola::{GONDOLA_SECTIONS, gondola_point, section_y};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
@@ -80,66 +80,41 @@ fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
     build_nose_armament(prims);
 }
 
-/// Nose axis the armament is grouped about: the centre of the nose sections, `3.4 in`
-/// below the fuselage reference line (AN 01-75F-2 side view).
-const NOSE_AXIS_Z: f32 = FRL_Z_M - 3.4 * INCH_M;
+/// Muzzles of the nose guns `(x, y, z)`, placed by back-projecting them from two
+/// photographs through cameras resected on the airframe: the 339th FS's 43-2239 on
+/// Guadalcanal (port front quarter; the muzzles' stations) and the head-on view of the
+/// restored P-38F 41-7630 (the guns' lateral and vertical layout). The pairs are set
+/// symmetric about the centreline; each ray passes within `5 cm` of its muzzle.
+/// Inner .50s, starboard then port: staggered, standing above the nose cap.
+const INNER_MG_MUZZLES: [Vec3; 2] = [Vec3::new(0.116, 3.42, 0.21), Vec3::new(-0.116, 3.28, 0.21)];
+/// Outer .50s: recessed in their blast ports in the nose's upper sides.
+const OUTER_MG_MUZZLES: [Vec3; 2] = [
+    Vec3::new(0.2475, 2.89, 0.108),
+    Vec3::new(-0.2475, 2.89, 0.108),
+];
+/// The 20 mm cannon, on the centreline below the inner pair.
+const CANNON_MUZZLE: Vec3 = Vec3::new(0.0, 3.52, 0.036);
 
 fn build_nose_armament(prims: &mut Vec<P38MeshPrim>) {
     let mut guns = MeshBuilder::new();
     let mut troughs = MeshBuilder::new();
-    // 1x 20mm Hispano AN-M2 cannon just below the nose axis (protruding to y = 3.74 m)
-    let cannon_z = NOSE_AXIS_Z - 0.05;
-    guns.tube(
-        Vec3::new(0.0, 2.85, cannon_z),
-        Vec3::new(0.0, 3.74, cannon_z),
-        0.025,
-        0.021,
-        14,
-    );
-    guns.tube(
-        Vec3::new(0.0, 3.70, cannon_z),
-        Vec3::new(0.0, 3.77, cannon_z),
-        0.028,
-        0.024,
-        14,
-    );
-    // 4x .50 cal AN/M2 Browning barrels in staggered nose ports + perforated jackets
-    for (gx, gy, above_axis) in [
-        (-0.105_f32, 3.68_f32, 0.125_f32),
-        (0.105, 3.64, 0.125),
-        (-0.195, 3.54, 0.045),
-        (0.195, 3.50, 0.045),
-    ] {
-        let gz = NOSE_AXIS_Z + above_axis;
-        guns.tube(
-            Vec3::new(gx, gy - 0.55, gz),
-            Vec3::new(gx, gy - 0.12, gz),
-            0.021,
-            0.021,
-            12,
-        );
-        guns.tube(
-            Vec3::new(gx, gy - 0.12, gz),
-            Vec3::new(gx, gy, gz),
-            0.013,
-            0.011,
-            10,
-        );
-        troughs.tube(
-            Vec3::new(gx, gy - 0.36, gz),
-            Vec3::new(gx, (gy - 0.16).min(3.52), gz),
-            0.027,
-            0.024,
-            10,
-        );
-    }
+    let aft = |tip: Vec3, by: f32| tip - Vec3::new(0.0, by, 0.0);
+    // 20 mm Hispano AN-M2: barrel and muzzle collar
+    guns.tube(aft(CANNON_MUZZLE, 0.70), CANNON_MUZZLE, 0.025, 0.021, 14);
+    guns.tube(aft(CANNON_MUZZLE, 0.07), CANNON_MUZZLE, 0.028, 0.024, 14);
     troughs.tube(
-        Vec3::new(-0.08, 3.24, NOSE_AXIS_Z - 0.16),
-        Vec3::new(-0.08, 3.38, NOSE_AXIS_Z - 0.16),
-        0.024,
-        0.020,
-        10,
+        aft(CANNON_MUZZLE, 0.50),
+        aft(CANNON_MUZZLE, 0.24),
+        0.036,
+        0.032,
+        12,
     );
+    // .50 cal AN/M2 Brownings: perforated cooling jackets to the muzzles
+    for tip in INNER_MG_MUZZLES.into_iter().chain(OUTER_MG_MUZZLES) {
+        guns.tube(aft(tip, 0.75), tip, 0.021, 0.019, 12);
+        troughs.tube(aft(tip, 0.52), aft(tip, 0.30), 0.029, 0.026, 10);
+    }
+    // Antenna mast under the nose
     guns.tube(
         Vec3::new(0.0, 2.72, -0.36),
         Vec3::new(0.0, 2.58, -0.68),
