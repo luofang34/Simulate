@@ -87,7 +87,7 @@ impl View {
     /// regression fails while the remaining gaps are closed.
     fn limits(self) -> (f32, f32, f32) {
         match self {
-            Self::Side => (0.97, 4.5, 2.3),
+            Self::Side => (0.972, 3.5, 2.0),
             Self::Plan => (0.94, 12.0, 4.2),
             Self::Front => (0.835, 9.0, 2.8),
         }
@@ -258,6 +258,7 @@ fn drawing_constants_repeat_the_digitised_callouts() {
         ("windscreen_top_frame_fs", d::WINDSCREEN_TOP_FRAME_FS_IN),
         ("hatch_aft_frame_fs", d::HATCH_AFT_FRAME_FS_IN),
         ("canopy_tail_fs", d::CANOPY_TAIL_FS_IN),
+        ("canopy_mirror_fairing", d::MIRROR_FAIRING_APEX_ABOVE_FRL_IN),
     ] {
         assert!(
             (value(name) - constant).abs() < 1e-3,

@@ -1,3 +1,4 @@
+mod bays;
 mod calibration;
 mod cockpit_stations;
 mod silhouette;

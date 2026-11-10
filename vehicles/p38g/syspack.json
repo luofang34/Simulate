@@ -6,8 +6,8 @@
   "kind": "FixedWing",
   "assets": {
     "geometry/landmarks.json": {
-      "sha256": "cab2f382f2e5e893164eb4755ebc12c9442afbf722ac25d7bbe68532f7281998",
-      "size_bytes": 1484
+      "sha256": "de898f7acda0de7539c16fcf722dacd957afa64e3f2940f3e4dacd0c865373a9",
+      "size_bytes": 1683
     },
     "fdm/p38g.xml": {
       "sha256": "0676aa19e5badb9a5af022a38112ca52b1ee0ac7f9fbd7ef04bde6788bb6dcea",

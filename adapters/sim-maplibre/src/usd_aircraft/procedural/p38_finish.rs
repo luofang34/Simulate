@@ -41,6 +41,8 @@ pub(super) fn detail(prim_path: &str) -> SurfaceDetail {
             ..skin(0.45)
         },
         "Booms/LowerGray" | "Gondola/LowerGray" => skin(0.45),
+        // Gear doors close flush in the lower skin, so they carry its finish.
+        p if p.contains("/GearDoor") => skin(0.45),
         "Wing/KarmanFillets" => SurfaceDetail {
             panel_pitch_m: [0.0; 3],
             weathering: 1.0,
@@ -59,7 +61,7 @@ pub(super) fn detail(prim_path: &str) -> SurfaceDetail {
             weathering: 0.9,
             soot: None,
         },
-        p if p.starts_with("Gear/WheelWells") || p.starts_with("Cooling/") => SurfaceDetail {
+        p if p.ends_with("/BayInterior") || p.starts_with("Cooling/") => SurfaceDetail {
             panel_pitch_m: [0.0; 3],
             weathering: 0.6,
             soot: None,
