@@ -11,7 +11,7 @@ use crate::drawing::{
     NOSE_AXLE_BELOW_FRL_STATIC_IN, NOSE_AXLE_FS_IN, NOSE_Y_M,
 };
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, circle_segments, part};
-use crate::stations::{CHROME_OLEO, TIRE_RUBBER};
+use crate::stations::{CHROME_OLEO, GEAR_ALUMINIUM, TIRE_RUBBER};
 
 /// Nose axle: centre of the dashed nose tyre on the AN 01-75F-2 side view.
 const NOSE_AXLE_Y: f32 = NOSE_Y_M - NOSE_AXLE_FS_IN * INCH_M;
@@ -28,107 +28,165 @@ const NOSE_AXLE_Z: f32 = FRL_Z_M - NOSE_AXLE_BELOW_FRL_STATIC_IN * INCH_M;
 /// Main and nose tyres: `36 in` and `27 in` (AN 01-75F-2).
 const MAIN_TYRE_DIAMETER_IN: f32 = 36.0;
 const NOSE_TYRE_DIAMETER_IN: f32 = 27.0;
+/// Tyre half-widths, fitted to the tyres' outlines in the 339th FS photograph of
+/// 43-2239 (`13.2 in` and `9.8 in` wide: smooth-contour sections).
+const MAIN_TYRE_HALF_WIDTH_M: f32 = 0.168;
+const NOSE_TYRE_HALF_WIDTH_M: f32 = 0.125;
 /// Where the main oleo struts leave the boom gear wells.
 const STRUT_TOP_Z: f32 = -0.36;
 /// Main tyre centre off the ship centreline: half the `198 in` tread.
 const MAIN_HALF_TREAD_M: f32 = 0.5 * MAIN_TREAD_IN * INCH_M;
 
+fn polyline(mesh: &mut MeshBuilder, points: &[Vec3], radius: f32) {
+    for pair in points.windows(2) {
+        if let [a, b] = pair {
+            mesh.tube(*a, *b, radius, radius, 10);
+        }
+    }
+}
+
+/// Scissor (torque) links on the `aft` side of a leg between its cylinder's lower end
+/// and its piston's lower end.
+fn torque_links(mesh: &mut MeshBuilder, cylinder_end: Vec3, piston_end: Vec3, aft: f32) {
+    let off = Vec3::new(0.0, -0.07 * aft.signum(), 0.0);
+    let apex = 0.5 * (cylinder_end + piston_end) + Vec3::new(0.0, -aft, 0.0);
+    polyline(mesh, &[cylinder_end + off, apex, piston_end + off], 0.016);
+}
+
+/// One leg's two prims (painted structure, chromed piston), both retracting with the
+/// gear about `pivot`.
+fn push_leg(
+    prims: &mut Vec<P38MeshPrim>,
+    name: &str,
+    pivot: Vec3,
+    painted: MeshBuilder,
+    piston: MeshBuilder,
+) {
+    let rest = DMat4::from_translation(pivot.as_dvec3());
+    for (leaf, material, mesh) in [
+        ("Strut", GEAR_ALUMINIUM, painted),
+        ("Piston", CHROME_OLEO, piston),
+    ] {
+        prims.push(part(
+            &format!("/P38g/Gear/{name}{leaf}"),
+            P38PartRole::GearStruts,
+            material,
+            rest,
+            mesh,
+        ));
+    }
+}
+
+/// Nose gear as the 339th FS photographs show it: a thick oleo cylinder, a chromed
+/// piston, a one-sided fork sweeping round the port side of the wheel to the axle,
+/// torque links and a shimmy damper, and a drag strut running up and aft into the bay.
 pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
-    // The nose leg leaves the gondola keel, which drops 30 in below the reference line.
-    let nose_top = keel_z_at(0.0, NOSE_AXLE_Y - 0.08) + 0.04;
-    let nose_rest = DMat4::from_translation(DVec3::new(
-        0.0,
-        f64::from(NOSE_AXLE_Y - 0.08),
-        f64::from(nose_top),
-    ));
-    let mut n_strut = MeshBuilder::new();
-    let leg = NOSE_AXLE_Z - nose_top;
-    n_strut.tube(
-        Vec3::ZERO,
-        Vec3::new(0.0, 0.06, 0.6 * leg),
-        0.044,
-        0.036,
-        12,
+    let radius = 0.5 * NOSE_TYRE_DIAMETER_IN * INCH_M;
+    // The leg's trunnion is inside the bay, above the keel.
+    let top = keel_z_at(0.0, NOSE_AXLE_Y) + 0.25;
+    let pivot = Vec3::new(0.0, NOSE_AXLE_Y + 0.05, top);
+    let axle = Vec3::new(0.0, NOSE_AXLE_Y, NOSE_AXLE_Z) - pivot;
+    let cylinder_end = Vec3::new(0.0, -0.01, 0.50 * axle.z);
+    let piston_end = Vec3::new(0.0, -0.02, axle.z + radius + 0.09);
+    let fork_x = -(NOSE_TYRE_HALF_WIDTH_M + 0.055);
+    let mut painted = MeshBuilder::new();
+    painted.tube(Vec3::ZERO, cylinder_end, 0.055, 0.055, 14);
+    painted.tube(
+        cylinder_end + Vec3::new(0.0, 0.0, 0.04),
+        cylinder_end,
+        0.063,
+        0.063,
+        14,
     );
-    n_strut.tube(
-        Vec3::new(0.0, 0.06, 0.6 * leg),
-        Vec3::new(0.06, 0.08, leg),
-        0.032,
+    polyline(
+        &mut painted,
+        &[
+            piston_end,
+            Vec3::new(0.6 * fork_x, piston_end.y, piston_end.z - 0.02),
+            Vec3::new(fork_x, axle.y + 0.02, axle.z + 0.75 * radius),
+            Vec3::new(fork_x, axle.y, axle.z),
+        ],
+        0.034,
+    );
+    painted.tube(
+        Vec3::new(fork_x - 0.02, axle.y, axle.z),
+        Vec3::new(0.02, axle.y, axle.z),
         0.028,
-        12,
+        0.028,
+        10,
     );
-    prims.push(part(
-        "/P38g/Gear/NoseStrut",
-        P38PartRole::GearStruts,
-        CHROME_OLEO,
-        nose_rest,
-        n_strut,
-    ));
+    torque_links(&mut painted, cylinder_end, piston_end, 0.16);
+    // Shimmy damper ahead of the cylinder's lower end
+    painted.tube(
+        cylinder_end + Vec3::new(0.0, 0.075, 0.02),
+        cylinder_end + Vec3::new(0.0, 0.075, 0.15),
+        0.028,
+        0.028,
+        10,
+    );
+    // Drag strut
+    painted.tube(
+        Vec3::new(0.0, -0.04, 0.35 * axle.z),
+        Vec3::new(0.0, -0.60, 0.02),
+        0.022,
+        0.022,
+        10,
+    );
+    let mut piston = MeshBuilder::new();
+    piston.tube(cylinder_end, piston_end, 0.036, 0.036, 14);
+    push_leg(prims, "Nose", pivot, painted, piston);
 
     append_wheel_and_hub(
         prims,
         "/P38g/Gear/NoseWheel",
         P38PartRole::NoseWheel,
         DVec3::new(0.0, f64::from(NOSE_AXLE_Y), f64::from(NOSE_AXLE_Z)),
-        0.5 * NOSE_TYRE_DIAMETER_IN * INCH_M,
-        0.10,
+        radius,
+        NOSE_TYRE_HALF_WIDTH_M,
     );
 }
 
+/// Main legs: each pivots at station `179 7/8` (T.O. 01-75FG-2) inside its boom and
+/// rakes forward to the axle; the wheel sits outboard of the leg on a stub axle, as the
+/// photographs show, with torque links and a drag strut running up and aft.
 pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
-    for (s_name, w_name, w_role, side) in [
-        (
-            "MainStrutLeft",
-            "WheelLeft",
-            P38PartRole::WheelLeft,
-            -1.0_f32,
-        ),
-        (
-            "MainStrutRight",
-            "WheelRight",
-            P38PartRole::WheelRight,
-            1.0_f32,
-        ),
+    const PIVOT_FS_IN: f32 = 179.875;
+    for (name, w_name, w_role, side) in [
+        ("MainLeft", "WheelLeft", P38PartRole::WheelLeft, -1.0_f32),
+        ("MainRight", "WheelRight", P38PartRole::WheelRight, 1.0_f32),
     ] {
-        let bx = side * MAIN_HALF_TREAD_M;
-        let m_rest = DMat4::from_translation(DVec3::new(
-            f64::from(bx),
-            f64::from(MAIN_AXLE_Y + 0.04),
-            -0.36,
-        ));
-        let mut m_strut = MeshBuilder::new();
-        m_strut.tube(
-            Vec3::ZERO,
-            Vec3::new(0.0, -0.04, MAIN_AXLE_Z - STRUT_TOP_Z),
-            0.056,
-            0.044,
-            14,
+        let wheel = Vec3::new(side * MAIN_HALF_TREAD_M, MAIN_AXLE_Y, MAIN_AXLE_Z);
+        let inboard = MAIN_TYRE_HALF_WIDTH_M + 0.085;
+        let pivot = Vec3::new(
+            wheel.x - side * inboard,
+            NOSE_Y_M - PIVOT_FS_IN * INCH_M,
+            STRUT_TOP_Z,
         );
-        m_strut.tube(
-            Vec3::new(0.0, -0.58, -0.06),
-            Vec3::new(0.0, -0.02, -0.78),
-            0.030,
-            0.024,
-            10,
+        let axle = Vec3::new(0.0, wheel.y - pivot.y, wheel.z - pivot.z);
+        let cylinder_end = 0.5 * axle;
+        let mut painted = MeshBuilder::new();
+        painted.tube(Vec3::ZERO, cylinder_end, 0.066, 0.066, 14);
+        painted.tube(cylinder_end * 0.96, cylinder_end, 0.075, 0.075, 14);
+        painted.tube(
+            axle,
+            axle + Vec3::new(side * (inboard + 0.02), 0.0, 0.0),
+            0.040,
+            0.040,
+            12,
         );
-        prims.push(part(
-            &format!("/P38g/Gear/{s_name}"),
-            P38PartRole::GearStruts,
-            CHROME_OLEO,
-            m_rest,
-            m_strut,
-        ));
+        torque_links(&mut painted, cylinder_end, axle, 0.20);
+        // Drag strut
+        painted.tube(0.45 * axle, Vec3::new(0.0, -0.62, 0.0), 0.028, 0.028, 10);
+        let mut piston = MeshBuilder::new();
+        piston.tube(cylinder_end, axle, 0.045, 0.045, 14);
+        push_leg(prims, name, pivot, painted, piston);
         append_wheel_and_hub(
             prims,
             &format!("/P38g/Gear/{w_name}"),
             w_role,
-            DVec3::new(
-                f64::from(bx),
-                f64::from(MAIN_AXLE_Y),
-                f64::from(MAIN_AXLE_Z),
-            ),
+            wheel.as_dvec3(),
             0.5 * MAIN_TYRE_DIAMETER_IN * INCH_M,
-            0.15,
+            MAIN_TYRE_HALF_WIDTH_M,
         );
     }
 }

@@ -297,3 +297,44 @@ fn features_the_photos_place_against_the_model() {
         );
     }
 }
+
+/// Side edges of the tyres' outlines measured on photograph 02 (the 339th FS's 43-2239,
+/// port front quarter), in photo pixels: `(prim path suffix, edge, pixel)`. The tops are
+/// left out: the tyres stand flattened on the ground while the mesh's are round, and the
+/// cameras are resected on the round tyres' lowest points.
+const TYRE_EDGES_02: [(&str, char, f64); 5] = [
+    ("/Gear/NoseWheel", 'L', 1270.0),
+    ("/Gear/NoseWheel", 'R', 1420.0),
+    ("/Gear/WheelLeft", 'L', 2237.0),
+    ("/Gear/WheelLeft", 'R', 2411.0),
+    ("/Gear/WheelRight", 'L', 1150.0),
+];
+
+/// Left and right edges of the prims ending in `suffix` in `pose`'s image.
+fn side_edges_px(pose: &super::resection::PinholePose, suffix: &str) -> (f64, f64) {
+    let prims = sim_p38g::p38g_mesh_prims();
+    super::landmarks::prim_points(&prims, suffix)
+        .into_iter()
+        .filter_map(|p| pose.project(p))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, r), [u, _]| {
+            (l.min(u), r.max(u))
+        })
+}
+
+/// The tyres are as wide as the photograph shows them: each side edge within 25 px of
+/// the photo's (the port main tyre's outboard edge, bulged under load, is 23 px out;
+/// the others within 8 px, about an inch).
+#[test]
+fn the_tyres_fill_their_outlines_in_the_photograph() {
+    let photos = super::photos();
+    let photo = photos.iter().find(|p| p.id.starts_with("p38_02")).unwrap();
+    let pose = super::match_photo(photo).unwrap().solved.pose;
+    for (suffix, edge, px) in TYRE_EDGES_02 {
+        let (left, right) = side_edges_px(&pose, suffix);
+        let model = if edge == 'L' { left } else { right };
+        assert!(
+            (model - px).abs() < 25.0,
+            "{suffix} {edge}: photo {px:.0} px, model {model:.0} px"
+        );
+    }
+}

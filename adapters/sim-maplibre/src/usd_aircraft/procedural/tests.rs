@@ -128,8 +128,9 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     for role in [PartRole::FlapLeft, PartRole::FlapRight] {
         assert_eq!(count(&p38, role), 4, "{role:?}");
     }
-    // The nose leg and the two main legs; each of the three bays has two doors.
-    assert_eq!(count(&p38, PartRole::GearStruts), 3);
+    // Each of the three legs is a painted strut and a chromed piston; each of the three
+    // bays has two doors.
+    assert_eq!(count(&p38, PartRole::GearStruts), 6);
     let doors = p38
         .parts()
         .iter()

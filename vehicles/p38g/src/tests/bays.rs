@@ -113,3 +113,54 @@ fn the_bays_span_their_gear() {
     );
     assert!((NOSE_BAY.fs.0..NOSE_BAY.fs.1).contains(&NOSE_AXLE_FS_IN));
 }
+
+/// Each leg reaches from inside its bay to its wheel's axle, the main legs from the
+/// stated pivot station `179 7/8`, and no leg part is thinner than its photograph shows
+/// the oleo (about `4 in` across at the nose, `5 in` at the mains).
+#[test]
+fn the_legs_run_from_their_bays_to_their_axles() {
+    use crate::drawing::{MAIN_AXLE_BELOW_FRL_STATIC_IN, NOSE_AXLE_BELOW_FRL_STATIC_IN, z_to_frl};
+    let prims = p38g_mesh_prims();
+    for (strut, axle_in, min_width_m) in [
+        ("/P38g/Gear/NoseStrut", NOSE_AXLE_BELOW_FRL_STATIC_IN, 0.10),
+        (
+            "/P38g/Gear/MainLeftStrut",
+            MAIN_AXLE_BELOW_FRL_STATIC_IN,
+            0.125,
+        ),
+        (
+            "/P38g/Gear/MainRightStrut",
+            MAIN_AXLE_BELOW_FRL_STATIC_IN,
+            0.125,
+        ),
+    ] {
+        let prim = prims.iter().find(|p| p.prim_path == strut).expect(strut);
+        let pts = points(prim);
+        let (low, high) = span(&pts, |p| z_to_frl(p.z));
+        assert!((low + axle_in).abs() < 2.0, "{strut} ends at {low:.1} in");
+        // The cylinder's upper end, at the pivot (the drag strut ends well aft of it).
+        let pivot = prim.rest_to_aircraft.w_axis.truncate().as_vec3();
+        assert!(
+            z_to_frl(pivot.z) <= high + 0.01,
+            "{strut} pivot above its parts"
+        );
+        let top: Vec<Vec3> = pts
+            .iter()
+            .copied()
+            .filter(|p| (p.z - pivot.z).abs() < 0.01 && (p.y - pivot.y).abs() < 0.1)
+            .collect();
+        let (left, right) = span(&top, |p| p.x);
+        assert!(
+            right - left >= min_width_m,
+            "{strut} {:.3} m across",
+            right - left
+        );
+        if strut.contains("Main") {
+            let pivot_fs = y_to_fs(prim.rest_to_aircraft.w_axis.y as f32);
+            assert!(
+                (pivot_fs - 179.875).abs() < 0.01,
+                "{strut} pivots at FS {pivot_fs}"
+            );
+        }
+    }
+}
