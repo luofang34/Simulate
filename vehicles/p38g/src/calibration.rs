@@ -52,6 +52,11 @@ pub struct P38BlueprintCalibrationReport {
     pub height_above_static_ground_in: f32,
     /// Fin top above the fuselage reference line.
     pub fin_top_frl_in: f32,
+    /// Fin's lowest point above the fuselage reference line (negative: below).
+    pub fin_bottom_frl_in: f32,
+    /// Tailplane chord plane above the fuselage reference line: the middle of the fixed
+    /// stabiliser's thickness.
+    pub tailplane_frl_in: f32,
     /// Horizontal-tail tip to tip.
     pub stab_span_in: f32,
     /// Horizontal-tail leading-edge station between the booms.
@@ -167,6 +172,13 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
             .map(|p| ground.height_of(y_to_fs(p.y), z_to_frl(p.z)))
             .fold(f32::NEG_INFINITY, f32::max),
         fin_top_frl_in: z_to_frl(extent(&fins, Z).1),
+        fin_bottom_frl_in: z_to_frl(extent(&fins, Z).0),
+        tailplane_frl_in: {
+            // Both painted halves of the stabiliser: its upper and lower skins.
+            let skins = gather(&prims, |p| p.prim_path.contains("HorizontalTail"));
+            let (lo, hi) = extent(&skins, Z);
+            z_to_frl(0.5 * (lo + hi))
+        },
         stab_span_in: (stab_x.1 - stab_x.0) / INCH_M,
         stab_le_fs_in: y_to_fs(extent(&stab_inner, Y).1),
         wing_area_m2: planform_wing_area(),

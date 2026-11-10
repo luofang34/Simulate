@@ -102,6 +102,13 @@ pub const MIRROR_FAIRING_APEX_ABOVE_FRL_IN: f32 = 46.1;
 /// Width of the mirror fairing (front view), inches.
 pub const MIRROR_FAIRING_WIDTH_IN: f32 = 4.6;
 
+/// Tailplane chord line above the fuselage reference line (side view `21.099`), inches.
+pub const TAILPLANE_ABOVE_FRL_IN: f32 = 21.099;
+/// Fin height, top to the lower end of its dimension (side view `82.156`), inches.
+pub const FIN_HEIGHT_IN: f32 = 82.156;
+/// Fin's lowest point below the lower end of the fin height (side view `2.828`), inches.
+pub const FIN_LOWER_TIP_IN: f32 = 2.828;
+
 /// Model `y` of fuselage station `fs_in`.
 #[must_use]
 pub const fn fs_to_y(fs_in: f32) -> f32 {

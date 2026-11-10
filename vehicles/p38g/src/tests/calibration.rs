@@ -117,3 +117,32 @@ fn built_mesh_stands_on_the_drawn_static_ground_line() {
         );
     }
 }
+
+/// The tail's height callouts: the tailplane's chord line `21.099 in` above the reference
+/// line, and the fin `82.156 + 2.828 in` from its top to its lowest point. With both met
+/// and the airframe on the static ground line, the fin top stands `121 in` above the
+/// ground against the sheet's `9'-10 3/8"`: that dimension disagrees with the sheet's
+/// own gear and fin callouts by `2.7 in`, and its drawn length is `122.7 in`.
+#[test]
+fn the_tail_stands_at_its_drawn_heights() {
+    let r = verify_p38g_three_view_and_stations();
+    for (name, measured, drawn, tolerance) in [
+        (
+            "tailplane height",
+            r.tailplane_frl_in,
+            d::TAILPLANE_ABOVE_FRL_IN,
+            0.3,
+        ),
+        (
+            "fin height",
+            r.fin_top_frl_in - r.fin_bottom_frl_in,
+            d::FIN_HEIGHT_IN + d::FIN_LOWER_TIP_IN,
+            0.5,
+        ),
+    ] {
+        assert!(
+            (measured - drawn).abs() <= tolerance,
+            "{name}: mesh {measured:.2}, drawing {drawn:.2}"
+        );
+    }
+}
