@@ -53,10 +53,9 @@ pub const ELEVATOR_HINGE_Y: f32 = 3.55 - 422.584 * 0.0254;
 /// Rudder hinge line: `37 in` aft of the empennage rotation point (AN 01-75F-2 side
 /// view), `FS 428.4`.
 pub const RUDDER_HINGE_Y: f32 = 3.55 - 428.4 * 0.0254;
-/// Horizontal tail chord plane, `22 in` above the fuselage reference line. AN 01-75F-2
-/// draws it `23.6 in` up on the side view and `20.2 in` up on the front view; this
-/// splits them.
-pub const HTAIL_Z: f32 = 0.4698;
+/// Horizontal tail chord plane, `21.099 in` above the fuselage reference line (AN 01-75F-2
+/// side view callout).
+pub const HTAIL_Z: f32 = crate::drawing::frl_to_z(crate::drawing::TAILPLANE_ABOVE_FRL_IN);
 
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
 /// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).

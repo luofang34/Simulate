@@ -3046,6 +3046,28 @@
     [640, 226],
     [657, 218.5]
    ]
+  },
+  {
+   "name": "tailplane_above_frl",
+   "value": 21.099,
+   "unit": "in",
+   "view": "side",
+   "callout": "21.099 from the fuselage reference line (dashed, y 325) up to the tailplane's chord line (y 273)",
+   "px": [
+    [0, 273.3],
+    [0, 325]
+   ]
+  },
+  {
+   "name": "fin_lower_tip_below_fin_height",
+   "value": 2.828,
+   "unit": "in",
+   "view": "side",
+   "callout": "2.828 from the lower end of the 82.156 fin height (y 340.8) down to the fin's lowest point (y 350)",
+   "px": [
+    [0, 340.8],
+    [0, 350]
+   ]
   }
  ]
 }
