@@ -61,6 +61,13 @@ axes about a primary body, with a full solar-system force model. They meet in
   its local step has reached. Leaving orbit integrates the vessel to exactly
   that instant first. Body orientation comes from the orbital propagator's
   own catalog, so a vessel does not jump.
+- Gravity is n-body everywhere, so an orbital vessel has no sphere of
+  influence, only an origin its motion is integrated about. The scheduler
+  moves that origin between Earth, the Moon, Mars and the solar-system
+  barycentre as the vessel travels, and `Universe::central_body` reports it.
+  A vessel comes back to flight dynamics about whichever body it then orbits.
+- `Universe::command` stamps a burn law or another command on an orbital
+  vessel at an instant. It takes effect at exactly that instant.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the
   orbital stack, so `sim-universe` stays the only bridge.
 

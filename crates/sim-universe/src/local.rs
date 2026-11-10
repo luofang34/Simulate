@@ -29,10 +29,18 @@ pub trait LocalPlant {
     fn step(&mut self) -> Result<(), UniverseError>;
 }
 
-/// Builds a vessel's local tier from a state handed down from orbit, at
-/// `start` on the universe's clock.
-pub type LocalFactory =
-    Box<dyn Fn(&VehicleState, SimInstant, &SimEpoch) -> Result<Box<dyn LocalPlant>, UniverseError>>;
+/// Builds a vessel's local tier from a state handed down from orbit: the
+/// body it arrives at, its state in that body's fixed frame, and `start` on
+/// the universe's clock. The body is the one the vessel orbits when it
+/// comes down, which need not be the one it left.
+pub type LocalFactory = Box<
+    dyn Fn(
+        BodyEllipsoid,
+        &VehicleState,
+        SimInstant,
+        &SimEpoch,
+    ) -> Result<Box<dyn LocalPlant>, UniverseError>,
+>;
 
 /// A [`RigidBody6DofBlock`] coasting with no thrust, started at `start`.
 ///

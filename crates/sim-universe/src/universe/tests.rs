@@ -7,7 +7,10 @@ use sim_core::{
     RigidBody6DofBlock, RigidBodyConfig, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, UtcTime};
-use sim_orbital::{BuiltinSolarSystem2026_2028, Dop853Tolerances, ForceModel, VesselId};
+use sim_orbital::{
+    BuiltinSolarSystem2026_2028, Dop853Tolerances, ForceModel, LatchedBurnLaw, NaifId,
+    PlayerCommandPayload, VesselId,
+};
 use sim_spacetime::SimEpoch;
 
 use super::{OrbitalContext, Tier, Universe};
@@ -65,13 +68,14 @@ fn satellite_tree() -> ComponentTree {
 }
 
 fn coaster(
+    body: BodyEllipsoid,
     state: &VehicleState,
     start: SimInstant,
     epoch: &SimEpoch,
 ) -> Result<Box<dyn LocalPlant>, UniverseError> {
     let block = RigidBody6DofBlock::new(
         RigidBodyConfig {
-            body: BodyEllipsoid::WGS84,
+            body,
             period: STEP,
             epoch: epoch.utc_at(start)?,
             initial: *state,
@@ -80,12 +84,7 @@ fn coaster(
         Box::new(VacuumAero),
         Box::new(VacuumAtmosphere),
     )?;
-    Ok(Box::new(CoastingRigidBody::new(
-        block,
-        BodyEllipsoid::WGS84,
-        start,
-        2.0,
-    )))
+    Ok(Box::new(CoastingRigidBody::new(block, body, start, 2.0)))
 }
 
 fn factory() -> LocalFactory {
@@ -112,7 +111,13 @@ fn universe_with(ids: &[u64]) -> Universe {
     let epoch = epoch();
     let mut universe = Universe::new(epoch.clone(), solar_system_context());
     for &id in ids {
-        let plant = coaster(&leo_state(), SimInstant::START, &epoch).unwrap();
+        let plant = coaster(
+            BodyEllipsoid::WGS84,
+            &leo_state(),
+            SimInstant::START,
+            &epoch,
+        )
+        .unwrap();
         universe
             .insert_local(VesselId(id), plant, factory())
             .unwrap();
@@ -175,7 +180,13 @@ fn handoffs_between_local_steps_and_duplicates_are_refused() {
     assert!(matches!(
         universe.insert_local(
             VesselId(1),
-            coaster(&leo_state(), SimInstant::START, universe.epoch()).unwrap(),
+            coaster(
+                BodyEllipsoid::WGS84,
+                &leo_state(),
+                SimInstant::START,
+                universe.epoch()
+            )
+            .unwrap(),
             factory(),
         ),
         Err(UniverseError::DuplicateVessel(_))
@@ -215,4 +226,155 @@ fn a_vessel_can_change_tier_at_any_instant_its_local_step_reaches() {
     let demoted = universe.vehicle_state(VesselId(1)).unwrap();
     let jump = (demoted.position_ecef - orbital.position_ecef).length();
     assert!(jump < 1e-3, "the vessel jumped {jump} m at the handoff");
+}
+
+#[test]
+fn a_commanded_burn_starts_at_its_instant_however_time_is_sliced() {
+    let thrust_n = 5_000.0;
+    let burn = PlayerCommandPayload::SetBurnLaw(LatchedBurnLaw::InertialThrust {
+        dir_icrf: [0.0, 0.0, 1.0],
+        thrust_n,
+        exhaust_vel_m_s: 3_000.0,
+        rw_torque_cmd_body_nm: [0.0; 3],
+    });
+    let ignition = seconds(2).advanced(TickSpan::from_ticks(TICKS_PER_SECOND / 7));
+    let fly = |slice: TickSpan, burning: bool| {
+        let mut universe = universe_with(&[1]);
+        universe.promote_to_orbital(VesselId(1)).unwrap();
+        if burning {
+            universe.command(VesselId(1), ignition, burn).unwrap();
+        }
+        let mut t = SimInstant::START;
+        while t < seconds(12) {
+            t = t.advanced(slice).min(seconds(12));
+            universe.advance_to(t).unwrap();
+        }
+        universe.inertial_state(VesselId(1)).unwrap()
+    };
+    let coasting = fly(TickSpan::from_ticks(TICKS_PER_SECOND), false);
+    let burned = fly(TickSpan::from_ticks(TICKS_PER_SECOND), true);
+    let burned_finely = fly(TickSpan::from_ticks(TICKS_PER_SECOND / 144), true);
+    assert_eq!(burned, burned_finely, "the burn depends on frame slicing");
+
+    let burn_s = seconds(12).duration_since(ignition).as_seconds();
+    let gained = (burned.vel_rel_icrf_m_s - coasting.vel_rel_icrf_m_s).z;
+    let expected = thrust_n / 500.0 * burn_s;
+    assert!(
+        (gained - expected).abs() < 1e-3 * expected,
+        "gained {gained} m/s along the thrust, expected {expected}"
+    );
+}
+
+#[test]
+fn switching_central_body_moves_the_origin_and_not_the_vessel() {
+    let mut universe = universe_with(&[1]);
+    assert!(matches!(
+        universe.command(
+            VesselId(1),
+            seconds(1),
+            PlayerCommandPayload::SwitchPrimary(NaifId::MOON)
+        ),
+        Err(UniverseError::NotOrbital(_))
+    ));
+    universe.promote_to_orbital(VesselId(1)).unwrap();
+    let switch = seconds(3);
+    universe.advance_to(switch).unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::EARTH);
+    let before = universe
+        .orbital()
+        .sample_vessel_barycentric(VesselId(1), switch)
+        .unwrap();
+
+    universe
+        .command(
+            VesselId(1),
+            switch,
+            PlayerCommandPayload::SwitchPrimary(NaifId::MOON),
+        )
+        .unwrap();
+    universe.advance_to(switch).unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::MOON);
+    let after = universe
+        .orbital()
+        .sample_vessel_barycentric(VesselId(1), switch)
+        .unwrap();
+    let jump = (after.pos_m - before.pos_m).length();
+    let speed_jump = (after.vel_m_s - before.vel_m_s).length();
+    assert!(
+        jump < 1e-3,
+        "the vessel moved {jump} m at the origin switch"
+    );
+    assert!(speed_jump < 1e-6, "and changed speed by {speed_jump} m/s");
+
+    // Far outside the Moon's sphere of influence, the scheduler takes the
+    // vessel back to Earth's origin on its own.
+    universe.advance_to(seconds(10)).unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::EARTH);
+    universe.demote_to_local(VesselId(1)).unwrap();
+    let altitude = universe
+        .vehicle_state(VesselId(1))
+        .unwrap()
+        .position_ecef
+        .length()
+        - BodyEllipsoid::WGS84.semi_major_m;
+    assert!(
+        (altitude - 400_000.0).abs() < 5_000.0,
+        "back in flight dynamics {altitude} m above Earth"
+    );
+}
+
+#[test]
+fn a_heliocentric_vessel_has_no_body_fixed_state() {
+    let mut universe = universe_with(&[1]);
+    universe.promote_to_orbital(VesselId(1)).unwrap();
+    universe
+        .command(
+            VesselId(1),
+            SimInstant::START,
+            PlayerCommandPayload::SwitchPrimary(NaifId::SSB),
+        )
+        .unwrap();
+    universe.advance_to(SimInstant::START).unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::SSB);
+    assert!(matches!(
+        universe.vehicle_state(VesselId(1)),
+        Err(UniverseError::UnmodelledBody)
+    ));
+    assert!(matches!(
+        universe.demote_to_local(VesselId(1)),
+        Err(UniverseError::UnmodelledBody)
+    ));
+    assert_eq!(universe.tier(VesselId(1)).unwrap(), Tier::Orbital);
+}
+
+#[test]
+fn a_vessel_comes_down_about_the_body_it_orbits() {
+    let moon = BodyEllipsoid::MOON_IAU;
+    let r = moon.semi_major_m + 100_000.0;
+    let low_lunar_orbit = VehicleState {
+        position_ecef: DVec3::new(r, 0.0, 0.0),
+        velocity_ecef: DVec3::new(0.0, 0.0, (moon.mu_m3_s2 / r).sqrt()),
+        attitude: DQuat::IDENTITY,
+        angular_rate_body: DVec3::ZERO,
+    };
+    let epoch = epoch();
+    let mut universe = Universe::new(epoch.clone(), solar_system_context());
+    let plant = coaster(moon, &low_lunar_orbit, SimInstant::START, &epoch).unwrap();
+    universe
+        .insert_local(VesselId(1), plant, factory())
+        .unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::MOON);
+
+    universe.promote_to_orbital(VesselId(1)).unwrap();
+    universe.advance_to(seconds(60)).unwrap();
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::MOON);
+    universe.demote_to_local(VesselId(1)).unwrap();
+
+    let state = universe.vehicle_state(VesselId(1)).unwrap();
+    let altitude = state.position_ecef.length() - moon.semi_major_m;
+    assert!(
+        (altitude - 100_000.0).abs() < 2_000.0,
+        "rebuilt {altitude} m above the Moon"
+    );
+    assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::MOON);
 }
