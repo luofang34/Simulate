@@ -1,5 +1,5 @@
 use sim_core::BlockError;
-use sim_orbital::{Dop853Error, GravityError, NaifId, OrientationError, VesselId};
+use sim_orbital::{NaifId, OrientationError, SchedulerError, VesselId};
 use sim_spacetime::TimeError;
 
 /// Why a vessel could not be added, advanced, or handed between tiers.
@@ -25,7 +25,8 @@ pub enum UniverseError {
     /// The vessel is already in the requested tier.
     #[error("vessel {0:?} is already in that tier")]
     AlreadyInTier(VesselId),
-    /// A handoff was asked for between a vessel's steps.
+    /// A handoff was asked for while the vessel's local tier lags the
+    /// universe's instant.
     #[error("vessel {vessel:?} is between steps; hand it off at one of its step instants")]
     BetweenSteps {
         /// The vessel.
@@ -40,9 +41,10 @@ pub enum UniverseError {
     /// The body orientation was unavailable at the handoff instant.
     #[error("body orientation unavailable")]
     Orientation(#[from] OrientationError),
-    /// Orbital propagation failed.
-    #[error("orbital propagation failed")]
-    Propagation(#[source] Box<Dop853Error<GravityError>>),
+    /// The orbital scheduler refused or failed a step, an insertion or a
+    /// removal.
+    #[error("the orbital tier failed")]
+    Scheduler(#[source] Box<SchedulerError>),
     /// The run's clock could not name the instant.
     #[error("the run clock failed")]
     Time(#[from] TimeError),

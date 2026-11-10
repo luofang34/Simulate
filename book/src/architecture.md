@@ -51,11 +51,16 @@ axes about a primary body, with a full solar-system force model. They meet in
 
 - `Universe` holds every vessel of a run, in id order, on the master clock.
 - A vessel is `Local`, flown by a `LocalPlant` on its own period, or
-  `Orbital`, propagated in whole quanta. Either way, the result depends only on
-  the instants asked for, never on how a frame loop slices time.
+  `Orbital`, held by the one `sim_orbital::OrbitalUniverse` the `Universe`
+  owns. That scheduler integrates on a fixed quantum grid, orders events and
+  stamped commands, and samples densely in between. Either way, the result
+  depends only on the instants asked for, never on how a frame loop slices
+  time.
 - `promote_to_orbital` and `demote_to_local` hand a vessel over through
-  `to_inertial` and `to_body_fixed`, the exact frame change. Body orientation
-  comes from the orbital propagator's own catalog, so a vessel does not jump.
+  `to_inertial` and `to_body_fixed`, the exact frame change, at any instant
+  its local step has reached. Leaving orbit integrates the vessel to exactly
+  that instant first. Body orientation comes from the orbital propagator's
+  own catalog, so a vessel does not jump.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the
   orbital stack, so `sim-universe` stays the only bridge.
 
