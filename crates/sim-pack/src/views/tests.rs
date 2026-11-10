@@ -48,7 +48,7 @@ fn c172_declares_cockpit_looks_including_the_strut_window() {
         .iter()
         .find(|v| v.id == "cockpit_left_strut")
         .unwrap();
-    assert_eq!(strut.airframe, ViewAirframe::External);
+    assert_eq!(strut.airframe, ViewAirframe::CabinWindow);
     assert_eq!(views.chase_offsets_m(), Some((22.0, 6.5)));
 }
 
