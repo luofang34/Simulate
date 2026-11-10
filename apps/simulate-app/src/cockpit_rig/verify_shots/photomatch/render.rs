@@ -143,7 +143,7 @@ fn pose_aircraft(h: &mut VerifyHarness, matched: &Match) -> Result<bool, AppSimE
 
 /// Height of `pose`'s eye above the plane through the model's three wheel bottoms.
 fn eye_above_wheels_m(pose: &PinholePose) -> Option<f64> {
-    let marks = p38g_landmarks();
+    let marks = p38g_landmarks(true);
     let wheel = |id: &str| marks.iter().find(|(m, _)| *m == id).map(|(_, p)| *p);
     let (left, right, nose) = (wheel("wheel_l")?, wheel("wheel_r")?, wheel("nose_wheel")?);
     let up = (right - left).cross(nose - left).try_normalize()?;

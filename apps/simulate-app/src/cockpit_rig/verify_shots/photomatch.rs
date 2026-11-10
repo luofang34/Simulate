@@ -129,7 +129,7 @@ fn photo(v: &Value) -> Option<Photo> {
 /// Solves `photo`'s camera on the current mesh's landmarks; `None` when too few of its
 /// measured landmarks exist on the mesh.
 fn match_photo(photo: &Photo) -> Option<Match> {
-    let mesh = p38g_landmarks();
+    let mesh = p38g_landmarks(!photo.airborne);
     let used: Vec<(String, DVec3, [f64; 2])> = photo
         .landmarks_px
         .iter()

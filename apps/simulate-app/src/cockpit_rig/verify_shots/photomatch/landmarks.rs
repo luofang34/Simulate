@@ -126,12 +126,35 @@ const fn q(id: &'static str, prim: &'static str, side: Side, toward: [f64; 3]) -
     }
 }
 
+/// Static tyre deflection of the landmark `id`'s wheel, metres: the unloaded tyre's
+/// radius less AN 01-75F-2's static rolling radius (36 in mains at 15.3 in, 27 in nose
+/// at 11.6 in). Zero for landmarks that are not wheels.
+fn static_tyre_deflection_m(id: &str) -> f64 {
+    use sim_p38g::drawing::{INCH_M, MAIN_ROLLING_RADIUS_IN, NOSE_ROLLING_RADIUS_IN};
+    let inches = match id {
+        "wheel_l" | "wheel_r" => 18.0 - MAIN_ROLLING_RADIUS_IN,
+        "nose_wheel" => 13.5 - NOSE_ROLLING_RADIUS_IN,
+        _ => return 0.0,
+    };
+    f64::from(inches * INCH_M)
+}
+
 /// Every landmark the current P-38G mesh yields, `(id, mesh-axis position in metres)`.
-pub(super) fn p38g_landmarks() -> Vec<(&'static str, DVec3)> {
+/// With the aircraft `on_ground` a wheel's landmark is its ground contact, one static
+/// rolling radius under the axle: the loaded tyre is flattened by its static
+/// deflection, so the round mesh tyre's lowest point is below where a photograph of
+/// the parked aircraft shows the tyre meet the ground.
+pub(super) fn p38g_landmarks(on_ground: bool) -> Vec<(&'static str, DVec3)> {
     let prims = p38g_mesh_prims();
     LANDMARKS
         .iter()
-        .filter_map(|query| Some((query.id, find(&prims, query)?)))
+        .filter_map(|query| {
+            let mut at = find(&prims, query)?;
+            if on_ground {
+                at.z += static_tyre_deflection_m(query.id);
+            }
+            Some((query.id, at))
+        })
         .collect()
 }
 
