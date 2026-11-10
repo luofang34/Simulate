@@ -16,6 +16,7 @@ use sim_spacetime::{BodyRotationState, SimEpoch};
 use crate::UniverseError;
 use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 use crate::local::{LocalFactory, LocalPlant};
+use crate::tiering::{TierChange, TierPolicy};
 
 /// Which dynamics currently fly a vessel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +68,8 @@ pub struct Universe {
     tolerances: Dop853Tolerances,
     vessels: BTreeMap<VesselId, Vessel>,
     now: SimInstant,
+    policy: Option<TierPolicy>,
+    tier_changes: Vec<TierChange>,
 }
 
 impl Universe {
@@ -99,7 +102,23 @@ impl Universe {
             tolerances: context.tolerances,
             vessels: BTreeMap::new(),
             now: SimInstant::START,
+            policy: None,
+            tier_changes: Vec::new(),
         }
+    }
+
+    /// Moves vessels between tiers by `policy` as the universe advances.
+    /// Without one, vessels change tier only when asked to.
+    #[must_use]
+    pub fn with_tier_policy(mut self, policy: TierPolicy) -> Self {
+        self.policy = Some(policy);
+        self
+    }
+
+    /// The tier changes the policy has made since this was last called, in
+    /// the order they happened.
+    pub fn take_tier_changes(&mut self) -> Vec<TierChange> {
+        std::mem::take(&mut self.tier_changes)
     }
 
     /// The instant every vessel has been advanced to.
@@ -207,11 +226,24 @@ impl Universe {
     }
 
     /// Advances every vessel to `until`: local tiers by whole periods, the
-    /// orbital tier to exactly `until`.
+    /// orbital tier to exactly `until`. A tier policy acts at each of its
+    /// check instants on the way.
     pub fn advance_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
         if until < self.now {
             return Err(UniverseError::Backwards);
         }
+        while let Some(check) = self
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.next_check(self.now, until))
+        {
+            self.advance_all_to(check)?;
+            self.apply_tier_policy()?;
+        }
+        self.advance_all_to(until)
+    }
+
+    fn advance_all_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
         for vessel in self.vessels.values_mut() {
             if let Flight::Local(plant) = &mut vessel.flight {
                 while plant.now().advanced(plant.period()) <= until {
@@ -223,6 +255,46 @@ impl Universe {
             .advance_committed_to(until)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
         self.now = until;
+        Ok(())
+    }
+
+    fn apply_tier_policy(&mut self) -> Result<(), UniverseError> {
+        let Some(policy) = &self.policy else {
+            return Ok(());
+        };
+        let mut wanted = Vec::new();
+        for (&id, vessel) in &self.vessels {
+            let (tier, body, state) = match &vessel.flight {
+                Flight::Local(plant) => {
+                    if plant.now() != self.now || plant.holds_local_tier() {
+                        continue;
+                    }
+                    (Tier::Local, plant.body(), plant.state())
+                }
+                Flight::Orbital => {
+                    let primary = self.inertial_state(id)?.primary_body;
+                    let Some(body) = body_ellipsoid(primary) else {
+                        continue;
+                    };
+                    (Tier::Orbital, body, self.vehicle_state(id)?)
+                }
+            };
+            let Some(naif) = naif_body(body) else {
+                continue;
+            };
+            let height_m = body.fixed_to_geodetic(state.position_ecef).height_m;
+            if let Some(to) = policy.wanted(tier, naif, height_m) {
+                wanted.push((id, to));
+            }
+        }
+        for (vessel, to) in wanted {
+            match to {
+                Tier::Orbital => self.promote_to_orbital(vessel)?,
+                Tier::Local => self.demote_to_local(vessel)?,
+            }
+            let at = self.now;
+            self.tier_changes.push(TierChange { vessel, at, to });
+        }
         Ok(())
     }
 
