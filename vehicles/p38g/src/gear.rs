@@ -10,8 +10,8 @@ use crate::drawing::{
     FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN, MAIN_AXLE_FS_IN, MAIN_TREAD_IN,
     NOSE_AXLE_BELOW_FRL_STATIC_IN, NOSE_AXLE_FS_IN, NOSE_Y_M,
 };
-use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, circle_segments, fixed, part};
-use crate::stations::{BOOM_X, CHROME_OLEO, NEUTRAL_GRAY, TIRE_RUBBER, WHEEL_WELL_ZINC};
+use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, circle_segments, part};
+use crate::stations::{CHROME_OLEO, TIRE_RUBBER};
 
 /// Nose axle: centre of the dashed nose tyre on the AN 01-75F-2 side view.
 const NOSE_AXLE_Y: f32 = NOSE_Y_M - NOSE_AXLE_FS_IN * INCH_M;
@@ -34,27 +34,8 @@ const STRUT_TOP_Z: f32 = -0.36;
 const MAIN_HALF_TREAD_M: f32 = 0.5 * MAIN_TREAD_IN * INCH_M;
 
 pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
-    let mut wells = MeshBuilder::new();
     // The nose leg leaves the gondola keel, which drops 30 in below the reference line.
     let nose_top = keel_z_at(0.0, NOSE_AXLE_Y - 0.08) + 0.04;
-    wells.cuboid(
-        Vec3::new(-0.20, NOSE_AXLE_Y - 0.79, nose_top - 0.10),
-        Vec3::new(0.20, NOSE_AXLE_Y - 0.03, nose_top),
-    );
-    for side in [-1.0_f32, 1.0] {
-        let bx = side * BOOM_X;
-        wells.cuboid(
-            Vec3::new(bx - 0.24, MAIN_AXLE_Y - 1.03, -0.42),
-            Vec3::new(bx + 0.24, MAIN_AXLE_Y + 0.13, -0.32),
-        );
-    }
-    prims.push(fixed(
-        "/P38g/Gear/WheelWells",
-        P38PartRole::CabinExterior,
-        WHEEL_WELL_ZINC,
-        wells,
-    ));
-
     let nose_rest = DMat4::from_translation(DVec3::new(
         0.0,
         f64::from(NOSE_AXLE_Y - 0.08),
@@ -84,15 +65,6 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
         n_strut,
     ));
 
-    let mut n_door = MeshBuilder::new();
-    n_door.cuboid(Vec3::new(0.20, -0.68, -0.26), Vec3::new(0.23, 0.08, -0.02));
-    prims.push(part(
-        "/P38g/Gear/NoseDoor",
-        P38PartRole::GearStruts,
-        NEUTRAL_GRAY,
-        nose_rest,
-        n_door,
-    ));
     append_wheel_and_hub(
         prims,
         "/P38g/Gear/NoseWheel",
@@ -138,10 +110,6 @@ pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
             0.030,
             0.024,
             10,
-        );
-        m_strut.cuboid(
-            Vec3::new(side * 0.36, -0.92, -0.28),
-            Vec3::new(side * 0.39, 0.12, -0.02),
         );
         prims.push(part(
             &format!("/P38g/Gear/{s_name}"),

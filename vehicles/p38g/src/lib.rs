@@ -20,6 +20,7 @@
 
 mod airframe;
 mod articulated;
+mod bays;
 mod calibration;
 mod canopy;
 mod canopy_frames;

@@ -112,6 +112,8 @@ fn the_gondola_is_as_wide_deep_and_long_as_drawn() {
     let prims = prims();
     let mut skin = stations(&prims, "/P38g/Gondola/LowerGray");
     skin.extend(stations(&prims, "/P38g/Gondola/UpperOlive"));
+    // The closed nose-gear doors are part of the keel.
+    skin.extend(stations(&prims, "/P38g/Gondola/NoseBay/GearDoor"));
     near(
         "half-breadth",
         max_by(&skin, |p| p.x),

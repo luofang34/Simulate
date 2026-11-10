@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 use glam::{DMat4, Vec3};
 
 use crate::articulated::push_two_tone;
+use crate::bays::{NOSE_BAY, main_bay, skin_with_bay};
 use crate::canopy::canopy_prims;
 use crate::cockpit_opening::upper_gondola_skin;
 use crate::cockpit_reservation::SEAT_ARMOUR_FS_IN;
@@ -33,23 +34,25 @@ pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
 
 fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
     const ARC_STEPS: usize = 32;
-    let mut lower_rows = Vec::with_capacity(GONDOLA_SECTIONS.len());
-    for y in GONDOLA_SECTIONS.iter().map(section_y) {
-        let lo = (0..=ARC_STEPS)
-            .map(|i| gondola_point(y, 0.54 * PI + (i as f32 / ARC_STEPS as f32) * (0.92 * PI)))
-            .collect();
-        lower_rows.push(lo);
-    }
     upper_gondola_skin(prims);
-
+    let stations: Vec<f32> = GONDOLA_SECTIONS.iter().map(section_y).collect();
     let mut lower = MeshBuilder::new();
-    lower.loft_open(&lower_rows, Inside::Axis);
+    let bay = skin_with_bay(
+        &mut lower,
+        "/P38g/Gondola/NoseBay",
+        &stations,
+        ARC_STEPS,
+        |y, c| gondola_point(y, 0.54 * PI + (c as f32 / ARC_STEPS as f32) * (0.92 * PI)),
+        NOSE_BAY,
+        Inside::Axis,
+    );
     prims.push(fixed(
         "/P38g/Gondola/LowerGray",
         P38PartRole::CabinExterior,
         NEUTRAL_GRAY,
         lower,
     ));
+    prims.extend(bay);
 
     // Upper forward nose deck visible ahead of windscreen from cockpit camera
     let mut nose_deck = MeshBuilder::new();
@@ -307,25 +310,29 @@ fn build_twin_booms(prims: &mut Vec<P38MeshPrim>) {
     const ARC_STEPS: usize = 32;
     let mut upper = MeshBuilder::new();
     let mut lower = MeshBuilder::new();
+    let stations: Vec<f32> = BOOM_STATIONS.iter().map(|s| s.0).collect();
+    let arc = |theta0: f32, sweep: f32, i: usize| theta0 + (i as f32 / ARC_STEPS as f32) * sweep;
 
-    for side in [-1.0_f32, 1.0] {
-        let mut up_rows = Vec::with_capacity(BOOM_STATIONS.len());
-        let mut lo_rows = Vec::with_capacity(BOOM_STATIONS.len());
-        for &(y, ..) in BOOM_STATIONS {
-            let mut up = Vec::with_capacity(ARC_STEPS + 1);
-            let mut lo = Vec::with_capacity(ARC_STEPS + 1);
-            for i in 0..=ARC_STEPS {
-                let frac = i as f32 / ARC_STEPS as f32;
-                let theta_up = -0.54 * PI + frac * (1.08 * PI);
-                let theta_lo = 0.54 * PI + frac * (0.92 * PI);
-                up.push(boom_point(side, y, theta_up));
-                lo.push(boom_point(side, y, theta_lo));
-            }
-            up_rows.push(up);
-            lo_rows.push(lo);
-        }
+    for (side, label) in [(-1.0_f32, "Left"), (1.0, "Right")] {
+        let up_rows: Vec<Vec<Vec3>> = stations
+            .iter()
+            .map(|&y| {
+                (0..=ARC_STEPS)
+                    .map(|i| boom_point(side, y, arc(-0.54 * PI, 1.08 * PI, i)))
+                    .collect()
+            })
+            .collect();
         upper.loft_open(&up_rows, Inside::Axis);
-        lower.loft_open(&lo_rows, Inside::Axis);
+        let bay = skin_with_bay(
+            &mut lower,
+            &format!("/P38g/Booms/MainBay{label}"),
+            &stations,
+            ARC_STEPS,
+            |y, c| boom_point(side, y, arc(0.54 * PI, 0.92 * PI, c)),
+            main_bay(side),
+            Inside::Axis,
+        );
+        prims.extend(bay);
     }
 
     prims.push(fixed(

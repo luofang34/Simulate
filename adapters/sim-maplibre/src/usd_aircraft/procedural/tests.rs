@@ -128,7 +128,14 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     for role in [PartRole::FlapLeft, PartRole::FlapRight] {
         assert_eq!(count(&p38, role), 4, "{role:?}");
     }
-    assert!(count(&p38, PartRole::GearStruts) >= 4);
+    // The nose leg and the two main legs; each of the three bays has two doors.
+    assert_eq!(count(&p38, PartRole::GearStruts), 3);
+    let doors = p38
+        .parts()
+        .iter()
+        .filter(|p| p.prim_path.contains("/GearDoor") && p.custom_hinge_axis.is_some())
+        .count();
+    assert_eq!(doors, 6);
     assert!(count(&lander, PartRole::GearStruts) >= 1);
     assert_eq!(count(&lander, PartRole::CabinGlass), 1);
 }
