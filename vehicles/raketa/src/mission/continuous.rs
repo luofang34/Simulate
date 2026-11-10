@@ -7,16 +7,13 @@
 
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
-use sim_core::TickSpan;
 use sim_orbital::{
     AscentGuidanceConfig, BuiltinSolarSystem2026_2028, ContinuousPlantState, ForceModel, NaifId,
-    PropellantMode, STANDARD_GRAVITY_G0_M_S2, TdbEpoch, evaluate_gravity_turn_ascent,
-    propagate_plant_interval,
+    STANDARD_GRAVITY_G0_M_S2, TdbEpoch, evaluate_gravity_turn_ascent,
 };
 
-use super::transfer::Voyage;
+use super::voyage::Voyage;
 use crate::{
-    aero_actuators::{raketa_default_rw_mode, raketa_mass_model},
     gnc_boundary::RaketaOuterGuidanceSetpoint,
     mission::{
         RaketaMissionError, RaketaMissionPhase, RaketaMissionTarget, closed_loop_tols,
@@ -70,77 +67,92 @@ pub fn run_continuous_pad_to_transfer(
     start_epoch: TdbEpoch,
     target: RaketaMissionTarget,
 ) -> Result<RaketaContinuousTransferSummary, RaketaMissionError> {
-    let mut phases = vec![RaketaMissionPhase::EarthPadPinned];
-    let (mut epoch, mut state, liftoff_peak, liftoff_dv, pad_lock) =
-        execute_earth_pad_liftoff(solar, force_model, start_epoch)?;
-    phases.push(RaketaMissionPhase::EarthLiftoff);
-
-    let (ascent_peak, ascent_dv) =
-        propagate_continuous_ascent_to_leo(solar, force_model, &mut epoch, &mut state)?;
-    let leo_insertion_epoch = epoch;
-    phases.push(RaketaMissionPhase::GravityTurnAscent);
-
-    let mut voyage = Voyage {
-        solar,
-        force_model,
-        epoch,
-        state,
-        peak_proper_accel_m_s2: liftoff_peak.max(ascent_peak),
-        injection_burn_delta_v_m_s: 0.0,
-        midcourse_correction_delta_v_m_s: 0.0,
-        state_reinitializations: 0,
-    };
-    let dest = match target {
-        RaketaMissionTarget::MoonTranquility => {
-            voyage.transfer_to_the_moon()?;
-            NaifId::MOON
-        }
-        RaketaMissionTarget::MarsSurface => {
-            voyage.transfer_to_mars()?;
-            NaifId::MARS
-        }
-    };
-    phases.push(RaketaMissionPhase::TransInjectionBurn);
-    phases.push(RaketaMissionPhase::DeepSpaceTransfer);
-    let terminal_vessel_pos_ssb_m = voyage.vessel_pos_ssb_m()?;
+    let (mut voyage, departure) =
+        fly_pad_to_destination_soi(solar, force_model, start_epoch, target)?;
+    voyage.audit_continuity();
+    let dest = destination_body(target);
+    let terminal_vessel_pos_ssb_m = voyage.vessel_ssb_state()?.0;
     let terminal_distance_to_target_m = voyage.distance_to_target_m(dest)?;
     let total_transfer_delta_v_m_s =
         voyage.injection_burn_delta_v_m_s + voyage.midcourse_correction_delta_v_m_s;
 
     Ok(RaketaContinuousTransferSummary {
         target,
-        phases_completed: phases,
+        phases_completed: departure.phases,
         explicit_state_reinitializations: voyage.state_reinitializations,
         start_epoch,
-        leo_insertion_epoch,
+        leo_insertion_epoch: departure.leo_insertion_epoch,
         terminal_epoch: voyage.epoch,
         terminal_state: voyage.state,
         terminal_vessel_pos_ssb_m,
         terminal_distance_to_target_m,
-        ascent_delta_v_m_s: liftoff_dv + ascent_dv,
+        ascent_delta_v_m_s: departure.ascent_delta_v_m_s,
         injection_burn_delta_v_m_s: voyage.injection_burn_delta_v_m_s,
         midcourse_correction_delta_v_m_s: voyage.midcourse_correction_delta_v_m_s,
         total_transfer_delta_v_m_s,
         peak_proper_accel_g: voyage.peak_proper_accel_m_s2 / STANDARD_GRAVITY_G0_M_S2,
-        fin_lock_verified: pad_lock,
+        fin_lock_verified: departure.fin_lock_verified,
     })
 }
 
-fn propagate_continuous_ascent_to_leo(
-    solar: &BuiltinSolarSystem2026_2028,
-    force_model: &ForceModel,
-    epoch: &mut TdbEpoch,
-    state: &mut ContinuousPlantState,
-) -> Result<(f64, f64), RaketaMissionError> {
-    let cfg = AscentGuidanceConfig::earth_leo_185km();
-    let mass = raketa_mass_model();
-    let rw = raketa_default_rw_mode();
-    let tols = closed_loop_tols();
-    let mut peak_a = 0.0_f64;
-    let mut ascent_dv = 0.0_f64;
+/// Bookkeeping of the flight from the pad to the destination's sphere of influence.
+pub(super) struct Departure {
+    pub(super) phases: Vec<RaketaMissionPhase>,
+    pub(super) leo_insertion_epoch: TdbEpoch,
+    pub(super) ascent_delta_v_m_s: f64,
+    pub(super) fin_lock_verified: bool,
+}
 
-    let mut step_idx = 0_u32;
-    while step_idx < 36 {
+/// The destination body of `target`.
+pub(super) const fn destination_body(target: RaketaMissionTarget) -> NaifId {
+    match target {
+        RaketaMissionTarget::MoonTranquility => NaifId::MOON,
+        RaketaMissionTarget::MarsSurface => NaifId::MARS,
+    }
+}
+
+/// Flies from the Earth pad into the destination's sphere of influence and hands back the
+/// live voyage, so later phases continue the same propagated state and ledger.
+pub(super) fn fly_pad_to_destination_soi<'a>(
+    solar: &'a BuiltinSolarSystem2026_2028,
+    force_model: &'a ForceModel,
+    start_epoch: TdbEpoch,
+    target: RaketaMissionTarget,
+) -> Result<(Voyage<'a>, Departure), RaketaMissionError> {
+    let mut phases = vec![RaketaMissionPhase::EarthPadPinned];
+    let (epoch, state, liftoff_peak, liftoff_dv, pad_lock) =
+        execute_earth_pad_liftoff(solar, force_model, start_epoch)?;
+    phases.push(RaketaMissionPhase::EarthLiftoff);
+
+    let mut voyage = Voyage::new(solar, force_model, epoch, state);
+    voyage.peak_proper_accel_m_s2 = liftoff_peak;
+    let ascent_dv = fly_ascent_to_leo(&mut voyage)?;
+    let leo_insertion_epoch = voyage.epoch;
+    phases.push(RaketaMissionPhase::GravityTurnAscent);
+
+    match target {
+        RaketaMissionTarget::MoonTranquility => voyage.transfer_to_the_moon()?,
+        RaketaMissionTarget::MarsSurface => voyage.transfer_to_mars()?,
+    }
+    phases.push(RaketaMissionPhase::TransInjectionBurn);
+    phases.push(RaketaMissionPhase::DeepSpaceTransfer);
+    Ok((
+        voyage,
+        Departure {
+            phases,
+            leo_insertion_epoch,
+            ascent_delta_v_m_s: liftoff_dv + ascent_dv,
+            fin_lock_verified: pad_lock,
+        },
+    ))
+}
+
+fn fly_ascent_to_leo(voyage: &mut Voyage<'_>) -> Result<f64, RaketaMissionError> {
+    let cfg = AscentGuidanceConfig::earth_leo_185km();
+    let tols = closed_loop_tols();
+    let mut ascent_dv = 0.0_f64;
+    for _ in 0..36 {
+        let state = voyage.state;
         let east = DVec3::Z.cross(state.pos_rel_icrf_m).normalize_or_zero();
         let g_out =
             evaluate_gravity_turn_ascent(state.pos_rel_icrf_m, state.vel_rel_icrf_m_s, east, &cfg);
@@ -148,28 +160,8 @@ fn propagate_continuous_ascent_to_leo(
             break;
         }
         let law = RaketaOuterGuidanceSetpoint::from_ascent(&g_out, [0.0; 4])
-            .into_stage_law(&solar.orientation);
-        let (_, lim, _, _) = law.evaluate_detailed(*epoch, state);
-        peak_a = peak_a.max(lim.resulting_proper_accel_m_s2);
-        ascent_dv += lim.effective_thrust_accel_m_s2 * 10.0;
-        let t_next = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(10, 0));
-        let prop = propagate_plant_interval(
-            state,
-            *epoch,
-            t_next,
-            None,
-            &tols,
-            &mass,
-            PropellantMode::InfiniteConstantMass,
-            rw,
-            force_model,
-            &solar.ephemeris,
-            &solar.orientation,
-            &law,
-        )?;
-        *state = prop.final_state;
-        *epoch = t_next;
-        step_idx = step_idx.wrapping_add(1);
+            .into_stage_law(&voyage.solar.orientation);
+        ascent_dv += voyage.fly_with_tols(10.0, &tols, &law)?;
     }
-    Ok((peak_a, ascent_dv))
+    Ok(ascent_dv)
 }

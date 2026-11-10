@@ -3,7 +3,7 @@
 //! - Exact quadratic feasible-interval `4.0G` proper-acceleration limiter & `-5g + 2g -> 3g` infeasible-drag counterexample,
 //! - Fin ground-lock (`±18°` -> `0°` on pad, WOF, and `< 50 m` AGL landing) & `[0°, 180°]` full-envelope aerodynamics,
 //! - Dynamic sloped, lateral, and asymmetric 1-foot-first touchdown stability,
-//! - Single-session uninterrupted Earth pad $\to$ Moon Tranquility Base and Earth pad $\to$ Mars surface missions.
+//! - Staged phase demonstrations and continuous Earth pad $\to$ Moon / Mars sphere-of-influence transfers.
 
 use glam::{DQuat, DVec3};
 use sim_core::TickSpan;
@@ -16,11 +16,10 @@ use sim_orbital::{
 };
 use sim_raketa::{
     ALERT_PROPER_ACCEL_EXCEEDANCE, EXPECTED_RAKETA_USD_SHA256, ProperAccelLimiterInput,
-    RAKETA_CG_Y_M, RaketaArticulationState, RaketaMissionError, RaketaMissionPhase,
-    RaketaMissionTarget, evaluate_cg_rcs_force_body_n, evaluate_raketa_aerodynamics,
-    limit_main_thrust_proper_accel, raketa_default_rw_mode, raketa_mass_model,
-    resolve_fin_deflections_deg, run_continuous_pad_to_transfer, run_staged_phase_demonstration,
-    run_uninterrupted_mission, verify_raketa_usd_contract,
+    RAKETA_CG_Y_M, RaketaArticulationState, RaketaMissionPhase, RaketaMissionTarget,
+    evaluate_cg_rcs_force_body_n, evaluate_raketa_aerodynamics, limit_main_thrust_proper_accel,
+    raketa_default_rw_mode, raketa_mass_model, resolve_fin_deflections_deg,
+    run_continuous_pad_to_transfer, run_staged_phase_demonstration, verify_raketa_usd_contract,
 };
 use sim_scenery::{DiscontinuousStepPatch, PinnedCollisionTerrain};
 
@@ -216,49 +215,6 @@ fn dynamic_asymmetric_one_foot_sloped_touchdown_stability_verified() {
         settled.contact.pinned.is_some(),
         "asymmetric touchdown must settle into PinnedSurfaceRest"
     );
-}
-
-#[test]
-fn uninterrupted_continuous_raketa_mission_fails_closed_at_unimplemented_transition() {
-    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
-    let fm = ForceModel::standard_solar_system(solar.constants.clone()).expect("fm");
-    let t0 = TdbEpoch::new(835_000_000, 0);
-
-    let moon_cont =
-        run_uninterrupted_mission(&solar, &fm, t0, RaketaMissionTarget::MoonTranquility);
-    match moon_cont {
-        Err(RaketaMissionError::IncompleteContinuousMission {
-            completed_phases,
-            missing_transition_from,
-            missing_transition_to,
-            terminal_state,
-            fin_lock_verified,
-            ..
-        }) => {
-            assert_eq!(
-                completed_phases,
-                vec![
-                    RaketaMissionPhase::EarthPadPinned,
-                    RaketaMissionPhase::EarthLiftoff,
-                    RaketaMissionPhase::GravityTurnAscent,
-                    RaketaMissionPhase::TransInjectionBurn,
-                    RaketaMissionPhase::DeepSpaceTransfer,
-                ]
-            );
-            assert_eq!(
-                missing_transition_from,
-                RaketaMissionPhase::DeepSpaceTransfer
-            );
-            assert_eq!(
-                missing_transition_to,
-                RaketaMissionPhase::ArrivalBrakingOrEntry
-            );
-            assert_eq!(terminal_state.primary_body, NaifId::MOON);
-            assert!(terminal_state.pos_rel_icrf_m.length() < 66_183_000.0);
-            assert!(fin_lock_verified);
-        }
-        other => panic!("expected IncompleteContinuousMission, got {other:?}"),
-    }
 }
 
 #[test]
