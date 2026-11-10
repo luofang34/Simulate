@@ -98,6 +98,18 @@ minutes. The test `flight_and_orbital_dynamics_agree_across_a_handoff` flies
 one orbit both ways. It allows the two tiers to differ only by the solar and
 lunar tide, which `RigidBody6DofBlock` does not model.
 
+## Signals
+
+A link between two ends is judged by `sim-analysis` either geometrically,
+with both ends at the sample instant, or with the signal's travel time.
+Under `SignalTimeModel::LightTime` the source is taken where it was when the
+signal left, the target where it is when the signal arrives, and each
+occulting body where it is as the signal passes. Between Mars and Earth the
+ends are 3 to 22 minutes apart, so a window edge set by one planet's horizon
+is seen a light time later at the other, and uplink and downlink windows
+differ. Multi-hop relays are geometric only. Requests that do not name a
+model are geometric.
+
 ## Threads
 
 The simulation and the frame loop meet at `sim_core::SimHost`.

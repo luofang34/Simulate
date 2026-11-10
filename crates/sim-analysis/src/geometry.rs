@@ -274,6 +274,114 @@ pub fn check_line_of_sight_occultation(
     Ok(None)
 }
 
+/// Tests whether any body in `env` blocks a signal that left `emit_pos_ssb_m` at
+/// `emit_epoch` and arrives at `receive_pos_ssb_m` at `receive_epoch`.
+///
+/// Each body is taken where it is as the signal passes it, which for an interplanetary
+/// link is minutes of orbital motion from where it is at either end. An end standing on
+/// a body (`emitter_host`, `receiver_host`) is not blocked by that body's bulk here: its
+/// horizon belongs to the end's elevation mask.
+///
+/// Returns `Ok(Some((occulting_body, min_altitude_above_surface_m)))` when blocked.
+#[allow(clippy::too_many_arguments)]
+pub fn check_signal_path_occultation(
+    emit_epoch: TdbEpoch,
+    receive_epoch: TdbEpoch,
+    emitter_host: Option<NaifId>,
+    receiver_host: Option<NaifId>,
+    emit_pos_ssb_m: DVec3,
+    receive_pos_ssb_m: DVec3,
+    env: &OccultationEnvironmentModel,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<Option<(NaifId, f64)>, LinkGeometryEvalError> {
+    let light_time_s = receive_epoch.signed_offset_seconds_from(emit_epoch);
+    let chord = receive_pos_ssb_m - emit_pos_ssb_m;
+    let chord_sq = chord.length_squared();
+    for spec in &env.bodies {
+        let body_at = |epoch| {
+            ephemeris
+                .geometric_state_icrf(spec.body, NaifId::SSB, epoch, DerivativeOrder::Position)
+                .map(|state| state.pos_m)
+                .map_err(|_| LinkGeometryEvalError::EphemerisMissing(spec.body))
+        };
+        // Where along the path the signal is nearest the body, first with the body as it
+        // is on arrival, then with it as it is at that moment.
+        let mut fraction = 1.0_f64;
+        let mut pass_epoch = receive_epoch;
+        let mut body_ssb = body_at(pass_epoch)?;
+        for _ in 0..2 {
+            if chord_sq > 1.0e-12 {
+                fraction = ((body_ssb - emit_pos_ssb_m).dot(chord) / chord_sq).clamp(0.0, 1.0);
+            }
+            pass_epoch = emit_epoch.advanced_seconds(fraction * light_time_s);
+            body_ssb = body_at(pass_epoch)?;
+        }
+        let from = if emitter_host == Some(spec.body) {
+            HOST_BODY_CHORD_MARGIN
+        } else {
+            0.0
+        };
+        let until = if receiver_host == Some(spec.body) {
+            1.0 - HOST_BODY_CHORD_MARGIN
+        } else {
+            1.0
+        };
+        let (p0, p1) = (emit_pos_ssb_m - body_ssb, receive_pos_ssb_m - body_ssb);
+        let min_alt_m = match spec.shape {
+            OccultingShape::Sphere { radius_m } => {
+                chord_min_altitude_between_m(p0, p1, from, until, DVec3::ONE, radius_m)
+            }
+            OccultingShape::Ellipsoid(ell) => {
+                let rot = orientation
+                    .body_rotation(spec.body, pass_epoch)
+                    .map_err(|_| LinkGeometryEvalError::OrientationMissing(spec.body))?;
+                let (a, b) = (ell.semi_major_m.max(1.0), ell.semi_minor_m().max(1.0));
+                chord_min_altitude_between_m(
+                    rot.r_icrf_to_fixed * p0,
+                    rot.r_icrf_to_fixed * p1,
+                    from,
+                    until,
+                    DVec3::new(b / a, b / a, 1.0),
+                    b,
+                )
+            }
+        };
+        if min_alt_m < -1.0 {
+            return Ok(Some((spec.body, min_alt_m)));
+        }
+    }
+    Ok(None)
+}
+
+/// Fraction of a signal path next to a body that an end standing on that body does not
+/// answer to the body's bulk for.
+const HOST_BODY_CHORD_MARGIN: f64 = 1.0e-4;
+
+/// Least height of the chord `p0 -> p1` above a spheroid, over the fractions
+/// `[from, until]` of its length: the points are scaled by `axis_scale` so the spheroid
+/// becomes a sphere of `radius_m`. Infinite when the nearest point lies outside that span.
+fn chord_min_altitude_between_m(
+    p0: DVec3,
+    p1: DVec3,
+    from: f64,
+    until: f64,
+    axis_scale: DVec3,
+    radius_m: f64,
+) -> f64 {
+    let (q0, q1) = (p0 * axis_scale, p1 * axis_scale);
+    let d = q1 - q0;
+    let d_sq = d.length_squared();
+    if d_sq <= 1.0e-12 {
+        return sqrt(q0.length_squared()) - radius_m;
+    }
+    let nearest = -q0.dot(d) / d_sq;
+    if nearest <= from || nearest >= until {
+        return f64::INFINITY;
+    }
+    sqrt((q0 + nearest * d).length_squared()) - radius_m
+}
+
 fn chord_min_altitude_above_sphere_m(p0: DVec3, p1: DVec3, s_min: f64, radius_m: f64) -> f64 {
     let d = p1 - p0;
     let d_sq = d.length_squared();

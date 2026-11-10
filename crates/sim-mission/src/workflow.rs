@@ -177,6 +177,7 @@ pub fn evaluate_orbital_maneuver_and_access(
         boundary_time_tolerance_s: access_boundary_tolerance_s,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let (station_access_reports, total_access_s, window_count) = evaluate_all_station_reports(
         verified_plan.plan_id,

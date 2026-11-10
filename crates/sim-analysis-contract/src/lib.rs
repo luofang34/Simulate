@@ -18,7 +18,7 @@ pub use artifact::{
 pub use glam::{DMat3, DQuat, DVec3};
 pub use models::{
     AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, OccultingBodySpec,
-    OccultingShape, SensorFovModel, VehicleSensorModel,
+    OccultingShape, SensorFovModel, SignalTimeModel, VehicleSensorModel,
 };
 pub use relay::{
     EndpointLinkReport, EndpointLinkSample, GeometricRelayReport, RelayAccessSample, RelayHopKind,

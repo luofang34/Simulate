@@ -12,12 +12,13 @@ use crate::{
         AccessAnalysisError, AccessRestrictionReason, DataCoverageError, ModelNotApplicableReason,
         validate_query_grid_step_count,
     },
-    geometry::{LinkGeometryEvalError, check_line_of_sight_occultation},
-    models::{AccessQuerySpec, OccultationEnvironmentModel, SensorFovModel},
+    geometry::{
+        LinkGeometryEvalError, check_line_of_sight_occultation, check_signal_path_occultation,
+    },
+    models::{AccessQuerySpec, OccultationEnvironmentModel, SensorFovModel, SignalTimeModel},
     relay::{
         AnalysisEndpoint, EndpointLinkSample, RelayAccessSample, RelayHopKind,
-        RelayRestrictionEntry,
-        kinematics::{EndpointWorldState, evaluate_endpoint_world_state},
+        RelayRestrictionEntry, kinematics::EndpointWorldState, light_time::resolve_signal_events,
     },
     terrain::{TerrainElevationSource, TerrainLosConfig, check_terrain_line_of_sight_fixed},
 };
@@ -166,21 +167,8 @@ pub(super) fn evaluate_pair_at_epoch(
     ctx: &EndpointPairCtx<'_>,
     epoch: TdbEpoch,
 ) -> Result<EndpointLinkSample, AccessAnalysisError> {
-    let dem_only = ctx.terrain_dem.map(|(d, _)| d);
-    let src = evaluate_endpoint_world_state(
-        &ctx.source,
-        epoch,
-        dem_only,
-        ctx.ephemeris,
-        ctx.orientation,
-    )?;
-    let dst = evaluate_endpoint_world_state(
-        &ctx.target,
-        epoch,
-        dem_only,
-        ctx.ephemeris,
-        ctx.orientation,
-    )?;
+    let events = resolve_signal_events(ctx, epoch)?;
+    let (src, dst) = (events.source, events.target);
 
     let rho_icrf = dst.pos_ssb_m - src.pos_ssb_m;
     let drho_icrf = dst.vel_ssb_m_s - src.vel_ssb_m_s;
@@ -200,6 +188,7 @@ pub(super) fn evaluate_pair_at_epoch(
 
     let restrictions = collect_pair_restrictions(
         ctx,
+        events.emit_epoch,
         epoch,
         &src,
         &dst,
@@ -223,6 +212,7 @@ pub(super) fn evaluate_pair_at_epoch(
         elevation_from_target_rad: el_from_dst_rad,
         source_off_boresight_rad,
         target_off_boresight_rad,
+        light_time_s: events.light_time_s,
         active_restrictions: restrictions,
         accessible,
     })
@@ -231,6 +221,7 @@ pub(super) fn evaluate_pair_at_epoch(
 #[allow(clippy::too_many_arguments)]
 fn collect_pair_restrictions(
     ctx: &EndpointPairCtx<'_>,
+    emit_epoch: TdbEpoch,
     epoch: TdbEpoch,
     src: &EndpointWorldState,
     dst: &EndpointWorldState,
@@ -304,17 +295,40 @@ fn collect_pair_restrictions(
             max_range_m: max_r,
         });
     }
-    append_body_and_terrain_occultation(ctx, epoch, src, dst, &mut restrictions)?;
+    append_body_and_terrain_occultation(ctx, emit_epoch, epoch, src, dst, &mut restrictions)?;
     Ok(restrictions)
 }
 
 fn append_body_and_terrain_occultation(
     ctx: &EndpointPairCtx<'_>,
+    emit_epoch: TdbEpoch,
     epoch: TdbEpoch,
     src: &EndpointWorldState,
     dst: &EndpointWorldState,
     restrictions: &mut Vec<AccessRestrictionReason>,
 ) -> Result<(), AccessAnalysisError> {
+    if ctx.query.signal_time == SignalTimeModel::LightTime {
+        let host = |end: &EndpointWorldState| end.is_surface_station.then_some(end.host_body);
+        if let Some((body, min_altitude_above_surface_m)) = check_signal_path_occultation(
+            emit_epoch,
+            epoch,
+            host(src),
+            host(dst),
+            src.pos_ssb_m,
+            dst.pos_ssb_m,
+            ctx.occultation_env,
+            ctx.ephemeris,
+            ctx.orientation,
+        )
+        .map_err(|e| map_geom_err(e, epoch))?
+        {
+            restrictions.push(AccessRestrictionReason::OccultedByBody {
+                body,
+                min_altitude_above_surface_m,
+            });
+        }
+        return append_terrain_occultation(ctx, emit_epoch, epoch, src, dst, restrictions);
+    }
     let station_host = if src.is_surface_station {
         src.host_body
     } else if dst.is_surface_station {
@@ -344,26 +358,44 @@ fn append_body_and_terrain_occultation(
         });
     }
 
+    append_terrain_occultation(ctx, emit_epoch, epoch, src, dst, restrictions)
+}
+
+/// Checks the path against the DEM, in the fixed frame of the DEM's body at the instant
+/// the end standing on that body is evaluated.
+fn append_terrain_occultation(
+    ctx: &EndpointPairCtx<'_>,
+    emit_epoch: TdbEpoch,
+    epoch: TdbEpoch,
+    src: &EndpointWorldState,
+    dst: &EndpointWorldState,
+    restrictions: &mut Vec<AccessRestrictionReason>,
+) -> Result<(), AccessAnalysisError> {
     if let Some((dem, cfg)) = ctx.terrain_dem {
         let body = dem.body();
+        let at = if src.is_surface_station && src.host_body == body {
+            emit_epoch
+        } else {
+            epoch
+        };
         let body_ssb = ctx
             .ephemeris
-            .geometric_state_icrf(body, NaifId::SSB, epoch, DerivativeOrder::Position)
+            .geometric_state_icrf(body, NaifId::SSB, at, DerivativeOrder::Position)
             .map_err(|_| DataCoverageError::EphemerisOutOfCoverage {
                 body,
-                requested_epoch: epoch,
+                requested_epoch: at,
             })?
             .pos_m;
-        let rot = ctx.orientation.body_rotation(body, epoch).map_err(|_| {
+        let rot = ctx.orientation.body_rotation(body, at).map_err(|_| {
             DataCoverageError::OrientationOutOfCoverage {
                 body,
-                requested_epoch: epoch,
+                requested_epoch: at,
             }
         })?;
         let p0_fixed = rot.r_icrf_to_fixed * (src.pos_ssb_m - body_ssb);
         let p1_fixed = rot.r_icrf_to_fixed * (dst.pos_ssb_m - body_ssb);
         if let Some(terrain_occ) = check_terrain_line_of_sight_fixed(
-            epoch,
+            at,
             p0_fixed,
             p1_fixed,
             BodyEllipsoid::WGS84,
