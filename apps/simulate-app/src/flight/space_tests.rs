@@ -336,19 +336,18 @@ fn free_flight_preserves_wall_clock_outside_de440_while_spaceflight_flags_clampe
     );
 }
 
-/// `2026-03-01T12:00:00Z`: the kernels cover the year flown and the keeper's
-/// lookahead beyond it.
-const JWST_YEAR_START_UTC_UNIX_S: f64 = 1_772_366_400.0;
 const JWST_YEAR_DAYS: u32 = 365;
 /// Box the observatory must stay in about L2, in the Sun–Earth rotating frame (`m`).
 const JWST_BOX_M: DVec3 = DVec3::new(4.0e8, 1.0e9, 3.0e8);
 
 fn jwst_alone() -> super::space_world::JwstAlone {
     let solar = super::free_world::SolarSystem::load().expect("solar system");
-    let epoch = sim_spacetime::SimEpoch::builtin_from_utc(sim_geo::UtcTime::from_unix_seconds(
-        JWST_YEAR_START_UTC_UNIX_S,
-    ))
-    .expect("epoch");
+    // The date a spaceflight starts on when the host clock is outside the kernels: the
+    // kernels cover the year flown from it and the keeper's lookahead beyond.
+    let (start_utc_s, _) = super::mode::certified_space_utc_s(f64::NEG_INFINITY);
+    let epoch =
+        sim_spacetime::SimEpoch::builtin_from_utc(sim_geo::UtcTime::from_unix_seconds(start_utc_s))
+            .expect("epoch");
     let hour = sim_core::TickSpan::from_seconds_and_subsec_ticks(3_600, 0);
     super::space_world::JwstAlone::new(&epoch, &solar, hour).expect("JWST_L2 universe")
 }
