@@ -16,8 +16,8 @@ use crate::gondola::{gondola_half_width_at, gondola_section};
 use crate::instrument_panel::instrument_panel_prims;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
-    ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LIFE_VEST, PANEL_BLACK,
-    PILOT_HELMET, PILOT_SUIT,
+    CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LIFE_VEST, PANEL_BLACK, PILOT_HELMET,
+    PILOT_SUIT,
 };
 
 /// Clearance between interior parts and the mould line: skin and frame depth.
@@ -33,6 +33,7 @@ pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
     prims.extend(canopy_frame_prims());
     prims.extend(instrument_panel_prims());
     prims.extend(cockpit_control_prims());
+    prims.extend(crate::cockpit_fittings::fitting_prims());
     prims.extend(crate::cockpit_placards::prims());
     prims
 }
@@ -160,22 +161,6 @@ fn build_glare_shield_gunsight_and_radios(
         ],
         Vec3::Z,
     );
-    // Reflector gunsight body on its arm from the panel
-    let sight = Vec3::from_array(contract.reflector_gunsight_mount.center_m);
-    panel.tube(
-        Vec3::new(0.0, panel_y, top),
-        sight - Vec3::new(0.0, 0.0, 0.06),
-        0.012,
-        0.012,
-        8,
-    );
-    panel.tube(
-        sight + Vec3::new(0.0, 0.05, -0.08),
-        sight + Vec3::new(0.0, -0.04, -0.01),
-        0.034,
-        0.028,
-        10,
-    );
     // SCR-274-N command set boxes behind the main beam, under the rear glazing
     let (radio_fwd, radio_aft) = (
         fs_to_y(MAIN_BEAM_FS_IN + 2.0),
@@ -195,19 +180,6 @@ fn build_glare_shield_gunsight_and_radios(
     );
     shield.double_sided = true;
     prims.push(shield);
-
-    // Tilted glass reflector plate
-    let mut sight_glass = MeshBuilder::new();
-    sight_glass.cuboid(
-        sight + Vec3::new(-0.042, -0.02, 0.0),
-        sight + Vec3::new(0.042, 0.02, 0.08),
-    );
-    prims.push(fixed(
-        contract.reflector_gunsight_mount.prim_path,
-        P38PartRole::CabinInterior,
-        ARMOR_GLASS,
-        sight_glass,
-    ));
 }
 
 fn build_armour_and_switches(prims: &mut Vec<P38MeshPrim>, contract: &CockpitInteriorContract) {

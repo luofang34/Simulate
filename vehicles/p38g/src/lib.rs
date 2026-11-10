@@ -25,6 +25,7 @@ mod calibration;
 mod canopy;
 mod canopy_frames;
 mod cockpit_controls;
+mod cockpit_fittings;
 mod cockpit_interior;
 mod cockpit_opening;
 mod cockpit_placards;
