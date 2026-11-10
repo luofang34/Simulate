@@ -305,3 +305,41 @@ fn the_glazing_is_split_into_its_panes_on_the_drawn_frames() {
         5
     );
 }
+
+/// The hatch's own frame rises with it: a prim authored about the hatch pane's hinge,
+/// with the same hinge axis, holding the rails and end members between the fixed bows.
+#[test]
+fn the_hatch_carries_its_own_frame() {
+    let prims = prims();
+    let find = |path: &str| {
+        prims
+            .iter()
+            .find(|p| p.prim_path == path)
+            .unwrap_or_else(|| panic!("no {path}"))
+    };
+    let (pane, frame) = (
+        find("/P38g/Canopy/Glazing/Hatch"),
+        find("/P38g/Canopy/HatchFrames"),
+    );
+    assert_eq!(frame.rest_to_aircraft, pane.rest_to_aircraft);
+    assert_eq!(frame.custom_hinge_axis, pane.custom_hinge_axis);
+    let members = stations(&prims, "/P38g/Canopy/HatchFrames");
+    assert!(min_by(&members, |p| p.y) > d::WINDSCREEN_TOP_FRAME_FS_IN);
+    assert!(max_by(&members, |p| p.y) < d::HATCH_AFT_FRAME_FS_IN);
+    // The fixed frame keeps both bows from sill to sill.
+    let fixed = stations(&prims, "/P38g/Canopy/InteriorFrames");
+    for bow in [d::WINDSCREEN_TOP_FRAME_FS_IN, d::HATCH_AFT_FRAME_FS_IN] {
+        let low = min_by(
+            &fixed
+                .iter()
+                .copied()
+                .filter(|p| (p.y - bow).abs() < 0.6)
+                .collect::<Vec<_>>(),
+            |p| p.z,
+        );
+        assert!(
+            low < d::CANOPY_SILL_ABOVE_FRL_IN + 1.5,
+            "bow at {bow} ends at {low}"
+        );
+    }
+}
