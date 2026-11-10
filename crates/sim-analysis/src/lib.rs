@@ -42,7 +42,8 @@ pub use relay::{
     evaluate_shared_trajectory_access_suite,
 };
 pub use terrain::{
-    AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid, TerrainElevationSource,
-    TerrainLosConfig, VerticalDatumKind, VerticalDatumSpec, check_terrain_line_of_sight_fixed,
-    resolve_altitude_ellipsoidal_height_m,
+    AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid,
+    MARS_AREOID_ABOVE_IAU_ELLIPSOID_M, MOLA_JEZERO_DATASET_ID, MOLA_JEZERO_SHA256, MolaLoadError,
+    TerrainElevationSource, TerrainLosConfig, VerticalDatumKind, VerticalDatumSpec,
+    check_terrain_line_of_sight_fixed, resolve_altitude_ellipsoidal_height_m,
 };
