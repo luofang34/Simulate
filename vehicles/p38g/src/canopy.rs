@@ -3,7 +3,7 @@
 
 use std::f32::consts::PI;
 
-use glam::Vec3;
+use glam::{DMat4, DVec3, Vec3};
 
 use crate::cockpit_reservation::{
     AUX_SIGHT_LINE_ABOVE_FRL_IN, AUX_SIGHT_PORT_IN, BEAD_SIGHT_FS_IN, RING_SIGHT_FS_IN,
@@ -14,7 +14,7 @@ use crate::drawing::{
     WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
 use crate::gondola::{GONDOLA_SECTIONS, canopy_point, canopy_sill_z, section_y};
-use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
+use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
 use crate::stations::{ARMOR_GLASS, CANOPY_FRAME, CANOPY_GLASS, GUNMETAL};
 
 /// Model `y` of the middle of the top hatch.
@@ -52,28 +52,7 @@ pub(crate) fn armor_glass_corners() -> [Vec3; 4] {
 pub(crate) fn canopy_prims() -> Vec<P38MeshPrim> {
     let mut prims = Vec::new();
     const STEPS: usize = 16;
-    let glass_rows: Vec<Vec<Vec3>> = GONDOLA_SECTIONS
-        .iter()
-        .filter(|s| (WINDSCREEN_BASE_FS_IN..=CANOPY_TAIL_FS_IN).contains(&s.fs_in))
-        .map(section_y)
-        .map(|y| {
-            (0..=STEPS)
-                .map(|i| canopy_point(y, -0.5 * PI + PI * i as f32 / STEPS as f32))
-                .collect()
-        })
-        .collect();
-    let mut glass = MeshBuilder::new();
-    let inside = Vec3::new(0.0, hatch_mid_y(), FRL_Z_M + 0.6);
-    glass.loft_open(&glass_rows, Inside::Point(inside));
-    // The pilot looks out through the back faces.
-    let mut glazing = fixed(
-        "/P38g/Canopy/Glazing",
-        P38PartRole::CabinGlass,
-        CANOPY_GLASS,
-        glass,
-    );
-    glazing.double_sided = true;
-    prims.push(glazing);
+    prims.extend(glazing_prims());
 
     // Internal flat bulletproof windshield pane behind the windscreen
     let mut armor_pane = MeshBuilder::new();
@@ -192,4 +171,106 @@ fn mirror_fairing() -> P38MeshPrim {
         GUNMETAL,
         mesh,
     )
+}
+
+/// Arc angle of the hatch's side rails, where the top hatch meets the wind-down side
+/// windows. The drawing does not show the rail; assumed.
+pub(crate) const HATCH_RAIL_A: f32 = 1.0;
+
+/// One pane of the glazing: the stations and arc angles it spans, the arc steps it is
+/// lofted with, and the point its prim is authored about.
+struct Pane {
+    name: &'static str,
+    stations: (f32, f32),
+    arc: (f32, f32),
+    steps: usize,
+    origin: Vec3,
+}
+
+/// The glazing in the panes that open or stay: the fixed windscreen and rear glazing,
+/// the top hatch between its drawn frames (authored about its aft frame's crown, on
+/// which it swings up, with the hinge axis across the ship), and a wind-down window
+/// either side under the hatch's rails.
+fn glazing_prims() -> Vec<P38MeshPrim> {
+    use std::f32::consts::FRAC_PI_2;
+    let (base, bow) = (WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN);
+    let (aft, tail) = (HATCH_AFT_FRAME_FS_IN, CANOPY_TAIL_FS_IN);
+    let hinge = canopy_point(fs_to_y(aft), 0.0);
+    let pane = |name, stations, arc, steps, origin| Pane {
+        name,
+        stations,
+        arc,
+        steps,
+        origin,
+    };
+    let panes = [
+        pane(
+            "Windscreen",
+            (base, bow),
+            (-FRAC_PI_2, FRAC_PI_2),
+            16,
+            Vec3::ZERO,
+        ),
+        pane(
+            "Hatch",
+            (bow, aft),
+            (-HATCH_RAIL_A, HATCH_RAIL_A),
+            12,
+            hinge,
+        ),
+        pane(
+            "SideWindowLeft",
+            (bow, aft),
+            (-FRAC_PI_2, -HATCH_RAIL_A),
+            4,
+            Vec3::ZERO,
+        ),
+        pane(
+            "SideWindowRight",
+            (bow, aft),
+            (HATCH_RAIL_A, FRAC_PI_2),
+            4,
+            Vec3::ZERO,
+        ),
+        pane("Rear", (aft, tail), (-FRAC_PI_2, FRAC_PI_2), 16, Vec3::ZERO),
+    ];
+    let inside = Vec3::new(0.0, hatch_mid_y(), FRL_Z_M + 0.6);
+    panes.into_iter().map(|pane| pane.prim(inside)).collect()
+}
+
+impl Pane {
+    /// The pane's prim, lofted over the canopy sections it spans; `inside` is a point
+    /// in the cockpit.
+    fn prim(&self, inside: Vec3) -> P38MeshPrim {
+        let (fs_from, fs_to) = self.stations;
+        let (a_from, a_to) = self.arc;
+        let rows: Vec<Vec<Vec3>> = GONDOLA_SECTIONS
+            .iter()
+            .filter(|s| (fs_from..=fs_to).contains(&s.fs_in))
+            .map(section_y)
+            .map(|y| {
+                (0..=self.steps)
+                    .map(|i| {
+                        let a = a_from + (a_to - a_from) * i as f32 / self.steps as f32;
+                        canopy_point(y, a) - self.origin
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut glass = MeshBuilder::new();
+        glass.loft_open(&rows, Inside::Point(inside - self.origin));
+        // The pilot looks out through the back faces.
+        let mut pane = part(
+            &format!("/P38g/Canopy/Glazing/{}", self.name),
+            P38PartRole::CabinGlass,
+            CANOPY_GLASS,
+            DMat4::from_translation(self.origin.as_dvec3()),
+            glass,
+        );
+        pane.double_sided = true;
+        if self.origin != Vec3::ZERO {
+            pane.custom_hinge_axis = Some(DVec3::X);
+        }
+        pane
+    }
 }
