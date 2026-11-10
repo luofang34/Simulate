@@ -297,3 +297,36 @@ fn features_the_photos_place_against_the_model() {
         );
     }
 }
+
+/// The nose guns stand where the photographs put their muzzles: each photo's ray
+/// through a picked muzzle passes within 6 cm of the model's (the two cameras' own
+/// resection errors put the same muzzle up to 5 cm apart).
+#[test]
+fn the_nose_guns_sit_where_the_photographs_put_their_muzzles() {
+    let matches: Vec<_> = super::photos()
+        .iter()
+        .filter_map(super::match_photo)
+        .collect();
+    let placed = super::features::place_features(&matches);
+    for id in [
+        "mg_inner_r",
+        "mg_inner_l",
+        "cannon",
+        "mg_outer_r",
+        "mg_outer_l",
+    ] {
+        let gun = placed.iter().find(|f| f.id == id).unwrap();
+        assert!(
+            !gun.ray_misses_m.is_empty() && gun.model.is_some(),
+            "{gun:?}"
+        );
+        writeln!(
+            std::io::stderr(),
+            "{id:>11}: model {:.3?}, rays miss by {:.3?} m",
+            gun.model,
+            gun.ray_misses_m
+        )
+        .ok();
+        assert!(gun.ray_misses_m.iter().all(|&m| m < 0.06), "{gun:?}");
+    }
+}
