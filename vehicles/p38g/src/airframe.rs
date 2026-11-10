@@ -9,6 +9,7 @@ use glam::{DMat4, Vec3};
 use crate::articulated::push_two_tone;
 use crate::canopy::canopy_prims;
 use crate::cockpit_opening::upper_gondola_skin;
+use crate::cockpit_reservation::SEAT_ARMOUR_FS_IN;
 use crate::drawing::{FRL_Z_M, INCH_M, WINDSCREEN_BASE_FS_IN, fs_to_y, y_to_fs};
 use crate::fillets::fillet_prims;
 use crate::gondola::{GONDOLA_SECTIONS, gondola_point, section_y};
@@ -16,7 +17,8 @@ use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed
 use crate::stations::{
     BOOM_STATIONS, BOOM_X, BRASS_SHELL, CHROME_OLEO, ELEVATOR_HINGE_Y, FIN_PROFILE, GUNMETAL,
     HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN,
-    TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point, tailplane_planform_fs, wing_surface_point,
+    TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point, tailplane_planform_fs, wing_station,
+    wing_surface_point,
 };
 
 pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
@@ -190,13 +192,15 @@ fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
 
 /// Chordwise rows of the wing loft (cosine spaced, dense at the nose and tail).
 pub(crate) const WING_CHORD_STEPS: usize = 28;
+/// Span station of the wing loft's row at the gondola wall, metres: just inside the
+/// `18.995 in` half-breadth, so the wing's skin ends in the gondola's.
+pub(crate) const WING_GONDOLA_X: f32 = 0.48;
 
 fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
     // The taper is straight to the tip arc, so the rows only need to follow the arc
     // and the junctions with the gondola and booms.
-    const HALF: [f32; 15] = [
-        0.0,
-        0.48,
+    const OUTER: [f32; 14] = [
+        WING_GONDOLA_X,
         1.35,
         BOOM_X,
         3.55,
@@ -211,37 +215,41 @@ fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
         7.90,
         SEMI_SPAN,
     ];
-    let span_xs: Vec<f32> = HALF
-        .iter()
-        .rev()
-        .map(|x| -x)
-        .chain(HALF.iter().skip(1).copied())
+    let us: Vec<f32> = (0..=WING_CHORD_STEPS)
+        .map(|i| 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos()))
         .collect();
-    let mut upper_rows = Vec::with_capacity(span_xs.len());
-    let mut lower_rows = Vec::with_capacity(span_xs.len());
-    for x in span_xs {
-        let mut up = Vec::with_capacity(WING_CHORD_STEPS + 1);
-        let mut lo = Vec::with_capacity(WING_CHORD_STEPS + 1);
-        for i in 0..=WING_CHORD_STEPS {
-            let u = 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos());
-            up.push(wing_surface_point(x, u, true));
-            lo.push(wing_surface_point(x, u, false));
-        }
-        upper_rows.push(up);
-        lower_rows.push(lo);
-    }
+    let rows = |xs: &[f32], upper: bool, us: &[f32]| -> Vec<Vec<Vec3>> {
+        xs.iter()
+            .map(|&x| {
+                us.iter()
+                    .map(|&u| wing_surface_point(x, u, upper))
+                    .collect()
+            })
+            .collect()
+    };
+    // Inside the gondola the wing carries through only behind the seat: the cockpit
+    // sits between the gondola walls ahead of the main beam, where there is no skin.
+    let (root_le, root_te, ..) = wing_station(0.0);
+    let behind_seat =
+        (y_to_fs(root_le) - SEAT_ARMOUR_FS_IN) / (y_to_fs(root_le) - y_to_fs(root_te));
+    let aft_us: Vec<f32> = us.iter().copied().filter(|&u| u >= behind_seat).collect();
+    let centre = [-WING_GONDOLA_X, 0.0, WING_GONDOLA_X];
+    let port: Vec<f32> = OUTER.iter().rev().map(|x| -x).collect();
 
     let mut upper = MeshBuilder::new();
-    upper.loft_open(&upper_rows, Inside::Point(Vec3::new(0.0, -0.4, -4.0)));
+    let mut lower = MeshBuilder::new();
+    for (mesh, is_upper, inside_z) in [(&mut upper, true, -4.0), (&mut lower, false, 4.0)] {
+        let inside = Inside::Point(Vec3::new(0.0, -0.4, inside_z));
+        mesh.loft_open(&rows(&port, is_upper, &us), inside);
+        mesh.loft_open(&rows(&centre, is_upper, &aft_us), inside);
+        mesh.loft_open(&rows(&OUTER, is_upper, &us), inside);
+    }
     prims.push(fixed(
         "/P38g/Wing/UpperOlive",
         P38PartRole::WingStructure,
         OLIVE_DRAB,
         upper,
     ));
-
-    let mut lower = MeshBuilder::new();
-    lower.loft_open(&lower_rows, Inside::Point(Vec3::new(0.0, -0.4, 4.0)));
     prims.push(fixed(
         "/P38g/Wing/LowerGray",
         P38PartRole::WingStructure,

@@ -26,10 +26,10 @@
       "feature": { "rule": "main_axles_centre" }
     },
     {
-      "name": "wing root leading edge",
-      "station_in": 119.05,
-      "source": "AN 01-75F-2 side view, 119.05 in from the gondola nose to the L.E. of the root chord",
-      "feature": { "rule": "wing_leading_edge", "span_from_m": 0.0, "span_to_m": 0.1 }
+      "name": "wing leading edge at the gondola wall",
+      "station_in": 120.86,
+      "source": "AN 01-75F-2 plan view: the 35 % line at FS 160 and the chord tapering straight from 117 in on the ship centreline (L.E. at 119.05) to 38 in at wing station 289, taken at butt line 18.9 where the skin meets the gondola (the skin is cut away inside it for the cockpit)",
+      "feature": { "rule": "wing_leading_edge", "span_from_m": 0.47, "span_to_m": 0.49 }
     }
   ]
 }

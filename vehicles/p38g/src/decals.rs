@@ -5,7 +5,8 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use glam::Vec3;
 
-use crate::gondola::gondola_point;
+use crate::drawing::WINDSCREEN_BASE_FS_IN;
+use crate::gondola::{GONDOLA_SECTIONS, gondola_point, section_y};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
     ANTI_GLARE, INSIGNIA_BLUE, INSIGNIA_WHITE, NOSE_ART_RED, STENCIL_YELLOW, boom_point, fin_point,
@@ -23,8 +24,11 @@ pub(crate) fn conformal_decal_prims() -> Vec<P38MeshPrim> {
 
 fn build_antiglare_panels(prims: &mut Vec<P38MeshPrim>) {
     let mut glare = MeshBuilder::new();
-    let nose_rows: Vec<Vec<Vec3>> = [3.48_f32, 3.15, 2.76, 2.20, 1.68]
-        .into_iter()
+    // From behind the nose cap back to the windscreen base.
+    let nose_rows: Vec<Vec<Vec3>> = GONDOLA_SECTIONS
+        .iter()
+        .filter(|s| (4.0..=WINDSCREEN_BASE_FS_IN).contains(&s.fs_in))
+        .map(section_y)
         .map(|y| {
             (0..=10)
                 .map(|i| {

@@ -3,6 +3,7 @@
 
 use glam::{DVec3, Vec3};
 
+use crate::airframe::WING_GONDOLA_X;
 use crate::drawing::{INCH_M, y_to_fs, z_to_frl};
 use crate::mesh::{P38MeshPrim, P38PartRole};
 use crate::package::p38g_mesh_prims;
@@ -23,9 +24,11 @@ pub struct P38BlueprintCalibrationReport {
     pub prop_plane_fs_in: f32,
     /// Station of the spinner tip.
     pub spinner_tip_fs_in: f32,
-    /// Leading-edge station of the wing section on the ship centreline.
+    /// Leading-edge station of the wing section on the ship centreline: the leading edge
+    /// of the two inboard wing rows produced to it (inside the gondola the skin is cut
+    /// away for the cockpit).
     pub root_le_fs_in: f32,
-    /// Chord of the wing section on the ship centreline.
+    /// Chord of the wing section on the ship centreline, produced the same way.
     pub root_chord_in: f32,
     /// Main-wheel axle to main-wheel axle.
     pub main_tread_in: f32,
@@ -110,10 +113,6 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
     let starboard_fin: Vec<Vec3> = fins.iter().copied().filter(|p| p.x > 0.0).collect();
     let blades = gather(&prims, |p| p.role == P38PartRole::PropellerBlades);
     let spinners = gather(&prims, |p| p.role == P38PartRole::PropellerSpinner);
-    let root: Vec<Vec3> = gather(&prims, |p| p.prim_path == "/P38g/Wing/UpperOlive")
-        .into_iter()
-        .filter(|p| p.x.abs() < 1e-4)
-        .collect();
     let tyres = gather(&prims, |p| {
         matches!(
             p.role,
@@ -128,7 +127,7 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
     );
     let nose = translation(&prims, P38PartRole::NoseWheel);
     let blade_y = blades.iter().map(|p| p.y).sum::<f32>() / blades.len().max(1) as f32;
-    let (root_te, root_le) = extent(&root, Y);
+    let (root_le, root_te) = root_section(&prims);
     let (span_lo, span_hi) = extent(&all, X);
     let (tail_y, nose_y) = extent(&hull, Y);
     let (fin_lo, fin_hi) = extent(&starboard_fin, X);
@@ -157,6 +156,25 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
         total_vertices: prims.iter().map(|p| p.vertices.len()).sum(),
         total_triangles: prims.iter().map(|p| p.indices.len() / 3).sum(),
     }
+}
+
+/// Leading and trailing edge `y` of the wing section on the ship centreline. The skin is
+/// cut away inside the gondola, so the section is the two inboard rows of the starboard
+/// wing produced to the centreline.
+fn root_section(prims: &[P38MeshPrim]) -> (f32, f32) {
+    const OUTER_ROW_X: f32 = 1.35;
+    let wing = gather(prims, |p| p.prim_path == "/P38g/Wing/UpperOlive");
+    let row = |x: f32| -> (f32, f32) {
+        let at: Vec<Vec3> = wing
+            .iter()
+            .copied()
+            .filter(|p| (p.x - x).abs() < 1e-3)
+            .collect();
+        extent(&at, Y)
+    };
+    let ((te_a, le_a), (te_b, le_b)) = (row(WING_GONDOLA_X), row(OUTER_ROW_X));
+    let to_centre = |a: f32, b: f32| a - WING_GONDOLA_X * (b - a) / (OUTER_ROW_X - WING_GONDOLA_X);
+    (to_centre(le_a, le_b), to_centre(te_a, te_b))
 }
 
 fn planform_wing_area() -> f32 {
