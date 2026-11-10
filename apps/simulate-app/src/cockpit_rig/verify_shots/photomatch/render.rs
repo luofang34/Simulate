@@ -125,9 +125,6 @@ fn pose_aircraft(h: &mut VerifyHarness, matched: &Match) -> Result<bool, AppSimE
     h.flight.update_system_controls(|sys| {
         sys.gear_down = gear_down;
         sys.prop_feather = [stopped; 2];
-        // The airborne spawn leaves the engines stopped; the starter turns them over.
-        sys.starter = !stopped;
-        sys.fuel_cutoff = stopped;
     });
     let throttle = if stopped { 0.0 } else { 0.8 };
     // Long enough for the gear to finish travelling, or the parked airframe to settle.

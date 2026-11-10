@@ -47,6 +47,9 @@ struct Photo {
     /// shadows the airframe casts on itself give it; it overrides [`Self::sun_deg`], which
     /// cannot express a banked aircraft's light.
     sun_airframe: Option<DVec3>,
+    /// Named patches of the airframe whose tone is compared on their own, as
+    /// `[x0, y0, x1, y1]` fractions of the photo's frame.
+    tone_patches: Vec<(String, [f64; 4])>,
     landmarks_px: Vec<(String, [f64; 2])>,
     /// Features identified on the photo, placed in 3D by [`features::place_features`].
     features_px: Vec<(String, [f64; 2])>,
@@ -95,6 +98,18 @@ fn photo(v: &Value) -> Option<Photo> {
             })
             .unwrap_or_default()
     };
+    let tone_patches = v
+        .get("tone_patches")
+        .and_then(Value::as_object)
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, r)| {
+                    let at = |i: usize| r.get(i)?.as_f64();
+                    Some((k.clone(), [at(0)?, at(1)?, at(2)?, at(3)?]))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let landmarks_px = points("landmarks_px");
     let features_px = points("features_px");
     Some(Photo {
@@ -105,6 +120,7 @@ fn photo(v: &Value) -> Option<Photo> {
         gear_down: flag("gear_down")?,
         sun_deg: sun,
         sun_airframe,
+        tone_patches,
         landmarks_px,
         features_px,
     })

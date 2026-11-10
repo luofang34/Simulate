@@ -74,7 +74,7 @@ pub(super) fn write_comparisons(
     let mask = morph(&morph(&raw, w, true), w, false);
     let marks = landmark_marks(m, framing.scale);
     save(&model, &out_path(dir, &m.photo, "model"))?;
-    let tone = tone::compare(&photo, [&model, &empty], &mask, w);
+    let tone = tone::compare(&photo, [&model, &empty], &mask, w, &m.photo.tone_patches);
 
     let mut side = RgbImage::new(w.saturating_mul(2), h);
     imageops::replace(&mut side, &photo, 0, 0);

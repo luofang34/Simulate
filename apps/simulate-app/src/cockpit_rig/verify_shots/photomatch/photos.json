@@ -18,6 +18,7 @@
       ],
       "airborne": false,
       "gear_down": true,
+      "resection_note": "The horizon crosses the fin tips, so the camera stood about 3 m above the ground; the solve puts it 6.1 m above the model's wheel plane (rms 23.5 px), so its height is unreliable.",
       "sun": {
         "azimuth_from_view_deg": 150,
         "elevation_deg": 60
@@ -78,6 +79,7 @@
       ],
       "airborne": false,
       "gear_down": true,
+      "resection_note": "The solve puts the camera 0.86 m below the model's wheel plane (rms 32.6 px), which a ground photograph cannot be; the match is rendered flying for that reason and its camera height is unreliable.",
       "sun": {
         "azimuth_from_view_deg": 110,
         "elevation_deg": 70
@@ -156,11 +158,16 @@
       ],
       "airborne": true,
       "gear_down": false,
+      "tone_patches": {
+        "sunlit_far_wing_upper": [0.72, 0.55, 0.83, 0.60],
+        "near_wing_upper": [0.20, 0.78, 0.42, 0.83],
+        "right_fin_outer_face_in_shade": [0.115, 0.55, 0.15, 0.60]
+      },
       "sun": {
         "azimuth_from_view_deg": 60,
         "elevation_deg": 60,
-        "to_sun_airframe": [-0.8, 0.15, 0.58],
-        "to_sun_airframe_basis": "the gondola's shadow reaches across the centre section to the right boom (about 1.6 m from a canopy 1.2 m above the wing), the right boom and the right fin's outer face are in shade and the left wing's upper surface is fully lit"
+        "to_sun_airframe": [-0.55, 0.15, 0.82],
+        "to_sun_airframe_basis": "both wings' upper surfaces are lit, the left the brighter, while the gondola's shadow lies across the centre section toward the right boom and the right boom's and right fin's outer faces are in shade: a high Sun about 35° left of the airframe's vertical"
       },
       "landmarks_px": {
         "wingtip_r": [
@@ -315,6 +322,10 @@
       ],
       "airborne": true,
       "gear_down": false,
+      "tone_patches": {
+        "sunlit_wing_upper": [0.31, 0.57, 0.43, 0.64],
+        "boom_side": [0.36, 0.31, 0.50, 0.335]
+      },
       "sun": {
         "azimuth_from_view_deg": 45,
         "elevation_deg": 65

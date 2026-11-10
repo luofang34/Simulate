@@ -73,12 +73,14 @@ fn is_ground_shadow(shown: Rgb<u8>, empty: Rgb<u8>) -> bool {
 
 /// Photo and model tone on the airframe: inside the silhouette `mask` (`w` wide) less the
 /// ground its shadow darkens, found against the frame rendered `empty` of the airframe.
-/// The summary records percentiles `[p05, p25, p50, p75, p95]` of each.
+/// The summary records percentiles `[p05, p25, p50, p75, p95]` of each, and the median of
+/// each of the photo's named `patches`.
 pub(super) fn compare(
     photo: &RgbImage,
     [model, empty]: [&RgbImage; 2],
     mask: &[bool],
     w: u32,
+    patches: &[(String, [f64; 4])],
 ) -> Value {
     let airframe: Vec<bool> = mask
         .iter()
@@ -86,10 +88,34 @@ pub(super) fn compare(
         .map(|(inside, (shown, bare))| *inside && !is_ground_shadow(*shown, *bare))
         .collect();
     let core = erode(&airframe, w as usize);
+    let patches: serde_json::Map<String, Value> = patches
+        .iter()
+        .map(|(name, rect)| {
+            let within = inside(&core, w, model.height(), *rect);
+            let both = json!({
+                "photo": Tone::measure(photo, &within).map(|t| t.p50),
+                "model": Tone::measure(model, &within).map(|t| t.p50),
+            });
+            (name.clone(), both)
+        })
+        .collect();
     json!({
         "photo": Tone::measure(photo, &core).map(Tone::json),
         "model": Tone::measure(model, &core).map(Tone::json),
+        "patch_median": patches,
     })
+}
+
+/// `mask` (`w` by `h`) restricted to `[x0, y0, x1, y1]`, fractions of the frame.
+fn inside(mask: &[bool], w: u32, h: u32, [x0, y0, x1, y1]: [f64; 4]) -> Vec<bool> {
+    let (wf, hf) = (f64::from(w), f64::from(h));
+    mask.iter()
+        .enumerate()
+        .map(|(i, on)| {
+            let (x, y) = ((i as u32 % w.max(1)) as f64, (i as u32 / w.max(1)) as f64);
+            *on && x >= x0 * wf && x < x1 * wf && y >= y0 * hf && y < y1 * hf
+        })
+        .collect()
 }
 
 /// `mask` without the pixels within [`EDGE_PX`] of its outside.
