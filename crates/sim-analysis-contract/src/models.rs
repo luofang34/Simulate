@@ -297,7 +297,6 @@ pub struct AccessQuerySpec {
     pub min_range_m: Option<f64>,
     /// Optional maximum slant range constraint (`m`).
     pub max_range_m: Option<f64>,
-    /// When the two ends are compared; requests without it are geometric.
-    #[serde(default)]
+    /// When the two ends are compared.
     pub signal_time: SignalTimeModel,
 }

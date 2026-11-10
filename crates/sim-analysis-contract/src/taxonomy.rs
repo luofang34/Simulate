@@ -186,10 +186,13 @@ pub enum ModelNotApplicableReason {
         /// Supplied boundary refinement tolerance (`s`).
         boundary_time_tolerance_s: f64,
     },
-    /// A multi-hop relay was asked for with light-time signal timing, which chains
-    /// emission and reception across hops and is not modelled.
-    #[error("light-time signal timing is not supported for multi-hop relay access")]
-    LightTimeRelayUnsupported,
+    /// The request is stamped with a contract schema version other than the one this
+    /// evaluator reads.
+    #[error("unsupported analysis contract schema_version {schema_version}")]
+    UnsupportedSchemaVersion {
+        /// Version the request carries.
+        schema_version: u32,
+    },
     /// Ground station minimum elevation is outside $[-\pi/2, \pi/2]$ or non-finite.
     #[error("invalid station minimum elevation {min_elevation_rad} rad")]
     InvalidStationParameters {

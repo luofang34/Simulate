@@ -1,4 +1,4 @@
-//! Versioned, serializable external analysis request/result contract (`ANALYSIS_CONTRACT_SCHEMA_VERSION = 1`).
+//! Versioned, serializable external analysis request/result contract ([`ANALYSIS_CONTRACT_SCHEMA_VERSION`]).
 //!
 //! Re-exports the single-source contract types from [`sim_analysis_contract`] and provides the
 //! headless evaluator [`evaluate_analysis_request_artifact`] and platform trajectory materializer

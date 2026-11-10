@@ -1,4 +1,4 @@
-//! Versioned, serializable external analysis request/result contract (`ANALYSIS_CONTRACT_SCHEMA_VERSION = 1`).
+//! Versioned, serializable external analysis request/result contract ([`ANALYSIS_CONTRACT_SCHEMA_VERSION`]).
 //!
 //! Maintained on the `Simulate` side (`sim-analysis-contract`) and shared directly by `sim-analysis`
 //! and `sokoly-planning`. Uses serializable identities, trajectory node tables, DEM grids, vertical
@@ -19,8 +19,10 @@ use crate::{
     terrain::{AltitudeSpec, DemElevationGrid, TerrainLosConfig},
 };
 
-/// Canonical schema version for [`AnalysisRequestArtifact`] and [`AnalysisResultArtifact`].
-pub const ANALYSIS_CONTRACT_SCHEMA_VERSION: u32 = 1;
+/// Schema version of [`AnalysisRequestArtifact`] and [`AnalysisResultArtifact`]. Version 2
+/// carries [`AccessQuerySpec::signal_time`] and the per-sample light time it produces; no
+/// other version is read.
+pub const ANALYSIS_CONTRACT_SCHEMA_VERSION: u32 = 2;
 
 /// Identifies the immutable planning design revision that produced an [`AnalysisRequestArtifact`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -445,7 +447,7 @@ pub enum AnalysisWorkloadSpec {
 /// Versioned external analysis request artifact emitted by `Sokoly` and evaluated by `Simulate`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisRequestArtifact {
-    /// Contract schema version (`ANALYSIS_CONTRACT_SCHEMA_VERSION = 1`).
+    /// Contract schema version ([`ANALYSIS_CONTRACT_SCHEMA_VERSION`]).
     pub schema_version: u32,
     /// Unique request identifier (`request_id`), distinct from `design_revision`.
     pub request_id: String,

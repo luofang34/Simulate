@@ -94,9 +94,8 @@ fn validate_request_contracts_and_terrain(
     terrain_cfg: &TerrainLosConfig,
 ) -> Result<(), AccessAnalysisError> {
     if request.schema_version != ANALYSIS_CONTRACT_SCHEMA_VERSION {
-        return Err(ModelNotApplicableReason::InvalidQueryParameters {
-            sample_step_s: request.query.sample_step_s,
-            boundary_time_tolerance_s: request.query.boundary_time_tolerance_s,
+        return Err(ModelNotApplicableReason::UnsupportedSchemaVersion {
+            schema_version: request.schema_version,
         }
         .into());
     }
