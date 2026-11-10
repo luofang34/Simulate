@@ -54,8 +54,7 @@ pub(super) struct SolarSystem {
 
 impl SolarSystem {
     pub(super) fn load() -> Result<Arc<Self>, SolarSystemError> {
-        let apollo_spk = apollo_1969_spk_bytes();
-        let spk_slices = [apollo_spk.as_slice()];
+        let spk_slices = [apollo_1969_spk_bytes()?];
         let pack = SolarSystemKernelPack {
             spk_files: &spk_slices,
             earth_bpc_files: &[],

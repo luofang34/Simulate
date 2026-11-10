@@ -430,3 +430,51 @@ fn manifest_digest_and_clock_adapter_verified() {
     );
     assert_ne!(d1.root_hash, d2.root_hash);
 }
+
+#[test]
+fn the_apollo_11_kernel_pack_is_real_de440_for_july_1969() {
+    use sim_orbital::{SolarSystemKernelPack, apollo_1969_spk_bytes};
+
+    let spk = [apollo_1969_spk_bytes().expect("pinned hash")];
+    let solar = BuiltinSolarSystem2026_2028::load_with_kernel_pack(&SolarSystemKernelPack {
+        spk_files: &spk,
+        earth_bpc_files: &[],
+        moon_bpc_files: &[],
+        allow_iau_outside_bpc: true,
+    })
+    .expect("kernel pack");
+    // Eagle's touchdown, 1969-07-20T20:17:40 UTC, as seconds past J2000 TDB.
+    let landing = TdbEpoch::new(-960_910_900, 0);
+    let from_earth = |body| {
+        solar
+            .ephemeris
+            .geometric_state_icrf(body, NaifId::EARTH, landing, DerivativeOrder::Velocity)
+            .expect("covered")
+    };
+    let moon = from_earth(NaifId::MOON);
+    let sun = from_earth(NaifId::SUN);
+    let moon_km = moon.pos_m.length() / 1e3;
+    let sun_au = sun.pos_m.length() / 149_597_870_700.0;
+    assert!(
+        (389_000.0..390_000.0).contains(&moon_km),
+        "the Moon was {moon_km} km away at touchdown"
+    );
+    assert!(
+        (1.014..1.018).contains(&sun_au),
+        "Earth is near aphelion in July"
+    );
+
+    // Two weeks of coverage, and nothing a day outside it.
+    let before = TdbEpoch::new(-961_502_400 - 86_400, 0);
+    assert!(
+        solar
+            .ephemeris
+            .geometric_state_icrf(
+                NaifId::MOON,
+                NaifId::EARTH,
+                before,
+                DerivativeOrder::Position
+            )
+            .is_err()
+    );
+}

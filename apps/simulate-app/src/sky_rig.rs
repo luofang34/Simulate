@@ -308,8 +308,8 @@ mod tests {
         let sky = rig.evaluate(&flight, observer, 0.0);
         let sun_apart = sun_from_moon.angle_between(sky.environment.sun.direction_fixed);
         assert!(
-            sun_apart.to_degrees() < 1.0,
-            "1969 lunar Sun agrees with SkyRig within {} deg",
+            sun_apart.to_degrees() < 0.01,
+            "the 1969 lunar Sun is {} degrees from the sky's",
             sun_apart.to_degrees()
         );
 
