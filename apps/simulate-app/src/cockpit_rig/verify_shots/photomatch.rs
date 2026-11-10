@@ -27,6 +27,8 @@ mod render;
 mod resection;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tone;
 
 const PHOTOS_JSON: &str = include_str!("photomatch/photos.json");
 
