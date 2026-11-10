@@ -23,7 +23,10 @@ const STARBOARD: f32 = 1.0;
 const WING_STAR: Art = Art::Insignia { diameter_in: 32.0 };
 /// The boom insignia measured on 41-7631 (USAAF, RAF Goxhill 1942) against
 /// its 36 in main tyre: about 25 in, centred about 24 in aft of the wing's
-/// trailing edge.
+/// trailing edge, and at WL 8.5: six back-projections of boom stars from four
+/// resected photographs (41-7631, 42-12842, 42-13545, 42-67079) put the centre
+/// 0.02 to 0.20 m above the fuselage reference line's level on the boom, mean
+/// 0.13 m above where WL 4 had it.
 const BOOM_STAR: Art = Art::Insignia { diameter_in: 25.0 };
 
 /// White nose number, measured on 43-2242's "129" (USAAF 342-FH-3A43614):
@@ -88,7 +91,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
             side: PORT,
             outboard: true,
             aft_of_te_in: 24.0,
-            wl_in: 4.0,
+            wl_in: 8.5,
         },
     },
     Marking {
@@ -97,7 +100,7 @@ pub(crate) const MARKINGS: &[Marking] = &[
             side: STARBOARD,
             outboard: true,
             aft_of_te_in: 24.0,
-            wl_in: 4.0,
+            wl_in: 8.5,
         },
     },
     Marking {

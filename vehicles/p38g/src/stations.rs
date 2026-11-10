@@ -59,10 +59,15 @@ pub const RUDDER_HINGE_Y: f32 = 3.55 - 428.4 * 0.0254;
 pub const HTAIL_Z: f32 = 0.4698;
 
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
-/// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
-pub(crate) const OLIVE_DRAB: P38Material = mat([0.16, 0.165, 0.095], 0.0, 0.70);
-/// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
-pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);
+/// Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric). Linear reflectance of
+/// sRGB `(84, 79, 61)`, the value Wikipedia's "Olive (color)" gives FS 595 33070, the
+/// chip secondary sources usually quote as nearest it (the pairing is theirs; no
+/// spectrophotometry of a period sample was reached).
+pub(crate) const OLIVE_DRAB: P38Material = mat([0.089, 0.078, 0.047], 0.0, 0.70);
+/// Neutral Gray No. 43, the semi-flat underside lacquer: a mid grey of about 19 %
+/// reflectance, faintly blue (assumed; FS 595 36173 is the match usually quoted, and no
+/// measured value of it was reached).
+pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.175, 0.19, 0.205], 0.0, 0.62);
 pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
 /// Insignia Blue: a dark navy that prints near black on the period's
