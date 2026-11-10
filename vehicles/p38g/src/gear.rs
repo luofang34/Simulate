@@ -7,8 +7,8 @@ use glam::{DMat4, DVec3, Vec3};
 
 use crate::airframe::keel_z_at;
 use crate::drawing::{
-    FRL_ABOVE_GROUND_NOSE_STATIC_IN, FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN,
-    MAIN_AXLE_FS_IN, MAIN_TREAD_IN, NOSE_AXLE_FS_IN, NOSE_ROLLING_RADIUS_IN, NOSE_Y_M,
+    FRL_Z_M, INCH_M, MAIN_AXLE_BELOW_FRL_STATIC_IN, MAIN_AXLE_FS_IN, MAIN_TREAD_IN,
+    NOSE_AXLE_BELOW_FRL_STATIC_IN, NOSE_AXLE_FS_IN, NOSE_Y_M,
 };
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, circle_segments, fixed, part};
 use crate::stations::{BOOM_X, CHROME_OLEO, NEUTRAL_GRAY, TIRE_RUBBER, WHEEL_WELL_ZINC};
@@ -18,14 +18,13 @@ const NOSE_AXLE_Y: f32 = NOSE_Y_M - NOSE_AXLE_FS_IN * INCH_M;
 /// Main axle: centre of the dashed main tyre on the AN 01-75F-2 side view.
 const MAIN_AXLE_Y: f32 = NOSE_Y_M - MAIN_AXLE_FS_IN * INCH_M;
 /// Main axle height at the static oleo: `54.575 in` below the fuselage reference line
-/// (AN 01-75F-2 front view), so the `15.3 in` static rolling radius puts the ground `69.9 in`
-/// below it.
+/// (AN 01-75F-2 front view).
 const MAIN_AXLE_Z: f32 = FRL_Z_M - MAIN_AXLE_BELOW_FRL_STATIC_IN * INCH_M;
-/// Nose axle height at the static oleo: the reference line is `69.970 in` above the ground
-/// at the nose gear (AN 01-75F-2 side view), less the `11.6 in` static rolling radius. The
-/// two gear give the same reference-line height, so the airframe sits level.
-const NOSE_AXLE_Z: f32 =
-    FRL_Z_M - (FRL_ABOVE_GROUND_NOSE_STATIC_IN - NOSE_ROLLING_RADIUS_IN) * INCH_M;
+/// Nose axle height at the static oleo: `69.970 in` below the fuselage reference line
+/// (AN 01-75F-2 side view). With the `11.6 in` and `15.3 in` static rolling radii the
+/// nose tyre stands `11.7 in` lower than the mains, so the airframe sits nose-up on the
+/// drawing's `5°33'46"` static ground line.
+const NOSE_AXLE_Z: f32 = FRL_Z_M - NOSE_AXLE_BELOW_FRL_STATIC_IN * INCH_M;
 /// Main and nose tyres: `36 in` and `27 in` (AN 01-75F-2).
 const MAIN_TYRE_DIAMETER_IN: f32 = 36.0;
 const NOSE_TYRE_DIAMETER_IN: f32 = 27.0;

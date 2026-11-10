@@ -2871,12 +2871,36 @@
    ]
   },
   {
-   "name": "frl_above_ground_nose_static",
+   "name": "nose_axle_below_frl_static",
    "value": 69.97,
    "unit": "in",
    "view": "side",
-   "callout": "STATIC 69.970 / COMP. 67.032 / EXT. 78.785",
-   "px": []
+   "callout": "STATIC 69.970 / COMP. 67.032 / EXT. 78.785, fuselage reference line to the nose axle: the dimension's extension lines run through the dashed nose tyre's centre (y 490) and, for the 11.600 rolling radius below it, its bottom (y 520); the front view draws the nose axle at y 2331, 71 in below the reference line",
+   "px": [
+    [0, 328.1],
+    [0, 490]
+   ]
+  },
+  {
+   "name": "static_ground_angle",
+   "value": 5.5628,
+   "unit": "deg",
+   "view": "side",
+   "callout": "5 deg 33' 46\" between the GROUND LINE (STATIC) under both tyres and the horizontal: the nose axle 69.970 + 11.600 in and the main axle 54.575 + 15.300 in below the reference line, 120.831 in apart along the ground",
+   "px": [
+    [490, 517],
+    [720, 495]
+   ]
+  },
+  {
+   "name": "prop_tip_ground_clearance_static",
+   "value": 16.726,
+   "unit": "in",
+   "view": "side",
+   "callout": "16.726 from the propeller arc at the propeller centreline to the static ground line",
+   "px": [
+    [545, 475]
+   ]
   },
   {
    "name": "nose_rolling_radius_static",

@@ -58,14 +58,16 @@ pub(super) fn build_jsbsim_fdm(
 }
 
 /// A JSBSim aircraft at rest on its gear at `ground` (the terrain height under it), its
-/// reference point `gear_height_m` up: the package's static height on its gear, so the
-/// initial conditions see the gear neither crushed nor hanging.
+/// reference point `gear_height_m` up and pitched `pitch_rad` nose-up: the package's
+/// static height and attitude on its gear, so the initial conditions see the gear neither
+/// crushed nor hanging.
 pub(super) fn build_jsbsim_parked(
     pkg: &LoadedSyspack,
     ground: Geodetic,
     heading_rad: f64,
     engine_start: EngineStartMode,
     gear_height_m: f64,
+    pitch_rad: f64,
 ) -> Result<FreeFlightPlant, AppSimError> {
     let resolver = pkg
         .build_jsbsim_resolver()
@@ -85,7 +87,7 @@ pub(super) fn build_jsbsim_parked(
             },
             heading_rad,
             speed_m_s: 0.0,
-            alpha_rad: 0.0,
+            alpha_rad: pitch_rad,
             engine_start,
         },
         ground.height_m,

@@ -236,8 +236,13 @@ fn drawing_constants_repeat_the_digitised_callouts() {
         ),
         ("main_rolling_radius_static", d::MAIN_ROLLING_RADIUS_IN),
         (
-            "frl_above_ground_nose_static",
-            d::FRL_ABOVE_GROUND_NOSE_STATIC_IN,
+            "nose_axle_below_frl_static",
+            d::NOSE_AXLE_BELOW_FRL_STATIC_IN,
+        ),
+        ("static_ground_angle", d::STATIC_GROUND_ANGLE_DEG),
+        (
+            "prop_tip_ground_clearance_static",
+            d::PROP_TIP_GROUND_CLEARANCE_STATIC_IN,
         ),
         ("nose_rolling_radius_static", d::NOSE_ROLLING_RADIUS_IN),
         ("nose_axle_fs_drawn", d::NOSE_AXLE_FS_IN),
