@@ -1,7 +1,7 @@
 //! Substep force evaluation, anchor-point bristle stiction, and settle tracking.
 
 use glam::{DMat3, DQuat, DVec3};
-use sim_spacetime::{CollisionGroundSample, CollisionTerrain};
+use sim_spacetime::{CollisionGroundSample, CollisionTerrain, TICKS_PER_SECOND, TickSpan};
 
 use crate::{
     contact::{
@@ -79,7 +79,18 @@ pub(super) fn step_one_contact_substep(
         &mut aud,
     );
 
-    update_settle_tracker(state, contact, &r_i2f, omega_p_fixed, any_contact, any_slip);
+    // The state has been advanced to `epoch + dt`, so settle detection and the pinned pose must use
+    // the body orientation at that same instant, not the substep-start rotation used for forces.
+    let ticks_dt = (dt * (TICKS_PER_SECOND as f64)).round() as u128;
+    let epoch_after = epoch.add_span(TickSpan::from_ticks_u128(ticks_dt));
+    update_settle_tracker(
+        state,
+        contact,
+        orientation,
+        epoch_after,
+        any_contact,
+        any_slip,
+    )?;
     Ok((min_clear, a_proper, aud))
 }
 
@@ -269,34 +280,39 @@ fn apply_contact_propellant_step(
 fn update_settle_tracker(
     state: &ContinuousPlantState,
     contact: &mut VesselContactState,
-    r_i2f: &DMat3,
-    omega_p_fixed: DVec3,
+    orientation: &dyn BodyOrientationCatalog,
+    epoch_after: TdbEpoch,
     any_contact: bool,
     any_slip: bool,
-) {
+) -> Result<(), GravityError> {
     if !any_contact || any_slip {
         contact.settle_substeps = 0;
-        return;
+        return Ok(());
     }
-    let p_fixed = (*r_i2f) * state.pos_rel_icrf_m;
-    let v_fixed = (*r_i2f) * state.vel_rel_icrf_m_s - omega_p_fixed.cross(p_fixed);
+    let rot = orientation.body_rotation(state.primary_body, epoch_after)?;
+    let r_i2f = rot.r_icrf_to_fixed;
+    let omega_p_fixed = rot.omega_body_rad_s;
+    let p_fixed = r_i2f * state.pos_rel_icrf_m;
+    let v_fixed = r_i2f * state.vel_rel_icrf_m_s - omega_p_fixed.cross(p_fixed);
     let omega_icrf = quat_rotate_vec_portable(state.q_body_to_icrf, state.omega_body_rad_s);
-    let omega_rel_fixed = (*r_i2f) * omega_icrf - omega_p_fixed;
+    let omega_rel_fixed = r_i2f * omega_icrf - omega_p_fixed;
 
     if sqrt(v_fixed.length_squared()) <= PINNED_REST_MAX_SPEED_M_S
         && sqrt(omega_rel_fixed.length_squared()) <= PINNED_REST_MAX_OMEGA_RAD_S
     {
         contact.settle_substeps = contact.settle_substeps.wrapping_add(1);
         if contact.settle_substeps >= PINNED_REST_SETTLE_SUBSTEPS {
-            let q_i2f = quat_normalize_portable(DQuat::from_mat3(r_i2f));
-            let q_b2f = quat_normalize_portable(q_i2f * state.q_body_to_icrf);
-            contact.pinned = Some(PinnedSurfaceState {
-                body: state.primary_body,
-                pos_fixed_m: p_fixed.to_array(),
-                q_body_to_fixed_xyzw: q_b2f.to_array(),
-            });
+            contact.pinned = Some(PinnedSurfaceState::from_icrf_plant_state(
+                state,
+                epoch_after,
+                orientation,
+            )?);
         }
     } else {
         contact.settle_substeps = 0;
     }
+    Ok(())
 }
+
+#[cfg(test)]
+mod tests;
