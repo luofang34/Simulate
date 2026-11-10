@@ -3,20 +3,26 @@
 //! Strictly separates:
 //! 1. **Continuous physical execution** ([`run_uninterrupted_mission`]):
 //!    evolves state exclusively through continuous integration (`integrate_contact_interval` and
-//!    `propagate_plant_interval`) with zero synthetic state resets, and returns an explicit
-//!    [`RaketaMissionError::IncompleteContinuousMission`] at the first unimplemented continuous
-//!    phase boundary rather than resetting state and claiming end-to-end completion.
+//!    `DOP853` plant propagation) and origin changes that re-express the same state, from the
+//!    Earth pad to rest on the Moon or Mars, counting any other write to the state.
 //! 2. **Staged scenario-initialized phase demonstrations** ([`run_staged_phase_demonstration`]):
 //!    exercises each guidance/control phase (`EarthLiftoff`, `GravityTurnAscent`, `TransInjectionBurn`,
 //!    `ArrivalBrakingOrEntry`, `PoweredDescentAutoland`, `TargetSurfacePinnedRest`) from explicit
 //!    scenario initial states and reports `is_continuous_end_to_end = false` alongside the exact
 //!    count of scenario state initializations (`explicit_state_reinitializations`).
 
+mod arrival;
 mod continuous;
+mod descent;
 mod landing;
+mod surface;
+mod touchdown;
 mod transfer;
+mod voyage;
 
 pub use continuous::{RaketaContinuousTransferSummary, run_continuous_pad_to_transfer};
+pub use surface::{RaketaSurfaceMissionSummary, run_uninterrupted_mission};
+pub use voyage::RaketaOriginChange;
 
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
@@ -79,28 +85,25 @@ pub enum RaketaMissionError {
         /// Distance to the destination at the end of the window (`m`).
         distance_m: f64,
     },
-    /// Continuous end-to-end mission stopped at a phase transition that is not yet implemented
-    /// without synthetic scenario state re-initialization.
+    /// No approach arc reached the gate over the landing site steeply enough.
     #[error(
-        "uninterrupted continuous mission incomplete at {missing_transition_from:?} -> {missing_transition_to:?}: {reason}"
+        "no approach to the {body} landing site steeper than {steepest_arrival_zenith_deg:.1} deg from vertical"
     )]
-    IncompleteContinuousMission {
-        /// Phases completed via continuous physical propagation with zero state resets.
-        completed_phases: Vec<RaketaMissionPhase>,
-        /// Last phase completed continuously.
-        missing_transition_from: RaketaMissionPhase,
-        /// Next phase requiring an unimplemented continuous guidance/targeting bridge.
-        missing_transition_to: RaketaMissionPhase,
-        /// Epoch reached at the end of continuous propagation.
-        terminal_epoch: TdbEpoch,
-        /// True physical plant state reached at `terminal_epoch` (without any synthetic overwrite).
-        terminal_state: Box<ContinuousPlantState>,
-        /// Peak proper acceleration observed across the completed continuous phases (`G`).
-        peak_proper_accel_g: f64,
-        /// Whether fin ground-lock held on the launch pad.
-        fin_lock_verified: bool,
-        /// Diagnostic explanation of the missing continuous transition capability.
-        reason: &'static str,
+    LandingSiteOutOfView {
+        /// Destination body.
+        body: NaifId,
+        /// Steepest arrival found, as an angle from the local vertical (`deg`).
+        steepest_arrival_zenith_deg: f64,
+    },
+    /// The powered descent did not bring the feet down to the ground.
+    #[error("descent onto {body} stalled at {epoch:?} with {foot_clearance_m:.2} m foot clearance")]
+    DescentDidNotReachSurface {
+        /// Destination body.
+        body: NaifId,
+        /// Epoch at which the descent gave up.
+        epoch: TdbEpoch,
+        /// Lowest foot clearance at that epoch (`m`).
+        foot_clearance_m: f64,
     },
 }
 
@@ -163,33 +166,6 @@ pub struct RaketaStagedDemoSummary {
 
 /// Compatibility alias for [`RaketaStagedDemoSummary`].
 pub type RaketaMissionSummary = RaketaStagedDemoSummary;
-
-/// Attempts to execute a continuous, zero-state-reset surface-to-surface mission.
-///
-/// Propagates `EarthPadPinned` $\to$ `EarthLiftoff` $\to$ `GravityTurnAscent` $\to$
-/// `TransInjectionBurn` $\to$ `DeepSpaceTransfer` purely through physical contact and
-/// `DOP853` integration into the destination's sphere of influence without overwriting
-/// `state`, and then returns [`RaketaMissionError::IncompleteContinuousMission`] because
-/// continuous arrival capture, atmospheric entry, and powered-descent landing from the
-/// arrival trajectory without scenario state initialization are not yet implemented.
-pub fn run_uninterrupted_mission(
-    solar: &BuiltinSolarSystem2026_2028,
-    force_model: &ForceModel,
-    start_epoch: TdbEpoch,
-    target: RaketaMissionTarget,
-) -> Result<RaketaStagedDemoSummary, RaketaMissionError> {
-    let transfer = run_continuous_pad_to_transfer(solar, force_model, start_epoch, target)?;
-    Err(RaketaMissionError::IncompleteContinuousMission {
-        completed_phases: transfer.phases_completed,
-        missing_transition_from: RaketaMissionPhase::DeepSpaceTransfer,
-        missing_transition_to: RaketaMissionPhase::ArrivalBrakingOrEntry,
-        terminal_epoch: transfer.terminal_epoch,
-        terminal_state: Box::new(transfer.terminal_state),
-        peak_proper_accel_g: transfer.peak_proper_accel_g,
-        fin_lock_verified: transfer.fin_lock_verified,
-        reason: "continuous arrival capture, atmospheric entry, and powered-descent landing from the arrival trajectory are not yet implemented",
-    })
-}
 
 /// Runs the **staged scenario-initialized phase demonstration** across all 8 `Raketa` phases.
 ///

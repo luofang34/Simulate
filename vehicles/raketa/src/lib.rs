@@ -3,8 +3,8 @@
 //! - Exact quadratic feasible-interval `4.0G` proper-acceleration limiter (`a_eff = clamp(-b, 0, a_cmd)` when infeasible),
 //! - Full `[0°, 180°]` aerodynamic envelope with `< 50 m` / pad fin ground-lock (`±18°` -> `0°`),
 //! - Reserved 3-axis CG translational RCS (`±0.25G`), momentum-conserving reaction wheels ($5\times 10^6\text{ N}\cdot\text{m}\cdot\text{s}$),
-//! - Continuous pad-to-ascent execution (`run_uninterrupted_mission` failing closed at unimplemented continuous transitions)
-//!   and explicitly tagged staged phase demonstrations (`run_staged_phase_demonstration`).
+//! - Continuous pad-to-surface execution (`run_uninterrupted_mission`, one propagated trajectory to rest
+//!   on the Moon or Mars) and explicitly tagged staged phase demonstrations (`run_staged_phase_demonstration`).
 //! - A `sim_universe::LocalPlant` (`RaketaPlant`) that a `Universe` flies off the pad, hands to
 //!   orbital propagation above the atmosphere, and takes back on the way down.
 //!
@@ -44,8 +44,8 @@ pub use limiter::{
 };
 pub use mission::{
     RaketaContinuousTransferSummary, RaketaMissionError, RaketaMissionPhase, RaketaMissionSummary,
-    RaketaMissionTarget, RaketaStagedDemoSummary, run_continuous_pad_to_transfer,
-    run_staged_phase_demonstration, run_uninterrupted_mission,
+    RaketaMissionTarget, RaketaOriginChange, RaketaStagedDemoSummary, RaketaSurfaceMissionSummary,
+    run_continuous_pad_to_transfer, run_staged_phase_demonstration, run_uninterrupted_mission,
 };
 pub use usd_contract::{
     EXPECTED_RAKETA_USD_SHA256, RAKETA_APAS95_PORT_POS_M, RAKETA_FIN_RUDDER_PIVOT_M,

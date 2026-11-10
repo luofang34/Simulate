@@ -21,12 +21,13 @@ use crate::{
     mission::{RaketaMissionError, RaketaMissionTarget, closed_loop_tols},
 };
 
-struct TargetSiteSpec {
-    body: NaifId,
-    ellipsoid: BodyEllipsoid,
-    terrain: PinnedCollisionTerrain,
-    site_geo: Geodetic,
-    ground_h_m: f64,
+/// A configured landing site and the collision terrain the contact model uses there.
+pub(super) struct TargetSiteSpec {
+    pub(super) body: NaifId,
+    pub(super) ellipsoid: BodyEllipsoid,
+    pub(super) terrain: PinnedCollisionTerrain,
+    pub(super) site_geo: Geodetic,
+    pub(super) ground_h_m: f64,
 }
 
 pub(super) fn run_staged_arrival_or_entry_demo(
@@ -262,7 +263,7 @@ fn settle_touchdown_on_terrain(
     Ok((pinned, settled.peak_proper_accel_m_s2))
 }
 
-fn target_site_config(target: RaketaMissionTarget) -> TargetSiteSpec {
+pub(super) fn target_site_config(target: RaketaMissionTarget) -> TargetSiteSpec {
     let (body, ellipsoid, terrain, site_geo) = match target {
         RaketaMissionTarget::MoonTranquility => (
             NaifId::MOON,
