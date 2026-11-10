@@ -100,27 +100,6 @@ pub(crate) const ARMOR_GLASS: P38Material = P38Material {
     opacity: 0.44,
 };
 
-/// Central gondola bulkhead stations (`FS 0..238`, `y = +3.55..-2.50 m`). The keel
-/// (`z_bot_hull`) follows the AN 01-75F-2 side view, down to `30 in` below the fuselage
-/// reference line under the cockpit:
-/// `(y, z_mid, half_w, z_top_hull, z_bot_hull, z_canopy_top, w_canopy)`.
-pub const GONDOLA_STATIONS: &[(f32, f32, f32, f32, f32, f32, f32)] = &[
-    (3.55, 0.02, 0.03, 0.05, -0.01, 0.05, 0.03), // FS 0: Nose tip
-    (3.40, 0.02, 0.18, 0.16, -0.356, 0.16, 0.18), // FS 6: Cannon muzzle port
-    (3.15, 0.02, 0.32, 0.29, -0.546, 0.29, 0.32), // FS 16: Staggered .50 cal ports
-    (2.76, 0.03, 0.44, 0.41, -0.671, 0.41, 0.44), // FS 31: Forward ammo bay
-    (2.20, 0.04, 0.53, 0.49, -0.767, 0.49, 0.53), // FS 53: Nose wheel well & gun breech bay
-    (1.68, 0.05, 0.57, 0.52, -0.823, 0.52, 0.46), // FS 74: Windscreen base arch
-    (1.16, 0.06, 0.60, 0.53, -0.846, 0.90, 0.44), // FS 94: Armored flat windshield top
-    (0.58, 0.06, 0.62, 0.54, -0.848, 0.98, 0.45), // FS 117: Forward canopy / pilot head
-    (0.06, 0.05, 0.62, 0.54, -0.815, 0.95, 0.44), // FS 137: Main wing spar carry-through
-    (-0.42, 0.04, 0.59, 0.50, -0.749, 0.80, 0.38), // FS 156: Aft pilot armor bulkhead
-    (-0.90, 0.04, 0.53, 0.45, -0.658, 0.56, 0.30), // FS 175: Radio compartment & canopy tail
-    (-1.56, 0.03, 0.41, 0.35, -0.546, 0.35, 0.22), // FS 201: Gondola aft fairing
-    (-2.22, 0.03, 0.24, 0.21, -0.419, 0.21, 0.14), // FS 227: Wing trailing-edge intersection
-    (-2.495, 0.03, 0.04, 0.07, -0.05, 0.07, 0.04), // FS 238: Gondola tailcone tip at the wing TE
-];
-
 /// Twin engine nacelle & tail-boom bulkhead stations (`FS 71..440`, `y = +1.74..-7.63 m`); the
 /// boom top runs level `24.5 in` above the fuselage reference line aft of the wing, as on
 /// the AN 01-75F-2 side view, and the cowls are as wide as its plan view (`19.7 in` half-width
@@ -200,49 +179,6 @@ pub fn tailplane_planform_fs(bl_in: f32) -> Option<(f32, f32)> {
         (r * r - (bl - tip_centre).powi(2)).max(0.0).sqrt()
     };
     Some((LE_FS + r - half, LE_FS + r + half))
-}
-
-/// Linearly interpolates the central gondola cross-section at longitudinal coordinate `y`.
-#[must_use]
-pub fn interpolate_gondola(y: f32) -> (f32, f32, f32, f32, f32, f32) {
-    let Some(&first) = GONDOLA_STATIONS.first() else {
-        return (0.0, 0.1, 0.1, -0.1, 0.1, 0.1);
-    };
-    if y >= first.0 {
-        return (first.1, first.2, first.3, first.4, first.5, first.6);
-    }
-    for pair in GONDOLA_STATIONS.windows(2) {
-        if let [a, b] = pair
-            && y >= b.0
-        {
-            let t = ((a.0 - y) / (a.0 - b.0).max(1e-5)).clamp(0.0, 1.0);
-            let lerp = |u: f32, v: f32| u + (v - u) * t;
-            return (
-                lerp(a.1, b.1),
-                lerp(a.2, b.2),
-                lerp(a.3, b.3),
-                lerp(a.4, b.4),
-                lerp(a.5, b.5),
-                lerp(a.6, b.6),
-            );
-        }
-    }
-    let last = GONDOLA_STATIONS.last().copied().unwrap_or(first);
-    (last.1, last.2, last.3, last.4, last.5, last.6)
-}
-
-/// Evaluates a 3D surface point on the central gondola hull at `(y, theta)`.
-#[must_use]
-pub fn gondola_point(y: f32, theta: f32) -> Vec3 {
-    let (z_mid, half_w, z_top, z_bot, _, _) = interpolate_gondola(y);
-    let (sin_t, cos_t) = theta.sin_cos();
-    let x = sin_t.signum() * sin_t.abs().powf(0.84) * half_w;
-    let z = if cos_t >= 0.0 {
-        z_mid + cos_t.powf(0.88) * (z_top - z_mid)
-    } else {
-        z_mid - (-cos_t).powf(0.82) * (z_mid - z_bot)
-    };
-    Vec3::new(x, y, z)
 }
 
 /// Linearly interpolates a tail-boom cross-section at longitudinal coordinate `y`.
@@ -386,12 +322,6 @@ pub fn fin_point(side: f32, z: f32, chord_frac: f32, out_sign: f32) -> Vec3 {
     let y = ly + (ty - ly) * u;
     let x = side * BOOM_X + out_sign * half_t * naca;
     Vec3::new(x, y, z)
-}
-
-/// Top-view reference half-width of the central gondola at longitudinal station `y`.
-#[must_use]
-pub fn three_view_gondola_outline_x(y: f32) -> f32 {
-    interpolate_gondola(y).1
 }
 
 /// Top-view reference half-width of a tail boom at longitudinal station `y`.

@@ -5,10 +5,11 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use glam::Vec3;
 
+use crate::gondola::gondola_point;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
     ANTI_GLARE, INSIGNIA_BLUE, INSIGNIA_WHITE, NOSE_ART_RED, STENCIL_YELLOW, boom_point, fin_point,
-    gondola_point, wing_surface_point,
+    wing_surface_point,
 };
 
 pub(crate) fn conformal_decal_prims() -> Vec<P38MeshPrim> {

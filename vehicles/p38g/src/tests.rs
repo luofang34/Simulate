@@ -1,4 +1,5 @@
 mod calibration;
+mod cockpit_stations;
 mod silhouette;
 mod surfaces;
 
@@ -43,7 +44,11 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
             .any(|p| p.prim_path == contract.main_instrument_panel.prim_path
                 && p.role == P38PartRole::CabinInterior)
     );
-    assert!(three_view_gondola_outline_x(0.30) > 0.58);
+    let widest = three_view_gondola_outline_x(crate::drawing::fs_to_y(120.0));
+    assert!(
+        (widest / crate::drawing::INCH_M - 18.995).abs() < 0.01,
+        "{widest}"
+    );
     assert!(three_view_wing_leading_y(0.0) > three_view_wing_trailing_y(0.0));
 }
 

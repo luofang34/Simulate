@@ -1,6 +1,6 @@
-//! Canopy framing seen from the seat: the windscreen bows and quarter posts, the
-//! top hatch's side rails and aft hinge bow, the side-window sills, the fixed rear
-//! glazing bows, and the frame around the internal armoured glass.
+//! Canopy framing seen from the seat: the windscreen quarter posts, the top hatch's
+//! bows and side rails, the side-window sills, the spine of the fixed rear glazing,
+//! and the frame around the internal armoured glass.
 //!
 //! Members are solid tubes set just inside the glazing loft so they read from the
 //! cockpit as well as from outside; flush exterior straps vanish from inside.
@@ -9,16 +9,15 @@ use std::f32::consts::FRAC_PI_2;
 
 use glam::Vec3;
 
-use crate::cockpit_opening::{GLAZING_BASE_DROP_M, OPENING_AFT_Y, OPENING_FWD_Y};
+use crate::canopy::armor_glass_corners;
+use crate::drawing::{
+    CANOPY_TAIL_FS_IN, HATCH_AFT_FRAME_FS_IN, WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN,
+    fs_to_y,
+};
+use crate::gondola::{canopy_point, canopy_sill_z};
 use crate::mesh::{MeshBuilder, P38MeshPrim, P38PartRole, fixed};
-use crate::stations::{CANOPY_FRAME, GUNMETAL, interpolate_gondola};
+use crate::stations::{CANOPY_FRAME, GUNMETAL};
 
-/// Windscreen top bow, where the hinged top hatch begins (`FS 94`).
-const WINDSCREEN_TOP_Y: f32 = 1.16;
-/// Aft hatch bow carrying the hatch hinge, behind the pilot's head.
-const HATCH_HINGE_Y: f32 = -0.10;
-/// Forward bow of the fixed rear glazing.
-const REAR_GLAZING_Y: f32 = -0.42;
 /// Arc angle of the windscreen quarter posts either side of the centre panel.
 const QUARTER_POST_A: f32 = 0.46;
 /// Arc angle of the hatch side rails above the wind-down side windows.
@@ -27,18 +26,14 @@ const HATCH_RAIL_A: f32 = 1.0;
 const MEMBER_R: f32 = 0.010;
 /// How far inside the glass the member centreline sits.
 const INSET_M: f32 = 0.016;
+/// Stations short of the canopy's pointed ends where the lengthwise members stop.
+const END_MARGIN_IN: f32 = 4.0;
 
 /// A point on the glazing loft at station `y`, arc angle `a` (`-π/2` left sill,
 /// `0` crown, `+π/2` right sill), pulled `INSET_M` towards the cockpit.
 fn glazing_point(y: f32, a: f32) -> Vec3 {
-    let (_, _, z_top_hull, _, z_canopy, w_canopy) = interpolate_gondola(y);
-    let z_base = z_top_hull - GLAZING_BASE_DROP_M;
-    let dz = (z_canopy - z_base).max(0.02);
-    let (sin_a, cos_a) = a.sin_cos();
-    let x = sin_a.signum() * sin_a.abs().powf(0.86) * w_canopy;
-    let z = z_base + cos_a.max(0.0).powf(0.84) * dz;
-    let p = Vec3::new(x, y, z);
-    let inward = (Vec3::new(0.0, y, z_base) - p).normalize_or(Vec3::NEG_Z);
+    let p = canopy_point(y, a);
+    let inward = (Vec3::new(0.0, y, canopy_sill_z(y)) - p).normalize_or(Vec3::NEG_Z);
     p + inward * INSET_M
 }
 
@@ -65,31 +60,20 @@ fn rail(mesh: &mut MeshBuilder, a: f32, y_from: f32, y_to: f32) {
 }
 
 pub(crate) fn canopy_frame_prims() -> Vec<P38MeshPrim> {
+    let windscreen_top = fs_to_y(WINDSCREEN_TOP_FRAME_FS_IN);
+    let hatch_aft = fs_to_y(HATCH_AFT_FRAME_FS_IN);
+    let front = fs_to_y(WINDSCREEN_BASE_FS_IN + END_MARGIN_IN);
+    let tail = fs_to_y(CANOPY_TAIL_FS_IN - END_MARGIN_IN);
     let mut frames = MeshBuilder::new();
-    for y in [
-        OPENING_FWD_Y,
-        WINDSCREEN_TOP_Y,
-        HATCH_HINGE_Y,
-        REAR_GLAZING_Y,
-    ] {
+    for y in [windscreen_top, hatch_aft] {
         bow(&mut frames, y);
     }
     for side in [-1.0_f32, 1.0] {
-        rail(
-            &mut frames,
-            side * QUARTER_POST_A,
-            OPENING_FWD_Y,
-            WINDSCREEN_TOP_Y,
-        );
-        rail(
-            &mut frames,
-            side * HATCH_RAIL_A,
-            WINDSCREEN_TOP_Y,
-            OPENING_AFT_Y,
-        );
-        rail(&mut frames, side * FRAC_PI_2, OPENING_FWD_Y, OPENING_AFT_Y);
+        rail(&mut frames, side * QUARTER_POST_A, front, windscreen_top);
+        rail(&mut frames, side * HATCH_RAIL_A, windscreen_top, hatch_aft);
+        rail(&mut frames, side * FRAC_PI_2, front, tail);
     }
-    rail(&mut frames, 0.0, HATCH_HINGE_Y, OPENING_AFT_Y);
+    rail(&mut frames, 0.0, hatch_aft, tail);
     let mut prims = vec![fixed(
         "/P38g/Canopy/InteriorFrames",
         P38PartRole::CabinExterior,
@@ -99,15 +83,9 @@ pub(crate) fn canopy_frame_prims() -> Vec<P38MeshPrim> {
 
     // Steel retainer around the internal armoured glass, matching its quad corners.
     let mut armor = MeshBuilder::new();
-    let corners = [
-        Vec3::new(-0.18, 1.54, 0.52),
-        Vec3::new(0.18, 1.54, 0.52),
-        Vec3::new(0.16, 1.18, 0.87),
-        Vec3::new(-0.16, 1.18, 0.87),
-        Vec3::new(-0.18, 1.54, 0.52),
-    ];
-    for pair in corners.windows(2) {
-        if let [a, b] = pair {
+    let corners = armor_glass_corners();
+    for (i, a) in corners.iter().enumerate() {
+        if let Some(b) = corners.get((i + 1) % corners.len()) {
             armor.tube(*a, *b, 0.012, 0.012, 6);
         }
     }

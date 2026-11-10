@@ -8,8 +8,9 @@ use std::f32::consts::PI;
 use glam::Vec3;
 
 use crate::airframe::WING_CHORD_STEPS;
+use crate::gondola::gondola_point;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
-use crate::stations::{BOOM_X, OLIVE_DRAB, boom_point, gondola_point, wing_surface_point};
+use crate::stations::{BOOM_X, OLIVE_DRAB, boom_point, wing_surface_point};
 
 /// Chordwise sections per fillet (the wing loft's own cosine spacing, so the fillet's
 /// wing edge runs along the wing mesh's chord lines) and points per section.

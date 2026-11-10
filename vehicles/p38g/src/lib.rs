@@ -4,11 +4,12 @@
 //! Designed so each aircraft model is decoupled from rendering/map adapters (`sim-maplibre`)
 //! and can live as an independent repository:
 //! - [`stations`]: Lockheed engineering 3-view reference envelope and station ordinate tables
-//!   (`FS 0..248` central gondola, `BS 0..428` twin booms, `WS 0..312` cambered `NACA 23016 -> 4412`
-//!   wing, and `WL -14..+62` vertical fins),
-//! - [`cockpit_reservation`]: Reserved 3D cockpit station contract (`FS 86` instrument panel mount,
-//!   optical reflector gunsight mount, starboard control-girder pivot, left engine/feathering
-//!   quadrant, right flap/cooling console, `FS 154` pilot armor bulkhead, and `FS 182` radio bay),
+//!   (`BS 0..428` twin booms, `WS 0..312` cambered `NACA 23016 -> 4412` wing, and
+//!   `WL -14..+62` vertical fins); [`GONDOLA_SECTIONS`]: the central gondola's mould line and
+//!   canopy, section by section,
+//! - [`cockpit_reservation`]: Reserved 3D cockpit station contract (instrument panel frame,
+//!   design eyepoint and seat reference point, gunsight mount, control column, side consoles,
+//!   seat-back armour and floor levels),
 //! - [`powerplant`]: Allison V-1710-51/-55 `60°` V-12 external reduction gearbox, exhaust
 //!   collectors to the dorsal GE B-13 turbosuperchargers, wing leading-edge
 //!   intercooler louvers and chin oil cooler; [`radiators`]: the glycol radiator scoops on the
@@ -20,14 +21,17 @@
 mod airframe;
 mod articulated;
 mod calibration;
+mod canopy;
 mod canopy_frames;
 mod cockpit_controls;
+mod cockpit_interior;
 mod cockpit_opening;
-mod cockpit_reservation;
+pub mod cockpit_reservation;
 mod decals;
 pub mod drawing;
 mod fillets;
 mod gear;
+mod gondola;
 mod instrument_panel;
 mod mesh;
 mod package;
@@ -42,13 +46,18 @@ pub use calibration::{P38BlueprintCalibrationReport, verify_p38g_three_view_and_
 pub use cockpit_reservation::{
     CockpitInteriorContract, PanelMountFrame, StationBulkheadSpec, p38g_cockpit_contract,
 };
+pub use gondola::{
+    GONDOLA_SECTIONS, GondolaSection, canopy_point, canopy_sill_z, gondola_half_width_at,
+    gondola_point, gondola_section, interpolate_gondola, opening_edge_theta, section_y,
+    three_view_gondola_outline_x,
+};
 pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
 pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
 pub use stations::{
-    AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, HTAIL_Z,
-    OVERALL_HEIGHT_M, OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_BLADE_OFFSET_M, PROP_HUB_Y,
-    PROP_HUB_Z, PROP_RADIUS_M, ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TIP_START_X,
-    TURBO_NOZZLE_Y, WING_AREA_M2, WING_DIHEDRAL_DEG, boom_point, fin_point, gondola_point,
-    interpolate_boom, interpolate_gondola, three_view_boom_outline_x, three_view_gondola_outline_x,
-    three_view_wing_leading_y, three_view_wing_trailing_y, wing_station, wing_surface_point,
+    AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, OVERALL_HEIGHT_M,
+    OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,
+    ROOT_CHORD_M, RUDDER_HINGE_Y, SEMI_SPAN, TIP_CHORD_M, TIP_START_X, TURBO_NOZZLE_Y,
+    WING_AREA_M2, WING_DIHEDRAL_DEG, boom_point, fin_point, interpolate_boom,
+    three_view_boom_outline_x, three_view_wing_leading_y, three_view_wing_trailing_y, wing_station,
+    wing_surface_point,
 };

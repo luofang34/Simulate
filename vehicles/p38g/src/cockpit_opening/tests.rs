@@ -51,13 +51,16 @@ fn the_seated_pilot_sees_the_instrument_panel_past_the_dorsal_skin() {
     }
 }
 
+/// The eye is above the sill, and the canopy clears a helmeted head: `4.4 in` from eye
+/// to crown, `0.5 in` of helmet and at least `1.5 in` to spare.
 #[test]
 fn the_design_eyepoint_sits_under_the_canopy_with_headroom() {
     let eye = Vec3::from_array(p38g_cockpit_contract().design_eyepoint_m);
-    let (_, _, z_hull_top, _, z_canopy, _) = crate::interpolate_gondola(eye.y);
-    assert!(eye.z > z_hull_top + 0.08, "eye {eye} below the sill");
+    let sill = crate::canopy_sill_z(eye.y);
+    let (.., z_canopy, _) = crate::interpolate_gondola(eye.y);
+    assert!(eye.z > sill + 0.08, "eye {eye} below the sill");
     assert!(
-        z_canopy - eye.z > 0.2,
+        z_canopy - eye.z > 6.4 * 0.0254,
         "eye {eye} under {z_canopy} m canopy"
     );
 }
