@@ -40,7 +40,12 @@ const LANDMARKS: &[LandmarkQuery] = &[
         Side::Any,
         [0.0, 1.0, 0.0],
     ),
-    q("canopy_top", "/Canopy/Glazing", Side::Any, [0.0, 0.0, 1.0]),
+    q(
+        "canopy_top",
+        "/Canopy/Glazing/Hatch",
+        Side::Any,
+        [0.0, 0.0, 1.0],
+    ),
     q(
         "gondola_tail",
         "/Gondola/UpperOlive",
