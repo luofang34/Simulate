@@ -121,6 +121,7 @@ pub struct TruthSceneMap {
     aircraft_library: SharedAircraftLibrary,
     aircraft_draws: SlotDraws,
     sun_ecef: DVec3,
+    shutter_s: f64,
     pixel_ratio: Option<f64>,
 }
 
@@ -199,6 +200,7 @@ impl TruthSceneMap {
             aircraft_library,
             aircraft_draws,
             sun_ecef: DVec3::Z,
+            shutter_s: UsdAircraftAsset::DISPLAY_SHUTTER_S,
             pixel_ratio: None,
         })
     }
@@ -271,6 +273,12 @@ impl TruthSceneMap {
         self.runtime.with_runtime_context(|| {
             crate::supply_catalog_ortho_synchronously(&mut self.map, scenery, "ortho")
         })
+    }
+
+    /// Sets the exposure time of the camera the scene is drawn for, which a turning
+    /// propeller smears over; the eye's by default.
+    pub fn set_shutter_exposure_s(&mut self, shutter_s: f64) {
+        self.shutter_s = shutter_s;
     }
 
     /// Updates the ECEF solar direction driving globe daylight, twilight, and atmosphere.
@@ -464,6 +472,7 @@ impl TruthSceneMap {
             daylight,
             ownship_role,
             slot,
+            shutter_s: self.shutter_s,
         };
         SlotScene {
             draws: pack_slot_draws(&library, frame.aircraft, polar_skiway, &view),

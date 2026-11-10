@@ -162,37 +162,68 @@ fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     return vec4<f32>(filmic(radiance, EXPOSURE * sky.sun.w), alpha);
 }
 
-fn propeller_disc(in: VertexOut) -> vec4<f32> {
+// Peak of the opacity an articulation gives a propeller's blur (`disc_opacity` of
+// `sim_core::PropellerVisualState`): its share of that peak is how far the solid blades
+// have given way to their blur.
+const DISC_PEAK_OPACITY: f32 = 0.34;
+// Widest chord of a blade as a share of its radius, and the radius shares its root and
+// yellow tip reach (assumed: a paddle blade of the period, 10 in wide on a 5 ft 9 in
+// radius, tipped 4 in).
+const BLADE_CHORD: f32 = 0.145;
+const BLADE_ROOT: f32 = 0.14;
+const BLADE_TIP_PAINT: f32 = 0.94;
+
+// Chord of a blade at radius share `x`, as a share of the radius: a shank widening to the
+// broadest section near mid-span, then narrowing to a rounded tip.
+fn blade_chord(x: f32) -> f32 {
+    let shank = smoothstep(BLADE_ROOT, 0.45, x);
+    let tip = sqrt(max(1.0 - pow(max(x - 0.55, 0.0) / 0.45, 2.0), 0.0));
+    return BLADE_CHORD * (0.45 + 0.55 * shank) * tip;
+}
+
+// A turning propeller as a camera records it: each point of the disc is covered by a
+// blade for the share of the exposure the blade takes to cross it. A short exposure or a
+// slow propeller leaves separate ghost blades; a long one an even disc, denser toward
+// the hub where the blades are wide for their circle, thinning to nothing at the tips.
+fn propeller_disc(in: VertexOut, front: bool) -> vec4<f32> {
     // The disc's texture coordinates span the unit disc about the hub.
     let uv = in.uv;
     let r = length(uv);
-    if (r > 1.0 || r < 0.12) {
+    if (r > 1.0 || r < BLADE_ROOT) {
         discard;
     }
-    // Blade density peaks mid-span and fades at the spinner and the tips.
-    let radial = smoothstep(0.12, 0.22, r) * (1.0 - smoothstep(0.86, 0.99, r)) * (0.55 + 0.45 * sin(r * PI));
-    // Two or three blades smeared over the shutter interval.
     let blades = select(2.0, 3.0, draw.params.w > 2.5);
+    // Angle a blade's chord spans at this radius, and the angle it sweeps while the
+    // shutter is open.
+    let width = blade_chord(r) / r;
+    let sweep = max(draw.params.z, 0.02);
     let theta = atan2(uv.y, uv.x) - draw.params.y;
-    let blur = max(draw.params.z, 0.05);
-    let wedge = pow(0.5 + 0.5 * cos(blades * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
-    let tip = smoothstep(0.945, 0.962, r) * (1.0 - smoothstep(0.986, 0.998, r));
-    let base = draw.base_color.a;
-    // `base` is the disc's peak opacity (the articulation's `disc_opacity`).
-    let blade_alpha = base * radial * (0.30 + 0.70 * wedge);
-    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.48;
-    let blade_rgb = draw.base_color.rgb * (0.4 + 0.6 * draw.sun.w);
-    let raw_tip = select(vec3<f32>(0.86, 0.88, 0.90), draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
-    let tip_rgb = raw_tip * (0.4 + 0.6 * draw.sun.w);
-    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.34);
-    let rgb = (blade_rgb * blade_alpha + tip_rgb * tip_alpha);
-    return vec4<f32>(rgb, alpha);
+    let spacing = 2.0 * PI / blades;
+    var covered = 0.0;
+    for (var i = -1; i <= 1; i++) {
+        // Nearest blade and its neighbours: a sweep wider than the spacing overlaps them.
+        let d = abs(theta - spacing * (round(theta / spacing) + f32(i)));
+        covered += clamp(0.5 * (width + sweep) - d, 0.0, min(width, sweep));
+    }
+    let presence = clamp(draw.base_color.a / DISC_PEAK_OPACITY, 0.0, 1.0);
+    let alpha = clamp(covered / sweep, 0.0, 1.0) * presence;
+    // The blur is lit as the blades' flat faces are: by the Sun, sky and ground on the
+    // side of the disc that faces the viewer.
+    var n = normalize(in.normal);
+    if (!front) {
+        n = -n;
+    }
+    let tip_paint = select(draw.base_color.rgb, draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
+    let paint = mix(draw.base_color.rgb, tip_paint, smoothstep(BLADE_TIP_PAINT - 0.005, BLADE_TIP_PAINT + 0.005, r));
+    let light = sky.sun.rgb * max(dot(n, normalize(draw.sun.xyz)), 0.0) + sky_irradiance(n) + ground_irradiance(n, 1.0);
+    let rgb = filmic(paint * light / PI, EXPOSURE * sky.sun.w);
+    return vec4<f32>(rgb * alpha, alpha);
 }
 
 @fragment
 fn fs_translucent(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     if (draw.params.w > 1.5) {
-        return propeller_disc(in);
+        return propeller_disc(in, front);
     }
     return glass(in, front);
 }

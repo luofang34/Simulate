@@ -23,6 +23,10 @@ use crate::vehicles::FreeFlightVehicle;
 /// Sun for a photo whose light gives no direction: high and over the camera's left
 /// shoulder, which shows shape without hard shadows.
 const DEFAULT_SUN_DEG: (f64, f64) = (-35.0, 55.0);
+/// Exposure the photo renders are taken with: 1/500 s, fitted to the arc of about 20°
+/// each blade smears over in photo 03 at the model's cruise propeller speed (the aerial
+/// and press cameras of the period offered 1/125 to 1/1000 s).
+const PHOTO_SHUTTER_S: f64 = 1.0 / 500.0;
 /// `50 ms` steps flown before a shot.
 const GEAR_SETTLE_STEPS: usize = 200;
 
@@ -121,6 +125,9 @@ fn pose_aircraft(h: &mut VerifyHarness, matched: &Match) -> Result<bool, AppSimE
     h.flight.update_system_controls(|sys| {
         sys.gear_down = gear_down;
         sys.prop_feather = [stopped; 2];
+        // The airborne spawn leaves the engines stopped; the starter turns them over.
+        sys.starter = !stopped;
+        sys.fuel_cutoff = stopped;
     });
     let throttle = if stopped { 0.0 } else { 0.8 };
     // Long enough for the gear to finish travelling, or the parked airframe to settle.
@@ -157,6 +164,10 @@ fn capture(
 ) -> Result<Vec<u8>, AppSimError> {
     h.rig.supervisor_mut().set_viewport_mode(mode);
     h.rig.supervisor_mut().set_virtual_camera_index(0);
+    // The maps exist once a first frame has been prepared; the shutter is set on each.
+    if let Some(maps) = h.rig.maps_mut() {
+        maps.set_camera_shutter_s(PHOTO_SHUTTER_S);
+    }
     let pose = matched.solved.pose;
     let fov_y_rad = framing.render_fov_y_rad;
     let camera = |h: &VerifyHarness| Some(photo_camera(h, &pose, fov_y_rad));
