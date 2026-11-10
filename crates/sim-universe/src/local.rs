@@ -25,6 +25,11 @@ pub trait LocalPlant {
     /// Radius of a sphere about the centre of gravity that encloses the
     /// vessel, m: what the orbital tier's proximity checks treat it as.
     fn bounding_radius_m(&self) -> f64;
+    /// Whether something only flight dynamics model is acting on the
+    /// vessel now, such as ground contact, air loads or a running engine. A
+    /// tier policy leaves such a vessel in the local tier however high it
+    /// is.
+    fn holds_local_tier(&self) -> bool;
     /// Advances one period.
     fn step(&mut self) -> Result<(), UniverseError>;
 }
@@ -97,6 +102,10 @@ impl LocalPlant for CoastingRigidBody {
 
     fn bounding_radius_m(&self) -> f64 {
         self.bounding_radius_m
+    }
+
+    fn holds_local_tier(&self) -> bool {
+        false
     }
 
     fn step(&mut self) -> Result<(), UniverseError> {

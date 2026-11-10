@@ -66,6 +66,12 @@ axes about a primary body, with a full solar-system force model. They meet in
   moves that origin between Earth, the Moon, Mars and the solar-system
   barycentre as the vessel travels, and `Universe::central_body` reports it.
   A vessel comes back to flight dynamics about whichever body it then orbits.
+- A `TierPolicy` makes those handoffs by itself. It holds, per body, the
+  height above which a local vessel goes orbital and a lower height below
+  which an orbital one comes back, so a vessel skimming one threshold does
+  not flip. It acts only at whole multiples of its check period, and a local
+  plant in ground contact, in air or under power holds its tier.
+  `Universe::take_tier_changes` reports what it did.
 - `Universe::command` stamps a burn law or another command on an orbital
   vessel at an instant. It takes effect at exactly that instant.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the

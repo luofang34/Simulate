@@ -10,9 +10,11 @@
 mod error;
 mod handoff;
 mod local;
+mod tiering;
 mod universe;
 
 pub use error::UniverseError;
 pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 pub use local::{CoastingRigidBody, LocalFactory, LocalPlant};
+pub use tiering::{AltitudeBand, TierChange, TierPolicy};
 pub use universe::{OrbitalContext, Tier, Universe};
