@@ -13,6 +13,6 @@ mod local;
 mod universe;
 
 pub use error::UniverseError;
-pub use handoff::{InertialExtras, naif_body, to_body_fixed, to_inertial};
+pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 pub use local::{CoastingRigidBody, LocalFactory, LocalPlant};
 pub use universe::{OrbitalContext, Tier, Universe};

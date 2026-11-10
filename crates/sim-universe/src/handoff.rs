@@ -32,6 +32,20 @@ pub fn naif_body(body: BodyEllipsoid) -> Option<NaifId> {
     }
 }
 
+/// The reference ellipsoid whose fixed frame flight dynamics use about
+/// `body`, or `None` for an origin nothing can fly a body-fixed state about,
+/// such as the Sun or a barycentre.
+#[must_use]
+pub fn body_ellipsoid(body: NaifId) -> Option<BodyEllipsoid> {
+    [
+        BodyEllipsoid::WGS84,
+        BodyEllipsoid::MOON_IAU,
+        BodyEllipsoid::MARS_IAU,
+    ]
+    .into_iter()
+    .find(|&ellipsoid| naif_body(ellipsoid) == Some(body))
+}
+
 /// What the orbital tier carries that a body-fixed state does not.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InertialExtras {

@@ -11,8 +11,9 @@ pub enum UniverseError {
     /// No vessel has this id.
     #[error("no vessel {0:?}")]
     UnknownVessel(VesselId),
-    /// The vessel's central body has no orbital ephemeris or orientation.
-    #[error("the vessel's central body is not one the orbital tier models")]
+    /// The vessel's central body has no orbital ephemeris or orientation,
+    /// or its orbit is centred on an origin with no body-fixed frame.
+    #[error("the vessel's central body has no body-fixed frame the tiers share")]
     UnmodelledBody,
     /// An orbital state centred on one body was offered to another's frame.
     #[error("orbital state is centred on {found:?}, not {expected:?}")]
@@ -22,6 +23,9 @@ pub enum UniverseError {
         /// The body the state is centred on.
         found: NaifId,
     },
+    /// The request needs the vessel in the orbital tier.
+    #[error("vessel {0:?} is not in the orbital tier")]
+    NotOrbital(VesselId),
     /// The vessel is already in the requested tier.
     #[error("vessel {0:?} is already in that tier")]
     AlreadyInTier(VesselId),
