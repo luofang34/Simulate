@@ -354,8 +354,11 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
 #[test]
 fn the_aircraft_and_studio_shaders_validate() {
     use wgpu::naga::{front::wgsl, valid};
+    let encoding = super::gpu::shader_source(wgpu::TextureFormat::Rgba8UnormSrgb);
+    let stored = super::gpu::shader_source(wgpu::TextureFormat::Rgba8Unorm);
     for (name, source) in [
-        ("aircraft", super::gpu::SHADER),
+        ("aircraft, sRGB target", encoding.as_str()),
+        ("aircraft, linear target", stored.as_str()),
         ("studio", crate::hangar_preview::STUDIO_SHADER),
     ] {
         let module = wgsl::parse_str(source)

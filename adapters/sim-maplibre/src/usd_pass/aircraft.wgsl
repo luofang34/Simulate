@@ -62,9 +62,10 @@ fn vs(in: VertexIn) -> VertexOut {
     return out;
 }
 
-// Exposure at a clear noon: holds a sunlit, upward-facing panel at the level it had under
-// the pass's former sky-and-ground fill (assumed).
-const EXPOSURE: f32 = 2.2;
+// Exposure at a clear noon, metered as a photographer meters full Sun: an 18 % grey card
+// lit by beam and sky (radiance about 0.2 here) lands on the tone curve where it comes
+// out display mid-grey.
+const EXPOSURE: f32 = 1.5;
 
 fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let world = in.world;
@@ -121,7 +122,7 @@ fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let color = shade(in, front);
-    return vec4<f32>(filmic(color, EXPOSURE * sky.sun.w), 1.0);
+    return vec4<f32>(display(color, EXPOSURE * sky.sun.w), 1.0);
 }
 
 // Share of the light crossing a pane that its material's opacity absorbs: clean acrylic
@@ -159,7 +160,7 @@ fn glass(in: VertexOut, front: bool) -> vec4<f32> {
         radiance += sky.sun.rgb * sun_visibility(in.world, n, in.clip.xy) * glint * f_h * n_dot_l;
     }
     let alpha = 1.0 - (1.0 - reflected) * (1.0 - absorbed);
-    return vec4<f32>(filmic(radiance, EXPOSURE * sky.sun.w), alpha);
+    return vec4<f32>(display(radiance, EXPOSURE * sky.sun.w), alpha);
 }
 
 // Peak of the opacity an articulation gives a propeller's blur (`disc_opacity` of
@@ -216,7 +217,7 @@ fn propeller_disc(in: VertexOut, front: bool) -> vec4<f32> {
     let tip_paint = select(draw.base_color.rgb, draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
     let paint = mix(draw.base_color.rgb, tip_paint, smoothstep(BLADE_TIP_PAINT - 0.005, BLADE_TIP_PAINT + 0.005, r));
     let light = sky.sun.rgb * max(dot(n, normalize(draw.sun.xyz)), 0.0) + sky_irradiance(n) + ground_irradiance(n, 1.0);
-    let rgb = filmic(paint * light / PI, EXPOSURE * sky.sun.w);
+    let rgb = display(paint * light / PI, EXPOSURE * sky.sun.w);
     return vec4<f32>(rgb * alpha, alpha);
 }
 

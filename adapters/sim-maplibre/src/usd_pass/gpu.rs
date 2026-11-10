@@ -18,12 +18,22 @@ use super::textures::AssetTexturesGpu;
 use super::{AircraftLibrary, AssetKey, DRAW_BYTES, DRAW_STRIDE, SharedAircraftLibrary, SlotDraws};
 use crate::UsdAircraftAsset;
 
-pub(super) const SHADER: &str = concat!(
+const SHADER: &str = concat!(
     include_str!("shading.wgsl"),
     include_str!("aircraft.wgsl"),
     include_str!("shadow.wgsl"),
     include_str!("sky.wgsl")
 );
+
+/// The pass's shader for a colour target of `format`: a target that does not encode sRGB
+/// on write is given encoded colour by the shader instead (see `display` in
+/// `shading.wgsl`).
+pub(super) fn shader_source(format: wgpu::TextureFormat) -> String {
+    format!(
+        "const TARGET_ENCODES: bool = {};\n{SHADER}",
+        format.is_srgb()
+    )
+}
 
 /// One part's static vertex and index buffers.
 pub(super) struct PartMesh {
@@ -151,7 +161,7 @@ impl UsdPassGpu {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("usd aircraft"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(shader_source(format).into()),
         });
         let shadow = ShadowGpu::new(
             device,

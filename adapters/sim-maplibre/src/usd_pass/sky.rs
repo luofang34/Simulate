@@ -43,7 +43,8 @@ const DAY_SKY_SHARE: f32 = 0.115;
 const MAX_EXPOSURE_GAIN: f32 = 6.0;
 /// Share (as an exponent) of a fall in light the exposure makes up: a camera metering a
 /// scene with the bright sky in it, like the eye, compensates only partly, so low Sun
-/// still reads darker and warmer than noon (assumed).
+/// still reads darker and warmer than noon (fitted: the airframe's median tone in a
+/// colour photograph taken with the Sun 8° up, photo match `p38_10`).
 const ADAPTATION: f32 = 0.7;
 /// Sun elevation of the clear noon the exposure gain is relative to.
 const NOON_ELEVATION_DEG: f32 = 70.0;

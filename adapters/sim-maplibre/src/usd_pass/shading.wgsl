@@ -41,6 +41,19 @@ fn filmic(radiance: vec3<f32>, exposure: f32) -> vec3<f32> {
     return clamp(graded, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// What the colour target is given for scene `radiance`: the tone curve's output, linear
+// where the target encodes sRGB on write (`TARGET_ENCODES`, declared by the pass for its
+// target's format), sRGB-encoded here where it stores what it is given.
+fn display(radiance: vec3<f32>, exposure: f32) -> vec3<f32> {
+    let linear = filmic(radiance, exposure);
+    if (TARGET_ENCODES) {
+        return linear;
+    }
+    let low = linear * 12.92;
+    let high = 1.055 * pow(linear, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(high, low, linear <= vec3<f32>(0.0031308));
+}
+
 // Procedural paint finish (see `SurfaceDetail`): seams, rivet rows, fading, soot and
 // cavity grime, from the part-local position so they stay fixed on the skin.
 struct Paint {
