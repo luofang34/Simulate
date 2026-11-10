@@ -241,18 +241,20 @@ fn uninterrupted_continuous_raketa_mission_fails_closed_at_unimplemented_transit
                     RaketaMissionPhase::EarthPadPinned,
                     RaketaMissionPhase::EarthLiftoff,
                     RaketaMissionPhase::GravityTurnAscent,
+                    RaketaMissionPhase::TransInjectionBurn,
+                    RaketaMissionPhase::DeepSpaceTransfer,
                 ]
             );
             assert_eq!(
                 missing_transition_from,
-                RaketaMissionPhase::GravityTurnAscent
+                RaketaMissionPhase::DeepSpaceTransfer
             );
             assert_eq!(
                 missing_transition_to,
-                RaketaMissionPhase::TransInjectionBurn
+                RaketaMissionPhase::ArrivalBrakingOrEntry
             );
-            assert_eq!(terminal_state.primary_body, NaifId::EARTH);
-            assert!(terminal_state.pos_rel_icrf_m.length() > 6_378_137.0 + 10_000.0);
+            assert_eq!(terminal_state.primary_body, NaifId::MOON);
+            assert!(terminal_state.pos_rel_icrf_m.length() < 66_183_000.0);
             assert!(fin_lock_verified);
         }
         other => panic!("expected IncompleteContinuousMission, got {other:?}"),
@@ -306,13 +308,52 @@ fn staged_raketa_earth_to_moon_and_mars_phase_demonstrations_verified() {
 }
 
 #[test]
-fn continuous_pad_to_leo_and_trans_mars_injection_runs_with_zero_state_resets() {
+fn raketa_flies_from_the_pad_into_the_moons_sphere_of_influence_with_no_state_reset() {
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let fm = ForceModel::standard_solar_system(solar.constants.clone()).expect("fm");
+    let t0 = TdbEpoch::new(835_000_000, 0);
+
+    let cont =
+        run_continuous_pad_to_transfer(&solar, &fm, t0, RaketaMissionTarget::MoonTranquility)
+            .expect("continuous pad to Moon SOI");
+    assert_eq!(cont.explicit_state_reinitializations, 0);
+    assert_eq!(
+        cont.phases_completed,
+        vec![
+            RaketaMissionPhase::EarthPadPinned,
+            RaketaMissionPhase::EarthLiftoff,
+            RaketaMissionPhase::GravityTurnAscent,
+            RaketaMissionPhase::TransInjectionBurn,
+            RaketaMissionPhase::DeepSpaceTransfer,
+        ]
+    );
+    assert!(cont.fin_lock_verified);
+    assert!(cont.peak_proper_accel_g <= 4.000_001);
+    assert_eq!(cont.terminal_state.primary_body, NaifId::MOON);
+    let flight_days = cont.terminal_epoch.signed_offset_seconds_from(t0) / 86_400.0;
+    assert!(
+        (2.0..4.0).contains(&flight_days),
+        "lunar transfer took {flight_days:.2} days"
+    );
+    assert!(
+        cont.terminal_distance_to_target_m < 66_183_000.0,
+        "terminal distance from the Moon: {:.0} km",
+        cont.terminal_distance_to_target_m * 1e-3
+    );
+    assert!(
+        (cont.terminal_state.pos_rel_icrf_m.length() - cont.terminal_distance_to_target_m).abs()
+            < 1.0
+    );
+}
+
+#[test]
+fn raketa_flies_from_the_pad_into_marss_sphere_of_influence_with_no_state_reset() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
     let fm = ForceModel::standard_solar_system(solar.constants.clone()).expect("fm");
     let t0 = TdbEpoch::new(835_000_000, 0);
 
     let cont = run_continuous_pad_to_transfer(&solar, &fm, t0, RaketaMissionTarget::MarsSurface)
-        .expect("continuous pad to Mars transfer");
+        .expect("continuous pad to Mars SOI");
     assert_eq!(cont.explicit_state_reinitializations, 0);
     assert_eq!(
         cont.phases_completed,
@@ -327,5 +368,18 @@ fn continuous_pad_to_leo_and_trans_mars_injection_runs_with_zero_state_resets() 
     assert!(cont.fin_lock_verified);
     assert!(cont.peak_proper_accel_g <= 4.000_001);
     assert_eq!(cont.terminal_state.primary_body, NaifId::MARS);
-    assert!(cont.terminal_epoch > cont.leo_insertion_epoch);
+    let flight_days = cont.terminal_epoch.signed_offset_seconds_from(t0) / 86_400.0;
+    assert!(
+        (100.0..360.0).contains(&flight_days),
+        "Martian transfer took {flight_days:.1} days"
+    );
+    assert!(
+        cont.terminal_distance_to_target_m < 577_200_000.0,
+        "terminal distance from Mars: {:.0} km",
+        cont.terminal_distance_to_target_m * 1e-3
+    );
+    assert!(
+        (cont.terminal_state.pos_rel_icrf_m.length() - cont.terminal_distance_to_target_m).abs()
+            < 1.0
+    );
 }

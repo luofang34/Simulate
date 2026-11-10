@@ -86,128 +86,21 @@ impl BuiltinSolarSystem2026_2028 {
     }
 }
 
-/// Builds an in-memory `4,096 B` little-endian `DAF/SPK` Type 2 Chebyshev kernel pack
-/// covering the Apollo 11 mission window (`1969-07-16 .. 1969-07-25 TDB`).
-#[must_use]
-pub fn apollo_1969_spk_bytes() -> Vec<u8> {
-    let mut bytes = vec![0_u8; 4_096];
-    write_slice(&mut bytes, 0, b"DAF/SPK ");
-    write_i32_le(&mut bytes, 8, 2);
-    write_i32_le(&mut bytes, 12, 6);
-    write_slice(&mut bytes, 16, b"APOLLO11_1969_SPK");
-    write_i32_le(&mut bytes, 76, 2);
-    write_i32_le(&mut bytes, 80, 2);
-    write_i32_le(&mut bytes, 84, 433);
-    write_slice(&mut bytes, 88, b"LTL-IEEE");
+/// Unaltered Type-2 Chebyshev granules of NASA NAIF `de440s.bsp` for the Sun, the
+/// planetary barycentres, Earth and the Moon over the Apollo 11 mission,
+/// `1969-07-14 .. 1969-07-27 TDB` (`9,216 B`), cut by
+/// `scripts/extract_apollo11_1969_subset.py`. Mars's own centre is not in `de440s`.
+const APOLLO11_SPK_1969_BYTES: &[u8] = include_bytes!("../../data/solar_de440s_apollo11_1969.bsp");
+/// Expected SHA-256 hex of [`APOLLO11_SPK_1969_BYTES`].
+const APOLLO11_SPK_1969_SHA256: &str =
+    "ad652a46560d184824cb8abfcdc566aef3723a051d87e51a346a392ed72b5793";
 
-    let start_s = -961_243_200.0_f64;
-    let end_s = -960_465_600.0_f64;
-    let mid_s = 0.5 * (start_s + end_s);
-    let radius_s = 0.5 * (end_s - start_s);
-
-    // Record 2 (offset 1024): summary header + 4 segment summaries (40 bytes each).
-    write_f64_le(&mut bytes, 1024, 0.0);
-    write_f64_le(&mut bytes, 1032, 0.0);
-    write_f64_le(&mut bytes, 1040, 4.0);
-
-    let segs = [
-        SpkSeedSegment {
-            target: 10,
-            center: 0,
-            pos0_km: [0.0, 0.0, 0.0],
-            pos1_km: [0.0, 0.0, 0.0],
-            label: b"SUN_SSB_1969",
-        },
-        SpkSeedSegment {
-            target: 3,
-            center: 0,
-            pos0_km: [72_963_000.0, -122_063_000.0, -52_903_000.0],
-            pos1_km: [25.68 * radius_s, 13.06 * radius_s, 5.66 * radius_s],
-            label: b"EMB_SSB_1969",
-        },
-        SpkSeedSegment {
-            target: 399,
-            center: 3,
-            pos0_km: [2_580.0, 3_760.0, 1_510.0],
-            pos1_km: [-0.009 * radius_s, 0.007 * radius_s, 0.003 * radius_s],
-            label: b"EARTH_EMB_1969",
-        },
-        SpkSeedSegment {
-            target: 301,
-            center: 3,
-            pos0_km: [-209_920.0, -306_040.0, -122_690.0],
-            pos1_km: [0.75 * radius_s, -0.56 * radius_s, -0.24 * radius_s],
-            label: b"MOON_EMB_1969",
-        },
-    ];
-
-    for (idx, seg) in segs.iter().enumerate() {
-        write_spk_segment(&mut bytes, idx, start_s, end_s, mid_s, radius_s, seg);
-    }
-    bytes
-}
-
-struct SpkSeedSegment<'a> {
-    target: i32,
-    center: i32,
-    pos0_km: [f64; 3],
-    pos1_km: [f64; 3],
-    label: &'a [u8],
-}
-
-fn write_spk_segment(
-    bytes: &mut [u8],
-    idx: usize,
-    start_s: f64,
-    end_s: f64,
-    mid_s: f64,
-    radius_s: f64,
-    seg: &SpkSeedSegment<'_>,
-) {
-    let start_word = 385_i32 + (idx as i32) * 12;
-    let sum_off = 1048 + idx * 40;
-    write_f64_le(bytes, sum_off, start_s);
-    write_f64_le(bytes, sum_off + 8, end_s);
-    write_i32_le(bytes, sum_off + 16, seg.target);
-    write_i32_le(bytes, sum_off + 20, seg.center);
-    write_i32_le(bytes, sum_off + 24, 1);
-    write_i32_le(bytes, sum_off + 28, 2);
-    write_i32_le(bytes, sum_off + 32, start_word);
-    write_i32_le(bytes, sum_off + 36, start_word + 11);
-    write_slice(bytes, 2048 + idx * 40, seg.label);
-
-    let data_off = ((start_word as usize) - 1) * 8;
-    let [p0x, p0y, p0z] = seg.pos0_km;
-    let [p1x, p1y, p1z] = seg.pos1_km;
-    let words = [
-        mid_s,
-        radius_s,
-        p0x,
-        p1x,
-        p0y,
-        p1y,
-        p0z,
-        p1z,
-        start_s,
-        end_s - start_s,
-        8.0,
-        1.0,
-    ];
-    for (w, &word) in words.iter().enumerate() {
-        write_f64_le(bytes, data_off + w * 8, word);
-    }
-}
-
-fn write_slice(buf: &mut [u8], offset: usize, src: &[u8]) {
-    if let Some(dst) = buf.get_mut(offset..offset.saturating_add(src.len())) {
-        dst.copy_from_slice(src);
-    }
-}
-
-fn write_i32_le(buf: &mut [u8], offset: usize, val: i32) {
-    write_slice(buf, offset, &val.to_le_bytes());
-}
-
-fn write_f64_le(buf: &mut [u8], offset: usize, val: f64) {
-    write_slice(buf, offset, &val.to_le_bytes());
+/// The embedded Apollo 11 `de440s` subset, after checking it against its pinned hash.
+pub fn apollo_1969_spk_bytes() -> Result<&'static [u8], BuiltinSolarError> {
+    super::verify_asset(
+        "apollo11_spk_1969",
+        APOLLO11_SPK_1969_BYTES,
+        APOLLO11_SPK_1969_SHA256,
+    )?;
+    Ok(APOLLO11_SPK_1969_BYTES)
 }

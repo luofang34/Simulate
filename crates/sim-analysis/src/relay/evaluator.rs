@@ -419,8 +419,12 @@ pub(super) fn evaluate_relay_at_epoch(
     ctx: &RelayEvalCtx<'_>,
     epoch: TdbEpoch,
 ) -> Result<RelayAccessSample, AccessAnalysisError> {
-    let hop1 = evaluate_pair_at_epoch(ctx.hop1_ctx, epoch)?;
     let hop2 = evaluate_pair_at_epoch(ctx.hop2_ctx, epoch)?;
+    let hop1_epoch = match (ctx.query.signal_time, hop2.light_time_s) {
+        (SignalTimeModel::LightTime, Some(lt2_s)) => epoch.advanced_seconds(-lt2_s),
+        _ => epoch,
+    };
+    let hop1 = evaluate_pair_at_epoch(ctx.hop1_ctx, hop1_epoch)?;
     let direct = if let Some(d_ctx) = ctx.direct_ctx {
         Some(evaluate_pair_at_epoch(d_ctx, epoch)?)
     } else {

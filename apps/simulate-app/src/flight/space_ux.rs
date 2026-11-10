@@ -2,8 +2,6 @@
 //! 3D `Orrery` projection, `AerospikePlumeVisual`), `WarpGovernor` bottleneck reporting,
 //! and live light-time `DSN` line-of-sight status.
 
-#![allow(dead_code)]
-
 use glam::{DQuat, DVec3};
 use sim_analysis::{
     OccultationEnvironmentModel, OccultingBodySpec, OccultingShape, check_signal_path_occultation,
@@ -33,6 +31,28 @@ pub enum SpaceReferenceFrame {
     BodyFixed,
     /// Rotating Sun–Earth synodic frame (`+X` Sun to Earth, `+Z` orbital angular momentum).
     SunEarthSynodic,
+}
+
+impl SpaceReferenceFrame {
+    /// Short HUD/title label for this reference frame.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BodyInertial => "ICRF",
+            Self::BodyFixed => "FIXED",
+            Self::SunEarthSynodic => "SYNODIC",
+        }
+    }
+
+    /// Next reference frame in the operator cycle (`ICRF -> FIXED -> SYNODIC -> ICRF`).
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::BodyInertial => Self::BodyFixed,
+            Self::BodyFixed => Self::SunEarthSynodic,
+            Self::SunEarthSynodic => Self::BodyInertial,
+        }
+    }
 }
 
 /// Live one-way light-time and line-of-sight status from the spaceflight ownship to
@@ -66,6 +86,13 @@ impl Flight {
         if let Mode::Space(world) = &mut self.mode {
             world.set_reference_frame(frame);
         }
+    }
+
+    /// Cycles the active [`SpaceReferenceFrame`] when a spaceflight is flying.
+    pub fn cycle_space_reference_frame(&mut self) -> Option<SpaceReferenceFrame> {
+        let next = self.space_reference_frame()?.next();
+        self.set_space_reference_frame(next);
+        Some(next)
     }
 
     /// Ownship position (`m`) and velocity (`m/s`) expressed in the active [`SpaceReferenceFrame`].
@@ -173,6 +200,20 @@ impl Flight {
             pos_rel_focus_icrf_m: own_pos,
             soi_radius_m: 0.0,
         });
+        if let Some(jwst) = world.jwst_l2_state() {
+            let primary_rel_focus = if jwst.primary_body == focus {
+                DVec3::ZERO
+            } else {
+                eph.geometric_state_icrf(jwst.primary_body, focus, at, DerivativeOrder::Position)
+                    .ok()?
+                    .pos_m
+            };
+            nodes.push(OrreryBodyNode {
+                id: i64::try_from(SpaceWorld::jwst_l2_id().0).unwrap_or(0),
+                pos_rel_focus_icrf_m: primary_rel_focus + jwst.pos_rel_icrf_m,
+                soi_radius_m: 0.0,
+            });
+        }
         Some(project_orrery_scene(
             &nodes,
             camera_pos_rel_focus_m,

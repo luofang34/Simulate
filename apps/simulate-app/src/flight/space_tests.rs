@@ -208,7 +208,7 @@ fn spaceflight_navigation_ux_warp_governor_and_light_time_dsn_link_are_live() {
     let orrery = flight
         .space_orrery_projection(DVec3::new(0.0, 0.0, 2.0e9), DQuat::IDENTITY, 1.0, 1.5)
         .expect("orrery");
-    assert_eq!(orrery.len(), 5);
+    assert_eq!(orrery.len(), 6);
 
     let (pos_inert, _) = flight.space_state_in_reference_frame().expect("inertial");
     flight.set_space_reference_frame(SpaceReferenceFrame::BodyFixed);

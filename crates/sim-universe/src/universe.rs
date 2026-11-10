@@ -160,6 +160,31 @@ impl Universe {
         Ok(())
     }
 
+    /// Adds a vessel starting directly in the orbital tier at [`Self::now`].
+    pub fn insert_orbital(
+        &mut self,
+        id: VesselId,
+        config: VesselConfig,
+        state: ContinuousPlantState,
+        rebuild: LocalFactory,
+    ) -> Result<(), UniverseError> {
+        if self.vessels.contains_key(&id) {
+            return Err(UniverseError::DuplicateVessel(id));
+        }
+        let checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        self.orbital
+            .insert_vessel(config, checkpoint)
+            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
+        self.vessels.insert(
+            id,
+            Vessel {
+                flight: Flight::Orbital,
+                rebuild,
+            },
+        );
+        Ok(())
+    }
+
     /// The vessels, in stepping order.
     pub fn ids(&self) -> impl Iterator<Item = VesselId> + '_ {
         self.vessels.keys().copied()

@@ -187,10 +187,27 @@ fn clocks_on_the_moon_and_on_mars_gain_what_the_four_body_studies_give() {
     );
     // Mars's mean orbit alone gives 487.9 µs/day: the Sun's potential and Mars's speed
     // averaged over its ellipse, and its own surface potential. Ashby and Patla (2025)
-    // report 477 µs/day from their solar-tide treatment; this first-order barycentric
-    // rate stays 2 % above that.
+    // report 477 µs/day after subtracting the -10.9 µs/day solar-tide synodic term,
+    // with a ~226 µs/day peak-to-peak (±113 µs/day) annual eccentricity modulation.
     assert!(
         (486.5..489.0).contains(&mars_us_day),
-        "Mars gains {mars_us_day} µs/day"
+        "Mars 1PN barycentric mean gains {mars_us_day} µs/day"
+    );
+    let ashby_patla_2025_mars_us_day = mars_us_day - 10.9;
+    assert!(
+        (475.5..478.5).contains(&ashby_patla_2025_mars_us_day),
+        "Ashby & Patla (2025) solar-tide-corrected Mars rate {ashby_patla_2025_mars_us_day} µs/day"
+    );
+    let (mut mars_min_us_day, mut mars_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
+    for day in 0..687_u64 {
+        let at = start().advanced_seconds(day as f64 * DAY_S);
+        let r_us_day = (mars_clock(at) - clocks.geoid(at)) * DAY_S * 1e6;
+        mars_min_us_day = mars_min_us_day.min(r_us_day);
+        mars_max_us_day = mars_max_us_day.max(r_us_day);
+    }
+    let mars_ecc_swing_us_day = mars_max_us_day - mars_min_us_day;
+    assert!(
+        (210.0..245.0).contains(&mars_ecc_swing_us_day),
+        "Mars–Earth synodic/eccentricity rate swing {mars_ecc_swing_us_day} µs/day"
     );
 }

@@ -109,13 +109,15 @@ pub fn third_body_tidal_accel_icrf(
     }
 }
 
-/// Configured multi-body point-mass + extended spherical-harmonic force model.
+/// Configured multi-body point-mass + extended spherical-harmonic + optional cannonball SRP force model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ForceModel {
     attracting_bodies: Vec<NaifId>,
     harmonic_bodies: Vec<NaifId>,
     dynamical_mode: DynamicalMode,
     max_harmonic_degree: u32,
+    #[serde(default)]
+    cannonball_srp_cr_area_over_mass_m2_kg: f64,
     constants: GravityConstantsCatalog,
     hash: ContentHash,
 }
@@ -145,15 +147,40 @@ impl ForceModel {
             &sorted_harm,
             dynamical_mode,
             max_harmonic_degree,
+            0.0,
         );
         Ok(Self {
             attracting_bodies: sorted_attr,
             harmonic_bodies: sorted_harm,
             dynamical_mode,
             max_harmonic_degree,
+            cannonball_srp_cr_area_over_mass_m2_kg: 0.0,
             constants,
             hash,
         })
+    }
+
+    /// Returns a copy of this [`ForceModel`] with isotropic cannonball solar radiation pressure
+    /// parameterized by effective reflectivity-weighted area-to-mass ratio $C_R A / m$ (`m²/kg`).
+    #[must_use]
+    pub fn with_cannonball_srp(mut self, cr_area_over_mass_m2_kg: f64) -> Self {
+        let clamped = cr_area_over_mass_m2_kg.max(0.0);
+        self.cannonball_srp_cr_area_over_mass_m2_kg = clamped;
+        self.hash = compute_force_hash(
+            &self.constants,
+            &self.attracting_bodies,
+            &self.harmonic_bodies,
+            self.dynamical_mode,
+            self.max_harmonic_degree,
+            clamped,
+        );
+        self
+    }
+
+    /// Effective reflectivity-weighted area-to-mass ratio $C_R A / m$ (`m²/kg`) for cannonball SRP.
+    #[must_use]
+    pub const fn cannonball_srp_cr_area_over_mass_m2_kg(&self) -> f64 {
+        self.cannonball_srp_cr_area_over_mass_m2_kg
     }
 
     /// Standard solar-system force model (`Sun`, `Mercury..Saturn` barycenters, `Earth`, `Moon`,
@@ -238,7 +265,36 @@ impl ForceModel {
             ephemeris,
             orientation,
         )?;
+        if self.cannonball_srp_cr_area_over_mass_m2_kg > 0.0 {
+            acc += self.cannonball_srp_accel(primary_body, pos_rel_icrf_m, epoch, ephemeris)?;
+        }
         Ok(acc)
+    }
+
+    fn cannonball_srp_accel(
+        &self,
+        primary_body: NaifId,
+        pos_rel_icrf_m: DVec3,
+        epoch: TdbEpoch,
+        ephemeris: &dyn EphemerisCatalog,
+    ) -> Result<DVec3, GravityError> {
+        const SOLAR_PRESSURE_1AU_PA: f64 = 1_361.0 / 299_792_458.0;
+        const AU_M: f64 = 149_597_870_700.0;
+        let sun_rel_primary = if primary_body == NaifId::SUN {
+            DVec3::ZERO
+        } else {
+            ephemeris
+                .geometric_state_icrf(NaifId::SUN, primary_body, epoch, DerivativeOrder::Position)?
+                .pos_m
+        };
+        let sun_to_sc = pos_rel_icrf_m - sun_rel_primary;
+        let r_sq = sun_to_sc.length_squared();
+        if r_sq <= 0.0 {
+            return Err(GravityError::SingularRadius(NaifId::SUN));
+        }
+        let r_norm = sqrt(r_sq);
+        let flux_pa = SOLAR_PRESSURE_1AU_PA * (AU_M * AU_M / r_sq);
+        Ok((flux_pa * self.cannonball_srp_cr_area_over_mass_m2_kg / r_norm) * sun_to_sc)
     }
 
     fn barycentric_point_mass_accel(
@@ -362,6 +418,7 @@ fn compute_force_hash(
     harmonics: &[NaifId],
     mode: DynamicalMode,
     max_deg: u32,
+    srp_cr_area_over_mass_m2_kg: f64,
 ) -> ContentHash {
     let mut h = DomainHasher::new(b"sim-orbital:force-model:v1");
     h.write_bytes(&constants.content_hash().0);
@@ -377,6 +434,9 @@ fn compute_force_hash(
     h.write_u64(harmonics.len() as u64);
     for id in harmonics {
         h.write_i32(id.0);
+    }
+    if srp_cr_area_over_mass_m2_kg > 0.0 {
+        h.write_u64(srp_cr_area_over_mass_m2_kg.to_bits());
     }
     h.finish()
 }

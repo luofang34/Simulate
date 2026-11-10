@@ -92,7 +92,7 @@ impl Mode {
             ControlInputs::default(),
         );
         session.register_sensor(OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD)?;
-        let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
+        let start = UtcTime::from_unix_seconds(certified_wall_clock_utc_s());
         let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
         Ok(Self::Free {
             vehicle,
@@ -101,13 +101,14 @@ impl Mode {
         })
     }
 
-    /// `Raketa` on its pad, at the wall-clock second the flight begins.
+    /// `Raketa` on its pad, at the wall-clock second the flight begins (or the certified
+    /// 2026 equinox default when the host clock lies outside the `2026..2028` kernel span).
     pub(super) fn space(
         surface: &WorldSurfaceHandle,
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
     ) -> Result<Self, AppSimError> {
-        let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
+        let start = UtcTime::from_unix_seconds(certified_wall_clock_utc_s());
         let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
         let ground_m = SpaceWorld::pad_ground_height_m(surface);
         Ok(Self::Space(Box::new(SpaceWorld::on_pad(
@@ -151,6 +152,17 @@ impl Mode {
 /// The step a spaceflight advances by.
 pub(super) const fn space_period() -> TickSpan {
     SpaceWorld::period()
+}
+
+/// Returns `wall_clock_utc_s().floor()` when inside the certified `2026..2028` kernel window,
+/// or defaults to `2026-03-20T12:00:00Z` (`1_774_008_000.0`) when the host clock is outside.
+fn certified_wall_clock_utc_s() -> f64 {
+    let raw = wall_clock_utc_s().floor();
+    if (1_767_225_600.0..=1_822_348_800.0).contains(&raw) {
+        raw
+    } else {
+        1_774_008_000.0
+    }
 }
 
 /// Shows the cockpit panel `plant`'s state at `timestamp`.

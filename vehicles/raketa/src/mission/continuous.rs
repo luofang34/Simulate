@@ -9,12 +9,12 @@ use glam::DVec3;
 use serde::{Deserialize, Serialize};
 use sim_core::TickSpan;
 use sim_orbital::{
-    AscentGuidanceConfig, BuiltinSolarSystem2026_2028, CoastControlLaw, ContinuousPlantState,
-    DerivativeOrder, EphemerisCatalog, FiniteBurnPlan, ForceModel, NaifId, PropellantMode,
-    STANDARD_GRAVITY_G0_M_S2, TdbEpoch, evaluate_gravity_turn_ascent, propagate_plant_interval,
-    solve_lambert_universal,
+    AscentGuidanceConfig, BuiltinSolarSystem2026_2028, ContinuousPlantState, ForceModel, NaifId,
+    PropellantMode, STANDARD_GRAVITY_G0_M_S2, TdbEpoch, evaluate_gravity_turn_ascent,
+    propagate_plant_interval,
 };
 
+use super::transfer::Voyage;
 use crate::{
     aero_actuators::{raketa_default_rw_mode, raketa_mass_model},
     gnc_boundary::RaketaOuterGuidanceSetpoint,
@@ -42,6 +42,8 @@ pub struct RaketaContinuousTransferSummary {
     pub terminal_epoch: TdbEpoch,
     /// Final continuous plant state in the destination body's inertial frame.
     pub terminal_state: ContinuousPlantState,
+    /// Distance from the destination body's centre at `terminal_epoch` (`m`).
+    pub terminal_distance_to_target_m: f64,
     /// Peak proper acceleration observed across all phases (`G`, `<= 4.0`).
     pub peak_proper_accel_g: f64,
     /// Whether all 4 fins remained locked to `0.0°` on the launch pad.
@@ -67,15 +69,26 @@ pub fn run_continuous_pad_to_transfer(
     let leo_insertion_epoch = epoch;
     phases.push(RaketaMissionPhase::GravityTurnAscent);
 
-    let burn_peak = execute_continuous_trans_injection_and_transfer(
+    let mut voyage = Voyage {
         solar,
         force_model,
-        target,
-        &mut epoch,
-        &mut state,
-        &mut phases,
-    )?;
-    let peak_a = liftoff_peak.max(ascent_peak).max(burn_peak);
+        epoch,
+        state,
+        peak_proper_accel_m_s2: liftoff_peak.max(ascent_peak),
+    };
+    let dest = match target {
+        RaketaMissionTarget::MoonTranquility => {
+            voyage.transfer_to_the_moon()?;
+            NaifId::MOON
+        }
+        RaketaMissionTarget::MarsSurface => {
+            voyage.transfer_to_mars()?;
+            NaifId::MARS
+        }
+    };
+    phases.push(RaketaMissionPhase::TransInjectionBurn);
+    phases.push(RaketaMissionPhase::DeepSpaceTransfer);
+    let terminal_distance_to_target_m = voyage.distance_to_target_m(dest)?;
 
     Ok(RaketaContinuousTransferSummary {
         target,
@@ -83,9 +96,10 @@ pub fn run_continuous_pad_to_transfer(
         explicit_state_reinitializations: 0,
         start_epoch,
         leo_insertion_epoch,
-        terminal_epoch: epoch,
-        terminal_state: state,
-        peak_proper_accel_g: peak_a / STANDARD_GRAVITY_G0_M_S2,
+        terminal_epoch: voyage.epoch,
+        terminal_state: voyage.state,
+        terminal_distance_to_target_m,
+        peak_proper_accel_g: voyage.peak_proper_accel_m_s2 / STANDARD_GRAVITY_G0_M_S2,
         fin_lock_verified: pad_lock,
     })
 }
@@ -134,99 +148,4 @@ fn propagate_continuous_ascent_to_leo(
         step_idx = step_idx.wrapping_add(1);
     }
     Ok(peak_a)
-}
-
-fn execute_continuous_trans_injection_and_transfer(
-    solar: &BuiltinSolarSystem2026_2028,
-    force_model: &ForceModel,
-    target: RaketaMissionTarget,
-    epoch: &mut TdbEpoch,
-    state: &mut ContinuousPlantState,
-    phases: &mut Vec<RaketaMissionPhase>,
-) -> Result<f64, RaketaMissionError> {
-    let dest_body = match target {
-        RaketaMissionTarget::MoonTranquility => NaifId::MOON,
-        RaketaMissionTarget::MarsSurface => NaifId::MARS,
-    };
-    let mu_earth = force_model.constants().require_mu(NaifId::EARTH)?;
-    let tof_s = if dest_body == NaifId::MOON {
-        3.2 * 86_400.0
-    } else {
-        4.5 * 86_400.0
-    };
-    let t_arr = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(4_000, 0));
-    let dest_rel_earth = solar.ephemeris.geometric_state_icrf(
-        dest_body,
-        NaifId::EARTH,
-        t_arr,
-        DerivativeOrder::Velocity,
-    )?;
-    let r_target = if dest_body == NaifId::MOON {
-        dest_rel_earth.pos_m
-    } else {
-        dest_rel_earth.pos_m.normalize() * 4.2e8
-    };
-    let lambert = solve_lambert_universal(state.pos_rel_icrf_m, r_target, tof_s, mu_earth, false)?;
-    let dv_imp = lambert.v1_m_s - state.vel_rel_icrf_m_s;
-    let plan = FiniteBurnPlan::from_impulsive(dv_imp, 3.5 * STANDARD_GRAVITY_G0_M_S2);
-    let law =
-        RaketaOuterGuidanceSetpoint::from_finite_burn(&plan).into_stage_law(&solar.orientation);
-    let (_, lim, _, _) = law.evaluate_detailed(*epoch, state);
-    let t_burn_end = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(20, 0));
-    let prop = propagate_plant_interval(
-        state,
-        *epoch,
-        t_burn_end,
-        None,
-        &closed_loop_tols(),
-        &raketa_mass_model(),
-        PropellantMode::InfiniteConstantMass,
-        raketa_default_rw_mode(),
-        force_model,
-        &solar.ephemeris,
-        &solar.orientation,
-        &law,
-    )?;
-    *state = prop.final_state;
-    *epoch = t_burn_end;
-    phases.push(RaketaMissionPhase::TransInjectionBurn);
-    coast_in_destination_frame(solar, force_model, dest_body, epoch, state)?;
-    phases.push(RaketaMissionPhase::DeepSpaceTransfer);
-    Ok(lim.resulting_proper_accel_m_s2)
-}
-
-fn coast_in_destination_frame(
-    solar: &BuiltinSolarSystem2026_2028,
-    force_model: &ForceModel,
-    dest_body: NaifId,
-    epoch: &mut TdbEpoch,
-    state: &mut ContinuousPlantState,
-) -> Result<(), RaketaMissionError> {
-    let rel = solar.ephemeris.geometric_state_icrf(
-        state.primary_body,
-        dest_body,
-        *epoch,
-        DerivativeOrder::Velocity,
-    )?;
-    state.primary_body = dest_body;
-    state.pos_rel_icrf_m += rel.pos_m;
-    state.vel_rel_icrf_m_s += rel.vel_m_s;
-    let t_coast = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(60, 0));
-    let coast = propagate_plant_interval(
-        state,
-        *epoch,
-        t_coast,
-        None,
-        &closed_loop_tols(),
-        &raketa_mass_model(),
-        PropellantMode::InfiniteConstantMass,
-        raketa_default_rw_mode(),
-        force_model,
-        &solar.ephemeris,
-        &solar.orientation,
-        &CoastControlLaw,
-    )?;
-    *state = coast.final_state;
-    *epoch = t_coast;
-    Ok(())
 }

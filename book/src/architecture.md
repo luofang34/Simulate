@@ -19,6 +19,11 @@ run. Ticks advance TDB uniformly. UTC, UT1 and TT are read from one
   same time line as the ephemerides;
 - a frozen `TAI - UTC` past the kernel.
 
+Body positions come from NASA NAIF kernels cut to the spans the simulator
+flies: DE440 for 2026 to 2028, and the two weeks of the Apollo 11 mission in
+July 1969 for its scenarios. Each embedded subset is checked against a pinned
+SHA-256 before use, and a time outside them is an error, not an extrapolation.
+
 Flight dynamics, orbital propagation, the sky, air data, the supervisor and the
 cockpit displays all read time through the flight's `SimEpoch`. Scenarios take
 theirs from `ScenarioProfile::start_utc_unix_s`, the only table of start

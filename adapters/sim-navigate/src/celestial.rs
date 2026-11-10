@@ -16,7 +16,7 @@ pub use camera_stars::{camera_stars, star_camera_epoch};
 pub use frame::{CelestialFrame, EarthShadowSample, MoonDiscSample, StarSkySample};
 
 use glam::DVec3;
-use navigate_celestial::Epoch;
+use navigate_celestial::{AnalyticEphemeris, Ephemeris, Epoch};
 use sim_geo::BodyEllipsoid;
 
 /// Faintest catalogue star handed to the renderer, Johnson V. About 5000
@@ -147,6 +147,31 @@ impl CelestialClock {
         scenario_base_utc_s: Option<f64>,
         live_wall_utc_s: f64,
     ) -> CelestialFrame {
+        self.evaluate_with_ephemeris(
+            &AnalyticEphemeris,
+            mode,
+            body,
+            observer_fixed_m,
+            sim_elapsed_s,
+            scenario_base_utc_s,
+            live_wall_utc_s,
+        )
+    }
+
+    /// Evaluates the sky using `provider` (such as the simulation dynamics'
+    /// [`crate::CelestialObserverAdapter`] or [`navigate_celestial::SpkEphemeris`])
+    /// when inside its coverage, and falls back to [`AnalyticEphemeris`] outside coverage.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_with_ephemeris<P: Ephemeris>(
+        &mut self,
+        provider: &P,
+        mode: SkyTimeMode,
+        body: ReferenceBody,
+        observer_fixed_m: DVec3,
+        sim_elapsed_s: f64,
+        scenario_base_utc_s: Option<f64>,
+        live_wall_utc_s: f64,
+    ) -> CelestialFrame {
         let observer = if observer_fixed_m.is_finite() {
             observer_fixed_m
         } else {
@@ -164,8 +189,8 @@ impl CelestialClock {
         let computed = time::finite(utc).and_then(|utc| {
             let epoch = Epoch::from_unix_seconds(utc);
             let mut frame = match body {
-                ReferenceBody::Earth => earth::frame(epoch, observer)?,
-                ReferenceBody::Moon => moon::frame(epoch, observer)?,
+                ReferenceBody::Earth => earth::frame_with(provider, epoch, observer)?,
+                ReferenceBody::Moon => moon::frame_with(provider, epoch, observer)?,
             };
             frame.utc_unix_s = utc;
             if refresh_stars {

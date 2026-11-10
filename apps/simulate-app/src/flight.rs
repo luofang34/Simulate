@@ -55,7 +55,6 @@ pub use pacing::{PacingMonitor, PacingSession, PacingStats};
 use panel_gauges::PanelGauges;
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
-#[allow(unused_imports)]
 pub use space_ux::{SpaceLinkStatus, SpaceReferenceFrame};
 
 /// Longest wall-clock gap simulated after a stall (`500 ms`), long enough that a transient
