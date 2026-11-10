@@ -24,6 +24,15 @@ flies: DE440 for 2026 to 2028, and the two weeks of the Apollo 11 mission in
 July 1969 for its scenarios. Each embedded subset is checked against a pinned
 SHA-256 before use, and a time outside them is an error, not an extrapolation.
 
+Measured Mars terrain is embedded the same way: a 256 by 256 window of NASA PDS
+MOLA MEGDR topography (`MEGT44N000HB`, 128 pixel/degree, about 17.4 to 19.4 N and
+76.5 to 78.5 E, around Jezero crater), cut without resampling by
+`crates/sim-analysis-contract/scripts/extract_mola_jezero.py` and checked against a
+pinned SHA-256 by `DemElevationGrid::mars_jezero_mola`. MOLA heights are above the
+areoid and its latitudes are planetocentric; the loader adds the mean
+areoid-over-ellipsoid offset (about 25 m rms residual, 100 m worst case) and
+converts the latitude bounds to geodetic.
+
 Flight dynamics, orbital propagation, the sky, air data, the supervisor and the
 cockpit displays all read time through the flight's `SimEpoch`. Scenarios take
 theirs from `ScenarioProfile::start_utc_unix_s`, the only table of start

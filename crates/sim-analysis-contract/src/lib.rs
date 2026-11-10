@@ -3,6 +3,7 @@
 //! and `Sokoly` (`sokoly-planning`), built on top of [`sim_spacetime`].
 
 mod artifact;
+mod mars_mola;
 mod models;
 mod relay;
 mod taxonomy;
@@ -16,6 +17,9 @@ pub use artifact::{
     TimeScaleContract, TimeScaleKind, TrajectoryNodesFrame,
 };
 pub use glam::{DMat3, DQuat, DVec3};
+pub use mars_mola::{
+    MARS_AREOID_ABOVE_IAU_ELLIPSOID_M, MOLA_JEZERO_DATASET_ID, MOLA_JEZERO_SHA256, MolaLoadError,
+};
 pub use models::{
     AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, OccultingBodySpec,
     OccultingShape, SensorFovModel, SignalTimeModel, VehicleSensorModel,

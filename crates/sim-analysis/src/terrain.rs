@@ -14,8 +14,9 @@ use sim_geo::BodyEllipsoid;
 use sim_spacetime::{NaifId, TdbEpoch, sqrt};
 
 pub use sim_analysis_contract::{
-    AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid, TerrainLosConfig,
-    VerticalDatumKind, VerticalDatumSpec,
+    AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid,
+    MARS_AREOID_ABOVE_IAU_ELLIPSOID_M, MOLA_JEZERO_DATASET_ID, MOLA_JEZERO_SHA256, MolaLoadError,
+    TerrainLosConfig, VerticalDatumKind, VerticalDatumSpec,
 };
 
 use crate::access::{
