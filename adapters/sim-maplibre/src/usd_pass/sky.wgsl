@@ -55,5 +55,7 @@ fn sky_radiance(dir: vec3<f32>, to_sun: vec3<f32>, ground_lit: f32) -> vec3<f32>
 fn sky_reflection(r: vec3<f32>, to_sun: vec3<f32>, roughness: f32, ground_lit: f32) -> vec3<f32> {
     let blurred = (sky_irradiance(r) + ground_irradiance(r, ground_lit)) / PI;
     let sharp = sky_radiance(r, to_sun, ground_lit);
-    return mix(sharp, blurred, smoothstep(0.15, 0.6, roughness));
+    // A satin paint still mirrors the bright sky near the horizon at a glancing view;
+    // only a flat one sees the dome evenly.
+    return mix(sharp, blurred, smoothstep(0.3, 0.9, roughness));
 }
