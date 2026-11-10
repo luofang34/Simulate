@@ -126,10 +126,18 @@ fn the_p38_bakes_dark_junctions_and_open_tops() {
         darkest < 0.7,
         "the wing roots meet the gondola and booms: {darkest}"
     );
-    let wells = skin("/P38g/Gear/WheelWells");
-    assert!(
-        median(wells) < median(wing),
-        "wheel wells {}",
-        median(wells)
-    );
+    // The open gear bays are deep, enclosed cavities.
+    for bay in [
+        "/P38g/Gondola/NoseBay/BayInterior",
+        "/P38g/Booms/MainBayLeft/BayInterior",
+        "/P38g/Booms/MainBayRight/BayInterior",
+    ] {
+        let bay = skin(bay);
+        assert!(
+            median(bay) < 0.6,
+            "{} median {}",
+            bay.prim_path,
+            median(bay)
+        );
+    }
 }

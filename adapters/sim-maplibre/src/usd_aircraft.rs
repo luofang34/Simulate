@@ -390,6 +390,11 @@ fn articulate_auxiliary_part(part: &UsdMeshPart, art: &AirframeArticulation) -> 
         DMat4::from_rotation_x(art.elevator_rad - tp)
     } else if path.contains("AileronTrimTab") {
         DMat4::from_rotation_x(art.left_aileron_rad - tr)
+    } else if path.contains("GearDoor") {
+        // Doors are authored closed, flush with the skin, hinged along `y`; they hang
+        // open while the gear is down.
+        let open = part.custom_hinge_axis.map_or(1.0, |a| a.y.signum());
+        DMat4::from_rotation_y(open * art.gear_pos_norm.clamp(0.0, 1.0) * 1.45)
     } else if path.contains("RudderTrimTab") {
         DMat4::from_rotation_z(-(art.rudder_rad - ty))
     } else {

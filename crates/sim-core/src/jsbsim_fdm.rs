@@ -214,6 +214,12 @@ impl JsbsimFdmBlock {
         for (path, value) in ic {
             fdm.set_property(path, value).map_err(fdm_error)?;
         }
+        if config.speed_m_s.abs() < f64::EPSILON {
+            // At rest there is no flight path for the angle of attack to be measured
+            // from, so the attitude is set directly.
+            fdm.set_property("ic/theta-deg", config.alpha_rad.to_degrees())
+                .map_err(fdm_error)?;
+        }
         if let Some(height_m) = terrain_elevation_m {
             // Sea-level altitude was set last, so the aircraft keeps its
             // height rather than its height above the moved ground.

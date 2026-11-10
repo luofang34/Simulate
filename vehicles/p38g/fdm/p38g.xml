@@ -88,22 +88,24 @@
              nose), y the butt line, z the height above the fuselage reference line (FRL); the
              AERORP sits at 25 % of the drawing's M.A.C. (FS 130.51 + 0.25 x 84.25).
              Each BOGEY is the bottom of its unloaded tyre as drawn: mains under the 54.575 in
-             static axle (36 in tyre) at FS 173.9, BL 99; nose under the 58.37 in axle (27 in
-             tyre) at FS 54.9. The springs make the static compression the drawing's tyre
+             static axle (36 in tyre) at FS 173.9, BL 99; nose under the 69.970 in static axle
+             (27 in tyre) at FS 54.9. The springs make the static compression the drawing's tyre
              deflection (18 - 15.300 in main, 13.5 - 11.600 in nose) under the 15,000 lb gross at
-             24 % M.A.C., so the airframe sits level with the FRL 69.9 in above the ground. -->
+             24 % M.A.C. standing on the drawing's static ground line, the FRL 5 deg 33' 46"
+             nose-up: at that attitude the CG is 15.7 in ahead of the main contact along the
+             ground and the nose carries 1,970 lb, each main 6,515 lb. -->
         <contact type="BOGEY" name="NOSE">
             <location unit="IN">
                 <x> 54.9 </x>
                 <y> 0.0 </y>
-                <z> -71.87 </z>
+                <z> -83.47 </z>
             </location>
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>
             <rolling_friction> 0.020 </rolling_friction>
-            <spring_coeff unit="LBS/FT"> 18300.0 </spring_coeff>
-            <damping_coeff unit="LBS/FT/SEC"> 5150.0 </damping_coeff>
-            <damping_coeff_rebound unit="LBS/FT/SEC"> 10300.0 </damping_coeff_rebound>
+            <spring_coeff unit="LBS/FT"> 12440.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 3500.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 7000.0 </damping_coeff_rebound>
             <max_steer unit="DEG"> 25.0 </max_steer>
             <brake_group> NONE </brake_group>
             <retractable> 1 </retractable>
@@ -117,9 +119,9 @@
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>
             <rolling_friction> 0.020 </rolling_friction>
-            <spring_coeff unit="LBS/FT"> 26900.0 </spring_coeff>
-            <damping_coeff unit="LBS/FT/SEC"> 7620.0 </damping_coeff>
-            <damping_coeff_rebound unit="LBS/FT/SEC"> 15250.0 </damping_coeff_rebound>
+            <spring_coeff unit="LBS/FT"> 28960.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 8200.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 16420.0 </damping_coeff_rebound>
             <max_steer unit="DEG"> 0.0 </max_steer>
             <brake_group> LEFT </brake_group>
             <retractable> 1 </retractable>
@@ -133,9 +135,9 @@
             <static_friction> 0.80 </static_friction>
             <dynamic_friction> 0.50 </dynamic_friction>
             <rolling_friction> 0.020 </rolling_friction>
-            <spring_coeff unit="LBS/FT"> 26900.0 </spring_coeff>
-            <damping_coeff unit="LBS/FT/SEC"> 7620.0 </damping_coeff>
-            <damping_coeff_rebound unit="LBS/FT/SEC"> 15250.0 </damping_coeff_rebound>
+            <spring_coeff unit="LBS/FT"> 28960.0 </spring_coeff>
+            <damping_coeff unit="LBS/FT/SEC"> 8200.0 </damping_coeff>
+            <damping_coeff_rebound unit="LBS/FT/SEC"> 16420.0 </damping_coeff_rebound>
             <max_steer unit="DEG"> 0.0 </max_steer>
             <brake_group> RIGHT </brake_group>
             <retractable> 1 </retractable>

@@ -52,8 +52,18 @@ const FEATURES: &[(&str, Option<ModelFeature>)] = &[
             toward: Some([0.0, 1.0, 0.0]),
         }),
     ),
-    ("canopy_mirror_base", None),
-    ("deck_mast_base", None),
+    (
+        "canopy_mirror_base",
+        centroid("/Canopy/MirrorFairing", [-0.3, -0.3, 0.8], [0.3, 0.6, 1.3]),
+    ),
+    (
+        "deck_mast_base",
+        Some(ModelFeature::Prim {
+            prim: "/Gondola/BeadSight",
+            within: ([-0.3, 0.8, 0.3], [0.3, 1.4, 0.9]),
+            toward: Some([0.0, 0.0, -1.0]),
+        }),
+    ),
 ];
 
 const fn centroid(prim: &'static str, lo: [f64; 3], hi: [f64; 3]) -> Option<ModelFeature> {

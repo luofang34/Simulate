@@ -7,21 +7,25 @@ use std::f32::consts::PI;
 use glam::{DMat4, Vec3};
 
 use crate::articulated::push_two_tone;
+use crate::bays::{NOSE_BAY, main_bay, skin_with_bay};
+use crate::canopy::canopy_prims;
 use crate::cockpit_opening::upper_gondola_skin;
-use crate::drawing::{INCH_M, fs_to_y, y_to_fs};
+use crate::cockpit_reservation::SEAT_ARMOUR_FS_IN;
+use crate::drawing::{FRL_Z_M, INCH_M, WINDSCREEN_BASE_FS_IN, fs_to_y, y_to_fs};
 use crate::fillets::fillet_prims;
+use crate::gondola::{GONDOLA_SECTIONS, gondola_point, section_y};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, aerofoil, fixed};
 use crate::stations::{
-    ARMOR_GLASS, BOOM_STATIONS, BOOM_X, BRASS_SHELL, CANOPY_FRAME, CANOPY_GLASS, CHROME_OLEO,
-    ELEVATOR_HINGE_Y, FIN_PROFILE, GONDOLA_STATIONS, GUNMETAL, HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB,
-    PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN, TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point,
-    gondola_point, interpolate_gondola, tailplane_planform_fs, wing_surface_point,
+    BOOM_STATIONS, BOOM_X, BRASS_SHELL, CHROME_OLEO, ELEVATOR_HINGE_Y, FIN_PROFILE, GUNMETAL,
+    HTAIL_Z, NEUTRAL_GRAY, OLIVE_DRAB, PANEL_BLACK, RUDDER_HINGE_Y, SEMI_SPAN,
+    TAILPLANE_SECTIONS_BL, TIP_START_X, boom_point, tailplane_planform_fs, wing_station,
+    wing_surface_point,
 };
 
 pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
     let mut prims = Vec::new();
     build_gondola_and_armament(&mut prims);
-    build_canopy_and_windscreen(&mut prims);
+    prims.extend(canopy_prims());
     build_cambered_wings_and_fillets(&mut prims);
     build_twin_booms(&mut prims);
     build_empennage(&mut prims);
@@ -30,28 +34,32 @@ pub(crate) fn airframe_prims() -> Vec<P38MeshPrim> {
 
 fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
     const ARC_STEPS: usize = 32;
-    let mut lower_rows = Vec::with_capacity(GONDOLA_STATIONS.len());
-    for &(y, ..) in GONDOLA_STATIONS {
-        let lo = (0..=ARC_STEPS)
-            .map(|i| gondola_point(y, 0.54 * PI + (i as f32 / ARC_STEPS as f32) * (0.92 * PI)))
-            .collect();
-        lower_rows.push(lo);
-    }
     upper_gondola_skin(prims);
-
+    let stations: Vec<f32> = GONDOLA_SECTIONS.iter().map(section_y).collect();
     let mut lower = MeshBuilder::new();
-    lower.loft_open(&lower_rows, Inside::Axis);
+    let bay = skin_with_bay(
+        &mut lower,
+        "/P38g/Gondola/NoseBay",
+        &stations,
+        ARC_STEPS,
+        |y, c| gondola_point(y, 0.54 * PI + (c as f32 / ARC_STEPS as f32) * (0.92 * PI)),
+        NOSE_BAY,
+        Inside::Axis,
+    );
     prims.push(fixed(
         "/P38g/Gondola/LowerGray",
         P38PartRole::CabinExterior,
         NEUTRAL_GRAY,
         lower,
     ));
+    prims.extend(bay);
 
     // Upper forward nose deck visible ahead of windscreen from cockpit camera
     let mut nose_deck = MeshBuilder::new();
-    let deck_rows: Vec<Vec<Vec3>> = [3.50_f32, 3.15, 2.76, 2.20, 1.68]
-        .into_iter()
+    let deck_rows: Vec<Vec<Vec3>> = GONDOLA_SECTIONS
+        .iter()
+        .filter(|s| (2.0..=WINDSCREEN_BASE_FS_IN).contains(&s.fs_in))
+        .map(section_y)
         .map(|y| {
             (0..=12)
                 .map(|i| {
@@ -72,31 +80,37 @@ fn build_gondola_and_armament(prims: &mut Vec<P38MeshPrim>) {
     build_nose_armament(prims);
 }
 
+/// Nose axis the armament is grouped about: the centre of the nose sections, `3.4 in`
+/// below the fuselage reference line (AN 01-75F-2 side view).
+const NOSE_AXIS_Z: f32 = FRL_Z_M - 3.4 * INCH_M;
+
 fn build_nose_armament(prims: &mut Vec<P38MeshPrim>) {
     let mut guns = MeshBuilder::new();
     let mut troughs = MeshBuilder::new();
-    // 1x 20mm Hispano AN-M2 cannon at lower nose centerline (protruding to y = 3.74 m)
+    // 1x 20mm Hispano AN-M2 cannon just below the nose axis (protruding to y = 3.74 m)
+    let cannon_z = NOSE_AXIS_Z - 0.05;
     guns.tube(
-        Vec3::new(0.0, 2.85, -0.03),
-        Vec3::new(0.0, 3.74, -0.03),
+        Vec3::new(0.0, 2.85, cannon_z),
+        Vec3::new(0.0, 3.74, cannon_z),
         0.025,
         0.021,
         14,
     );
     guns.tube(
-        Vec3::new(0.0, 3.70, -0.03),
-        Vec3::new(0.0, 3.77, -0.03),
+        Vec3::new(0.0, 3.70, cannon_z),
+        Vec3::new(0.0, 3.77, cannon_z),
         0.028,
         0.024,
         14,
     );
     // 4x .50 cal AN/M2 Browning barrels in staggered nose ports + perforated jackets
-    for (gx, gy, gz) in [
-        (-0.105_f32, 3.68_f32, 0.145_f32),
-        (0.105, 3.64, 0.145),
-        (-0.195, 3.54, 0.065),
-        (0.195, 3.50, 0.065),
+    for (gx, gy, above_axis) in [
+        (-0.105_f32, 3.68_f32, 0.125_f32),
+        (0.105, 3.64, 0.125),
+        (-0.195, 3.54, 0.045),
+        (0.195, 3.50, 0.045),
     ] {
+        let gz = NOSE_AXIS_Z + above_axis;
         guns.tube(
             Vec3::new(gx, gy - 0.55, gz),
             Vec3::new(gx, gy - 0.12, gz),
@@ -120,8 +134,8 @@ fn build_nose_armament(prims: &mut Vec<P38MeshPrim>) {
         );
     }
     troughs.tube(
-        Vec3::new(-0.08, 3.24, -0.14),
-        Vec3::new(-0.08, 3.38, -0.14),
+        Vec3::new(-0.08, 3.24, NOSE_AXIS_Z - 0.16),
+        Vec3::new(-0.08, 3.38, NOSE_AXIS_Z - 0.16),
         0.024,
         0.020,
         10,
@@ -179,93 +193,17 @@ fn build_shell_chutes(prims: &mut Vec<P38MeshPrim>) {
     ));
 }
 
-fn build_canopy_and_windscreen(prims: &mut Vec<P38MeshPrim>) {
-    const STEPS: usize = 16;
-    let canopy_ys = [1.68_f32, 1.42, 1.16, 0.86, 0.58, 0.24, -0.10, -0.42, -0.90];
-    let mut glass_rows = Vec::with_capacity(canopy_ys.len());
-    for y in canopy_ys {
-        let (_, _, z_top_hull, _, z_canopy, w_canopy) = interpolate_gondola(y);
-        let z_base = z_top_hull - 0.05;
-        let dz = (z_canopy - z_base).max(0.02);
-        let row: Vec<Vec3> = (0..=STEPS)
-            .map(|i| {
-                let frac = i as f32 / STEPS as f32;
-                let a = -0.5 * PI + frac * PI;
-                let (sin_a, cos_a) = a.sin_cos();
-                let x = sin_a.signum() * sin_a.abs().powf(0.86) * w_canopy;
-                let z = z_base + cos_a.max(0.0).powf(0.84) * dz;
-                Vec3::new(x, y, z)
-            })
-            .collect();
-        glass_rows.push(row);
-    }
-    let mut glass = MeshBuilder::new();
-    glass.loft_open(&glass_rows, Inside::Point(Vec3::new(0.0, 0.42, 0.46)));
-    // The pilot looks out through the back faces.
-    let mut glazing = fixed(
-        "/P38g/Canopy/Glazing",
-        P38PartRole::CabinGlass,
-        CANOPY_GLASS,
-        glass,
-    );
-    glazing.double_sided = true;
-    prims.push(glazing);
-
-    // Internal 1.5-in flat optically-ground bulletproof windshield pane (FS 78..94)
-    let mut armor_pane = MeshBuilder::new();
-    let p_bl = Vec3::new(-0.18, 1.54, 0.52);
-    let p_br = Vec3::new(0.18, 1.54, 0.52);
-    let p_tr = Vec3::new(0.16, 1.18, 0.87);
-    let p_tl = Vec3::new(-0.16, 1.18, 0.87);
-    armor_pane.polygon(&[p_bl, p_br, p_tr, p_tl], Vec3::new(0.0, 0.72, 0.69));
-    prims.push(fixed(
-        "/P38g/Canopy/BulletproofWindshield",
-        P38PartRole::CabinInterior,
-        ARMOR_GLASS,
-        armor_pane,
-    ));
-
-    // Flush 2.5 mm canopy framing straps (early P-38F/G side-hinged top hatch + side windows)
-    let mut frames = MeshBuilder::new();
-    for arch_y in [1.16_f32, 0.58, -0.02, -0.42] {
-        let (_, _, z_hull, _, z_can, w_can) = interpolate_gondola(arch_y);
-        let z_base = z_hull - 0.04;
-        let dz = (z_can - z_base).max(0.03);
-        let mut strip = Vec::with_capacity(2);
-        for dy in [-0.015_f32, 0.015] {
-            strip.push(
-                (0..=STEPS)
-                    .map(|i| {
-                        let a = -0.5 * PI + (i as f32 / STEPS as f32) * PI;
-                        let (s, c) = a.sin_cos();
-                        Vec3::new(
-                            s.signum() * s.abs().powf(0.86) * (w_can + 0.0025),
-                            arch_y + dy,
-                            z_base + c.max(0.0).powf(0.84) * (dz + 0.0025),
-                        )
-                    })
-                    .collect(),
-            );
-        }
-        frames.loft_open(&strip, Inside::Point(Vec3::new(0.0, arch_y, 0.45)));
-    }
-    prims.push(fixed(
-        "/P38g/Canopy/Frames",
-        P38PartRole::CabinExterior,
-        CANOPY_FRAME,
-        frames,
-    ));
-}
-
 /// Chordwise rows of the wing loft (cosine spaced, dense at the nose and tail).
 pub(crate) const WING_CHORD_STEPS: usize = 28;
+/// Span station of the wing loft's row at the gondola wall, metres: just inside the
+/// `18.995 in` half-breadth, so the wing's skin ends in the gondola's.
+pub(crate) const WING_GONDOLA_X: f32 = 0.48;
 
 fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
     // The taper is straight to the tip arc, so the rows only need to follow the arc
     // and the junctions with the gondola and booms.
-    const HALF: [f32; 15] = [
-        0.0,
-        0.48,
+    const OUTER: [f32; 14] = [
+        WING_GONDOLA_X,
         1.35,
         BOOM_X,
         3.55,
@@ -280,37 +218,41 @@ fn build_cambered_wings_and_fillets(prims: &mut Vec<P38MeshPrim>) {
         7.90,
         SEMI_SPAN,
     ];
-    let span_xs: Vec<f32> = HALF
-        .iter()
-        .rev()
-        .map(|x| -x)
-        .chain(HALF.iter().skip(1).copied())
+    let us: Vec<f32> = (0..=WING_CHORD_STEPS)
+        .map(|i| 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos()))
         .collect();
-    let mut upper_rows = Vec::with_capacity(span_xs.len());
-    let mut lower_rows = Vec::with_capacity(span_xs.len());
-    for x in span_xs {
-        let mut up = Vec::with_capacity(WING_CHORD_STEPS + 1);
-        let mut lo = Vec::with_capacity(WING_CHORD_STEPS + 1);
-        for i in 0..=WING_CHORD_STEPS {
-            let u = 0.5 * (1.0 - (PI * i as f32 / WING_CHORD_STEPS as f32).cos());
-            up.push(wing_surface_point(x, u, true));
-            lo.push(wing_surface_point(x, u, false));
-        }
-        upper_rows.push(up);
-        lower_rows.push(lo);
-    }
+    let rows = |xs: &[f32], upper: bool, us: &[f32]| -> Vec<Vec<Vec3>> {
+        xs.iter()
+            .map(|&x| {
+                us.iter()
+                    .map(|&u| wing_surface_point(x, u, upper))
+                    .collect()
+            })
+            .collect()
+    };
+    // Inside the gondola the wing carries through only behind the seat: the cockpit
+    // sits between the gondola walls ahead of the main beam, where there is no skin.
+    let (root_le, root_te, ..) = wing_station(0.0);
+    let behind_seat =
+        (y_to_fs(root_le) - SEAT_ARMOUR_FS_IN) / (y_to_fs(root_le) - y_to_fs(root_te));
+    let aft_us: Vec<f32> = us.iter().copied().filter(|&u| u >= behind_seat).collect();
+    let centre = [-WING_GONDOLA_X, 0.0, WING_GONDOLA_X];
+    let port: Vec<f32> = OUTER.iter().rev().map(|x| -x).collect();
 
     let mut upper = MeshBuilder::new();
-    upper.loft_open(&upper_rows, Inside::Point(Vec3::new(0.0, -0.4, -4.0)));
+    let mut lower = MeshBuilder::new();
+    for (mesh, is_upper, inside_z) in [(&mut upper, true, -4.0), (&mut lower, false, 4.0)] {
+        let inside = Inside::Point(Vec3::new(0.0, -0.4, inside_z));
+        mesh.loft_open(&rows(&port, is_upper, &us), inside);
+        mesh.loft_open(&rows(&centre, is_upper, &aft_us), inside);
+        mesh.loft_open(&rows(&OUTER, is_upper, &us), inside);
+    }
     prims.push(fixed(
         "/P38g/Wing/UpperOlive",
         P38PartRole::WingStructure,
         OLIVE_DRAB,
         upper,
     ));
-
-    let mut lower = MeshBuilder::new();
-    lower.loft_open(&lower_rows, Inside::Point(Vec3::new(0.0, -0.4, 4.0)));
     prims.push(fixed(
         "/P38g/Wing/LowerGray",
         P38PartRole::WingStructure,
@@ -368,25 +310,29 @@ fn build_twin_booms(prims: &mut Vec<P38MeshPrim>) {
     const ARC_STEPS: usize = 32;
     let mut upper = MeshBuilder::new();
     let mut lower = MeshBuilder::new();
+    let stations: Vec<f32> = BOOM_STATIONS.iter().map(|s| s.0).collect();
+    let arc = |theta0: f32, sweep: f32, i: usize| theta0 + (i as f32 / ARC_STEPS as f32) * sweep;
 
-    for side in [-1.0_f32, 1.0] {
-        let mut up_rows = Vec::with_capacity(BOOM_STATIONS.len());
-        let mut lo_rows = Vec::with_capacity(BOOM_STATIONS.len());
-        for &(y, ..) in BOOM_STATIONS {
-            let mut up = Vec::with_capacity(ARC_STEPS + 1);
-            let mut lo = Vec::with_capacity(ARC_STEPS + 1);
-            for i in 0..=ARC_STEPS {
-                let frac = i as f32 / ARC_STEPS as f32;
-                let theta_up = -0.54 * PI + frac * (1.08 * PI);
-                let theta_lo = 0.54 * PI + frac * (0.92 * PI);
-                up.push(boom_point(side, y, theta_up));
-                lo.push(boom_point(side, y, theta_lo));
-            }
-            up_rows.push(up);
-            lo_rows.push(lo);
-        }
+    for (side, label) in [(-1.0_f32, "Left"), (1.0, "Right")] {
+        let up_rows: Vec<Vec<Vec3>> = stations
+            .iter()
+            .map(|&y| {
+                (0..=ARC_STEPS)
+                    .map(|i| boom_point(side, y, arc(-0.54 * PI, 1.08 * PI, i)))
+                    .collect()
+            })
+            .collect();
         upper.loft_open(&up_rows, Inside::Axis);
-        lower.loft_open(&lo_rows, Inside::Axis);
+        let bay = skin_with_bay(
+            &mut lower,
+            &format!("/P38g/Booms/MainBay{label}"),
+            &stations,
+            ARC_STEPS,
+            |y, c| boom_point(side, y, arc(0.54 * PI, 0.92 * PI, c)),
+            main_bay(side),
+            Inside::Axis,
+        );
+        prims.extend(bay);
     }
 
     prims.push(fixed(

@@ -22,10 +22,18 @@ fn segment_hits(a: Vec3, b: Vec3, [p0, p1, p2]: [Vec3; 3]) -> bool {
 fn opaque_exterior_blocks(a: Vec3, b: Vec3) -> Vec<String> {
     let mut hits = Vec::new();
     for prim in p38g_mesh_prims() {
-        if prim.role != P38PartRole::CabinExterior || prim.material.opacity < 1.0 {
+        let airframe = matches!(
+            prim.role,
+            P38PartRole::CabinExterior | P38PartRole::WingStructure
+        );
+        if !airframe || prim.material.opacity < 1.0 {
             continue;
         }
-        let at = |i: u32| Vec3::from_array(prim.vertices[i as usize].position);
+        let at = |i: u32| {
+            prim.rest_to_aircraft
+                .transform_point3(Vec3::from_array(prim.vertices[i as usize].position).as_dvec3())
+                .as_vec3()
+        };
         let blocked = prim
             .indices
             .as_chunks::<3>()
@@ -51,13 +59,47 @@ fn the_seated_pilot_sees_the_instrument_panel_past_the_dorsal_skin() {
     }
 }
 
+/// The eye is above the sill, and the canopy clears a helmeted head: `4.4 in` from eye
+/// to crown, `0.5 in` of helmet and at least `1.5 in` to spare.
 #[test]
 fn the_design_eyepoint_sits_under_the_canopy_with_headroom() {
     let eye = Vec3::from_array(p38g_cockpit_contract().design_eyepoint_m);
-    let (_, _, z_hull_top, _, z_canopy, _) = crate::interpolate_gondola(eye.y);
-    assert!(eye.z > z_hull_top + 0.08, "eye {eye} below the sill");
+    let sill = crate::canopy_sill_z(eye.y);
+    let (.., z_canopy, _) = crate::interpolate_gondola(eye.y);
+    assert!(eye.z > sill + 0.08, "eye {eye} below the sill");
     assert!(
-        z_canopy - eye.z > 0.2,
+        z_canopy - eye.z > 6.4 * 0.0254,
         "eye {eye} under {z_canopy} m canopy"
     );
+}
+
+/// The wing carries through the gondola behind the seat only: nothing of the airframe
+/// lies between the seated pilot's eye and the seat, the floor, the pedals or the
+/// control column's foot.
+#[test]
+fn the_cockpit_is_clear_of_the_wing_and_skin_down_to_the_floor() {
+    let contract = p38g_cockpit_contract();
+    let eye = Vec3::from_array(contract.design_eyepoint_m);
+    let [floor_fwd, floor_aft] = contract.floor_z_m;
+    let [step_fwd, step_aft] = contract.floor_step_y_m;
+    let above = Vec3::new(0.0, 0.0, 0.03);
+    for (what, target) in [
+        (
+            "seat",
+            Vec3::from_array(contract.seat_reference_point_m) + Vec3::new(0.0, 0.2, 0.0),
+        ),
+        (
+            "column foot",
+            Vec3::from_array(contract.control_column_base_m),
+        ),
+        ("forward floor", Vec3::new(0.0, step_fwd + 0.2, floor_fwd)),
+        ("aft floor", Vec3::new(0.2, step_aft - 0.1, floor_aft)),
+        (
+            "pedals",
+            Vec3::new(0.16, contract.rudder_pedal_pivot_y_m - 0.1, floor_fwd + 0.2),
+        ),
+    ] {
+        let hits = opaque_exterior_blocks(eye, target + above);
+        assert!(hits.is_empty(), "eye to {what} blocked by {hits:?}");
+    }
 }

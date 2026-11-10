@@ -1,21 +1,86 @@
-//! Reserved 3D cockpit station architecture (`FS 86..182`) and interior geometry
-//! for the Lockheed P-38G-13-LO Lightning (`T.O. 01-75F-1`).
+//! Reserved 3D cockpit station architecture for the Lockheed P-38G-13-LO Lightning.
 //!
-//! The contract fixes the structural bulkheads, the design eyepoint, the instrument
-//! panel plane the gauges mount on, the gunsight mount, the control-girder pivot and
-//! the side-console envelopes, so interior detail binds to them without altering the
-//! exterior airframe.
+//! The contract fixes the cockpit's frames, the design eyepoint, the seat reference
+//! point, the instrument panel plane the gauges mount on, the gunsight mount, the
+//! control column's floor attachment and the side-console envelopes, so interior detail
+//! binds to them without altering the exterior airframe.
+//!
+//! Where each number comes from, in order of authority:
+//! - AN 01-75F-2 general arrangement ([`crate::drawing`]): the windscreen base and top
+//!   bow, the top hatch's frames, the sill line, the main beam.
+//! - T.O. 01-75FG-2 (Lightning I service instructions, 1942), same station datum: the
+//!   instrument panel at station 106, the armament compartment's aft bulkhead at
+//!   station 95, the gunsight arm 118, and the ring-and-bead sight (ring on the
+//!   windscreen frame at station 126, bead at station `97 3/8`, line of sight on
+//!   waterline 34.2, three inches to port). Stated for the Lightning I and taken for the
+//!   G; the waterline is taken as height above the fuselage reference line.
+//! - AN 01-75FF-2 (P-38L-1 erection and maintenance instructions): figure 3's fuselage
+//!   frame stations (`... 87 3/4, 95, 105, 115, 126 3/32, 135, 145 9/16, 162 1/4 ...
+//!   236`; `126 3/32` is the general arrangement's windscreen top bow and `236` its
+//!   gondola tail, so the sheets share a frame), and figure 367's armour arms: seat
+//!   bottom 138.0, seat back 147.5, plate behind the seat 156.0.
+//! - LeRoy Weber's P-38L-5-LO inboard profile (Superscale, 1958), a redraw read off a
+//!   scan to about `2 in`, only for what the manuals do not give: the two floor levels,
+//!   the control column's foot and the pedal pivots on the station 95 frame.
+//! - Derived here: the design eyepoint and the seat reference point (see
+//!   [`DESIGN_EYE_FS_IN`]).
 
-use glam::Vec3;
-
-use crate::canopy_frames::canopy_frame_prims;
-use crate::cockpit_controls::cockpit_control_prims;
-use crate::instrument_panel::instrument_panel_prims;
-use crate::mesh::{MeshBuilder, P38Material, P38MeshPrim, P38PartRole, fixed};
-use crate::stations::{
-    ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
-    PILOT_SUIT, PROP_YELLOW, WHEEL_WELL_ZINC,
+use crate::drawing::{
+    INCH_M, WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
+
+/// Rudder pedal pivots: on the station 95 frame, the armament compartment's aft
+/// bulkhead (T.O. 01-75FG-2; the Weber drawing puts the pivots on it).
+pub const RUDDER_PEDAL_FS_IN: f32 = 95.0;
+/// Instrument panel board: station 106 (T.O. 01-75FG-2 section 11), an inch aft of the
+/// station 105 frame of AN 01-75FF-2 figure 3; it stands vertical on the Weber drawing.
+pub const INSTRUMENT_PANEL_FS_IN: f32 = 106.0;
+/// Control column's floor attachment, on the starboard side (secondary reading).
+pub const CONTROL_COLUMN_FS_IN: f32 = 116.0;
+/// Control column off the ship centreline, to starboard (secondary reading).
+pub const CONTROL_COLUMN_BL_IN: f32 = 10.6;
+/// Armour plate behind and above the seat, just ahead of the main beam (AN 01-75FF-2
+/// figure 367, arm 156.0; the general arrangement draws the hatch's aft frame at
+/// `FS 154.3`).
+pub const SEAT_ARMOUR_FS_IN: f32 = 156.0;
+/// Main beam: the `35 %` chord line (AN 01-75F-2 plan view).
+pub const MAIN_BEAM_FS_IN: f32 = 160.0;
+/// Floor above the fuselage reference line: ahead of the nose-wheel well and over the
+/// retracted nose wheel (secondary readings).
+pub const FLOOR_ABOVE_FRL_IN: (f32, f32) = (-9.0, -6.0);
+/// Stations between which the floor steps up over the retracted nose wheel.
+pub const FLOOR_STEP_FS_IN: (f32, f32) = (128.0, 134.0);
+/// Seat back recline from vertical (secondary reading of the seat detail), degrees.
+pub const SEAT_BACK_RECLINE_DEG: f32 = 15.0;
+/// Design eyepoint station: the head `3 in` ahead of a `3 in` headrest pad on the armour
+/// plate, the eye `7 in` ahead of the back of the head. The top hatch's middle is
+/// `FS 140.2`; the manuals' pilot arm is 138 and seat-back armour arm 147.5.
+pub const DESIGN_EYE_FS_IN: f32 = SEAT_ARMOUR_FS_IN - 13.0;
+/// Design eyepoint above the fuselage reference line: the canopy's inner top (`40.9 in`)
+/// less `4.4 in` from eye to crown, `0.5 in` of helmet and `2 in` of clearance. The
+/// auxiliary sight's line on waterline 34.2 is the same height within `0.2 in`.
+pub const DESIGN_EYE_ABOVE_FRL_IN: f32 = 34.0;
+/// Seat reference point (seat back meets seat pan) relative to the eyepoint, `(aft,
+/// up)`: a `31.5 in` sitting eye height on the reclined back plus a `3 in` seat-pack
+/// parachute puts it `33.4 in` below the eye, and the eye sits `7 in` ahead of the back
+/// line, which leaves the point `0.5 in` aft of the eye.
+pub const SEAT_REFERENCE_FROM_EYE_IN: (f32, f32) = (0.5, -33.4);
+/// Top of the rectangular board above the fuselage reference line: as high as a
+/// `0.72 m` wide board fits inside the skin at its station.
+pub const PANEL_TOP_ABOVE_FRL_IN: f32 = 22.0;
+/// Gunsight behind the windscreen: station (T.O. 01-75FG-2 arm 118) and height above
+/// the fuselage reference line (read off the Weber drawing's sight).
+pub const GUNSIGHT_IN: (f32, f32) = (118.0, 29.0);
+/// Auxiliary ring-and-bead sight (T.O. 01-75FG-2 section 11): the bead's station ahead
+/// of the windscreen, the ring's on the windscreen frame, the sight line's waterline and
+/// its offset to port, inches.
+pub const BEAD_SIGHT_FS_IN: f32 = 97.375;
+/// Station of the auxiliary sight's ring.
+pub const RING_SIGHT_FS_IN: f32 = 126.0;
+/// Waterline of the auxiliary sight's line, taken as height above the reference line.
+pub const AUX_SIGHT_LINE_ABOVE_FRL_IN: f32 = 34.2;
+/// The auxiliary sight line's offset to port of the ship centreline.
+pub const AUX_SIGHT_PORT_IN: f32 = 3.0;
 
 /// 3D rectangular mounting frame for an instrument panel or sub-stage attachment.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -32,16 +97,16 @@ pub struct PanelMountFrame {
     pub tilt_deg: f32,
 }
 
-/// Fuselage station (`FS`) structural bulkhead reservation inside the central gondola.
+/// Fuselage station (`FS`) frame reservation inside the central gondola.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StationBulkheadSpec {
-    /// Lockheed fuselage station designation (e.g. `"FS 88"`, `"FS 154"`).
+    /// Lockheed fuselage station designation (e.g. `"FS 106"`).
     pub station_name: &'static str,
     /// Station number in inches aft of the nose datum (`FS 0`).
     pub station_in: f32,
     /// Longitudinal coordinate `y` in aircraft metres (`+Y` forward).
     pub y_m: f32,
-    /// Functional role of this structural bulkhead.
+    /// What stands at this station.
     pub description: &'static str,
 }
 
@@ -50,296 +115,140 @@ pub struct StationBulkheadSpec {
 pub struct CockpitInteriorContract {
     /// Design pilot eye reference point `(x, y, z)` in aircraft metres.
     pub design_eyepoint_m: [f32; 3],
-    /// `FS 86` main flight & engine instrument panel frame.
+    /// Seat reference point, where the seat back meets the seat pan, in aircraft metres.
+    pub seat_reference_point_m: [f32; 3],
+    /// Seat back recline from vertical, degrees.
+    pub seat_back_recline_deg: f32,
+    /// Main flight and engine instrument panel board.
     pub main_instrument_panel: PanelMountFrame,
-    /// Lynn N-3A optical reflector gunsight mount above the glare coaming.
+    /// Optical reflector gunsight mount behind the windscreen.
     pub reflector_gunsight_mount: PanelMountFrame,
-    /// Left side-console shelf (`x = -0.42 m`: twin throttles, RPM, mixture, feathering switches).
+    /// Left side-console shelf (throttles, propeller and mixture levers).
     pub left_throttle_quadrant: PanelMountFrame,
-    /// Right side-console shelf (`x = +0.42 m`: 4-position Fowler flap lever & cooling controls).
+    /// Right side-console shelf (flap lever and cooling controls).
     pub right_flap_cooling_console: PanelMountFrame,
-    /// Pivot `(x, y, z)` of the control girder on the starboard cockpit wall,
-    /// which swings the bow-tie control wheel in front of the pilot.
-    pub control_girder_pivot_m: [f32; 3],
-    /// Structural fuselage bulkheads bounding the armament, wheel well, cockpit, and radio bays.
+    /// Floor attachment `(x, y, z)` of the control column, which stands on the starboard
+    /// side and carries the wheel inboard on an arm.
+    pub control_column_base_m: [f32; 3],
+    /// Model `y` of the rudder pedal pivots.
+    pub rudder_pedal_pivot_y_m: f32,
+    /// Model `z` of the floor ahead of the nose-wheel well and over it.
+    pub floor_z_m: [f32; 2],
+    /// Model `y` between which the floor steps from the first level to the second.
+    pub floor_step_y_m: [f32; 2],
+    /// Model `y` of the forward face of the seat-back armour plate.
+    pub seat_armour_y_m: f32,
+    /// Frames bounding the cockpit, nose to tail.
     pub bulkheads: &'static [StationBulkheadSpec],
 }
 
+const fn frame(
+    station_name: &'static str,
+    station_in: f32,
+    description: &'static str,
+) -> StationBulkheadSpec {
+    StationBulkheadSpec {
+        station_name,
+        station_in,
+        y_m: fs_to_y(station_in),
+        description,
+    }
+}
+
 const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
-    StationBulkheadSpec {
-        station_name: "FS 22",
-        station_in: 22.0,
-        y_m: 2.98,
-        description: "Forward nose gun muzzle trunnion & blast-tube support ring",
-    },
-    StationBulkheadSpec {
-        station_name: "FS 52",
-        station_in: 52.0,
-        y_m: 2.22,
-        description: "Ammunition compartment aft wall & nose landing-gear trunnion frame",
-    },
-    StationBulkheadSpec {
-        station_name: "FS 88",
-        station_in: 88.0,
-        y_m: 1.36,
-        description: "Forward cockpit firewall, rudder pedal bay & main instrument panel mount",
-    },
-    StationBulkheadSpec {
-        station_name: "FS 132",
-        station_in: 132.0,
-        y_m: 0.18,
-        description: "Main wing center-section forward box-spar carry-through bulkhead",
-    },
-    StationBulkheadSpec {
-        station_name: "FS 154",
-        station_in: 154.0,
-        y_m: -0.38,
-        description: "Pilot seat support frame & 3/8-in face-hardened dorsal armor bulkhead",
-    },
-    StationBulkheadSpec {
-        station_name: "FS 182",
-        station_in: 182.0,
-        y_m: -0.92,
-        description: "Aft cockpit rear pressure wall & SCR-274-N Command Set radio rack frame",
-    },
+    frame("FS 95", RUDDER_PEDAL_FS_IN, "Rudder pedal pivots"),
+    frame(
+        "FS 100",
+        WINDSCREEN_BASE_FS_IN,
+        "Windscreen base on the sill line",
+    ),
+    frame(
+        "FS 106",
+        INSTRUMENT_PANEL_FS_IN,
+        "Instrument panel board under the glare shield",
+    ),
+    frame(
+        "FS 126",
+        WINDSCREEN_TOP_FRAME_FS_IN,
+        "Windscreen top bow and forward frame of the top hatch",
+    ),
+    frame(
+        "FS 156",
+        SEAT_ARMOUR_FS_IN,
+        "Armour plate behind the seat, under the hatch's aft frame",
+    ),
+    frame(
+        "FS 160",
+        MAIN_BEAM_FS_IN,
+        "Main beam carry-through behind the seat",
+    ),
 ];
+
+/// Board height; with [`PANEL_TOP_ABOVE_FRL_IN`] it places the board's centre.
+const PANEL_HEIGHT_M: f32 = 0.28;
+/// Side consoles: centre off the centreline, shelf height, and stations spanned.
+const CONSOLE_X_M: f32 = 0.36;
+const CONSOLE_Z_M: f32 = 0.16;
+const CONSOLE_FS_IN: (f32, f32) = (112.0, 140.0);
 
 /// Returns the reserved cockpit interior station contract for `P-38G-13-LO`.
 #[must_use]
 pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
+    let console_y = fs_to_y(0.5 * (CONSOLE_FS_IN.0 + CONSOLE_FS_IN.1));
+    let console_len = fs_to_y(CONSOLE_FS_IN.0) - fs_to_y(CONSOLE_FS_IN.1);
+    let console = |prim_path, side: f32| PanelMountFrame {
+        prim_path,
+        center_m: [side * CONSOLE_X_M, console_y, CONSOLE_Z_M],
+        width_m: 0.14,
+        height_m: console_len,
+        tilt_deg: 0.0,
+    };
+    let floor = [
+        frl_to_z(FLOOR_ABOVE_FRL_IN.0),
+        frl_to_z(FLOOR_ABOVE_FRL_IN.1),
+    ];
+    let (seat_aft, seat_up) = SEAT_REFERENCE_FROM_EYE_IN;
     CockpitInteriorContract {
-        design_eyepoint_m: [0.0, 0.42, 0.68],
+        design_eyepoint_m: [
+            0.0,
+            fs_to_y(DESIGN_EYE_FS_IN),
+            frl_to_z(DESIGN_EYE_ABOVE_FRL_IN),
+        ],
+        seat_reference_point_m: [
+            0.0,
+            fs_to_y(DESIGN_EYE_FS_IN + seat_aft),
+            frl_to_z(DESIGN_EYE_ABOVE_FRL_IN + seat_up),
+        ],
+        seat_back_recline_deg: SEAT_BACK_RECLINE_DEG,
         main_instrument_panel: PanelMountFrame {
             prim_path: "/P38g/CockpitInterior/InstrumentPanel/Board",
-            center_m: [0.0, 1.22, 0.38],
+            center_m: [
+                0.0,
+                fs_to_y(INSTRUMENT_PANEL_FS_IN),
+                frl_to_z(PANEL_TOP_ABOVE_FRL_IN) - 0.5 * PANEL_HEIGHT_M,
+            ],
             width_m: 0.72,
-            height_m: 0.28,
-            tilt_deg: 8.0,
+            height_m: PANEL_HEIGHT_M,
+            tilt_deg: 0.0,
         },
         reflector_gunsight_mount: PanelMountFrame {
             prim_path: "/P38g/CockpitInterior/GunsightReflector",
-            center_m: [0.0, 1.18, 0.63],
+            center_m: [0.0, fs_to_y(GUNSIGHT_IN.0), frl_to_z(GUNSIGHT_IN.1)],
             width_m: 0.12,
             height_m: 0.14,
             tilt_deg: 45.0,
         },
-        left_throttle_quadrant: PanelMountFrame {
-            prim_path: "/P38g/CockpitInterior/LeftThrottleConsole",
-            center_m: [-0.42, 0.72, 0.16],
-            width_m: 0.18,
-            height_m: 0.64,
-            tilt_deg: 0.0,
-        },
-        right_flap_cooling_console: PanelMountFrame {
-            prim_path: "/P38g/CockpitInterior/RightFlapConsole",
-            center_m: [0.42, 0.72, 0.16],
-            width_m: 0.18,
-            height_m: 0.64,
-            tilt_deg: 0.0,
-        },
-        control_girder_pivot_m: [0.36, 0.86, -0.06],
+        left_throttle_quadrant: console("/P38g/CockpitInterior/LeftThrottleConsole", -1.0),
+        right_flap_cooling_console: console("/P38g/CockpitInterior/RightFlapConsole", 1.0),
+        control_column_base_m: [
+            CONTROL_COLUMN_BL_IN * INCH_M,
+            fs_to_y(CONTROL_COLUMN_FS_IN),
+            floor[0],
+        ],
+        rudder_pedal_pivot_y_m: fs_to_y(RUDDER_PEDAL_FS_IN),
+        floor_z_m: floor,
+        floor_step_y_m: [fs_to_y(FLOOR_STEP_FS_IN.0), fs_to_y(FLOOR_STEP_FS_IN.1)],
+        seat_armour_y_m: fs_to_y(SEAT_ARMOUR_FS_IN),
         bulkheads: P38G_BULKHEADS,
     }
-}
-
-pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
-    let mut prims = Vec::new();
-    build_cockpit_tub_and_bulkheads(&mut prims);
-    build_instrument_panel_and_gunsight(&mut prims);
-    build_controls_and_pilot(&mut prims);
-    prims.extend(canopy_frame_prims());
-    prims.extend(instrument_panel_prims());
-    prims.extend(cockpit_control_prims());
-    prims
-}
-
-fn build_cockpit_tub_and_bulkheads(prims: &mut Vec<P38MeshPrim>) {
-    let mut tub = MeshBuilder::new();
-    // Recessed cockpit floor & side tub walls (FS 88 to FS 182)
-    tub.cuboid(Vec3::new(-0.46, -0.92, -0.28), Vec3::new(0.46, 1.38, -0.22));
-    for side in [-1.0_f32, 1.0] {
-        tub.cuboid(
-            Vec3::new(side * 0.44 - 0.03, -0.92, -0.24),
-            Vec3::new(side * 0.44 + 0.03, 1.36, 0.36),
-        );
-        // Side console shelves (Left: throttle/prop/mixture, Right: Fowler flap & cooling)
-        tub.cuboid(
-            Vec3::new(side * 0.37 - 0.07, 0.36, 0.12),
-            Vec3::new(side * 0.37 + 0.07, 1.08, 0.18),
-        );
-    }
-    // FS 88 forward firewall bulkhead & FS 132 wing center-spar carry-through box
-    tub.cuboid(Vec3::new(-0.46, 1.32, -0.26), Vec3::new(0.46, 1.38, 0.46));
-    tub.cuboid(Vec3::new(-0.46, -0.02, -0.26), Vec3::new(0.46, 0.24, -0.04));
-    // FS 182 aft radio compartment bulkhead
-    tub.cuboid(Vec3::new(-0.44, -0.94, -0.24), Vec3::new(0.44, -0.88, 0.46));
-    prims.push(fixed(
-        "/P38g/CockpitInterior/TubAndBulkheads",
-        P38PartRole::CabinInterior,
-        COCKPIT_GREEN,
-        tub,
-    ));
-
-    // FS 22 & FS 52 forward nose gun bay structural frames (zinc chromate)
-    let mut nose_frames = MeshBuilder::new();
-    nose_frames.tube(
-        Vec3::new(0.0, 2.98, 0.02),
-        Vec3::new(0.0, 2.95, 0.02),
-        0.28,
-        0.28,
-        14,
-    );
-    nose_frames.tube(
-        Vec3::new(0.0, 2.22, 0.03),
-        Vec3::new(0.0, 2.18, 0.03),
-        0.44,
-        0.44,
-        16,
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/NoseStationFrames",
-        P38PartRole::CabinInterior,
-        WHEEL_WELL_ZINC,
-        nose_frames,
-    ));
-}
-
-fn build_instrument_panel_and_gunsight(prims: &mut Vec<P38MeshPrim>) {
-    let mut panel = MeshBuilder::new();
-    // Anti-glare coaming hood from the panel top to the windscreen base
-    panel.cuboid(Vec3::new(-0.38, 1.14, 0.51), Vec3::new(0.38, 1.62, 0.545));
-    // Lynn N-3A optical reflector gunsight body above the coaming
-    panel.tube(
-        Vec3::new(0.0, 1.24, 0.55),
-        Vec3::new(0.0, 1.15, 0.62),
-        0.034,
-        0.028,
-        10,
-    );
-    // Aft SCR-274-N Command Set radio transmitter/receiver boxes behind FS 154
-    for rx in [-0.20_f32, 0.0, 0.20] {
-        panel.cuboid(
-            Vec3::new(rx - 0.07, -0.84, 0.28),
-            Vec3::new(rx + 0.07, -0.50, 0.46),
-        );
-    }
-    prims.push(fixed(
-        "/P38g/CockpitInterior/CoamingGunsightAndRadios",
-        P38PartRole::CabinInterior,
-        PANEL_BLACK,
-        panel,
-    ));
-
-    // Lynn N-3A tilted glass reflector combiner lens
-    let mut sight_glass = MeshBuilder::new();
-    sight_glass.cuboid(Vec3::new(-0.042, 1.15, 0.61), Vec3::new(0.042, 1.19, 0.69));
-    prims.push(fixed(
-        "/P38g/CockpitInterior/GunsightReflector",
-        P38PartRole::CabinInterior,
-        ARMOR_GLASS,
-        sight_glass,
-    ));
-}
-
-fn build_controls_and_pilot(prims: &mut Vec<P38MeshPrim>) {
-    let mut hardware = MeshBuilder::new();
-    // 3/8-in seat-back armor plate & headrest support, directly behind the pilot
-    hardware.cuboid(
-        Vec3::new(-0.30, SEAT_SHIFT_Y - 0.40, -0.10),
-        Vec3::new(0.30, SEAT_SHIFT_Y - 0.35, 0.78),
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/SeatArmor",
-        P38PartRole::CabinInterior,
-        GUNMETAL,
-        hardware,
-    ));
-
-    // Red Curtiss Electric propeller feathering switch guards & trim handwheels
-    let mut red_knobs = MeshBuilder::new();
-    for y in [0.90_f32, 0.86] {
-        red_knobs.cuboid(
-            Vec3::new(-0.41, y - 0.015, 0.18),
-            Vec3::new(-0.37, y + 0.015, 0.21),
-        );
-    }
-    prims.push(fixed(
-        "/P38g/CockpitInterior/FeatherSwitches",
-        P38PartRole::CabinInterior,
-        INSIGNIA_RED,
-        red_knobs,
-    ));
-    build_seat_and_pilot_bust(prims);
-}
-
-/// Fore-aft offset of the seat, its armour and the pilot figure, which puts the
-/// seated pilot's eyes on the contract's design eyepoint.
-const SEAT_SHIFT_Y: f32 = 0.42;
-
-fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>) {
-    // Metal bucket seat, leather headrest pad, and pilot figure
-    let mut seat = MeshBuilder::new();
-    let fwd = Vec3::new(0.0, SEAT_SHIFT_Y, 0.0);
-    seat.cuboid(
-        Vec3::new(-0.24, -0.34, -0.12) + fwd,
-        Vec3::new(0.24, 0.14, -0.06) + fwd,
-    );
-    seat.cuboid(
-        Vec3::new(-0.24, -0.35, -0.10) + fwd,
-        Vec3::new(0.24, -0.29, 0.52) + fwd,
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/BucketSeat",
-        P38PartRole::CabinInterior,
-        CHROME_OLEO,
-        seat,
-    ));
-
-    let mut pilot = MeshBuilder::new();
-    pilot.ellipsoid(
-        Vec3::new(0.0, -0.06, 0.22) + fwd,
-        Vec3::new(0.21, 0.15, 0.28),
-        14,
-        8,
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/PilotTorso",
-        P38PartRole::PilotFigure,
-        PILOT_SUIT,
-        pilot,
-    ));
-
-    let mut head = MeshBuilder::new();
-    head.ellipsoid(
-        Vec3::new(0.0, -0.08, 0.62) + fwd,
-        Vec3::new(0.11, 0.12, 0.13),
-        14,
-        8,
-    );
-    head.cuboid(
-        Vec3::new(-0.11, -0.35, 0.56) + fwd,
-        Vec3::new(0.11, -0.29, 0.72) + fwd,
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/PilotHelmet",
-        P38PartRole::PilotFigure,
-        LEATHER_BROWN,
-        head,
-    ));
-
-    let mut vest = MeshBuilder::new();
-    vest.ellipsoid(
-        Vec3::new(0.0, -0.02, 0.28) + fwd,
-        Vec3::new(0.17, 0.13, 0.18),
-        12,
-        6,
-    );
-    prims.push(fixed(
-        "/P38g/CockpitInterior/MaeWestVest",
-        P38PartRole::PilotFigure,
-        PROP_YELLOW,
-        vest,
-    ));
-
-    let _unused_type_check: P38Material = COCKPIT_GREEN;
 }

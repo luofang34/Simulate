@@ -5,7 +5,7 @@ use std::fmt::{self, Write as _};
 
 use crate::airframe::airframe_prims;
 use crate::articulated::articulated_prims;
-use crate::cockpit_reservation::cockpit_interior_prims;
+use crate::cockpit_interior::cockpit_interior_prims;
 use crate::mesh::P38MeshPrim;
 use crate::powerplant::powerplant_prims;
 

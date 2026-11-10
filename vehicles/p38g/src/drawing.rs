@@ -56,8 +56,14 @@ pub const MAIN_TREAD_IN: f32 = 198.0;
 pub const MAIN_AXLE_BELOW_FRL_STATIC_IN: f32 = 54.575;
 /// Main tyre static rolling radius (front view `STATIC 15.300`, 36 in tyre), inches.
 pub const MAIN_ROLLING_RADIUS_IN: f32 = 15.3;
-/// Fuselage reference line above the ground at the nose gear, static (side view `69.970`).
-pub const FRL_ABOVE_GROUND_NOSE_STATIC_IN: f32 = 69.97;
+/// Nose axle below the fuselage reference line at the static oleo (side view `STATIC
+/// 69.970`, dimensioned to the nose tyre's centre), inches.
+pub const NOSE_AXLE_BELOW_FRL_STATIC_IN: f32 = 69.97;
+/// Static ground line below the horizontal of the fuselage reference line (side view
+/// `5°-33'-46"`): the aircraft stands nose-up by this angle, degrees.
+pub const STATIC_GROUND_ANGLE_DEG: f32 = 5.0 + 33.0 / 60.0 + 46.0 / 3600.0;
+/// Propeller tip above the static ground line (side view `16.726`), inches.
+pub const PROP_TIP_GROUND_CLEARANCE_STATIC_IN: f32 = 16.726;
 /// Nose tyre static rolling radius (side view `STATIC 11.600`, 27 in tyre), inches.
 pub const NOSE_ROLLING_RADIUS_IN: f32 = 11.6;
 /// Nose axle station: centre of the dashed nose tyre on the side view, inches.
@@ -71,26 +77,51 @@ pub const CANOPY_TOP_ABOVE_FRL_IN: f32 = 41.25;
 /// Gondola bottom below the fuselage reference line (front view `31.010`), inches.
 pub const GONDOLA_BOTTOM_BELOW_FRL_IN: f32 = 31.01;
 
+/// Gondola maximum half-breadth (plan view `18.995`), inches.
+pub const GONDOLA_HALF_BREADTH_IN: f32 = 18.995;
+/// Canopy sill line above the fuselage reference line: the horizontal line under the side
+/// windows on the side view, inches.
+pub const CANOPY_SILL_ABOVE_FRL_IN: f32 = 25.6;
+/// Windscreen base station: where the side view's windscreen line meets the sill line and
+/// the plan view's canopy outline closes at the front, inches.
+pub const WINDSCREEN_BASE_FS_IN: f32 = 100.0;
+/// Windscreen slope above the horizontal on the side view, degrees.
+pub const WINDSCREEN_SLOPE_DEG: f32 = 29.3;
+/// Windscreen top bow, the forward frame of the top hatch (side view frame line), inches.
+pub const WINDSCREEN_TOP_FRAME_FS_IN: f32 = 126.2;
+/// Aft frame of the top hatch (side view frame line), inches.
+pub const HATCH_AFT_FRAME_FS_IN: f32 = 154.3;
+/// Canopy tail station: where the plan view's canopy outline closes at the rear, inches.
+pub const CANOPY_TAIL_FS_IN: f32 = 184.5;
+
+/// Rear-view mirror fairing on the canopy top (side view): forward and aft stations and
+/// the apex above the fuselage reference line, inches.
+pub const MIRROR_FAIRING_FS_IN: (f32, f32) = (129.3, 136.5);
+/// Apex of the mirror fairing above the fuselage reference line (side view), inches.
+pub const MIRROR_FAIRING_APEX_ABOVE_FRL_IN: f32 = 46.1;
+/// Width of the mirror fairing (front view), inches.
+pub const MIRROR_FAIRING_WIDTH_IN: f32 = 4.6;
+
 /// Model `y` of fuselage station `fs_in`.
 #[must_use]
-pub fn fs_to_y(fs_in: f32) -> f32 {
+pub const fn fs_to_y(fs_in: f32) -> f32 {
     NOSE_Y_M - fs_in * INCH_M
 }
 
 /// Fuselage station of model `y`, inches.
 #[must_use]
-pub fn y_to_fs(y: f32) -> f32 {
+pub const fn y_to_fs(y: f32) -> f32 {
     (NOSE_Y_M - y) / INCH_M
 }
 
 /// Model `z` of a point `h_in` above the fuselage reference line.
 #[must_use]
-pub fn frl_to_z(h_in: f32) -> f32 {
+pub const fn frl_to_z(h_in: f32) -> f32 {
     FRL_Z_M + h_in * INCH_M
 }
 
 /// Height of model `z` above the fuselage reference line, inches.
 #[must_use]
-pub fn z_to_frl(z: f32) -> f32 {
+pub const fn z_to_frl(z: f32) -> f32 {
     (z - FRL_Z_M) / INCH_M
 }

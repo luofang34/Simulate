@@ -2871,12 +2871,36 @@
    ]
   },
   {
-   "name": "frl_above_ground_nose_static",
+   "name": "nose_axle_below_frl_static",
    "value": 69.97,
    "unit": "in",
    "view": "side",
-   "callout": "STATIC 69.970 / COMP. 67.032 / EXT. 78.785",
-   "px": []
+   "callout": "STATIC 69.970 / COMP. 67.032 / EXT. 78.785, fuselage reference line to the nose axle: the dimension's extension lines run through the dashed nose tyre's centre (y 490) and, for the 11.600 rolling radius below it, its bottom (y 520); the front view draws the nose axle at y 2331, 71 in below the reference line",
+   "px": [
+    [0, 328.1],
+    [0, 490]
+   ]
+  },
+  {
+   "name": "static_ground_angle",
+   "value": 5.5628,
+   "unit": "deg",
+   "view": "side",
+   "callout": "5 deg 33' 46\" between the GROUND LINE (STATIC) under both tyres and the horizontal: the nose axle 69.970 + 11.600 in and the main axle 54.575 + 15.300 in below the reference line, 120.831 in apart along the ground",
+   "px": [
+    [490, 517],
+    [720, 495]
+   ]
+  },
+  {
+   "name": "prop_tip_ground_clearance_static",
+   "value": 16.726,
+   "unit": "in",
+   "view": "side",
+   "callout": "16.726 from the propeller arc at the propeller centreline to the static ground line",
+   "px": [
+    [545, 475]
+   ]
   },
   {
    "name": "nose_rolling_radius_static",
@@ -2950,6 +2974,78 @@
    "view": "side",
    "callout": "12'-10 1/8\" top of the propeller arc at the propeller centreline",
    "px": []
+  },
+  {
+   "name": "canopy_sill_above_frl",
+   "value": 25.6,
+   "unit": "in",
+   "view": "side",
+   "callout": "horizontal sill line under the side windows, stroke centre y 267 from x 587 to x 672",
+   "px": [
+    [0, 267]
+   ]
+  },
+  {
+   "name": "windscreen_base_fs",
+   "value": 100.0,
+   "unit": "in",
+   "view": "side",
+   "callout": "windscreen line (stroke centres x 572 y 265 to x 625 y 236) produced to the sill line y 267 at x 568.3 (FS 99.9); the plan view's canopy outline closes at y 1572 (FS 100.1)",
+   "px": [
+    [568.3, 267]
+   ]
+  },
+  {
+   "name": "windscreen_slope",
+   "value": 29.3,
+   "unit": "deg",
+   "view": "side",
+   "callout": "windscreen line through stroke centres x 572 y 265 and x 625 y 236, per-axis scales applied",
+   "px": [
+    [572, 265],
+    [625, 236]
+   ]
+  },
+  {
+   "name": "windscreen_top_frame_fs",
+   "value": 126.2,
+   "unit": "in",
+   "view": "side",
+   "callout": "vertical frame line from the canopy top to the sill at x 632.5; the plan view draws it at y 1512 (FS 125.4)",
+   "px": [
+    [632.5, 0]
+   ]
+  },
+  {
+   "name": "hatch_aft_frame_fs",
+   "value": 154.3,
+   "unit": "in",
+   "view": "side",
+   "callout": "vertical frame line below the canopy top at x 701; the plan view draws it at y 1445 (FS 153.7)",
+   "px": [
+    [701, 0]
+   ]
+  },
+  {
+   "name": "canopy_tail_fs",
+   "value": 184.5,
+   "unit": "in",
+   "view": "plan",
+   "callout": "aft point of the canopy outline at y 1372 (the side view hides the canopy aft of FS 165 behind the port wing)",
+   "px": [
+    [0, 1372]
+   ]
+  },
+  {
+   "name": "canopy_mirror_fairing",
+   "value": 46.1,
+   "unit": "in",
+   "view": "side",
+   "callout": "small fairing on the canopy top behind the windscreen top bow, FS 129.3 to FS 136.5: its upper edge rises from the canopy at x 640 to an apex at x 657 y 218.5 (46.1 in above the reference line, the value) and drops square to the canopy; the front view draws it 4.6 in wide at y 2060",
+   "px": [
+    [640, 226],
+    [657, 218.5]
+   ]
   }
  ]
 }

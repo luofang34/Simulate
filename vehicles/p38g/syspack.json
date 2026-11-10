@@ -6,12 +6,12 @@
   "kind": "FixedWing",
   "assets": {
     "geometry/landmarks.json": {
-      "sha256": "cab2f382f2e5e893164eb4755ebc12c9442afbf722ac25d7bbe68532f7281998",
-      "size_bytes": 1484
+      "sha256": "de898f7acda0de7539c16fcf722dacd957afa64e3f2940f3e4dacd0c865373a9",
+      "size_bytes": 1683
     },
     "fdm/p38g.xml": {
-      "sha256": "fa658cf5d0acaec34b7cc53c57d0113e254bbf9aec504e8a0e267107390d9d3c",
-      "size_bytes": 85679
+      "sha256": "0676aa19e5badb9a5af022a38112ca52b1ee0ac7f9fbd7ef04bde6788bb6dcea",
+      "size_bytes": 85851
     },
     "performance/airspeed_envelope.json": {
       "sha256": "7fa9f8977d7cbfff421def525558d8d228a88d5b3b25f4ce280b92a5b78b6cd7",

@@ -101,10 +101,15 @@ impl P38Skin {
         let Some(path) = path.strip_prefix("/P38g/") else {
             return false;
         };
+        // A bay's interior is bare structure; its closed doors are part of the skin.
+        if path.ends_with("/BayInterior") {
+            return false;
+        }
         matches!(
             path,
             "Gondola/UpperOlive" | "Gondola/LowerGray" | "Gondola/NoseUpperDeck"
-        ) || path.starts_with("Booms/")
+        ) || path.starts_with("Gondola/NoseBay/GearDoor")
+            || path.starts_with("Booms/")
             || (path.starts_with("Wing/") && path != "Wing/PitotMast")
             || path.starts_with("Empennage/")
             || path.ends_with("/SpinnerBase")

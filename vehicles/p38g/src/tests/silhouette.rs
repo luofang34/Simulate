@@ -58,7 +58,7 @@ impl View {
     /// Parts the drawing does not show in this view, so they must not count against it.
     fn excludes(self, path: &str, role: P38PartRole) -> bool {
         // Propellers are lines or dashed discs, the landing gear is phantom, and the gun
-        // barrels, pitot mast and drop-tank pylons are not drawn as outline.
+        // barrels, pitot mast, bead sight post and drop-tank pylons are not drawn as outline.
         let hidden_everywhere = matches!(
             role,
             P38PartRole::PropellerBlades
@@ -72,6 +72,7 @@ impl View {
             "NoseArmament",
             "GunBlastTroughs",
             "PitotMast",
+            "BeadSight",
             "InnerPylons",
         ]
         .iter()
@@ -87,9 +88,9 @@ impl View {
     /// regression fails while the remaining gaps are closed.
     fn limits(self) -> (f32, f32, f32) {
         match self {
-            Self::Side => (0.93, 15.5, 6.0),
-            Self::Plan => (0.933, 12.0, 4.6),
-            Self::Front => (0.805, 9.5, 3.8),
+            Self::Side => (0.972, 3.5, 2.0),
+            Self::Plan => (0.94, 12.0, 4.2),
+            Self::Front => (0.835, 9.0, 2.8),
         }
     }
 }
@@ -236,8 +237,13 @@ fn drawing_constants_repeat_the_digitised_callouts() {
         ),
         ("main_rolling_radius_static", d::MAIN_ROLLING_RADIUS_IN),
         (
-            "frl_above_ground_nose_static",
-            d::FRL_ABOVE_GROUND_NOSE_STATIC_IN,
+            "nose_axle_below_frl_static",
+            d::NOSE_AXLE_BELOW_FRL_STATIC_IN,
+        ),
+        ("static_ground_angle", d::STATIC_GROUND_ANGLE_DEG),
+        (
+            "prop_tip_ground_clearance_static",
+            d::PROP_TIP_GROUND_CLEARANCE_STATIC_IN,
         ),
         ("nose_rolling_radius_static", d::NOSE_ROLLING_RADIUS_IN),
         ("nose_axle_fs_drawn", d::NOSE_AXLE_FS_IN),
@@ -246,6 +252,14 @@ fn drawing_constants_repeat_the_digitised_callouts() {
         ("canopy_top_above_frl", d::CANOPY_TOP_ABOVE_FRL_IN),
         ("gondola_bottom_below_frl", d::GONDOLA_BOTTOM_BELOW_FRL_IN),
         ("thrust_line_above_frl", d::THRUST_LINE_ABOVE_FRL_IN),
+        ("gondola_half_breadth", d::GONDOLA_HALF_BREADTH_IN),
+        ("canopy_sill_above_frl", d::CANOPY_SILL_ABOVE_FRL_IN),
+        ("windscreen_base_fs", d::WINDSCREEN_BASE_FS_IN),
+        ("windscreen_slope", d::WINDSCREEN_SLOPE_DEG),
+        ("windscreen_top_frame_fs", d::WINDSCREEN_TOP_FRAME_FS_IN),
+        ("hatch_aft_frame_fs", d::HATCH_AFT_FRAME_FS_IN),
+        ("canopy_tail_fs", d::CANOPY_TAIL_FS_IN),
+        ("canopy_mirror_fairing", d::MIRROR_FAIRING_APEX_ABOVE_FRL_IN),
     ] {
         assert!(
             (value(name) - constant).abs() < 1e-3,
