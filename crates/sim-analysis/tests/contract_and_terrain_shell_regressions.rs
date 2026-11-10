@@ -12,7 +12,7 @@ use sim_orbital::BuiltinSolarSystem2026_2028;
 use sim_spacetime::{NaifId, TdbEpoch};
 
 const VALID_REQ_JSON: &str = r#"{
-  "schema_version": 1,
+  "schema_version": 2,
   "request_id": "req-valley-relay-rev2",
   "design_revision": {
     "design_id": "design-valley-relay-001",
@@ -46,7 +46,8 @@ const VALID_REQ_JSON: &str = r#"{
     "sample_step_s": 10.0,
     "boundary_time_tolerance_s": 0.5,
     "min_range_m": null,
-    "max_range_m": 2000000.0
+    "max_range_m": 2000000.0,
+    "signal_time": "Geometric"
   },
   "occultation_env": {
     "bodies": [
@@ -345,4 +346,35 @@ fn p1_regression_geo_35786km_ray_does_not_skip_low_altitude_dem_and_enforces_sam
             DataCoverageError::TerrainDemOutOfCoverage { .. }
         ))
     ));
+}
+
+#[test]
+fn only_the_current_schema_version_is_evaluated() {
+    use sim_analysis::{ANALYSIS_CONTRACT_SCHEMA_VERSION, SignalTimeModel};
+
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let mut req: AnalysisRequestArtifact =
+        serde_json::from_str(VALID_REQ_JSON).expect("deserialize req");
+    assert_eq!(req.schema_version, ANALYSIS_CONTRACT_SCHEMA_VERSION);
+    assert_eq!(req.query.signal_time, SignalTimeModel::Geometric);
+    let current =
+        evaluate_analysis_request_artifact(&req, "res-v", &solar.ephemeris, &solar.orientation);
+    assert_eq!(current.schema_version, ANALYSIS_CONTRACT_SCHEMA_VERSION);
+    assert_eq!(current.job_status, AnalysisJobStatus::Completed);
+
+    for other in [1, ANALYSIS_CONTRACT_SCHEMA_VERSION + 1] {
+        req.schema_version = other;
+        let refused =
+            evaluate_analysis_request_artifact(&req, "res-v", &solar.ephemeris, &solar.orientation);
+        assert!(
+            format!("{:?}", refused.job_status).contains("unsupported analysis contract"),
+            "{:?}",
+            refused.job_status
+        );
+    }
+
+    // A request that does not say how its two ends are timed is not a request.
+    let untimed = VALID_REQ_JSON.replace(",\n    \"signal_time\": \"Geometric\"", "");
+    assert_ne!(untimed, VALID_REQ_JSON);
+    assert!(serde_json::from_str::<AnalysisRequestArtifact>(&untimed).is_err());
 }

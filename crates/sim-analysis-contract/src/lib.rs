@@ -1,4 +1,4 @@
-//! Shared versioned analysis request/result contract (`ANALYSIS_CONTRACT_SCHEMA_VERSION = 1`),
+//! Shared versioned analysis request/result contract (`ANALYSIS_CONTRACT_SCHEMA_VERSION`),
 //! terrain/sensor models, and 4-way outcome taxonomy between `Simulate` (`sim-analysis`)
 //! and `Sokoly` (`sokoly-planning`), built on top of [`sim_spacetime`].
 

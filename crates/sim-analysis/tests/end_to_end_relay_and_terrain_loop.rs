@@ -11,7 +11,7 @@ use sim_orbital::BuiltinSolarSystem2026_2028;
 use sim_spacetime::{BodyOrientationCatalog, EphemerisCatalog};
 
 const SOKOLY_SAMPLE_REQ_REV1_JSON: &str = r#"{
-  "schema_version": 1,
+  "schema_version": 2,
   "request_id": "req-valley-relay-rev1",
   "design_revision": {
     "design_id": "design-valley-relay-001",
@@ -45,7 +45,8 @@ const SOKOLY_SAMPLE_REQ_REV1_JSON: &str = r#"{
     "sample_step_s": 10.0,
     "boundary_time_tolerance_s": 0.5,
     "min_range_m": null,
-    "max_range_m": 2000000.0
+    "max_range_m": 2000000.0,
+    "signal_time": "Geometric"
   },
   "occultation_env": {
     "bodies": [
@@ -177,7 +178,7 @@ const SOKOLY_SAMPLE_REQ_REV1_JSON: &str = r#"{
 }"#;
 
 const SOKOLY_SAMPLE_REQ_REV2_JSON: &str = r#"{
-  "schema_version": 1,
+  "schema_version": 2,
   "request_id": "req-valley-relay-rev2",
   "design_revision": {
     "design_id": "design-valley-relay-001",
@@ -211,7 +212,8 @@ const SOKOLY_SAMPLE_REQ_REV2_JSON: &str = r#"{
     "sample_step_s": 10.0,
     "boundary_time_tolerance_s": 0.5,
     "min_range_m": null,
-    "max_range_m": 2000000.0
+    "max_range_m": 2000000.0,
+    "signal_time": "Geometric"
   },
   "occultation_env": {
     "bodies": [

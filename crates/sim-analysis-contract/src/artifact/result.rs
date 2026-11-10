@@ -66,7 +66,7 @@ pub enum ArtifactBindingError {
 /// Versioned external analysis result artifact returned by `Simulate` and ingested by `Sokoly`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisResultArtifact {
-    /// Contract schema version (`ANALYSIS_CONTRACT_SCHEMA_VERSION = 1`).
+    /// Contract schema version ([`ANALYSIS_CONTRACT_SCHEMA_VERSION`]).
     pub schema_version: u32,
     /// Unique result artifact identifier.
     pub result_id: String,
