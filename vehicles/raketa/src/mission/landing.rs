@@ -6,9 +6,9 @@ use sim_core::TickSpan;
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use sim_orbital::{
     AutolandGuidanceConfig, BodyOrientationCatalog, BuiltinSolarSystem2026_2028, CoastControlLaw,
-    ContactFootSpec, ContinuousPlantState, EntryCorridorConfig, FOUR_G_PROPER_ACCEL_M_S2,
-    ForceModel, NaifId, PinnedSurfaceState, PropellantMode, STANDARD_GRAVITY_G0_M_S2, TdbEpoch,
-    VesselContactState, evaluate_entry_corridor_guidance, evaluate_powered_descent_autoland,
+    ContactFootSpec, ContinuousPlantState, EntryCorridorConfig, ForceModel, NaifId,
+    PinnedSurfaceState, PropellantMode, STANDARD_GRAVITY_G0_M_S2, TdbEpoch, VesselContactState,
+    evaluate_entry_corridor_guidance, evaluate_powered_descent_autoland,
     integrate_contact_interval, propagate_plant_interval, quat_normalize_portable,
 };
 use sim_scenery::PinnedCollisionTerrain;
@@ -17,6 +17,7 @@ use crate::{
     aero_actuators::{
         RAKETA_CG_Y_M, RAKETA_MASS_KG, RaketaStageLaw, raketa_default_rw_mode, raketa_mass_model,
     },
+    gnc_boundary::RaketaOuterGuidanceSetpoint,
     mission::{RaketaMissionError, RaketaMissionTarget, closed_loop_tols},
 };
 
@@ -117,14 +118,13 @@ fn run_staged_mars_entry_corridor_demo(
             entry_geo.height_m,
             &cfg,
         );
-        let active_law = RaketaStageLaw {
-            commanded_main_accel_m_s2: ec.retro_thrust_accel_m_s2,
-            desired_body_y_icrf: ec.attitude_dir_icrf,
-            rcs_cmd_unit_body: DVec3::ZERO,
-            fin_cmd_deg: [4.0, -4.0, 4.0, -4.0],
-            is_landing_or_pad_mode: false,
-            orientation: &solar.orientation,
-        };
+        let active_law = RaketaOuterGuidanceSetpoint::from_entry_corridor(
+            &ec,
+            libm::sqrt(aero_icrf.length_squared()),
+            cfg.max_proper_accel_m_s2,
+            [4.0, -4.0, 4.0, -4.0],
+        )
+        .into_stage_law(&solar.orientation);
         let (_, lim, _, _) = active_law.evaluate_detailed(*epoch, state);
         peak_a = peak_a.max(lim.resulting_proper_accel_m_s2);
         let t_next = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(4, 0));
@@ -200,14 +200,12 @@ pub(super) fn run_staged_autoland_and_surface_settle_demo(
         18.0,
         &AutolandGuidanceConfig::default(),
     );
-    let law = RaketaStageLaw {
-        commanded_main_accel_m_s2: al.commanded_accel_m_s2.min(FOUR_G_PROPER_ACCEL_M_S2),
-        desired_body_y_icrf: al.thrust_dir_icrf,
-        rcs_cmd_unit_body: DVec3::ZERO,
-        fin_cmd_deg: [15.0, -15.0, 15.0, -15.0],
-        is_landing_or_pad_mode: true,
-        orientation: &solar.orientation,
-    };
+    let law = RaketaOuterGuidanceSetpoint::from_powered_descent(
+        &al,
+        libm::sqrt((state.vel_rel_icrf_m_s - v_pad).length_squared()),
+        [15.0, -15.0, 15.0, -15.0],
+    )
+    .into_stage_law(&solar.orientation);
     let (_, lim, _, fin_locked) = law.evaluate_detailed(*epoch, state);
     let (pinned, settle_peak) =
         settle_touchdown_on_terrain(solar, force_model, &site, &rot, &lf, epoch, state)?;

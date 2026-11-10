@@ -113,6 +113,21 @@ impl Flight {
         Some(env.resolve_at_mass(mass_kg))
     }
 
+    /// Unit direction from `observer_fixed_m`, in the fixed axes of the body the flight is
+    /// about, to `body`'s centre at the flight's instant, from the ephemeris the dynamics
+    /// integrate in; `None` outside the built-in kernels' coverage.
+    #[must_use]
+    pub fn dynamics_direction_fixed(
+        &self,
+        body: sim_orbital::NaifId,
+        observer_fixed_m: DVec3,
+    ) -> Option<DVec3> {
+        let about = sim_universe::naif_body(self.world().body())?;
+        let at = self.epoch.tdb_at(self.now());
+        self.solar
+            .direction_fixed(body, about, observer_fixed_m, at)
+    }
+
     /// Body FRD specific force (`m/s²`), when provided by the plant.
     #[must_use]
     pub fn specific_force_frd_m_s2(&self) -> Option<DVec3> {

@@ -16,7 +16,8 @@ use sim_core::{
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
     BodyOrientationCatalog, BuiltinSolarError, BuiltinSolarSystem2026_2028, Dop853Tolerances,
-    EphemerisCatalog, ForceModel, GravityError, VesselId,
+    EphemerisCatalog, ForceModel, GravityError, SolarSystemKernelPack, VesselId,
+    apollo_1969_spk_bytes,
 };
 use sim_spacetime::SimEpoch;
 use sim_universe::{
@@ -53,7 +54,15 @@ pub(super) struct SolarSystem {
 
 impl SolarSystem {
     pub(super) fn load() -> Result<Arc<Self>, SolarSystemError> {
-        let solar = BuiltinSolarSystem2026_2028::load_verified()?;
+        let apollo_spk = apollo_1969_spk_bytes();
+        let spk_slices = [apollo_spk.as_slice()];
+        let pack = SolarSystemKernelPack {
+            spk_files: &spk_slices,
+            earth_bpc_files: &[],
+            moon_bpc_files: &[],
+            allow_iau_outside_bpc: true,
+        };
+        let solar = BuiltinSolarSystem2026_2028::load_with_kernel_pack(&pack)?;
         let force_model = ForceModel::standard_solar_system(solar.constants)?;
         Ok(Arc::new(Self {
             ephemeris: Arc::new(solar.ephemeris),
@@ -71,6 +80,30 @@ impl SolarSystem {
         }
     }
 
+    /// Unit direction from `observer_fixed_m`, in `observer_body`'s fixed axes, to
+    /// `target`'s centre at `at`, as the dynamics see it; `None` outside the kernels'
+    /// coverage.
+    pub(super) fn direction_fixed(
+        &self,
+        target: sim_orbital::NaifId,
+        observer_body: sim_orbital::NaifId,
+        observer_fixed_m: glam::DVec3,
+        at: sim_orbital::TdbEpoch,
+    ) -> Option<glam::DVec3> {
+        let from_body = self
+            .ephemeris
+            .geometric_state_icrf(
+                target,
+                observer_body,
+                at,
+                sim_orbital::DerivativeOrder::Position,
+            )
+            .ok()?
+            .pos_m;
+        let rotation = self.orientation.body_rotation(observer_body, at).ok()?;
+        (rotation.r_icrf_to_fixed * from_body - observer_fixed_m).try_normalize()
+    }
+
     /// The solar system as a universe's orbital tier reads it.
     pub(super) fn context(&self) -> OrbitalContext {
         OrbitalContext {
@@ -80,6 +113,14 @@ impl SolarSystem {
             quantum: ORBITAL_QUANTUM,
             tolerances: Dop853Tolerances::default(),
         }
+    }
+
+    pub(super) fn ephemeris(&self) -> &dyn EphemerisCatalog {
+        self.ephemeris.as_ref()
+    }
+
+    pub(super) fn orientation(&self) -> &dyn BodyOrientationCatalog {
+        self.orientation.as_ref()
     }
 }
 

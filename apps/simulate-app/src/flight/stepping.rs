@@ -7,7 +7,19 @@ use super::Flight;
 use super::mode::{self, Mode};
 use crate::error::AppSimError;
 
+/// The fastest a flight runs while flight dynamics, not orbital propagation, carry it.
+const FLOWN_WARP_LIMIT: f64 = 4.0;
+
 impl Flight {
+    /// `factor`, held to [`FLOWN_WARP_LIMIT`] unless a spaceflight is coasting in orbital
+    /// propagation, which strides over any span at once.
+    pub(super) fn governed_warp(&self, factor: f64, controls: ControlInputs) -> f64 {
+        match &self.mode {
+            Mode::Space(world) if world.coasting(controls) => factor,
+            Mode::Space(_) | Mode::Free { .. } | Mode::Scenario(_) => factor.min(FLOWN_WARP_LIMIT),
+        }
+    }
+
     /// Advances the flight by `ticks` of master-clock time in whole steps of `step_s`
     /// seconds and returns how many ran.
     pub(super) fn step_mode(
@@ -46,6 +58,11 @@ impl Flight {
                     info!(scenario = run.profile().title(), "scenario complete");
                 }
                 steps
+            }
+            Mode::Space(world) if world.coasting(controls) => {
+                world.coast(ticks)?;
+                self.prev_vehicle = world.vehicle();
+                0
             }
             Mode::Space(world) => {
                 let steps = self.steps.steps_for(ticks);

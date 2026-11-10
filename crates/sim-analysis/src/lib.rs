@@ -29,16 +29,17 @@ pub use contract::{
 };
 pub use geometry::{
     LinkGeometryEvalError, LinkGeometrySample, MediumIntegratedSample, PropagationMediumQuery,
-    check_line_of_sight_occultation, compute_link_geometry_sample,
+    check_line_of_sight_occultation, check_signal_path_occultation, compute_link_geometry_sample,
 };
 pub use models::{
     AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, OccultingBodySpec,
-    OccultingShape, SensorFovModel, VehicleSensorModel,
+    OccultingShape, SensorFovModel, SignalTimeModel, VehicleSensorModel,
 };
 pub use relay::{
     AnalysisEndpoint, EndpointLinkReport, EndpointLinkSample, GeometricRelayReport,
-    RelayAccessSample, RelayHopKind, RelayRestrictionEntry, VerificationScope,
-    evaluate_endpoint_link_access, evaluate_geometric_relay_access,
+    RelayAccessSample, RelayHopKind, RelayRestrictionEntry, SharedTrajectoryAccessSuite,
+    VerificationScope, evaluate_endpoint_link_access, evaluate_geometric_relay_access,
+    evaluate_shared_trajectory_access_suite,
 };
 pub use terrain::{
     AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid, TerrainElevationSource,

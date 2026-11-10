@@ -211,6 +211,10 @@ impl ScenarioWorld {
             Self::CentralJersey47N => aerodrome_scene(AerodromeId::CentralJersey47N),
             Self::NewarkKewr => aerodrome_scene(AerodromeId::NewarkKewr),
             Self::LunarTranquility => lunar_scene(),
+            Self::MarsGlobe => Ok(WorldScene {
+                mesh: whole_body_at(BodyEllipsoid::MARS_IAU, 0.0, None)?,
+                atlas: None,
+            }),
         }
     }
 }

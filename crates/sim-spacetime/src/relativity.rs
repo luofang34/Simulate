@@ -8,10 +8,14 @@
 //! day, and a low orbit loses time. Only Earth's monopole and `J2` enter the
 //! potential, which bounds the rate error near Earth to about `1e-14`.
 
+mod barycentric;
+
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
 use crate::scalar_math::sqrt;
+
+pub use barycentric::{BarycentricClockModel, L_B, MassiveBody, tdb_minus_tt_position_term_s};
 
 /// Speed of light in vacuum, m/s (exact).
 pub const SPEED_OF_LIGHT_M_S: f64 = 299_792_458.0;

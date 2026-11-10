@@ -184,6 +184,10 @@ impl BodyOrientationCatalog for StackedOrientationCatalog {
         self.hash
     }
 
+    fn catalog_model_id(&self) -> &str {
+        "naif-stacked-bpc-iau"
+    }
+
     fn coverage(&self, body: NaifId, min_grade: SurfaceNavGrade) -> Vec<TdbSpanNs> {
         let empty = CoverageSet::empty();
         let prec_cov = self

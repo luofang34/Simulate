@@ -104,6 +104,7 @@ const fn world_title(world: sim_scenario::ScenarioWorld) -> &'static str {
         sim_scenario::ScenarioWorld::CentralJersey47N => "CENTRAL JERSEY 47N",
         sim_scenario::ScenarioWorld::NewarkKewr => "NEWARK KEWR",
         sim_scenario::ScenarioWorld::LunarTranquility => "MOON, SEA OF TRANQUILITY",
+        sim_scenario::ScenarioWorld::MarsGlobe => "MARS GLOBE",
     }
 }
 

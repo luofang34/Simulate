@@ -11,6 +11,7 @@ use crate::{
     access::{
         AccessAnalysisError, AccessRestrictionReason, AccessWindow, DataCoverageError,
         MAX_ACCESS_GRID_STEPS, ModelNotApplicableReason, StationAccessSample,
+        WindowSearchCompleteness,
     },
     geometry::{
         LinkGeometryEvalError, LinkGeometrySample, check_line_of_sight_occultation,
@@ -343,6 +344,17 @@ pub(super) fn extract_access_windows(
                 max_el = s.geometry.elevation_rad;
                 min_range = s.geometry.slant_range_m;
             } else {
+                if refine && let Some(prev) = idx.checked_sub(1).and_then(|j| samples.get(j)) {
+                    scan_access_interior_dropouts(
+                        ctx,
+                        prev.geometry.epoch,
+                        s.geometry.epoch,
+                        &mut windows,
+                        &mut active_start,
+                        &mut max_el,
+                        &mut min_range,
+                    )?;
+                }
                 max_el = max_el.max(s.geometry.elevation_rad);
                 min_range = min_range.min(s.geometry.slant_range_m);
             }
@@ -377,6 +389,64 @@ pub(super) fn extract_access_windows(
         });
     }
     Ok(windows)
+}
+
+fn scan_access_interior_dropouts(
+    ctx: &AccessEvalCtx<'_>,
+    prev_ep: TdbEpoch,
+    next_ep: TdbEpoch,
+    windows: &mut Vec<AccessWindow>,
+    active_start: &mut Option<TdbEpoch>,
+    max_el: &mut f64,
+    min_range: &mut f64,
+) -> Result<(), AccessAnalysisError> {
+    let substeps = WindowSearchCompleteness::INTERIOR_DROPOUT_SUBSTEPS;
+    let span_s = next_ep.signed_offset_seconds_from(prev_ep);
+    let tol_s = ctx.query.boundary_time_tolerance_s.max(1.0e-6);
+    if span_s <= tol_s {
+        return Ok(());
+    }
+    let mut cur_ep = prev_ep;
+    let mut cur_acc = true;
+    let mut k = 1_u32;
+    while k < substeps {
+        let frac = f64::from(k) / f64::from(substeps);
+        let sub_ticks = ((span_s * frac) * (TICKS_PER_SECOND as f64)).round() as u128;
+        let sub_ep = prev_ep.add_span(TickSpan::from_ticks_u128(sub_ticks));
+        if sub_ep > cur_ep && sub_ep < next_ep {
+            let sub = evaluate_single_epoch(ctx, sub_ep)?;
+            if cur_acc && !sub.accessible {
+                let end_ep = bisect_transition_epoch(ctx, cur_ep, sub_ep, true)?;
+                if let Some(start_ep) = active_start.take() {
+                    windows.push(AccessWindow {
+                        start_epoch: start_ep,
+                        end_epoch: end_ep,
+                        duration_s: end_ep.signed_offset_seconds_from(start_ep).max(0.0),
+                        max_elevation_rad: *max_el,
+                        min_slant_range_m: *min_range,
+                    });
+                }
+            } else if !cur_acc && sub.accessible {
+                let start_ep = bisect_transition_epoch(ctx, cur_ep, sub_ep, false)?;
+                *active_start = Some(start_ep);
+                *max_el = sub.geometry.elevation_rad;
+                *min_range = sub.geometry.slant_range_m;
+            } else if sub.accessible {
+                *max_el = max_el.max(sub.geometry.elevation_rad);
+                *min_range = min_range.min(sub.geometry.slant_range_m);
+            }
+            cur_ep = sub_ep;
+            cur_acc = sub.accessible;
+        }
+        k = k.wrapping_add(1);
+    }
+    if !cur_acc {
+        let start_ep = bisect_transition_epoch(ctx, cur_ep, next_ep, false)?;
+        *active_start = Some(start_ep);
+        *max_el = f64::NEG_INFINITY;
+        *min_range = f64::INFINITY;
+    }
+    Ok(())
 }
 
 fn bisect_transition_epoch(

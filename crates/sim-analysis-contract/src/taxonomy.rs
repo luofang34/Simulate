@@ -186,6 +186,10 @@ pub enum ModelNotApplicableReason {
         /// Supplied boundary refinement tolerance (`s`).
         boundary_time_tolerance_s: f64,
     },
+    /// A multi-hop relay was asked for with light-time signal timing, which chains
+    /// emission and reception across hops and is not modelled.
+    #[error("light-time signal timing is not supported for multi-hop relay access")]
+    LightTimeRelayUnsupported,
     /// Ground station minimum elevation is outside $[-\pi/2, \pi/2]$ or non-finite.
     #[error("invalid station minimum elevation {min_elevation_rad} rad")]
     InvalidStationParameters {
@@ -278,8 +282,10 @@ pub enum WindowSearchCompleteness {
         sample_step_s: f64,
     },
     /// Sign transitions between adjacent samples on the `sample_step_s` grid were refined via bisection
-    /// to `boundary_tolerance_s`, but short access windows of duration `< may_miss_subgrid_windows_shorter_than_s`
-    /// that both open and close inside a single coarse grid interval are not guaranteed to be detected.
+    /// to `boundary_tolerance_s`, and accessible coarse intervals are scanned across
+    /// [`Self::INTERIOR_DROPOUT_SUBSTEPS`] interior substeps for brief dropouts. Short access windows
+    /// of duration `< may_miss_subgrid_windows_shorter_than_s` that both open and close inside a single
+    /// coarse grid interval are not guaranteed to be detected.
     BracketRefinedOnGrid {
         /// Coarse grid step used for bracket detection (`s`).
         sample_step_s: f64,
@@ -290,6 +296,47 @@ pub enum WindowSearchCompleteness {
     },
     /// Completeness guarantees are unknown (e.g. externally imported window list).
     CompletenessUnknown,
+}
+
+impl WindowSearchCompleteness {
+    /// Number of uniform sub-intervals probed inside each accessible coarse step `[t_k, t_{k+1}]`
+    /// during bracket-refined window extraction to detect brief interior occlusions/dropouts.
+    pub const INTERIOR_DROPOUT_SUBSTEPS: u32 = 16;
+
+    /// Returns `true` only when bracket root refinement and interior dropout scanning were performed.
+    #[must_use]
+    pub const fn is_bracket_refined(&self) -> bool {
+        matches!(self, Self::BracketRefinedOnGrid { .. })
+    }
+
+    /// Upper bound (`s`) on the duration of an interior dropout that could occur strictly between
+    /// probed samples without being detected, or `None` if completeness is unknown.
+    #[must_use]
+    pub fn max_undetected_dropout_s(&self) -> Option<f64> {
+        match self {
+            Self::SampledGridOnly { sample_step_s } => Some(*sample_step_s),
+            Self::BracketRefinedOnGrid { sample_step_s, .. } => {
+                Some(*sample_step_s / f64::from(Self::INTERIOR_DROPOUT_SUBSTEPS))
+            }
+            Self::CompletenessUnknown => None,
+        }
+    }
+
+    /// Returns `true` only when this completeness level was bracket-refined (`BracketRefinedOnGrid`)
+    /// and its maximum undetected interior dropout bound is at most `max_allowed_undetected_dropout_s`.
+    ///
+    /// Discrete grid sampling (`SampledGridOnly`) never certifies continuous interval coverage.
+    #[must_use]
+    pub fn certifies_continuous_coverage(&self, max_allowed_undetected_dropout_s: f64) -> bool {
+        if !self.is_bracket_refined()
+            || !max_allowed_undetected_dropout_s.is_finite()
+            || max_allowed_undetected_dropout_s <= 0.0
+        {
+            return false;
+        }
+        self.max_undetected_dropout_s()
+            .is_some_and(|bound| bound <= max_allowed_undetected_dropout_s + 1.0e-12)
+    }
 }
 
 /// Continuous access interval `[start_epoch, end_epoch]` during which all access constraints hold.

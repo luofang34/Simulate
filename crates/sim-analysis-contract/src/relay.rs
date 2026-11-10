@@ -55,6 +55,10 @@ pub struct EndpointLinkSample {
     pub source_off_boresight_rad: Option<f64>,
     /// Off-boresight angle in target sensor mount (`rad`, `Some` when target mount orientation is defined).
     pub target_off_boresight_rad: Option<f64>,
+    /// One-way light time from source to target (`s`), under `SignalTimeModel::LightTime`.
+    /// The source position and its angles are then those at `epoch` less this.
+    #[serde(default)]
+    pub light_time_s: Option<f64>,
     /// Active geometric/terrain/FOV restrictions (`empty` iff `accessible == true`).
     pub active_restrictions: Vec<AccessRestrictionReason>,
     /// `true` iff all horizon, mount `FOV`, range, planetary body, and DEM terrain constraints hold.

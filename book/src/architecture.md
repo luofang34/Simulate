@@ -37,6 +37,25 @@ With it:
 - a GPS clock gains 38.6 µs a day;
 - a clock in low orbit loses time.
 
+Away from Earth the same question is asked against TDB.
+`BarycentricClockModel::proper_rate_offset` gives `dτ/dTDB - 1` from the
+potential of the Sun, Earth, the Moon and the planets out to Saturn and the
+clock's barycentric speed, with `L_B` so that a geoid clock keeps TDB on
+average. Master-clock ticks are uniform TDB, so that rate integrates over
+ticks as it stands. Against the built-in ephemeris:
+
+- a clock on the Moon gains 55.98 µs a day on a geoid clock (Ashby and Patla
+  give 56.02);
+- a clock on Mars gains 487.8 µs a day, averaged over a Martian year. Ashby
+  and Patla's solar-tide treatment gives 477, 2 % less than this first-order
+  rate;
+- the two formulas agree on a GPS clock to `2e-14`, once
+  `tdb_minus_tt_position_term_s` accounts for clocks that agree in TT
+  standing apart in TDB by where they are.
+
+`sim_devices::OscillatorBlock` is a frequency standard that counts with
+either rate and carries its factory offset.
+
 `ProperTimeClock` integrates the rate in a block's snapshot.
 `orbit_periodic_clock_term_s` is the eccentricity term from IS-GPS-200. Take
 the integration steps from `SimEpoch::tt_j2000_seconds_at`, not from ticks.
@@ -98,6 +117,48 @@ minutes. The test `flight_and_orbital_dynamics_agree_across_a_handoff` flies
 one orbit both ways. It allows the two tiers to differ only by the solar and
 lunar tide, which `RigidBody6DofBlock` does not model.
 
+## Libration-point orbits
+
+Gravity is n-body throughout, so an orbit about Sun-Earth L2 needs no special
+frame or patched sphere of influence: it is a trajectory the full ephemeris
+and solar radiation pressure carry, and it is unstable. `sim-mission` plans a
+first arc about the point (`plan_assisted_l2_bounded_arc`) and then holds it
+(`fly_l2_station_keeping`): every few weeks a burn along the Sun-Earth line,
+sized so that the spacecraft crosses the plane through that line with no
+velocity along it a revolution later. A 6,200 kg spacecraft with a 160 m²
+sunshield takes about 5 m/s to settle from the planner's arc and under 4 m/s
+a year after that; left alone it is gone within seven months.
+
+## Signals
+
+A link between two ends is judged by `sim-analysis` either geometrically,
+with both ends at the sample instant, or with the signal's travel time.
+Under `SignalTimeModel::LightTime` the source is taken where it was when the
+signal left, the target where it is when the signal arrives, and each
+occulting body where it is as the signal passes. Between Mars and Earth the
+ends are 3 to 22 minutes apart, so a window edge set by one planet's horizon
+is seen a light time later at the other, and uplink and downlink windows
+differ. Multi-hop relays are geometric only. Requests that do not name a
+model are geometric.
+
+## Sunlight
+
+Everything that feels the Sun reads one model.
+`sim_spacetime::SolarFluxModel::sample` gives, at a barycentric position and
+an instant, the direction to the Sun, the irradiance by the inverse square of
+its distance, and the fraction of the solar disc that Earth, the Moon or Mars
+leave in view. From that one sample:
+
+- `sim_orbital::SolarRadiationPressureLaw` adds the light's momentum to a
+  vessel's environment force, wrapped around whatever law flies it;
+- `sim_devices::SolarArrayBlock` turns it into electrical power, in orbit or
+  on a surface;
+- `AtmosphericTransmission` takes off what a clear atmosphere absorbs from
+  the direct beam on the way down.
+
+So force, power and eclipse timing cannot disagree. The renderers'
+`EnvironmentFrame` still takes its Sun from the sky rig's own ephemeris.
+
 ## Threads
 
 The simulation and the frame loop meet at `sim_core::SimHost`.
@@ -157,6 +218,11 @@ observer body's fixed axes. It holds:
 - fog extinction;
 - a cloud-layer handle;
 - exposure.
+
+The sky rig's ephemeris and the one the dynamics integrate in are separate
+models, held together by a test: over Earth they place the Moon within
+`0.001°` of each other and the Sun within `0.01°`, the Sun's share being the
+aberration of light, which the sky shows and geometric positions leave out.
 
 Every renderer reads only this frame:
 

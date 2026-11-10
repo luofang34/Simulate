@@ -4,5 +4,5 @@
 
 pub use sim_analysis_contract::{
     AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, OccultingBodySpec,
-    OccultingShape, SensorFovModel, VehicleSensorModel,
+    OccultingShape, SensorFovModel, SignalTimeModel, VehicleSensorModel,
 };

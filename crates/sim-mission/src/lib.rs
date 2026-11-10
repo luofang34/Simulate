@@ -10,6 +10,7 @@ mod plan;
 mod propagation;
 mod solver;
 mod targeter;
+mod workflow;
 
 pub use error::{MissionDesignError, MissionLifecycleStatus, SolverFailureReason};
 pub use execution::{
@@ -27,3 +28,11 @@ pub use solver::{
     VersionedSolverResult,
 };
 pub use targeter::{ApoapsisTargetProblem, solve_apoapsis_target};
+pub use workflow::{
+    AssistedL2PlanReport, DifferentialCorrectorIterationRecord, DifferentialCorrectorReport,
+    L2PeriodicClosureCheck, L2SensitivitySummary, L2StationKeepingReport, L2StationKeepingSpec,
+    OrbitalManeuverAccessArtifact, OrbitalManeuverCandidateMetrics, ScaledControlVariable,
+    ScaledEqualityGoal, StationKeepingBurn, StationKeepingError,
+    evaluate_orbital_maneuver_and_access, fly_l2_station_keeping, plan_assisted_l2_bounded_arc,
+    solve_multivariable_differential_correction, verify_l2_periodic_closure,
+};

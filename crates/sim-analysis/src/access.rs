@@ -110,14 +110,52 @@ pub fn evaluate_station_access(
         }
     };
 
+    let mut provenance = vec![trajectory.provenance().clone()];
+    append_environment_provenance(
+        &mut provenance,
+        station.body,
+        query.query_interval,
+        ephemeris,
+        orientation,
+    );
+
     Ok(StationAccessReport {
         station_id: station.station_id,
         station_name: station.name.clone(),
         sensor_id: sensor.sensor_id,
         valid_interval: query.query_interval,
         completeness,
-        provenance: vec![trajectory.provenance().clone()],
+        provenance,
         samples,
         windows,
     })
+}
+
+pub(crate) fn append_environment_provenance(
+    provenance: &mut Vec<DataProvenance>,
+    body: sim_spacetime::NaifId,
+    valid_interval: ValidEpochInterval,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) {
+    provenance.push(DataProvenance::new(
+        format!("ephemeris:{}", ephemeris.catalog_model_id()),
+        if ephemeris.is_analytical_approximation() {
+            "analytical-approximation"
+        } else {
+            "certified-kernel"
+        },
+        valid_interval,
+        ephemeris.content_hash(),
+    ));
+    provenance.push(DataProvenance::new(
+        format!("orientation:{}", orientation.catalog_model_id()),
+        match orientation.max_supported_grade(body) {
+            Some(sim_spacetime::SurfaceNavGrade::PrecisionGeodetic) => "precision-geodetic",
+            Some(sim_spacetime::SurfaceNavGrade::ApproximateIau) => "approximate-iau",
+            None => "missing-model",
+        },
+        valid_interval,
+        orientation.content_hash(),
+    ));
 }

@@ -5,7 +5,7 @@ use jsbsim::Fdm;
 
 use crate::PackError;
 use crate::calibration::engines::{
-    GovernorHold, ManifoldPressureHold, has_governor, set_each_engine,
+    GovernorHold, ManifoldPressureHold, engine_count, has_governor, set_each_engine,
 };
 use crate::calibration::mixture::{MixtureProcedure, set_mixture};
 use crate::calibration::results::{CruiseResult, EmpiricalSegmentResult};
@@ -24,7 +24,13 @@ pub(super) fn solve_cruise(
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
 ) -> Result<CruiseResult, PackError> {
-    let (sim_ktas, sim_rpm, sim_hp, sim_gph) = fly_level_cruise(
+    let LevelPoint {
+        ktas: sim_ktas,
+        rpm: sim_rpm,
+        engine0_hp: sim_hp,
+        engine0_gph: sim_gph,
+        ..
+    } = fly_level_cruise(
         fdm,
         bench.pressure_alt_ft,
         bench.gross_mass_kg,
@@ -83,7 +89,7 @@ pub(super) fn fly_level_cruise(
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
     map_hold_inhg: Option<f64>,
-) -> Result<(f64, f64, Option<f64>, Option<f64>), PackError> {
+) -> Result<LevelPoint, PackError> {
     let base = capture_base_engine_tuning(fdm)?;
     configure_mass_and_overrides(fdm, gross_mass_kg, base_non_payload_lbs, overrides)?;
     let init_thr = fixed_throttle.unwrap_or(0.78).clamp(0.05, 1.0);
@@ -134,6 +140,26 @@ struct CruisePower {
     governed: bool,
 }
 
+/// One settled level point: the means of its last 6 s block.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct LevelPoint {
+    /// True airspeed (`KTAS`).
+    pub ktas: f64,
+    /// Engine 0 propeller RPM.
+    pub rpm: f64,
+    /// Engine 0 brake power (`hp`), when the model publishes it. Handbook
+    /// cruise tables quote one engine, so calibration compares this.
+    pub engine0_hp: Option<f64>,
+    /// Engine 0 fuel flow (`US gal/hr`), when the model publishes it.
+    pub engine0_gph: Option<f64>,
+    /// Brake power summed over every engine (`hp`).
+    pub total_hp: Option<f64>,
+    /// Fuel flow summed over every engine (`US gal/hr`).
+    pub total_gph: Option<f64>,
+    /// Propeller or engine thrust summed over every engine (`lbf`).
+    pub total_thrust_lbf: f64,
+}
+
 /// Frames in one averaging block (6 s).
 const CRUISE_BLOCK_STEPS: u32 = 720;
 /// Blocks flown before convergence is tested (30 s).
@@ -144,7 +170,7 @@ const CRUISE_MAX_BLOCKS: u32 = 100;
 const CRUISE_SETTLED_KT: f64 = 0.05;
 
 /// Flies level at the power `power` sets until the true airspeed settles, and
-/// returns the last 6 s block's mean `(KTAS, propeller RPM, engine-0 hp, GPH)`.
+/// returns the means of its last 6 s block.
 /// A fixed flight time would leave a heavy aircraft still accelerating, so the
 /// result would depend on the speed it started from.
 fn integrate_cruise_hold(
@@ -152,7 +178,7 @@ fn integrate_cruise_hold(
     pressure_alt_ft: f64,
     power: CruisePower,
     mixture: f64,
-) -> Result<(f64, f64, Option<f64>, Option<f64>), PackError> {
+) -> Result<LevelPoint, PackError> {
     let has_hp = fdm
         .node("propulsion/engine[0]/power-hp")
         .map_err(fdm_err)?
@@ -161,17 +187,27 @@ fn integrate_cruise_hold(
         .node("propulsion/engine[0]/fuel-flow-rate-gph")
         .map_err(fdm_err)?
         .is_some();
+    let engines = engine_count(fdm)?;
     let mut control = CruiseControl::new(power);
     let mut previous_kt = f64::NAN;
-    let mut block = [0.0_f64; 4];
+    let mut block = [0.0_f64; 7];
     for block_index in 0..CRUISE_MAX_BLOCKS {
-        block = [0.0; 4];
+        block = [0.0; 7];
         for _ in 0..CRUISE_BLOCK_STEPS {
             let rpm = control.step(fdm, pressure_alt_ft, mixture)?;
-            block[0] += fdm.get_property("velocities/vt-fps").map_err(fdm_err)?;
-            block[1] += rpm;
-            block[2] += get_opt(fdm, "propulsion/engine[0]/power-hp")?.unwrap_or(0.0);
-            block[3] += get_opt(fdm, "propulsion/engine[0]/fuel-flow-rate-gph")?.unwrap_or(0.0);
+            let [hp, gph, thrust] = engine_totals(fdm, engines)?;
+            let sample = [
+                fdm.get_property("velocities/vt-fps").map_err(fdm_err)?,
+                rpm,
+                get_opt(fdm, "propulsion/engine[0]/power-hp")?.unwrap_or(0.0),
+                get_opt(fdm, "propulsion/engine[0]/fuel-flow-rate-gph")?.unwrap_or(0.0),
+                hp,
+                gph,
+                thrust,
+            ];
+            for (sum, value) in block.iter_mut().zip(sample) {
+                *sum += value;
+            }
         }
         let n = f64::from(CRUISE_BLOCK_STEPS);
         block = block.map(|sum| sum / n);
@@ -181,13 +217,30 @@ fn integrate_cruise_hold(
         }
         previous_kt = kt;
     }
-    let [vt_fps, rpm, hp, gph] = block;
-    Ok((
-        vt_fps / FPS_PER_KT,
+    let [vt_fps, rpm, hp, gph, total_hp, total_gph, total_thrust_lbf] = block;
+    Ok(LevelPoint {
+        ktas: vt_fps / FPS_PER_KT,
         rpm,
-        has_hp.then_some(hp),
-        has_gph.then_some(gph),
-    ))
+        engine0_hp: has_hp.then_some(hp),
+        engine0_gph: has_gph.then_some(gph),
+        total_hp: has_hp.then_some(total_hp),
+        total_gph: has_gph.then_some(total_gph),
+        total_thrust_lbf,
+    })
+}
+
+/// `[brake hp, fuel US gal/hr, thrust lbf]` summed over `engines` engines.
+fn engine_totals(fdm: &mut Fdm, engines: usize) -> Result<[f64; 3], PackError> {
+    let mut totals = [0.0_f64; 3];
+    for n in 0..engines {
+        for (total, name) in totals
+            .iter_mut()
+            .zip(["power-hp", "fuel-flow-rate-gph", "thrust-lbs"])
+        {
+            *total += get_opt(fdm, &format!("propulsion/engine[{n}]/{name}"))?.unwrap_or(0.0);
+        }
+    }
+    Ok(totals)
 }
 
 /// The pilot of a level point: pitch holds altitude, the propeller lever holds
@@ -259,7 +312,7 @@ pub(super) fn solve_empirical(
     let seed_ktas = (seg.observed_gs_kt - seg.wind_along_track_kt).max(45.0);
     let (sim_ktas, sim_roc_fpm) = match seg.mode {
         EmpiricalSegmentMode::LevelCruiseRpm => {
-            let (ktas, _, _, _) = fly_level_cruise(
+            let ktas = fly_level_cruise(
                 fdm,
                 seg.pressure_alt_ft,
                 seg.gross_mass_kg,
@@ -269,11 +322,12 @@ pub(super) fn solve_empirical(
                 base_non_payload_lbs,
                 overrides,
                 None,
-            )?;
+            )?
+            .ktas;
             (ktas, 0.0)
         }
         EmpiricalSegmentMode::LevelCruiseThrottle => {
-            let (ktas, _, _, _) = fly_level_cruise(
+            let ktas = fly_level_cruise(
                 fdm,
                 seg.pressure_alt_ft,
                 seg.gross_mass_kg,
@@ -283,7 +337,8 @@ pub(super) fn solve_empirical(
                 base_non_payload_lbs,
                 overrides,
                 None,
-            )?;
+            )?
+            .ktas;
             (ktas, 0.0)
         }
         EmpiricalSegmentMode::FullThrottleClimbKcas => {

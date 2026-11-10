@@ -12,5 +12,6 @@ workspace = true
 sim-geo = { workspace = true }
 mbd-core = { workspace = true }
 sim-core = { workspace = true }
+sim-spacetime = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }

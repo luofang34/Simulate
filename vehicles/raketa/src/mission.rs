@@ -12,7 +12,10 @@
 //!    scenario initial states and reports `is_continuous_end_to_end = false` alongside the exact
 //!    count of scenario state initializations (`explicit_state_reinitializations`).
 
+mod continuous;
 mod landing;
+
+pub use continuous::{RaketaContinuousTransferSummary, run_continuous_pad_to_transfer};
 
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
@@ -31,6 +34,7 @@ use sim_scenery::PinnedCollisionTerrain;
 use crate::aero_actuators::{
     RAKETA_CG_Y_M, RaketaStageLaw, raketa_default_rw_mode, raketa_mass_model,
 };
+use crate::gnc_boundary::RaketaOuterGuidanceSetpoint;
 use landing::{run_staged_arrival_or_entry_demo, run_staged_autoland_and_surface_settle_demo};
 
 /// Errors returned by `Raketa` continuous mission execution or staged phase demonstrations.
@@ -256,7 +260,7 @@ pub fn run_staged_phase_demonstration(
     })
 }
 
-fn execute_earth_pad_liftoff(
+pub(super) fn execute_earth_pad_liftoff(
     solar: &BuiltinSolarSystem2026_2028,
     force_model: &ForceModel,
     t0: TdbEpoch,
@@ -359,14 +363,8 @@ fn propagate_earth_ascent_arc(
         if g_out.orbit_achieved {
             break;
         }
-        let law = RaketaStageLaw {
-            commanded_main_accel_m_s2: g_out.commanded_accel_m_s2,
-            desired_body_y_icrf: g_out.thrust_dir_icrf,
-            rcs_cmd_unit_body: DVec3::ZERO,
-            fin_cmd_deg: [2.0, 0.0, -2.0, 0.0],
-            is_landing_or_pad_mode: false,
-            orientation: &solar.orientation,
-        };
+        let law = RaketaOuterGuidanceSetpoint::from_ascent(&g_out, [2.0, 0.0, -2.0, 0.0])
+            .into_stage_law(&solar.orientation);
         let (_, lim, _, _) = law.evaluate_detailed(*epoch, state);
         peak_a = peak_a.max(lim.resulting_proper_accel_m_s2);
         let t_next = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(15, 0));
@@ -431,14 +429,8 @@ fn run_staged_injection_and_soi_frame_demo(
     let dv_imp = lambert.v1_m_s - state.vel_rel_icrf_m_s;
     let plan = FiniteBurnPlan::from_impulsive(dv_imp, 3.5 * STANDARD_GRAVITY_G0_M_S2);
 
-    let law = RaketaStageLaw {
-        commanded_main_accel_m_s2: plan.accel_m_s2,
-        desired_body_y_icrf: plan.unit_dir_icrf,
-        rcs_cmd_unit_body: DVec3::ZERO,
-        fin_cmd_deg: [0.0; 4],
-        is_landing_or_pad_mode: false,
-        orientation: &solar.orientation,
-    };
+    let law =
+        RaketaOuterGuidanceSetpoint::from_finite_burn(&plan).into_stage_law(&solar.orientation);
     let (_, lim, _, _) = law.evaluate_detailed(*epoch, state);
     let t_burn_end = epoch.add_span(TickSpan::from_seconds_and_subsec_ticks(20, 0));
     let prop = propagate_plant_interval(

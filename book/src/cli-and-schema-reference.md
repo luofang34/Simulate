@@ -19,7 +19,7 @@ Arguments are parsed by hand in `apps/ironbird/src/cli.rs`. There is no `--help`
 | `estimate-dir` | Design Est. | Closed-loop V-speed, ceiling, glide, range, and mission estimation of an on-disk `syspack` (`--package-dir <path>`). |
 | `trade-c172` | Trade Study | Airframe & powerplant trade study (`S_ref`, `AR`, `CD0`, `Power`, `BSFC`, `Fuel`) on built-in `C172`. |
 | `trade-dir` | Trade Study | Airframe & powerplant trade study on an on-disk `syspack` (`--package-dir <path>`). |
-| `ace-bridge` | Co-Design | Ingests `--ace-vehicle <vehicle.json>`, runs 6-DoF estimation, optionally exports `--export-syspack <dir>`, and emits `aex synthesize --set` feedback. |
+| `ace-bridge` | Co-Design | Flies the package `ace-export` wrote (`--package-dir <dir>`), compares it with the design it came from (`--ace-vehicle <vehicle.json>`), and emits an `aex edit` command carrying the measured values. Refuses a package from another design or with another engine count. |
 | `mavlink-tcp-listen` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL TCP server on `--bind`; blocks until one client (e.g. PX4 SITL) connects. |
 | `mavlink-tcp-connect` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL TCP client connecting to `--peer`. |
 | `mavlink-udp` | Tier-2 XIL | Built-in `C172` behind a MAVLink v2 HIL UDP endpoint bound to `--bind` and sending to `--peer`. |
@@ -29,8 +29,8 @@ Arguments are parsed by hand in `apps/ironbird/src/cli.rs`. There is no `--help`
 
 | Flag | Default | Description |
 |---|---|---|
-| `--package-dir <PATH>` | `None` | Path to a `syspack` directory (required for `tier0-dir`, `calibrate-dir`, `estimate-dir`, and `trade-dir`). |
-| `--ace-vehicle <PATH>` | `None` | Path to an `~/ace-rs` vehicle.json file for `--mode ace-bridge`; the built-in C172 when absent. |
+| `--package-dir <PATH>` | `None` | Path to a `syspack` directory (required for `tier0-dir`, `calibrate-dir`, `estimate-dir`, `trade-dir`, and `ace-bridge`). |
+| `--ace-vehicle <PATH>` | `None` | The `ace-rs` vehicle.json the `--package-dir` package was exported from (required for `--mode ace-bridge`). |
 | `--export-syspack <DIR>` | `None` | Writes a complete SHA-256-verified `syspack` directory with synthesized `performance/airspeed_envelope.json` (`--mode ace-bridge`). |
 | `--report-out <PATH>` | `None` | Writes the Markdown calibration, sensitivity, design-estimation, trade-study, or `ace-rs` co-design report to `<PATH>`. |
 | `--sensitivity` | `false` | Appends finite-difference Jacobian & damped Gauss-Newton parameter identification (`calibrate-*` modes). |
