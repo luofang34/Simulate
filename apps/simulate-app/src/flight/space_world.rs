@@ -12,12 +12,13 @@ use sim_apollo::{CockpitInstrumentPanel, CockpitInstrumentSnapshot, EarthVehicle
 use sim_core::{
     AirframeArticulation, CameraPoseEcef, ControlInputs, SimInstant, TickSpan, VehicleState,
 };
-use sim_geo::{BodyEllipsoid, Geodetic, ecef_to_geodetic};
+use sim_geo::{BodyEllipsoid, Geodetic};
 use sim_orbital::{
     AscentGuidanceConfig, ContinuousPlantState, FOUR_G_PROPER_ACCEL_M_S2, NaifId, VesselId,
     evaluate_gravity_turn_ascent,
 };
 use sim_raketa::{RAKETA_CG_Y_M, RAKETA_PLANT_PERIOD, RaketaCommand, RaketaPlant};
+use sim_scenario::ScenarioWorld;
 use sim_spacetime::SimEpoch;
 use sim_universe::{Tier, TierPolicy, Universe, UniverseError};
 
@@ -49,6 +50,8 @@ const RAKETA_FROM_AIRCRAFT: DMat3 = DMat3::from_cols(
 pub(super) struct SpaceWorld {
     universe: Universe,
     ground_height_m: f64,
+    central: NaifId,
+    reference_frame: super::space_ux::SpaceReferenceFrame,
     truth: VehicleState,
     nose_icrf: Option<DVec3>,
     ascent_guidance: bool,
@@ -82,6 +85,8 @@ impl SpaceWorld {
         let mut world = Self {
             universe,
             ground_height_m,
+            central: NaifId::EARTH,
+            reference_frame: super::space_ux::SpaceReferenceFrame::BodyInertial,
             truth,
             nose_icrf: None,
             ascent_guidance: true,
@@ -123,6 +128,51 @@ impl SpaceWorld {
         self.panel.snapshot()
     }
 
+    /// The world of the body the vessel is about: its state is fixed to that body.
+    pub(super) const fn world(&self) -> ScenarioWorld {
+        match self.central {
+            NaifId::MOON => ScenarioWorld::LunarTranquility,
+            NaifId::MARS => ScenarioWorld::MarsGlobe,
+            _ => ScenarioWorld::EarthGlobe,
+        }
+    }
+
+    /// Whether orbital propagation can carry the flight on with `controls` as they are:
+    /// nobody is flying it and it is already in the orbital tier.
+    pub(super) fn coasting(&self, controls: ControlInputs) -> bool {
+        !self.flown(controls.clamped()) && self.tier() == Tier::Orbital
+    }
+
+    /// Carries a coasting vessel `span` on in one stride of orbital propagation.
+    pub(super) fn coast(&mut self, span: TickSpan) -> Result<(), AppSimError> {
+        let until = self.universe.now().advanced(span);
+        self.universe.advance_to(until).map_err(universe_error)?;
+        self.settle()
+    }
+
+    fn flown(&self, controls: ControlInputs) -> bool {
+        self.ascent_guidance
+            || controls.throttle > 0.0
+            || controls.pitch != 0.0
+            || controls.yaw != 0.0
+    }
+
+    /// Moves a coasting vessel's origin to `body` at once, as the scheduler does by
+    /// itself at a sphere of influence.
+    #[cfg(test)]
+    pub(super) fn switch_central_body(&mut self, body: NaifId) -> Result<(), AppSimError> {
+        let now = self.universe.now();
+        self.universe
+            .command(
+                OWNSHIP,
+                now,
+                sim_orbital::PlayerCommandPayload::SwitchPrimary(body),
+            )
+            .map_err(universe_error)?;
+        self.universe.advance_to(now).map_err(universe_error)?;
+        self.settle()
+    }
+
     /// Which tier flies the ownship now.
     pub(super) fn tier(&self) -> Tier {
         self.universe.tier(OWNSHIP).unwrap_or(Tier::Local)
@@ -131,6 +181,35 @@ impl SpaceWorld {
     /// Whether ascent guidance is flying the vessel to its parking orbit.
     pub(super) const fn ascent_guidance(&self) -> bool {
         self.ascent_guidance
+    }
+
+    pub(super) const fn central_body(&self) -> NaifId {
+        self.central
+    }
+
+    pub(super) const fn reference_frame(&self) -> super::space_ux::SpaceReferenceFrame {
+        self.reference_frame
+    }
+
+    pub(super) const fn set_reference_frame(
+        &mut self,
+        frame: super::space_ux::SpaceReferenceFrame,
+    ) {
+        self.reference_frame = frame;
+    }
+
+    pub(super) const fn nose_icrf(&self) -> Option<DVec3> {
+        self.nose_icrf
+    }
+
+    pub(super) fn throttle_fraction(&self) -> f64 {
+        self.plant().map_or(0.0, |plant| {
+            (plant.command().main_accel_m_s2 / FOUR_G_PROPER_ACCEL_M_S2).clamp(0.0, 1.0)
+        })
+    }
+
+    pub(super) const fn ownship_id() -> VesselId {
+        OWNSHIP
     }
 
     /// Hands the flight to ascent guidance, or to the pilot. A spaceflight
@@ -170,11 +249,7 @@ impl SpaceWorld {
     /// to `4 g`, and the stick swings the nose.
     pub(super) fn step(&mut self, controls: ControlInputs) -> Result<(), AppSimError> {
         let controls = controls.clamped();
-        let flown = self.ascent_guidance
-            || controls.throttle > 0.0
-            || controls.pitch != 0.0
-            || controls.yaw != 0.0;
-        if flown && self.tier() == Tier::Orbital {
+        if self.flown(controls) && self.tier() == Tier::Orbital {
             // An orbit about an origin with no body-fixed frame cannot be flown by
             // hand; the vessel stays in orbital propagation there.
             self.universe.demote_to_local(OWNSHIP).ok();
@@ -191,13 +266,19 @@ impl SpaceWorld {
         }
         let next = self.universe.now().advanced(RAKETA_PLANT_PERIOD);
         self.universe.advance_to(next).map_err(universe_error)?;
+        self.settle()
+    }
+
+    /// Brings the central body, the truth state and the panel up to date with the
+    /// universe. About an origin with no body-fixed frame the last body's state stands.
+    fn settle(&mut self) -> Result<(), AppSimError> {
         self.universe.take_tier_changes();
-        if self
+        let central = self
             .universe
             .central_body(OWNSHIP)
-            .map_err(universe_error)?
-            == NaifId::EARTH
-        {
+            .map_err(universe_error)?;
+        if sim_universe::body_ellipsoid(central).is_some() {
+            self.central = central;
             self.truth = aircraft_axes(
                 self.universe
                     .vehicle_state(OWNSHIP)
@@ -257,7 +338,11 @@ impl SpaceWorld {
         self.panel.observe_earth(&EarthVehicleSources {
             timestamp: self.universe.now(),
             vehicle: self.truth,
-            height_m: ecef_to_geodetic(self.truth.position_ecef).height_m,
+            height_m: self
+                .world()
+                .body()
+                .fixed_to_geodetic(self.truth.position_ecef)
+                .height_m,
         });
     }
 }

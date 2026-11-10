@@ -12,6 +12,12 @@ use crate::esc_menu::{MenuCommand, MenuInput, MenuOutcome, Step};
 use crate::keyboard::{CockpitAction, apply_aircraft_system_action};
 use crate::map_rig::{EfbCommand, MapLibreRig};
 
+/// Warp rates an aircraft steps through.
+const FLIGHT_WARP: [f64; 2] = [2.0, 4.0];
+/// Warp rates a spaceflight steps through; above the flown limit they apply only while
+/// it coasts in orbital propagation.
+const SPACEFLIGHT_WARP: [f64; 6] = [4.0, 10.0, 100.0, 1_000.0, 10_000.0, 100_000.0];
+
 impl FlightApp {
     pub(super) fn select(
         &mut self,
@@ -206,7 +212,12 @@ impl FlightApp {
                 info!(?scale, "toggled simulation pause");
             }
             CockpitAction::CycleWarp => {
-                let scale = rig.supervisor_mut().cycle_warp();
+                let ladder: &[f64] = if self.flight.in_space() {
+                    &SPACEFLIGHT_WARP
+                } else {
+                    &FLIGHT_WARP
+                };
+                let scale = rig.supervisor_mut().cycle_warp(ladder);
                 info!(?scale, "updated simulation time warp");
             }
             _ => {}

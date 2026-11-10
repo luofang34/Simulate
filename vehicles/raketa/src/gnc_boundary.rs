@@ -27,8 +27,8 @@ pub const RAKETA_RW_DUMP_THRESHOLD_FRAC: f64 = 0.85;
 /// Translational RCS velocity-error deadband (`m/s`, matches `Aviate`'s `RCS_VEL_DEADBAND_MPS = 0.02`).
 pub const RAKETA_RCS_VEL_DEADBAND_M_S: f64 = 0.02;
 
-/// Translational RCS proportional gain (`s^-1`, matches `Aviate`'s `RCS_VEL_KP = 1.2`).
-pub const RAKETA_RCS_VEL_KP_PER_S: f64 = 1.2;
+/// Translational RCS proportional gain (`s^-1`, matches `Aviate`'s `RCS_VEL_KP = 2.5`).
+pub const RAKETA_RCS_VEL_KP_PER_S: f64 = 2.5;
 
 /// Outer-loop `f64` trajectory guidance setpoint emitted by `Navigate`-tier guidance laws
 /// (`burn`, `rendezvous`, `entry`, `powered_descent`, and ascent).
@@ -219,10 +219,13 @@ impl RaketaOuterGuidanceSetpoint {
 #[must_use]
 pub fn allocate_translational_rcs_unit(velocity_error_body_m_s: DVec3) -> DVec3 {
     let map_axis = |dv: f64| -> f64 {
-        if !dv.is_finite() || dv.abs() < RAKETA_RCS_VEL_DEADBAND_M_S {
+        let abs_err = dv.abs();
+        if !dv.is_finite() || abs_err <= RAKETA_RCS_VEL_DEADBAND_M_S {
             0.0
         } else {
-            (dv * RAKETA_RCS_VEL_KP_PER_S).clamp(-1.0, 1.0)
+            let sign = if dv >= 0.0 { 1.0 } else { -1.0 };
+            (sign * (abs_err - RAKETA_RCS_VEL_DEADBAND_M_S) * RAKETA_RCS_VEL_KP_PER_S)
+                .clamp(-1.0, 1.0)
         }
     };
     DVec3::new(
@@ -354,14 +357,29 @@ mod tests {
             return;
         };
         let rdv_sp = RaketaOuterGuidanceSetpoint::RendezvousTranslation {
-            velocity_error_body_m_s: DVec3::new(0.005, 0.5, -1.5),
+            velocity_error_body_m_s: DVec3::new(0.01, 0.22, -0.62),
             desired_body_y_icrf: DVec3::Y,
         };
         let law = rdv_sp.into_stage_law(&solar.orientation);
         assert_eq!(law.commanded_main_accel_m_s2, 0.0);
         assert_eq!(law.rcs_cmd_unit_body.x, 0.0);
-        assert!((law.rcs_cmd_unit_body.y - 0.6).abs() < 1e-9);
+        assert!((law.rcs_cmd_unit_body.y - 0.5).abs() < 1e-9);
         assert!((law.rcs_cmd_unit_body.z + 1.0).abs() < 1e-9);
+
+        let t0 = TdbEpoch::new(835_000_000, 0);
+        let sat_state = ContinuousPlantState {
+            primary_body: NaifId::EARTH,
+            pos_rel_icrf_m: DVec3::new(7_000_000.0, 0.0, 0.0),
+            vel_rel_icrf_m_s: DVec3::new(0.0, 7_500.0, 0.0),
+            q_body_to_icrf: DQuat::IDENTITY,
+            omega_body_rad_s: DVec3::new(0.2, 0.0, 0.0),
+            propellant_mass_kg: 0.0,
+            h_rw_body_nms: DVec3::new(0.92 * RAKETA_RW_MAX_MOMENTUM_NMS, 0.0, 0.0),
+        };
+        let (sat_wrench, _, _, _) = law.evaluate_detailed(t0, &sat_state);
+        assert_eq!(sat_wrench.rw_torque_cmd_body_nm.x, 0.0);
+        assert!(sat_wrench.ext_torque_body_nm.x < 0.0);
+        assert!(sat_wrench.stage_audit.mass_conservation_exempt);
 
         let unsat = allocate_rw_and_rotational_rcs_dump(
             DVec3::new(10_000.0, -5_000.0, 0.0),

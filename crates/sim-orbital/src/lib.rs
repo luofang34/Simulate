@@ -1,6 +1,5 @@
-//! Multi-body solar-system orbital dynamics, NAIF SPK/PCK ephemerides,
-//! transactional multi-vessel scheduling, swept collision detection, and spaceflight `GNC`.
-//! Pure-memory and `wasm32`-compatible: contains zero filesystem or network IO.
+//! Multi-body solar-system orbital dynamics, NAIF SPK/PCK ephemerides, transactional
+//! multi-vessel scheduling, swept collision detection, and pure-memory spaceflight `GNC`.
 
 mod builtin_solar;
 mod chebyshev;
@@ -30,7 +29,9 @@ mod trajectory_product;
 mod universe;
 mod warp;
 
-pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028};
+pub use builtin_solar::{
+    BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack, apollo_1969_spk_bytes,
+};
 pub use checkpoint::{ActuatorState, DeterministicRngState, DiscreteGncState};
 pub use checkpoint::{EventGenerationState, IntegratorContinuation, LatchedBurnLaw};
 pub use checkpoint::{PropagatorKind, VesselCheckpoint, VesselConfig};
@@ -66,25 +67,23 @@ pub use gnc::{evaluate_gravity_turn_ascent, evaluate_powered_descent_autoland};
 pub use gravity::third_body_tidal_accel_icrf;
 pub use gravity::{DynamicalMode, ForceModel, GravityError, HarmonicFieldEval, battin_f};
 pub use gravity::{InertialPotentialSample, evaluate_spherical_harmonics_fixed};
-pub use hash::{ContentHash, DomainHasher, HashParseError};
-pub use ids::{FrameCode, NaifId, VesselId};
 pub use kepler::{EnckeConfig, EnckePropagationOutput, propagate_encke_interval};
 pub use kepler::{propagate_kepler_universal, stumpff_c2_c3};
 pub use kpl::{KplAtom, KplError, KplPool};
-pub use lagrange::target_l2_terminal_x_arc_dop853;
 pub use lagrange::{ApproximateL2LibrationSeed, CollinearLagrangePoint, L2BoundedArcTargetReport};
 pub use lagrange::{L2BoundedArcTargetSpec, L2OrbitRegimeKind, L2SingleShootingFailureReason};
-pub use lagrange::{L2SingleShootingStatus, LagrangeError, SynodicFrame};
-pub use lagrange::{approximate_l2_libration_seed, solve_collinear_lagrange_gamma};
+pub use lagrange::{L2SingleShootingStatus, LagrangeError, approximate_l2_libration_seed};
+pub use lagrange::{SynodicFrame, solve_collinear_lagrange_gamma, target_l2_terminal_x_arc_dop853};
 pub use manifest::{ManifestMismatchField, SimulationManifestDigest};
 pub use orientation::SurfaceNavGrade;
 pub use orientation::{BodyOrientationCatalog, BodyRotationState, IauPckCatalog, LunarTargetFrame};
 pub use orientation::{OrientationError, OrientationPolicy, StackedOrientationCatalog};
 pub use plant::{CoastControlLaw, ConstantWrenchLaw, ContinuousControlLaw, ContinuousPlantState};
-pub use plant::{MassPropertiesModel, PLANT_ODE_DIM, PlantStageWrench, PropagationAudit};
-pub use plant::{PropellantMode, ReactionWheelMode, clamp_vec_norm, evaluate_plant_ode_rhs};
+pub use plant::{MassPropertiesModel, PLANT_ODE_DIM, PlantStageWrench, serde_dquat, serde_dvec3};
+pub use plant::{PropagationAudit, PropellantMode, ReactionWheelMode, SolarRadiationPressureLaw};
+pub use plant::{SrpSurface, clamp_vec_norm, evaluate_plant_ode_rhs, quat_rotate_vec_portable};
 pub use plant::{quat_geodesic_angle_rad, quat_normalize_portable, quat_omega_derivative};
-pub use plant::{quat_rotate_vec_portable, serde_dquat, serde_dvec3};
+pub use sim_spacetime::{ContentHash, DomainHasher, FrameCode, HashParseError, NaifId, VesselId};
 pub use time::{CoverageSet, EarthEopEntry, EarthEopTable, FutureUtcPolicy, LeapSecondEntry};
 pub use time::{LeapSecondTable, OutOfEopPolicy, SimClockAdapter, TdbEpoch, TdbSpanNs, TimeError};
 pub use time::{TimeScaleCatalog, Ut1Sample};

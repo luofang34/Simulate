@@ -43,8 +43,9 @@ pub use limiter::{
     limit_main_thrust_proper_accel,
 };
 pub use mission::{
-    RaketaMissionError, RaketaMissionPhase, RaketaMissionSummary, RaketaMissionTarget,
-    RaketaStagedDemoSummary, run_staged_phase_demonstration, run_uninterrupted_mission,
+    RaketaContinuousTransferSummary, RaketaMissionError, RaketaMissionPhase, RaketaMissionSummary,
+    RaketaMissionTarget, RaketaStagedDemoSummary, run_continuous_pad_to_transfer,
+    run_staged_phase_demonstration, run_uninterrupted_mission,
 };
 pub use usd_contract::{
     EXPECTED_RAKETA_USD_SHA256, RAKETA_APAS95_PORT_POS_M, RAKETA_FIN_RUDDER_PIVOT_M,

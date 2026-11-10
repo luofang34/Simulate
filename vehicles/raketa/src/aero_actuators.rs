@@ -295,9 +295,19 @@ impl RaketaStageLaw<'_> {
             max_proper_accel_m_s2: FOUR_G_PROPER_ACCEL_M_S2,
         });
 
-        let tau_rw = compute_pointing_rw_torque(state, self.desired_body_y_icrf);
+        let tau_rw_desired = compute_pointing_rw_torque(state, self.desired_body_y_icrf);
+        let rw_rcs_alloc = crate::gnc_boundary::allocate_rw_and_rotational_rcs_dump(
+            tau_rw_desired,
+            state.h_rw_body_nms,
+            DVec3::ZERO,
+        );
+        let rcs_rot_torque_body_nm =
+            rw_rcs_alloc.rcs_rotational_dump_unit_body * RAKETA_RW_MAX_TORQUE_NM;
         let mut audit = PropagationAudit::default();
-        if lim.effective_thrust_accel_m_s2 > 0.0 || rcs_f_body.length_squared() > 0.0 {
+        if lim.effective_thrust_accel_m_s2 > 0.0
+            || rcs_f_body.length_squared() > 0.0
+            || rw_rcs_alloc.rw_desaturation_active
+        {
             audit.mass_conservation_exempt = true;
         }
         if lim.exceedance_infeasible {
@@ -314,8 +324,8 @@ impl RaketaStageLaw<'_> {
             rcs_force_body_n: rcs_f_body,
             rcs_exhaust_vel_m_s: 3_000.0,
             env_force_body_n: aero.force_body_n,
-            ext_torque_body_nm: aero.torque_body_nm,
-            rw_torque_cmd_body_nm: tau_rw,
+            ext_torque_body_nm: aero.torque_body_nm + rcs_rot_torque_body_nm,
+            rw_torque_cmd_body_nm: rw_rcs_alloc.rw_torque_cmd_body_nm,
             stage_audit: audit,
         };
         (wrench, lim, aero, fin_locked)

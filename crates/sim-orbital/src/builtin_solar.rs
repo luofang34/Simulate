@@ -4,7 +4,11 @@
 //! `mar099s.bsp` (`499 -> 4`), `moon_pa_de440_200625.bpc`, and `earth_1962_260806_2126_combined.bpc`
 //! with `gm_de440.tpc`, `pck00011.tpc`, `moon_de440_250416.tf`, and `naif0012.tls`.
 
+mod kernel_pack;
+
 use std::collections::BTreeMap;
+
+pub use kernel_pack::{SolarSystemKernelPack, apollo_1969_spk_bytes};
 
 use crate::{
     constants::{ConstantsError, GravityConstantsCatalog},

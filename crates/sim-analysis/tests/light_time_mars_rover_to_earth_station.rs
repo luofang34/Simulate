@@ -234,3 +234,101 @@ fn a_signal_from_behind_mars_is_blocked_by_mars_where_it_was_when_the_signal_pas
     let miss = (behind_mars - mars_now).cross(away_from_earth).length();
     assert!(miss > 3_400_000.0, "the late Mars is {miss} m off the path");
 }
+
+#[cfg(test)]
+fn eval_mars_dem_link(
+    link: &Link,
+    dem: &sim_analysis::DemElevationGrid,
+    downlink: bool,
+) -> sim_analysis::EndpointLinkAccessReport {
+    use sim_analysis::{AltitudeSpec, TerrainElevationSource, TerrainLosConfig, VerticalDatumSpec};
+
+    let start = TdbEpoch::new(820_497_600 + 424 * 86_400, 0);
+    let query = AccessQuerySpec {
+        query_interval: ValidEpochInterval::new(start, start.advanced_seconds(86_400.0)),
+        sample_step_s: 120.0,
+        boundary_time_tolerance_s: 0.5,
+        min_range_m: None,
+        max_range_m: None,
+        signal_time: SignalTimeModel::LightTime,
+    };
+    let rover_agl = AltitudeSpec {
+        datum: VerticalDatumSpec::DemSurfaceAgl {
+            dataset_id: dem.dataset_id().to_owned(),
+        },
+        value_m: 10.0,
+    };
+    let terrain_cfg = TerrainLosConfig {
+        sample_step_m: 500.0,
+        min_clearance_m: 2.0,
+        max_terrain_interaction_altitude_m: 8_000.0,
+        max_ray_samples: 50_000,
+    };
+    let rover_ep = AnalysisEndpoint::SurfaceStation {
+        station: &link.rover,
+        altitude_spec: Some(&rover_agl),
+    };
+    let earth_ep = AnalysisEndpoint::SurfaceStation {
+        station: &link.goldstone,
+        altitude_spec: None,
+    };
+    let (src, dst) = if downlink {
+        (rover_ep, earth_ep)
+    } else {
+        (earth_ep, rover_ep)
+    };
+    evaluate_endpoint_link_access(
+        src,
+        dst,
+        &link.bodies,
+        Some((dem as &dyn TerrainElevationSource, &terrain_cfg)),
+        &query,
+        &link.solar.ephemeris,
+        &link.solar.orientation,
+    )
+    .expect("mars dem link access")
+}
+
+#[test]
+fn a_martian_crater_rim_occults_low_elevation_links_and_shifts_downlink_edges_by_light_time() {
+    use sim_analysis::{AccessRestrictionReason, DemElevationGrid};
+
+    let link = Link::new();
+    let flat_dem = DemElevationGrid::mars_jezero_crater(0.0, 0.0);
+    let rim_dem = DemElevationGrid::mars_jezero_crater(0.0, 7_500.0);
+    let flat_down = eval_mars_dem_link(&link, &flat_dem, true);
+    let rim_down = eval_mars_dem_link(&link, &rim_dem, true);
+    let rim_up = eval_mars_dem_link(&link, &rim_dem, false);
+    assert!(!flat_down.windows.is_empty() && !rim_down.windows.is_empty());
+    assert_eq!(rim_down.windows.len(), rim_up.windows.len());
+    assert!(rim_down.samples.iter().any(|s| {
+        s.active_restrictions.iter().any(|r| {
+            matches!(
+                r,
+                AccessRestrictionReason::OccultedByTerrain {
+                    body: NaifId::MARS,
+                    ..
+                }
+            )
+        })
+    }));
+    let flat_total_s: f64 = flat_down.windows.iter().map(|w| w.duration_s).sum();
+    let rim_total_s: f64 = rim_down.windows.iter().map(|w| w.duration_s).sum();
+    assert!(rim_total_s + 600.0 < flat_total_s);
+    let light_time_s = rim_down
+        .samples
+        .first()
+        .and_then(|s| s.light_time_s)
+        .expect("lt");
+    assert!(
+        edges(&rim_down.windows)
+            .into_iter()
+            .zip(edges(&rim_up.windows))
+            .any(
+                |(down_edge, up_edge)| (down_edge.signed_offset_seconds_from(up_edge)
+                    - light_time_s)
+                    .abs()
+                    < 5.0
+            )
+    );
+}

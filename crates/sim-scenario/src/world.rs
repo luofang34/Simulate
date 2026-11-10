@@ -30,6 +30,8 @@ pub enum ScenarioWorld {
     NewarkKewr,
     /// The cratered Sea of Tranquility on the IAU Moon.
     LunarTranquility,
+    /// The bare IAU Mars spheroid.
+    MarsGlobe,
 }
 
 /// The direction of a Sun at `azimuth_deg`, `elevation_deg` above `site`.
@@ -49,13 +51,14 @@ impl ScenarioWorld {
             | Self::CentralJersey47N
             | Self::NewarkKewr => BodyEllipsoid::WGS84,
             Self::LunarTranquility => BodyEllipsoid::MOON_IAU,
+            Self::MarsGlobe => BodyEllipsoid::MARS_IAU,
         }
     }
 
     /// Direction towards the Sun, body-fixed.
     pub fn sun_direction_ecef(self) -> DVec3 {
         match self {
-            Self::EarthGlobe => EARTH_SUN_DIRECTION_ECEF,
+            Self::EarthGlobe | Self::MarsGlobe => EARTH_SUN_DIRECTION_ECEF,
             Self::DelawareCorridor => sun_above(
                 &SyntheticCorridorSpec::delaware().south_west,
                 DELAWARE_SUN_AZIMUTH_DEG,

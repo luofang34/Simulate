@@ -4,6 +4,7 @@
 
 mod differential_corrector;
 mod l2_planner;
+mod station_keeping;
 
 use serde::{Deserialize, Serialize};
 use sim_analysis::{
@@ -23,6 +24,10 @@ pub use differential_corrector::{
 pub use l2_planner::{
     AssistedL2PlanReport, L2PeriodicClosureCheck, L2SensitivitySummary,
     plan_assisted_l2_bounded_arc, verify_l2_periodic_closure,
+};
+pub use station_keeping::{
+    L2StationKeepingReport, L2StationKeepingSpec, StationKeepingBurn, StationKeepingError,
+    fly_l2_station_keeping,
 };
 
 use crate::{

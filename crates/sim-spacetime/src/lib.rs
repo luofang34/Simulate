@@ -16,6 +16,7 @@ mod mount;
 mod provenance;
 mod relativity;
 mod scalar_math;
+mod solar;
 mod synodic;
 mod terrain;
 mod time;
@@ -44,12 +45,17 @@ pub use provenance::{DataProvenance, ValidEpochInterval};
 #[cfg(feature = "world-mbd-bridges")]
 pub use provenance::{DataProvenanceWorldExt, ValidEpochIntervalWorldExt};
 pub use relativity::{
-    ClockPotential, L_G, ProperTimeClock, SPEED_OF_LIGHT_M_S, orbit_periodic_clock_term_s,
+    BarycentricClockModel, ClockPotential, L_B, L_G, MassiveBody, ProperTimeClock,
+    SPEED_OF_LIGHT_M_S, orbit_periodic_clock_term_s, tdb_minus_tt_position_term_s,
 };
 pub use scalar_math::{
     acos_clamped, asin_clamped, atan2, body_ellipsoid_serde, clamp_vec_norm, cos, exp, ln,
     mul_add_unfused, powf, quat_from_wire_xyzw, quat_geodesic_angle_rad, quat_normalize_portable,
     quat_omega_derivative, quat_rotate_vec_portable, serde_dquat, serde_dvec3, sin, sin_cos, sqrt,
+};
+pub use solar::{
+    ASTRONOMICAL_UNIT_M, AtmosphericTransmission, OccultingSphere, SOLAR_IRRADIANCE_1AU_W_M2,
+    SOLAR_RADIUS_M, SolarFluxModel, SolarFluxSample,
 };
 pub use terrain::{
     CollisionGroundSample, CollisionTerrain, DiscontinuousStepPatch, ElevationSlab,
