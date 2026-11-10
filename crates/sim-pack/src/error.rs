@@ -4,6 +4,9 @@ use syspack::SyspackError;
 /// Why a system package could not become a simulated one.
 #[derive(Debug, thiserror::Error)]
 pub enum PackError {
+    /// An `ace-rs` design could not be read or compared with a package.
+    #[error(transparent)]
+    AceBridge(#[from] crate::calibration::AceBridgeError),
     /// The package itself did not verify, or does not hold what was asked of
     /// it.
     #[error(transparent)]
