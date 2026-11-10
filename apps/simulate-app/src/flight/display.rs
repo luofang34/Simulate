@@ -25,10 +25,10 @@ pub(super) fn advance_propeller(
             + articulation.propeller_sense * adv_l)
             .rem_euclid(TAU);
     }
-    let adv_r = dt * articulation.propeller_rpm_right * TAU / 60.0;
+    let adv_r = dt * articulation.propeller_right.rpm * TAU / 60.0;
     if adv_r.is_finite() && !articulation.propeller_feathered[1] {
-        articulation.propeller_phase_right_rad = (articulation.propeller_phase_right_rad
-            + articulation.propeller_sense_right * adv_r)
+        articulation.propeller_right.phase_rad = (articulation.propeller_right.phase_rad
+            + articulation.propeller_right.sense * adv_r)
             .rem_euclid(TAU);
     }
     articulation

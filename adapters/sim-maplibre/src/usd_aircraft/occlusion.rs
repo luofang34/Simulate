@@ -76,12 +76,16 @@ pub(super) fn lowest_point_z(parts: &[UsdMeshPart]) -> f32 {
     if lowest.is_finite() { lowest } else { 0.0 }
 }
 
-/// Opaque, static-looking skins occlude; glass, spinning blades and the blur disc do not.
+/// Opaque, static-looking skins occlude; glass, spinning blades, the blur disc and the
+/// cockpit's moving controls (whose shadow would stay behind at their rest pose) do not.
 fn occludes(part: &UsdMeshPart) -> bool {
     part.material.opacity >= 0.999
         && !matches!(
             part.role,
-            PartRole::CabinGlass | PartRole::PropellerBlades | PartRole::PropellerDisc
+            PartRole::CabinGlass
+                | PartRole::PropellerBlades
+                | PartRole::PropellerDisc
+                | PartRole::CockpitControl
         )
 }
 

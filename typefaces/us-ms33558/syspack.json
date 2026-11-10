@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "us-ms33558",
+  "name": "US instrument dial lettering after MS33558 (stroke face)",
+  "version": "1.0.0",
+  "kind": "TypefacePack",
+  "assets": {
+    "PROVENANCE.md": {
+      "sha256": "425afc40cc44b18e1596ffbee0deeafac819b8ec029c353900b235e849f6bc44",
+      "size_bytes": 2280
+    },
+    "us-ms33558.idtf": {
+      "sha256": "5a77c4b8b9b3d3d48e0ab444138982e69b03c5101af76c90bc65ae747c6fd442",
+      "size_bytes": 2171
+    }
+  },
+  "components": [],
+  "dynamics": "None",
+  "devices": [],
+  "typeface": {
+    "face_asset": "us-ms33558.idtf",
+    "provenance_asset": "PROVENANCE.md",
+    "licence": "LicenseRef-Indicate-repository-terms",
+    "upstream": [
+      {
+        "name": "MS33558 (ASG), revision C, Numerals and Letters, Aircraft Instrument Dial, Standard Form of",
+        "url": "https://everyspec.com/MS-Specs/MS3/MS33000-MS33999/MS33558C_13545/"
+      },
+      {
+        "name": "MIL-M-18012B, Markings for Aircrew Station Displays",
+        "url": "https://everyspec.com/MIL-SPECS/MIL-SPECS-MIL-M/MIL-M-18012B_6496/"
+      },
+      {
+        "name": "Indicate typeface generator, cargo xtask gen-typeface (original stroke geometry)",
+        "url": "https://github.com/luofang34/Indicate"
+      }
+    ]
+  }
+}

@@ -27,6 +27,7 @@ mod canopy_frames;
 mod cockpit_controls;
 mod cockpit_interior;
 mod cockpit_opening;
+mod cockpit_placards;
 pub mod cockpit_reservation;
 pub mod drawing;
 mod fillets;
@@ -44,6 +45,8 @@ mod stations;
 mod tests;
 
 pub use calibration::{P38BlueprintCalibrationReport, verify_p38g_three_view_and_stations};
+pub use cockpit_controls::p38g_uv_flood_lamp_m;
+pub use cockpit_placards::{P38Placard, p38g_placards};
 pub use cockpit_reservation::{
     CockpitInteriorContract, PanelMountFrame, StationBulkheadSpec, p38g_cockpit_contract,
 };
@@ -52,7 +55,8 @@ pub use gondola::{
     gondola_point, gondola_section, interpolate_gondola, opening_edge_theta, section_y,
     three_view_gondola_outline_x,
 };
-pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
+pub use instrument_panel::p38g_instrument_pack;
+pub use mesh::{P38ControlJoint, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
 pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
 pub use skin::{MarkingKind, MarkingSite, P38Skin, P38SkinError, SkinPaint, SkinQuery};
 pub use stations::{

@@ -24,6 +24,8 @@ mod airport_spawn;
 mod display;
 mod estimate;
 mod free_world;
+#[cfg(test)]
+mod gauge_hud_tests;
 mod manual;
 mod mode;
 mod pacing;
@@ -45,7 +47,7 @@ pub use free_world::SolarSystemError;
 pub use manual::SpawnMode;
 use mode::{FreeSpawn, Mode};
 pub use pacing::{PacingMonitor, PacingSession, PacingStats};
-use panel_gauges::{GaugeInputs, PanelGauges};
+use panel_gauges::PanelGauges;
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
 
@@ -225,11 +227,6 @@ impl Flight {
         self.exposures.clear();
         let inputs = self.gauge_inputs();
         self.gauges.settle(&inputs);
-    }
-
-    fn gauge_inputs(&self) -> GaugeInputs {
-        let air = self.onboard_sensors().air_data.map(|reading| reading.value);
-        GaugeInputs::sense(air.as_ref(), &self.articulation())
     }
 
     /// Active scripted scenario profile, or `None` in free flight.

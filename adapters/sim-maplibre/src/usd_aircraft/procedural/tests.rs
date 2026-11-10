@@ -133,8 +133,9 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     for role in [PartRole::FlapLeft, PartRole::FlapRight] {
         assert_eq!(count(&p38, role), 4, "{role:?}");
     }
-    // The nose leg and the two main legs; each of the three bays has two doors.
-    assert_eq!(count(&p38, PartRole::GearStruts), 3);
+    // Each of the three legs is a painted strut and a chromed piston; each of the three
+    // bays has two doors.
+    assert_eq!(count(&p38, PartRole::GearStruts), 6);
     let doors = p38
         .parts()
         .iter()
@@ -152,7 +153,6 @@ fn p38g_retracted_gear_stows_struts_wheels_and_landing_lights() {
     let up = p38.evaluate_draws(
         &AirframeArticulation {
             gear_pos_norm: 0.0,
-            landing_light_norm: 0.0,
             ..AirframeArticulation::default()
         },
         SlotCameraRole::External,
@@ -349,30 +349,28 @@ fn p38g_curtiss_electric_blades_feather_and_fowler_and_coolant_flaps_articulate(
 }
 
 #[test]
-fn p38g_panel_needles_turn_by_their_channel_angle() {
-    use sim_core::{InstrumentNeedles, NEEDLE_HANDS_PER_SLOT};
-    assert_eq!(NEEDLE_HANDS_PER_SLOT, sim_p38g::NEEDLE_HANDS_PER_SLOT);
+fn p38g_instrument_faces_are_display_surfaces_the_pilot_sees() {
     let p38 = UsdAircraftAsset::p38g().unwrap();
-    let (index, part) = p38
+    let faces: Vec<usize> = p38
         .parts()
         .iter()
         .enumerate()
-        .find(|(_, p)| p.prim_path.ends_with("/Needles/airspeed_0"))
-        .unwrap();
-    assert_eq!(part.role, PartRole::InstrumentNeedle);
-    let channel = part.needle_channel.unwrap();
-    assert_eq!(InstrumentNeedles::channel(0, 0), Some(channel));
-    let tip_at = |angle: f64| {
-        let mut art = AirframeArticulation::default();
-        art.instrument_needles.set(0, 0, angle);
-        let draws = p38.evaluate_draws(&art, SlotCameraRole::PilotEye);
-        let draw = draws.iter().find(|d| d.part_index == index).unwrap();
-        draw.part_to_aircraft.transform_vector3(DVec3::Z)
-    };
-    let (rest, quarter) = (tip_at(0.0), tip_at(std::f64::consts::FRAC_PI_2));
-    assert!(rest.dot(quarter).abs() < 1e-6, "{rest} {quarter}");
-    // Seen from the seat (looking +Y), a positive angle turns the needle clockwise.
-    assert!(rest.cross(quarter).y > 0.9, "{rest} {quarter}");
+        .filter(|(_, p)| p.role == PartRole::DisplaySurface)
+        .map(|(i, _)| i)
+        .collect();
+    // Twenty-seven instrument faces and every lettered placard.
+    assert_eq!(faces.len(), 27 + sim_p38g::p38g_placards().len());
+    assert!(
+        p38.parts()
+            .iter()
+            .any(|p| p.prim_path == "/P38g/CockpitInterior/Instruments/flight_airspeed/airspeed")
+    );
+    for camera in [SlotCameraRole::PilotEye, SlotCameraRole::External] {
+        let draws = p38.evaluate_draws(&AirframeArticulation::default(), camera);
+        for face in &faces {
+            assert!(draws.iter().any(|d| d.part_index == *face), "{camera:?}");
+        }
+    }
 }
 
 #[test]
@@ -445,5 +443,55 @@ fn write_p38_skin_maps() {
             .unwrap()
             .save(dir.join(format!("p38_skin_{name}.png")))
             .unwrap();
+    }
+}
+
+/// The canopy opens as the P-38G's did: the top hatch swings up about its aft
+/// frame, lifting its forward edge clear, and each side window winds down past
+/// the sill, the other panes staying put.
+#[test]
+fn p38g_canopy_hatch_swings_up_and_side_windows_wind_down() {
+    let p38 = UsdAircraftAsset::p38g().unwrap();
+    let mut open = AirframeArticulation::default();
+    open.cockpit.canopy = sim_core::CanopyOpening {
+        hatch: 1.0,
+        side_windows: [1.0, 0.0],
+    };
+    // Where the vertex of `path` furthest along `toward` goes as the canopy opens.
+    let moved = |path: &str, toward: DVec3| {
+        let index = p38
+            .parts()
+            .iter()
+            .position(|p| p.prim_path == path)
+            .unwrap();
+        let vertex = p38.parts()[index]
+            .vertices
+            .iter()
+            .map(|v| Vec3::from_array(v.position).as_dvec3())
+            .max_by(|a, b| a.dot(toward).total_cmp(&b.dot(toward)))
+            .unwrap();
+        let at = |a: &AirframeArticulation| {
+            let draws = p38.evaluate_draws(a, SlotCameraRole::External);
+            let draw = draws.iter().find(|d| d.part_index == index).unwrap();
+            draw.part_to_aircraft.transform_point3(vertex)
+        };
+        (at(&AirframeArticulation::default()), at(&open))
+    };
+    let (shut, raised) = moved("/P38g/Canopy/Glazing/Hatch", DVec3::Y);
+    assert!(
+        raised.z > shut.z + 0.4 && raised.y < shut.y,
+        "{shut:?} -> {raised:?}"
+    );
+    let sill = f64::from(sim_p38g::canopy_sill_z(shut.y as f32));
+    let (top, wound) = moved("/P38g/Canopy/Glazing/SideWindowLeft", DVec3::Z);
+    assert!(
+        top.z > sill + 0.1 && wound.z < sill + 0.01,
+        "{top:?} -> {wound:?}"
+    );
+    // Its top edge ends out on the sill, not standing inside the cabin.
+    assert!(wound.x < top.x - 0.05 && (wound.y - top.y).abs() < 1e-9);
+    for fixed in ["SideWindowRight", "Windscreen", "Rear"] {
+        let (a, b) = moved(&format!("/P38g/Canopy/Glazing/{fixed}"), DVec3::Z);
+        assert!(a.abs_diff_eq(b, 1e-9), "{fixed}");
     }
 }

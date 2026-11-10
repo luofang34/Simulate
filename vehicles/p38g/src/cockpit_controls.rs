@@ -1,134 +1,162 @@
-//! Flight and engine controls in reach of the seat: the control wheel on the arm of
-//! its column, which stands on the starboard floor, the left-console quadrant with a
-//! throttle, propeller and mixture lever per engine, the right-console flap lever,
-//! and the rudder pedals.
+//! Flight and engine controls in reach of the seat, each moving with the control it
+//! is: the open-top control wheel on its arm from the starboard column, the left
+//! console's throttle quadrant, elevator tab wheel and gear lever, the right side's
+//! flap lever and aileron and rudder tab controls, the rudder pedals and the fuel
+//! selector valves on the floor.
+//!
+//! Placement and shapes follow two period Lockheed photographs of a P-38G cockpit
+//! (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>,
+//! <https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_right_wing_061019-F-1234P-003.jpg>)
+//! and the P-38H/J/L pilot's flight operating instructions
+//! (<http://www.airwar.ru/other/bibl/p-38pilot.pdf>, figures 4, 7 and 9). No source
+//! found gives a control's travel, so every travel constant is an assumption that
+//! maps the flight model's full command range (−1..1 or 0..1) onto it.
 
-use glam::Vec3;
+use glam::{DMat4, Vec3};
 
 use crate::cockpit_reservation::p38g_cockpit_contract;
-use crate::drawing::{frl_to_z, fs_to_y};
-use crate::mesh::{MeshBuilder, P38Material, P38MeshPrim, P38PartRole, fixed, mat};
-use crate::stations::{GUNMETAL, INSIGNIA_RED};
 
-/// Centre of the control wheel's hub: `3 in` aft of the column's station, within a
-/// `29 in` grip reach of a shoulder `4 in` aft of the design eyepoint, at chest height.
-/// Assumed until the hub is placed from the cockpit photographs.
-const WHEEL_HUB: Vec3 = Vec3::new(0.0, fs_to_y(119.0), frl_to_z(20.0));
-/// Black phenolic grips and knobs.
-const GRIP_BLACK: P38Material = mat([0.05, 0.05, 0.055], 0.05, 0.55);
+use crate::mesh::{
+    Inside, MeshBuilder, P38ControlJoint, P38Material, P38MeshPrim, P38PartRole, fixed, mat,
+};
 
-fn polyline(mesh: &mut MeshBuilder, points: &[Vec3], radius: f32) {
+mod column;
+mod floor;
+mod left_console;
+mod right_side;
+
+pub use column::p38g_uv_flood_lamp_m;
+
+/// Black phenolic or hard-rubber grips and small knobs.
+const GRIP_BLACK: P38Material = mat([0.042, 0.04, 0.038], 0.0, 0.45);
+/// The column, arm and hub boss: polished steel, as Z-4972's highlights show.
+const POLISHED: P38Material = mat([0.45, 0.45, 0.44], 1.0, 0.25);
+/// Hard rubber worn brown-grey and polished where the hands grip.
+const GRIP_WORN: P38Material = mat([0.085, 0.075, 0.065], 0.0, 0.30);
+/// The throttles' light ball knobs; the photographs show them pale, read as ivory phenolic.
+const KNOB_IVORY: P38Material = mat([0.62, 0.58, 0.48], 0.0, 0.35);
+/// Black enamel on the column, arm and levers, worn semi-gloss.
+const ENAMEL_BLACK: P38Material = mat([0.05, 0.05, 0.052], 0.2, 0.5);
+/// Steel where hands and boots have worn the paint through.
+const WORN_STEEL: P38Material = mat([0.50, 0.50, 0.49], 0.9, 0.36);
+/// Cadmium-plated fittings: the hub boss, pivots and pedal frames.
+const CADMIUM: P38Material = mat([0.30, 0.30, 0.29], 0.8, 0.5);
+/// The canvas boot where the column passes through the floor.
+const CANVAS: P38Material = mat([0.68, 0.66, 0.6], 0.0, 0.9);
+
+pub(crate) fn polyline(mesh: &mut MeshBuilder, points: &[Vec3], radius: f32, sides: u32) {
     for pair in points.windows(2) {
         if let [a, b] = pair {
-            mesh.tube(*a, *b, radius, radius, 8);
+            mesh.tube(*a, *b, radius, radius, sides);
         }
     }
+    // Spheres at the bends close the tubes' open joints.
+    for p in points.iter().skip(1).take(points.len().saturating_sub(2)) {
+        mesh.ellipsoid(*p, Vec3::splat(radius), sides, sides / 2);
+    }
+}
+
+/// A smooth tube of `radius` swept along `points`, which lie in a plane whose normal
+/// is `normal` (a wheel rim's axis): one shaded surface, without the facets of
+/// joined straight tubes.
+pub(crate) fn sweep(
+    mesh: &mut MeshBuilder,
+    points: &[Vec3],
+    radius: f32,
+    normal: Vec3,
+    sides: u32,
+) {
+    let tangent = |i: usize| {
+        let before = points.get(i.saturating_sub(1)).or(points.get(i));
+        let after = points.get(i + 1).or(points.get(i));
+        match (before, after) {
+            (Some(a), Some(b)) => (*b - *a).normalize_or(Vec3::X),
+            _ => Vec3::X,
+        }
+    };
+    let rings: Vec<Vec<Vec3>> = points
+        .iter()
+        .enumerate()
+        .map(|(i, centre)| {
+            let side = tangent(i).cross(normal).normalize_or(Vec3::Z);
+            (0..sides)
+                .map(|k| {
+                    let a = std::f32::consts::TAU * k as f32 / sides as f32;
+                    *centre + (normal * a.cos() + side * a.sin()) * radius
+                })
+                .collect()
+        })
+        .collect();
+    mesh.loft(&rings, true, Inside::Axis);
+}
+
+/// A joint turning about `axis` through `origin`, in aircraft axes: the controls
+/// are modelled in place, so their part-local frame is the aircraft's.
+const fn turn(
+    channel: &'static str,
+    origin: Vec3,
+    axis: Vec3,
+    per_unit: f32,
+    rest: f32,
+) -> P38ControlJoint {
+    P38ControlJoint {
+        channel,
+        origin_m: [origin.x, origin.y, origin.z],
+        axis: [axis.x, axis.y, axis.z],
+        per_unit,
+        rest,
+        slides: false,
+    }
+}
+
+/// A moving control part of one material on `joints`, outermost first.
+fn control(
+    path: &str,
+    material: P38Material,
+    mesh: MeshBuilder,
+    joints: &[P38ControlJoint],
+) -> P38MeshPrim {
+    let mut prim = fixed(path, P38PartRole::CockpitControl, material, mesh);
+    prim.control_joints = joints.to_vec();
+    prim
+}
+
+/// Where the side and floor controls were laid out, before the cockpit's
+/// stations were drawn: the top of each console shelf at its middle, and the
+/// rudder pedals' faces on the floor. Each group keeps its own arrangement and
+/// moves as one onto the contract's station for it; where in that station the
+/// photographs put each control is not yet measured.
+const LAID_OUT_CONSOLE_TOP: Vec3 = Vec3::new(0.42, 0.72, left_console::CONSOLE_TOP_Z);
+const LAID_OUT_PEDALS: Vec3 = Vec3::new(0.0, 1.10, -0.22);
+/// The pedals' faces stand this far aft of their pivots' station.
+const PEDAL_FACE_AFT_M: f32 = 0.085;
+
+/// `prims` moved so the point they were laid out about lands on `to`, joints
+/// and all.
+fn restation(mut prims: Vec<P38MeshPrim>, laid_out: Vec3, to: Vec3) -> Vec<P38MeshPrim> {
+    let shift = DMat4::from_translation((to - laid_out).as_dvec3());
+    for prim in &mut prims {
+        prim.rest_to_aircraft = shift * prim.rest_to_aircraft;
+    }
+    prims
 }
 
 pub(crate) fn cockpit_control_prims() -> Vec<P38MeshPrim> {
-    let mut steel = MeshBuilder::new();
-    let mut grips = MeshBuilder::new();
-    control_wheel(&mut steel, &mut grips);
-    let mut knobs_red = MeshBuilder::new();
-    engine_quadrant(&mut steel, &mut grips, &mut knobs_red);
-    flap_lever_and_pedals(&mut steel, &mut grips);
-    let interior = P38PartRole::CabinInterior;
-    vec![
-        fixed(
-            "/P38g/CockpitInterior/ControlWheel",
-            interior,
-            GUNMETAL,
-            steel,
-        ),
-        fixed(
-            "/P38g/CockpitInterior/GripsAndKnobs",
-            interior,
-            GRIP_BLACK,
-            grips,
-        ),
-        fixed(
-            "/P38g/CockpitInterior/MixtureKnobs",
-            interior,
-            INSIGNIA_RED,
-            knobs_red,
-        ),
-    ]
-}
-
-/// The column rises from its starboard floor attachment, turns inboard above the
-/// pilot's knee and carries the wheel: a grip loop either side of the hub.
-fn control_wheel(steel: &mut MeshBuilder, grips: &mut MeshBuilder) {
-    let pivot = Vec3::from_array(p38g_cockpit_contract().control_column_base_m);
-    let elbow = Vec3::new(pivot.x, WHEEL_HUB.y + 0.02, WHEEL_HUB.z - 0.06);
-    polyline(
-        steel,
-        &[pivot, elbow, WHEEL_HUB + Vec3::new(0.05, 0.02, 0.0)],
-        0.02,
-    );
-    steel.tube(
-        WHEEL_HUB + Vec3::new(0.0, 0.03, 0.0),
-        WHEEL_HUB - Vec3::new(0.0, 0.02, 0.0),
-        0.03,
-        0.03,
-        12,
-    );
-    for side in [-1.0_f32, 1.0] {
-        let p = |x: f32, z: f32| WHEEL_HUB + Vec3::new(side * x, 0.0, z);
-        polyline(steel, &[p(0.0, 0.0), p(0.06, 0.045), p(0.14, 0.06)], 0.011);
-        polyline(
-            steel,
-            &[p(0.0, 0.0), p(0.06, -0.045), p(0.14, -0.06)],
-            0.011,
-        );
-        polyline(
-            grips,
-            &[p(0.14, 0.06), p(0.175, 0.0), p(0.14, -0.06)],
-            0.017,
-        );
-    }
-}
-
-/// Six levers in the quadrant on the left console: throttles inboard, then
-/// propeller rpm, then mixture, a pair (left and right engine) of each.
-fn engine_quadrant(steel: &mut MeshBuilder, grips: &mut MeshBuilder, red: &mut MeshBuilder) {
-    let [cx, cy, cz] = p38g_cockpit_contract().left_throttle_quadrant.center_m;
-    let box_min = Vec3::new(cx - 0.07, cy - 0.02, cz);
-    let box_max = Vec3::new(cx + 0.07, cy + 0.20, cz + 0.06);
-    steel.cuboid(box_min, box_max);
-    for i in 0..6_u8 {
-        // Inboard to outboard: throttles, propellers, mixtures, a pair of each.
-        let pair_gap = 0.026 * f32::from(i / 2);
-        let x = cx + 0.055 - 0.017 * f32::from(i) - pair_gap * 0.35;
-        let root = Vec3::new(x, cy + 0.08, box_max.z);
-        let top = root + Vec3::new(0.0, 0.05, 0.09);
-        steel.tube(root, top, 0.005, 0.005, 6);
-        let radius = if i < 2 { 0.016 } else { 0.011 };
-        let knob = if i >= 4 { &mut *red } else { &mut *grips };
-        knob.ellipsoid(top, Vec3::splat(radius), 10, 6);
-    }
-}
-
-fn flap_lever_and_pedals(steel: &mut MeshBuilder, grips: &mut MeshBuilder) {
     let contract = p38g_cockpit_contract();
-    let [cx, cy, cz] = contract.right_flap_cooling_console.center_m;
-    let root = Vec3::new(cx, cy + 0.10, cz);
-    let top = root + Vec3::new(-0.02, 0.04, 0.10);
-    steel.tube(root, top, 0.008, 0.008, 6);
-    grips.ellipsoid(top, Vec3::splat(0.014), 10, 6);
-    let pivot_y = contract.rudder_pedal_pivot_y_m;
-    let [floor, _] = contract.floor_z_m;
-    for side in [-1.0_f32, 1.0] {
-        let x = side * 0.16;
-        steel.tube(
-            Vec3::new(x, pivot_y, floor + 0.02),
-            Vec3::new(x, pivot_y - 0.08, floor + 0.22),
-            0.012,
-            0.012,
-            6,
-        );
-        steel.cuboid(
-            Vec3::new(x - 0.05, pivot_y - 0.10, floor + 0.18),
-            Vec3::new(x + 0.05, pivot_y - 0.07, floor + 0.28),
-        );
-    }
+    let left = Vec3::from_array(contract.left_throttle_quadrant.center_m);
+    let right = Vec3::from_array(contract.right_flap_cooling_console.center_m);
+    let pedals = Vec3::new(
+        0.0,
+        contract.rudder_pedal_pivot_y_m - PEDAL_FACE_AFT_M,
+        contract.floor_z_m[0],
+    );
+    let mirrored = LAID_OUT_CONSOLE_TOP * Vec3::new(-1.0, 1.0, 1.0);
+    let mut prims = column::prims();
+    prims.extend(restation(left_console::prims(), mirrored, left));
+    prims.extend(restation(right_side::prims(), LAID_OUT_CONSOLE_TOP, right));
+    prims.extend(restation(floor::prims(), LAID_OUT_PEDALS, pedals));
+    prims
 }
+
+#[cfg(test)]
+mod tests;

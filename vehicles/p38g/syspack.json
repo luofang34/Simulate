@@ -312,7 +312,7 @@
   ],
   "instrument_pack": {
     "id": "usaaf-1943-fighter",
-    "version": "1.0.0",
-    "manifest_sha256": "419cf47e686d68c5eb3339a2e3d0619b91d9e81ccdc894d57ad3e23920cba324"
+    "version": "2.0.0",
+    "manifest_sha256": "e01b1c531617f0dc47d38be0487b79aae20f2301cb99a085358569dfcd56083d"
   }
 }

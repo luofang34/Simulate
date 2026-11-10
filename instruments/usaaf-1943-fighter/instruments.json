@@ -2,52 +2,52 @@
   "instruments": [
     {
       "id": "airspeed",
-      "name": "AAF airspeed indicator, 0-700 mph",
+      "name": "Airspeed indicator, Army type D-7 class, 50-500 mph",
       "bezel": "ThreeAndOneEighthInch",
       "source": "pitot_static.pitot_static",
       "needle": {
         "natural_frequency_rad_s": 12.0,
         "damping_ratio": 0.7
       },
-      "markings": [
-        {
-          "Radial": {
-            "at": 420,
-            "colour": "Red"
-          }
-        }
-      ],
       "kind": {
         "Airspeed": {
           "units": "MilesPerHour",
           "scale": [
             {
-              "value": 0,
-              "angle_deg": 0
+              "value": 50,
+              "angle_deg": 25
+            },
+            {
+              "value": 60,
+              "angle_deg": 36
+            },
+            {
+              "value": 80,
+              "angle_deg": 58
             },
             {
               "value": 100,
-              "angle_deg": 50
+              "angle_deg": 90
+            },
+            {
+              "value": 150,
+              "angle_deg": 154
             },
             {
               "value": 200,
-              "angle_deg": 120
+              "angle_deg": 206
             },
             {
               "value": 300,
-              "angle_deg": 180
+              "angle_deg": 243
             },
             {
               "value": 400,
-              "angle_deg": 235
+              "angle_deg": 279
             },
             {
               "value": 500,
-              "angle_deg": 280
-            },
-            {
-              "value": 700,
-              "angle_deg": 345
+              "angle_deg": 333
             }
           ],
           "instrument_error": [
@@ -61,11 +61,120 @@
             ]
           ]
         }
+      },
+      "dial": {
+        "reference_deg": 0.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 50,
+            "to": 100,
+            "every": 5
+          },
+          {
+            "from": 100,
+            "to": 200,
+            "every": 10
+          },
+          {
+            "from": 200,
+            "to": 500,
+            "every": 20
+          },
+          {
+            "from": 100,
+            "to": 500,
+            "every": 50,
+            "major": true
+          },
+          {
+            "from": 50,
+            "to": 100,
+            "every": 10,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 60,
+            "text": "60"
+          },
+          {
+            "value": 80,
+            "text": "80"
+          },
+          {
+            "value": 100,
+            "text": "100"
+          },
+          {
+            "value": 150,
+            "text": "150"
+          },
+          {
+            "value": 200,
+            "text": "200"
+          },
+          {
+            "value": 300,
+            "text": "300"
+          },
+          {
+            "value": 400,
+            "text": "400"
+          },
+          {
+            "value": 500,
+            "text": "500"
+          }
+        ],
+        "legends": [
+          {
+            "text": "AIRSPEED",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "M.P.H.",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.08
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": 25.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558",
+          "condense": 0.75,
+          "pen": 0.1667,
+          "alternates": [
+            "one.flag"
+          ]
+        }
       }
     },
     {
       "id": "altimeter",
-      "name": "Kollsman Type C-12 sensitive altimeter, 0-50,000 ft",
+      "name": "Sensitive altimeter, Army type C-12 class, 0-50,000 ft, subscale 28.1-31.0 inHg",
       "bezel": "ThreeAndOneEighthInch",
       "source": "pitot_static.pitot_static",
       "needle": {
@@ -86,11 +195,104 @@
             50000.0
           ]
         }
+      },
+      "dial": {
+        "reference_deg": 0.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 980,
+            "every": 20
+          },
+          {
+            "from": 0,
+            "to": 900,
+            "every": 100,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 100,
+            "text": "1"
+          },
+          {
+            "value": 200,
+            "text": "2"
+          },
+          {
+            "value": 300,
+            "text": "3"
+          },
+          {
+            "value": 400,
+            "text": "4"
+          },
+          {
+            "value": 500,
+            "text": "5"
+          },
+          {
+            "value": 600,
+            "text": "6"
+          },
+          {
+            "value": 700,
+            "text": "7"
+          },
+          {
+            "value": 800,
+            "text": "8"
+          },
+          {
+            "value": 900,
+            "text": "9"
+          }
+        ],
+        "legends": [
+          {
+            "text": "ALTITUDE",
+            "at": [
+              0.0,
+              -0.32
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "100 FEET",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.07
+          }
+        ],
+        "luminous": true,
+        "on_failure": {
+          "Park": {
+            "angle_deg": 0.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558",
+          "condense": 0.75,
+          "pen": 0.1667,
+          "alternates": [
+            "one.flag"
+          ]
+        }
       }
     },
     {
       "id": "rate_of_climb",
-      "name": "Rate-of-climb indicator, +/-6,000 ft/min",
+      "name": "Rate-of-climb indicator, Army type C-2 class, +/-6,000 ft/min",
       "bezel": "ThreeAndOneEighthInch",
       "source": "pitot_static.pitot_static",
       "needle": {
@@ -103,15 +305,19 @@
           "scale": [
             {
               "value": -6000,
-              "angle_deg": -170
+              "angle_deg": -180
+            },
+            {
+              "value": -4000,
+              "angle_deg": -140
             },
             {
               "value": -2000,
-              "angle_deg": -100
+              "angle_deg": -82
             },
             {
               "value": -1000,
-              "angle_deg": -60
+              "angle_deg": -35
             },
             {
               "value": 0,
@@ -119,44 +325,157 @@
             },
             {
               "value": 1000,
-              "angle_deg": 60
+              "angle_deg": 35
             },
             {
               "value": 2000,
-              "angle_deg": 100
+              "angle_deg": 82
+            },
+            {
+              "value": 4000,
+              "angle_deg": 141
             },
             {
               "value": 6000,
-              "angle_deg": 170
+              "angle_deg": 180
             }
           ],
           "leak_tau_s": 7.0
+        }
+      },
+      "dial": {
+        "reference_deg": -90.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": -2000,
+            "to": 2000,
+            "every": 200
+          },
+          {
+            "from": -6000,
+            "to": -2000,
+            "every": 500
+          },
+          {
+            "from": 2000,
+            "to": 6000,
+            "every": 500
+          },
+          {
+            "from": -6000,
+            "to": 6000,
+            "every": 1000,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": -6000,
+            "text": "6"
+          },
+          {
+            "value": -4000,
+            "text": "4"
+          },
+          {
+            "value": -2000,
+            "text": "2"
+          },
+          {
+            "value": -1000,
+            "text": "1"
+          },
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 1000,
+            "text": "1"
+          },
+          {
+            "value": 2000,
+            "text": "2"
+          },
+          {
+            "value": 4000,
+            "text": "4"
+          },
+          {
+            "value": 6000,
+            "text": "6"
+          }
+        ],
+        "legends": [
+          {
+            "text": "UP",
+            "at": [
+              -0.36,
+              -0.34
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "DN",
+            "at": [
+              -0.36,
+              0.34
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "RATE OF CLIMB",
+            "at": [
+              0.12,
+              -0.16
+            ],
+            "size": 0.06
+          },
+          {
+            "text": "1000 FT PER MIN",
+            "at": [
+              0.12,
+              0.16
+            ],
+            "size": 0.05
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": -90.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558",
+          "condense": 0.75,
+          "pen": 0.1667,
+          "alternates": [
+            "one.flag"
+          ]
         }
       }
     },
     {
       "id": "manifold_pressure_0",
-      "name": "Manifold pressure gauge, engine 1, 10-75 inHg",
-      "bezel": "TwoAndOneQuarterInch",
+      "name": "Manifold pressure gage, Army type D-9 class, left engine, 10-50 inHg",
+      "bezel": "ThreeAndOneEighthInch",
       "source": "engine[0].manifold_pressure",
       "needle": {
         "natural_frequency_rad_s": 8.0,
         "damping_ratio": 0.8
       },
-      "markings": [
-        {
-          "Radial": {
-            "at": 44.7,
-            "colour": "Green"
-          }
-        },
-        {
-          "Radial": {
-            "at": 48.0,
-            "colour": "Red"
-          }
-        }
-      ],
       "kind": {
         "PressureGauge": {
           "units": "InchesOfMercury",
@@ -166,37 +485,119 @@
               "angle_deg": 0
             },
             {
-              "value": 75,
-              "angle_deg": 300
+              "value": 30,
+              "angle_deg": 160
+            },
+            {
+              "value": 50,
+              "angle_deg": 320
             }
           ],
           "line_tau_s": 0.5
+        }
+      },
+      "dial": {
+        "reference_deg": -160.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 10,
+            "to": 50,
+            "every": 1
+          },
+          {
+            "from": 10,
+            "to": 50,
+            "every": 5,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 10,
+            "text": "10"
+          },
+          {
+            "value": 15,
+            "text": "15"
+          },
+          {
+            "value": 20,
+            "text": "20"
+          },
+          {
+            "value": 25,
+            "text": "25"
+          },
+          {
+            "value": 30,
+            "text": "30"
+          },
+          {
+            "value": 35,
+            "text": "35"
+          },
+          {
+            "value": 40,
+            "text": "40"
+          },
+          {
+            "value": 45,
+            "text": "45"
+          },
+          {
+            "value": 50,
+            "text": "50"
+          }
+        ],
+        "legends": [
+          {
+            "text": "MANIFOLD",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.09
+          },
+          {
+            "text": "IN.HG",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": -160.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
         }
       }
     },
     {
       "id": "manifold_pressure_1",
-      "name": "Manifold pressure gauge, engine 2, 10-75 inHg",
-      "bezel": "TwoAndOneQuarterInch",
+      "name": "Manifold pressure gage, Army type D-9 class, right engine, 10-50 inHg",
+      "bezel": "ThreeAndOneEighthInch",
       "source": "engine[1].manifold_pressure",
       "needle": {
         "natural_frequency_rad_s": 8.0,
         "damping_ratio": 0.8
       },
-      "markings": [
-        {
-          "Radial": {
-            "at": 44.7,
-            "colour": "Green"
-          }
-        },
-        {
-          "Radial": {
-            "at": 48.0,
-            "colour": "Red"
-          }
-        }
-      ],
       "kind": {
         "PressureGauge": {
           "units": "InchesOfMercury",
@@ -206,18 +607,114 @@
               "angle_deg": 0
             },
             {
-              "value": 75,
-              "angle_deg": 300
+              "value": 30,
+              "angle_deg": 160
+            },
+            {
+              "value": 50,
+              "angle_deg": 320
             }
           ],
           "line_tau_s": 0.5
+        }
+      },
+      "dial": {
+        "reference_deg": -160.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 10,
+            "to": 50,
+            "every": 1
+          },
+          {
+            "from": 10,
+            "to": 50,
+            "every": 5,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 10,
+            "text": "10"
+          },
+          {
+            "value": 15,
+            "text": "15"
+          },
+          {
+            "value": 20,
+            "text": "20"
+          },
+          {
+            "value": 25,
+            "text": "25"
+          },
+          {
+            "value": 30,
+            "text": "30"
+          },
+          {
+            "value": 35,
+            "text": "35"
+          },
+          {
+            "value": 40,
+            "text": "40"
+          },
+          {
+            "value": 45,
+            "text": "45"
+          },
+          {
+            "value": 50,
+            "text": "50"
+          }
+        ],
+        "legends": [
+          {
+            "text": "MANIFOLD",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.09
+          },
+          {
+            "text": "IN.HG",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": -160.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
         }
       }
     },
     {
       "id": "tachometer_0",
-      "name": "Tachometer, engine 1, 0-4,500 rpm",
-      "bezel": "TwoAndOneQuarterInch",
+      "name": "Electric tachometer indicator, left engine, 0-3,500 rpm",
+      "bezel": "ThreeAndOneEighthInch",
       "source": "engine[0].rpm",
       "needle": {
         "natural_frequency_rad_s": 8.0,
@@ -240,18 +737,106 @@
               "angle_deg": 0
             },
             {
-              "value": 4500,
-              "angle_deg": 300
+              "value": 3500,
+              "angle_deg": 290
             }
           ],
           "drag_cup_tau_s": 0.4
+        }
+      },
+      "dial": {
+        "reference_deg": -150.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 3500,
+            "every": 100
+          },
+          {
+            "from": 0,
+            "to": 3500,
+            "every": 500,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 500,
+            "text": "5"
+          },
+          {
+            "value": 1000,
+            "text": "10"
+          },
+          {
+            "value": 1500,
+            "text": "15"
+          },
+          {
+            "value": 2000,
+            "text": "20"
+          },
+          {
+            "value": 2500,
+            "text": "25"
+          },
+          {
+            "value": 3000,
+            "text": "30"
+          },
+          {
+            "value": 3500,
+            "text": "35"
+          }
+        ],
+        "legends": [
+          {
+            "text": "RPM",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.1
+          },
+          {
+            "text": "X100",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": -150.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
         }
       }
     },
     {
       "id": "tachometer_1",
-      "name": "Tachometer, engine 2, 0-4,500 rpm",
-      "bezel": "TwoAndOneQuarterInch",
+      "name": "Electric tachometer indicator, right engine, 0-3,500 rpm",
+      "bezel": "ThreeAndOneEighthInch",
       "source": "engine[1].rpm",
       "needle": {
         "natural_frequency_rad_s": 8.0,
@@ -274,71 +859,1647 @@
               "angle_deg": 0
             },
             {
-              "value": 4500,
-              "angle_deg": 300
+              "value": 3500,
+              "angle_deg": 290
             }
           ],
           "drag_cup_tau_s": 0.4
+        }
+      },
+      "dial": {
+        "reference_deg": -150.0,
+        "face_diameter_m": 0.068,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 3500,
+            "every": 100
+          },
+          {
+            "from": 0,
+            "to": 3500,
+            "every": 500,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 500,
+            "text": "5"
+          },
+          {
+            "value": 1000,
+            "text": "10"
+          },
+          {
+            "value": 1500,
+            "text": "15"
+          },
+          {
+            "value": 2000,
+            "text": "20"
+          },
+          {
+            "value": 2500,
+            "text": "25"
+          },
+          {
+            "value": 3000,
+            "text": "30"
+          },
+          {
+            "value": 3500,
+            "text": "35"
+          }
+        ],
+        "legends": [
+          {
+            "text": "RPM",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.1
+          },
+          {
+            "text": "X100",
+            "at": [
+              0.0,
+              0.3
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ],
+        "on_failure": {
+          "Park": {
+            "angle_deg": -150.0
+          }
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "suction",
+      "name": "Suction gage, Army type F-4 class, 0-10 inHg",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "system.vacuum.suction",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "PressureGauge": {
+          "units": "InchesOfMercury",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 10,
+              "angle_deg": 300
+            }
+          ],
+          "line_tau_s": 0.5
+        }
+      },
+      "dial": {
+        "reference_deg": -150.0,
+        "face_diameter_m": 0.049,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 10,
+            "every": 0.5
+          },
+          {
+            "from": 0,
+            "to": 10,
+            "every": 1,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 2,
+            "text": "2"
+          },
+          {
+            "value": 4,
+            "text": "4"
+          },
+          {
+            "value": 6,
+            "text": "6"
+          },
+          {
+            "value": 8,
+            "text": "8"
+          },
+          {
+            "value": 10,
+            "text": "10"
+          }
+        ],
+        "legends": [
+          {
+            "text": "SUCTION",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.1
+          },
+          {
+            "text": "IN.HG",
+            "at": [
+              0.0,
+              0.32
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ]
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "hydraulic_pressure",
+      "name": "Hydraulic pressure gage (panel label HYD PRESS), 0-2,000 psi",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "system.hydraulic.pressure",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "PressureGauge": {
+          "units": "PoundsPerSquareInch",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 1000,
+              "angle_deg": 90
+            },
+            {
+              "value": 2000,
+              "angle_deg": 180
+            }
+          ],
+          "line_tau_s": 0.2
+        }
+      },
+      "dial": {
+        "reference_deg": -90.0,
+        "face_diameter_m": 0.049,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 2000,
+            "every": 100
+          },
+          {
+            "from": 0,
+            "to": 2000,
+            "every": 500,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 500,
+            "text": "5"
+          },
+          {
+            "value": 1000,
+            "text": "10"
+          },
+          {
+            "value": 1500,
+            "text": "15"
+          },
+          {
+            "value": 2000,
+            "text": "20"
+          }
+        ],
+        "legends": [
+          {
+            "text": "HYD PRESS",
+            "at": [
+              0.0,
+              0.28
+            ],
+            "size": 0.09
+          },
+          {
+            "text": "X100",
+            "at": [
+              0.0,
+              0.48
+            ],
+            "size": 0.09
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ]
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "hydraulic_system_pressure",
+      "name": "Hydraulic system pressure gage, 0-2,000 psi (dial x100)",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "system.hydraulic.system_pressure",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "PressureGauge": {
+          "units": "PoundsPerSquareInch",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 1000,
+              "angle_deg": 90
+            },
+            {
+              "value": 2000,
+              "angle_deg": 180
+            }
+          ],
+          "line_tau_s": 0.2
+        }
+      },
+      "dial": {
+        "reference_deg": -90.0,
+        "face_diameter_m": 0.049,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 2000,
+            "every": 100
+          },
+          {
+            "from": 0,
+            "to": 2000,
+            "every": 500,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 500,
+            "text": "5"
+          },
+          {
+            "value": 1000,
+            "text": "10"
+          },
+          {
+            "value": 1500,
+            "text": "15"
+          },
+          {
+            "value": 2000,
+            "text": "20"
+          }
+        ],
+        "legends": [
+          {
+            "text": "HYD PRESS",
+            "at": [
+              0.0,
+              0.28
+            ],
+            "size": 0.09
+          },
+          {
+            "text": "X100",
+            "at": [
+              0.0,
+              0.48
+            ],
+            "size": 0.09
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ]
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "engine_gage_unit_0",
+      "name": "Engine gage unit, left engine: oil temperature 0-100 C, oil pressure 0-200 psi, fuel pressure 0-25 psi",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.076
+        }
+      },
+      "source": "engine[0].oil_temperature",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Thermometer": {
+          "units": "DegreesCelsius",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": -60
+            },
+            {
+              "value": 100,
+              "angle_deg": 60
+            }
+          ],
+          "bulb_tau_s": 8.0
+        }
+      },
+      "dial": {
+        "reference_deg": 0.0,
+        "face_diameter_m": 0.065,
+        "ring_centre": [
+          0.0,
+          -0.05
+        ],
+        "ring_radius": 0.75,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 100,
+            "every": 5
+          },
+          {
+            "from": 0,
+            "to": 100,
+            "every": 25,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 50,
+            "text": "50"
+          },
+          {
+            "value": 100,
+            "text": "100"
+          }
+        ],
+        "legends": [
+          {
+            "text": "TEMP C",
+            "at": [
+              0.0,
+              0.16
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "LBS",
+            "at": [
+              -0.3,
+              0.7
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "FUEL",
+            "at": [
+              0.3,
+              0.7
+            ],
+            "size": 0.08
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.62,
+            "width": 0.05,
+            "tail": 0.1
+          }
+        ]
+      },
+      "pointers": [
+        {
+          "id": "oil_pressure",
+          "source": "engine[0].oil_pressure",
+          "kind": {
+            "PressureGauge": {
+              "units": "PoundsPerSquareInch",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 200
+                },
+                {
+                  "value": 200,
+                  "angle_deg": 340
+                }
+              ],
+              "line_tau_s": 0.3
+            }
+          },
+          "dial": {
+            "reference_deg": 0.0,
+            "ring_centre": [
+              -0.3,
+              0.35
+            ],
+            "ring_radius": 0.55,
+            "graduations": [
+              {
+                "from": 0,
+                "to": 200,
+                "every": 10
+              },
+              {
+                "from": 0,
+                "to": 200,
+                "every": 50,
+                "major": true
+              }
+            ],
+            "numerals": [
+              {
+                "value": 0,
+                "text": "0"
+              },
+              {
+                "value": 100,
+                "text": "100"
+              },
+              {
+                "value": 200,
+                "text": "200"
+              }
+            ],
+            "pointers": [
+              {
+                "shape": "Lance",
+                "length": 0.46,
+                "width": 0.045,
+                "tail": 0.08
+              }
+            ]
+          }
+        },
+        {
+          "id": "fuel_pressure",
+          "source": "engine[0].fuel_pressure",
+          "kind": {
+            "PressureGauge": {
+              "units": "PoundsPerSquareInch",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 20
+                },
+                {
+                  "value": 25,
+                  "angle_deg": 160
+                }
+              ],
+              "line_tau_s": 0.3
+            }
+          },
+          "dial": {
+            "reference_deg": 0.0,
+            "ring_centre": [
+              0.3,
+              0.35
+            ],
+            "ring_radius": 0.55,
+            "graduations": [
+              {
+                "from": 0,
+                "to": 25,
+                "every": 1
+              },
+              {
+                "from": 0,
+                "to": 25,
+                "every": 5,
+                "major": true
+              }
+            ],
+            "numerals": [
+              {
+                "value": 0,
+                "text": "0"
+              },
+              {
+                "value": 10,
+                "text": "10"
+              },
+              {
+                "value": 20,
+                "text": "20"
+              }
+            ],
+            "pointers": [
+              {
+                "shape": "Lance",
+                "length": 0.46,
+                "width": 0.045,
+                "tail": 0.08
+              }
+            ]
+          }
+        }
+      ],
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "engine_gage_unit_1",
+      "name": "Engine gage unit, right engine: oil temperature 0-100 C, oil pressure 0-200 psi, fuel pressure 0-25 psi",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.076
+        }
+      },
+      "source": "engine[1].oil_temperature",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Thermometer": {
+          "units": "DegreesCelsius",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": -60
+            },
+            {
+              "value": 100,
+              "angle_deg": 60
+            }
+          ],
+          "bulb_tau_s": 8.0
+        }
+      },
+      "dial": {
+        "reference_deg": 0.0,
+        "face_diameter_m": 0.065,
+        "ring_centre": [
+          0.0,
+          -0.05
+        ],
+        "ring_radius": 0.75,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 100,
+            "every": 5
+          },
+          {
+            "from": 0,
+            "to": 100,
+            "every": 25,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 50,
+            "text": "50"
+          },
+          {
+            "value": 100,
+            "text": "100"
+          }
+        ],
+        "legends": [
+          {
+            "text": "TEMP C",
+            "at": [
+              0.0,
+              0.16
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "LBS",
+            "at": [
+              -0.3,
+              0.7
+            ],
+            "size": 0.08
+          },
+          {
+            "text": "FUEL",
+            "at": [
+              0.3,
+              0.7
+            ],
+            "size": 0.08
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.62,
+            "width": 0.05,
+            "tail": 0.1
+          }
+        ]
+      },
+      "pointers": [
+        {
+          "id": "oil_pressure",
+          "source": "engine[1].oil_pressure",
+          "kind": {
+            "PressureGauge": {
+              "units": "PoundsPerSquareInch",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 200
+                },
+                {
+                  "value": 200,
+                  "angle_deg": 340
+                }
+              ],
+              "line_tau_s": 0.3
+            }
+          },
+          "dial": {
+            "reference_deg": 0.0,
+            "ring_centre": [
+              -0.3,
+              0.35
+            ],
+            "ring_radius": 0.55,
+            "graduations": [
+              {
+                "from": 0,
+                "to": 200,
+                "every": 10
+              },
+              {
+                "from": 0,
+                "to": 200,
+                "every": 50,
+                "major": true
+              }
+            ],
+            "numerals": [
+              {
+                "value": 0,
+                "text": "0"
+              },
+              {
+                "value": 100,
+                "text": "100"
+              },
+              {
+                "value": 200,
+                "text": "200"
+              }
+            ],
+            "pointers": [
+              {
+                "shape": "Lance",
+                "length": 0.46,
+                "width": 0.045,
+                "tail": 0.08
+              }
+            ]
+          }
+        },
+        {
+          "id": "fuel_pressure",
+          "source": "engine[1].fuel_pressure",
+          "kind": {
+            "PressureGauge": {
+              "units": "PoundsPerSquareInch",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 20
+                },
+                {
+                  "value": 25,
+                  "angle_deg": 160
+                }
+              ],
+              "line_tau_s": 0.3
+            }
+          },
+          "dial": {
+            "reference_deg": 0.0,
+            "ring_centre": [
+              0.3,
+              0.35
+            ],
+            "ring_radius": 0.55,
+            "graduations": [
+              {
+                "from": 0,
+                "to": 25,
+                "every": 1
+              },
+              {
+                "from": 0,
+                "to": 25,
+                "every": 5,
+                "major": true
+              }
+            ],
+            "numerals": [
+              {
+                "value": 0,
+                "text": "0"
+              },
+              {
+                "value": 10,
+                "text": "10"
+              },
+              {
+                "value": 20,
+                "text": "20"
+              }
+            ],
+            "pointers": [
+              {
+                "shape": "Lance",
+                "length": 0.46,
+                "width": 0.045,
+                "tail": 0.08
+              }
+            ]
+          }
+        }
+      ],
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "coolant_temperature_0",
+      "name": "Coolant temperature gage, left engine, 60-150 C",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[0].coolant_temperature",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Thermometer": {
+          "units": "DegreesCelsius",
+          "scale": [
+            {
+              "value": 60,
+              "angle_deg": 0
+            },
+            {
+              "value": 150,
+              "angle_deg": 270
+            }
+          ],
+          "bulb_tau_s": 10.0
+        }
+      },
+      "dial": {
+        "reference_deg": -135.0,
+        "face_diameter_m": 0.049,
+        "graduations": [
+          {
+            "from": 60,
+            "to": 150,
+            "every": 5
+          },
+          {
+            "from": 60,
+            "to": 150,
+            "every": 10,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 60,
+            "text": "60"
+          },
+          {
+            "value": 90,
+            "text": "90"
+          },
+          {
+            "value": 120,
+            "text": "120"
+          },
+          {
+            "value": 150,
+            "text": "150"
+          }
+        ],
+        "legends": [
+          {
+            "text": "COOLANT",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.1
+          },
+          {
+            "text": "TEMP C",
+            "at": [
+              0.0,
+              0.32
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ]
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "coolant_temperature_1",
+      "name": "Coolant temperature gage, right engine, 60-150 C",
+      "bezel": "TwoAndOneQuarterInch",
+      "source": "engine[1].coolant_temperature",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Thermometer": {
+          "units": "DegreesCelsius",
+          "scale": [
+            {
+              "value": 60,
+              "angle_deg": 0
+            },
+            {
+              "value": 150,
+              "angle_deg": 270
+            }
+          ],
+          "bulb_tau_s": 10.0
+        }
+      },
+      "dial": {
+        "reference_deg": -135.0,
+        "face_diameter_m": 0.049,
+        "graduations": [
+          {
+            "from": 60,
+            "to": 150,
+            "every": 5
+          },
+          {
+            "from": 60,
+            "to": 150,
+            "every": 10,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 60,
+            "text": "60"
+          },
+          {
+            "value": 90,
+            "text": "90"
+          },
+          {
+            "value": 120,
+            "text": "120"
+          },
+          {
+            "value": 150,
+            "text": "150"
+          }
+        ],
+        "legends": [
+          {
+            "text": "COOLANT",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.1
+          },
+          {
+            "text": "TEMP C",
+            "at": [
+              0.0,
+              0.32
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.88,
+            "width": 0.055,
+            "tail": 0.22
+          }
+        ]
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "fuel_quantity_front",
+      "name": "Fuel quantity gage, front tanks, left and right pointers, 0-90 US gal",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.056
+        }
+      },
+      "source": "system.fuel.front_left",
+      "needle": {
+        "natural_frequency_rad_s": 6.0,
+        "damping_ratio": 0.9
+      },
+      "kind": {
+        "FuelQuantity": {
+          "units": "UsGallons",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 90,
+              "angle_deg": 240
+            }
+          ],
+          "transmitter_tau_s": 4.0
+        }
+      },
+      "dial": {
+        "reference_deg": -120.0,
+        "face_diameter_m": 0.048,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 90,
+            "every": 5
+          },
+          {
+            "from": 0,
+            "to": 90,
+            "every": 20,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 30,
+            "text": "30"
+          },
+          {
+            "value": 60,
+            "text": "60"
+          },
+          {
+            "value": 90,
+            "text": "90"
+          }
+        ],
+        "legends": [
+          {
+            "text": "FRONT",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.12
+          },
+          {
+            "text": "U.S. GAL",
+            "at": [
+              0.0,
+              0.34
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.85,
+            "width": 0.07,
+            "tail": 0.15
+          }
+        ]
+      },
+      "pointers": [
+        {
+          "id": "right",
+          "source": "system.fuel.front_right",
+          "kind": {
+            "FuelQuantity": {
+              "units": "UsGallons",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 0
+                },
+                {
+                  "value": 90,
+                  "angle_deg": 240
+                }
+              ],
+              "transmitter_tau_s": 4.0
+            }
+          },
+          "dial": {
+            "reference_deg": -120.0,
+            "pointers": [
+              {
+                "shape": "Baton",
+                "length": 0.7,
+                "width": 0.05,
+                "tail": 0.15
+              }
+            ]
+          }
+        }
+      ],
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "fuel_quantity_rear",
+      "name": "Fuel quantity gage, rear tanks, left and right pointers, 0-60 US gal",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.056
+        }
+      },
+      "source": "system.fuel.rear_left",
+      "needle": {
+        "natural_frequency_rad_s": 6.0,
+        "damping_ratio": 0.9
+      },
+      "kind": {
+        "FuelQuantity": {
+          "units": "UsGallons",
+          "scale": [
+            {
+              "value": 0,
+              "angle_deg": 0
+            },
+            {
+              "value": 60,
+              "angle_deg": 240
+            }
+          ],
+          "transmitter_tau_s": 4.0
+        }
+      },
+      "dial": {
+        "reference_deg": -120.0,
+        "face_diameter_m": 0.048,
+        "graduations": [
+          {
+            "from": 0,
+            "to": 60,
+            "every": 5
+          },
+          {
+            "from": 0,
+            "to": 60,
+            "every": 10,
+            "major": true
+          }
+        ],
+        "numerals": [
+          {
+            "value": 0,
+            "text": "0"
+          },
+          {
+            "value": 20,
+            "text": "20"
+          },
+          {
+            "value": 40,
+            "text": "40"
+          },
+          {
+            "value": 60,
+            "text": "60"
+          }
+        ],
+        "legends": [
+          {
+            "text": "REAR",
+            "at": [
+              0.0,
+              -0.3
+            ],
+            "size": 0.12
+          },
+          {
+            "text": "U.S. GAL",
+            "at": [
+              0.0,
+              0.34
+            ],
+            "size": 0.1
+          }
+        ],
+        "luminous": true,
+        "pointers": [
+          {
+            "shape": "Lance",
+            "length": 0.85,
+            "width": 0.07,
+            "tail": 0.15
+          }
+        ]
+      },
+      "pointers": [
+        {
+          "id": "right",
+          "source": "system.fuel.rear_right",
+          "kind": {
+            "FuelQuantity": {
+              "units": "UsGallons",
+              "scale": [
+                {
+                  "value": 0,
+                  "angle_deg": 0
+                },
+                {
+                  "value": 60,
+                  "angle_deg": 240
+                }
+              ],
+              "transmitter_tau_s": 4.0
+            }
+          },
+          "dial": {
+            "reference_deg": -120.0,
+            "pointers": [
+              {
+                "shape": "Baton",
+                "length": 0.7,
+                "width": 0.05,
+                "tail": 0.15
+              }
+            ]
+          }
+        }
+      ],
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "gyro_horizon",
+      "name": "Gyro horizon (flight indicator), air-driven",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.095
+        }
+      },
+      "source": "system.attitude",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "GyroHorizon"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "directional_gyro",
+      "name": "Directional gyro, air-driven; square case drawn round",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.105
+        }
+      },
+      "source": "system.heading",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "DirectionalGyro"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "turn_and_bank",
+      "name": "Turn and bank indicator",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.085
+        }
+      },
+      "source": "system.turn",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "TurnAndBank"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "magnetic_compass",
+      "name": "Magnetic compass, panel-mounted",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.085
+        }
+      },
+      "source": "system.magnetic_heading",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "MagneticCompass"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "synchroscope",
+      "name": "Engine synchroscope (SLOW/FAST dial; identification unverified)",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.056
+        }
+      },
+      "source": "system.shaft_phase",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "Synchroscope"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
+        }
+      }
+    },
+    {
+      "id": "clock",
+      "name": "Aircraft clock (identification inferred)",
+      "bezel": {
+        "Custom": {
+          "diameter_m": 0.056
+        }
+      },
+      "source": "system.clock",
+      "needle": {
+        "natural_frequency_rad_s": 8.0,
+        "damping_ratio": 0.8
+      },
+      "kind": {
+        "Direct": {
+          "instrument": "Clock"
+        }
+      },
+      "lettering": {
+        "numerals": {
+          "face": "us-ms33558"
         }
       }
     }
   ],
   "layout": [
     {
-      "slot": "flight_left",
+      "slot": "flight_airspeed",
       "instrument": "airspeed",
       "offset_m": [
-        -0.1,
-        0.05
+        -0.059,
+        0.082
       ]
     },
     {
-      "slot": "flight_right",
+      "slot": "flight_altimeter",
       "instrument": "altimeter",
       "offset_m": [
-        0.0,
-        0.05
+        -0.059,
+        -0.008
       ]
     },
     {
-      "slot": "flight_lower",
+      "slot": "flight_rate_of_climb",
       "instrument": "rate_of_climb",
       "offset_m": [
-        -0.1,
-        -0.05
+        0.165,
+        -0.003
       ]
     },
     {
       "slot": "engine_mp_left",
       "instrument": "manifold_pressure_0",
       "offset_m": [
-        0.12,
-        0.06
+        -0.238,
+        0.03
       ]
     },
     {
       "slot": "engine_mp_right",
       "instrument": "manifold_pressure_1",
       "offset_m": [
-        0.19,
-        0.06
+        -0.15,
+        0.03
       ]
     },
     {
       "slot": "engine_rpm_left",
       "instrument": "tachometer_0",
       "offset_m": [
-        0.12,
-        -0.01
+        -0.238,
+        -0.055
       ]
     },
     {
       "slot": "engine_rpm_right",
       "instrument": "tachometer_1",
       "offset_m": [
-        0.19,
-        -0.01
+        -0.15,
+        -0.055
       ]
+    },
+    {
+      "slot": "aux_suction",
+      "instrument": "suction",
+      "offset_m": [
+        0.337,
+        -0.115
+      ]
+    },
+    {
+      "slot": "aux_hydraulic_pressure",
+      "instrument": "hydraulic_pressure",
+      "offset_m": [
+        0.21,
+        -0.186
+      ]
+    },
+    {
+      "slot": "aux_hydraulic_system_pressure",
+      "instrument": "hydraulic_system_pressure",
+      "offset_m": [
+        0.279,
+        -0.186
+      ]
+    },
+    {
+      "slot": "engine_gage_left",
+      "instrument": "engine_gage_unit_0",
+      "offset_m": [
+        -0.238,
+        -0.147
+      ]
+    },
+    {
+      "slot": "engine_gage_right",
+      "instrument": "engine_gage_unit_1",
+      "offset_m": [
+        -0.15,
+        -0.147
+      ]
+    },
+    {
+      "slot": "engine_coolant_left",
+      "instrument": "coolant_temperature_0",
+      "offset_m": [
+        -0.315,
+        -0.087
+      ]
+    },
+    {
+      "slot": "engine_coolant_right",
+      "instrument": "coolant_temperature_1",
+      "offset_m": [
+        -0.315,
+        -0.154
+      ]
+    },
+    {
+      "slot": "fuel_front",
+      "instrument": "fuel_quantity_front",
+      "offset_m": [
+        -0.119,
+        0.157
+      ]
+    },
+    {
+      "slot": "fuel_rear",
+      "instrument": "fuel_quantity_rear",
+      "offset_m": [
+        -0.054,
+        0.161
+      ]
+    },
+    {
+      "slot": "gyro_horizon",
+      "instrument": "gyro_horizon",
+      "offset_m": [
+        0.051,
+        0.079
+      ]
+    },
+    {
+      "slot": "directional_gyro",
+      "instrument": "directional_gyro",
+      "offset_m": [
+        0.159,
+        0.108
+      ]
+    },
+    {
+      "slot": "turn_and_bank",
+      "instrument": "turn_and_bank",
+      "offset_m": [
+        0.178,
+        -0.096
+      ]
+    },
+    {
+      "slot": "magnetic_compass",
+      "instrument": "magnetic_compass",
+      "offset_m": [
+        0.054,
+        -0.045
+      ]
+    },
+    {
+      "slot": "synchroscope",
+      "instrument": "synchroscope",
+      "offset_m": [
+        0.012,
+        0.174
+      ]
+    },
+    {
+      "slot": "clock",
+      "instrument": "clock",
+      "offset_m": [
+        0.242,
+        0.053
+      ]
+    }
+  ],
+  "typefaces": [
+    {
+      "id": "us-ms33558",
+      "version": "1.0.0",
+      "manifest_sha256": "991ae57b5c53b58cfe3521afa8259929567f3c7619551bdad52016f8653dfc84"
     }
   ]
 }

@@ -126,10 +126,14 @@ fn run(
         Cmd::ClipRect { x, y, w, h } => state.clip_rect([*x, *y, *w, *h], command),
         // Provenance metadata and layer markers paint nothing on any backend,
         // and the rasterizer counts unknown opcodes rather than failing.
+        // A face change letters the head-up display in the reference face
+        // still: this tessellator binds no other.
         Cmd::Attribute { .. }
         | Cmd::BeginLayer { .. }
         | Cmd::EndLayer { .. }
+        | Cmd::Font { .. }
         | Cmd::Unknown { .. } => Ok(()),
+        Cmd::TextArc(_) => Err(VectorSceneError::ArcText { command }),
         Cmd::Line { x1, y1, x2, y2 } => {
             let gs = state.current();
             let verts = [

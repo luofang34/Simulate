@@ -1,3 +1,5 @@
+mod cockpit;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

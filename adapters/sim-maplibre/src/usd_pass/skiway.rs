@@ -268,6 +268,7 @@ impl QuadAcc {
             rest_to_aircraft: DMat4::IDENTITY,
             custom_hinge_axis: None,
             needle_channel: None,
+            control_joints: Vec::new(),
             detail: crate::usd_aircraft::SurfaceDetail::default(),
             surface: crate::usd_aircraft::PartSurface::Material,
             vertices: self.vertices,

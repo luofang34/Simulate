@@ -6,7 +6,7 @@ use std::fmt::{self, Write as _};
 use crate::airframe::airframe_prims;
 use crate::articulated::articulated_prims;
 use crate::cockpit_interior::cockpit_interior_prims;
-use crate::mesh::P38MeshPrim;
+use crate::mesh::{P38ControlJoint, P38MeshPrim};
 use crate::powerplant::powerplant_prims;
 
 /// Error returned when formatting the OpenUSD `.usda` stage fails.
@@ -76,9 +76,6 @@ fn write_usda_prim(out: &mut String, idx: usize, prim: &P38MeshPrim) -> fmt::Res
         "        custom string sim:primPath = \"{}\"",
         prim.prim_path
     )?;
-    if let Some(channel) = prim.needle_channel {
-        writeln!(out, "        custom int sim:needleChannel = {channel}")?;
-    }
     if let Some(axis) = prim.custom_hinge_axis {
         writeln!(
             out,
@@ -86,6 +83,7 @@ fn write_usda_prim(out: &mut String, idx: usize, prim: &P38MeshPrim) -> fmt::Res
             axis.x, axis.y, axis.z
         )?;
     }
+    write_control_joints(out, &prim.control_joints)?;
     let [
         [c00, c01, c02, c03],
         [c10, c11, c12, c13],
@@ -134,4 +132,40 @@ fn write_usda_prim(out: &mut String, idx: usize, prim: &P38MeshPrim) -> fmt::Res
         m.metallic, m.roughness, m.opacity
     )?;
     writeln!(out, "    }}")
+}
+
+fn write_control_joints(out: &mut String, joints: &[P38ControlJoint]) -> fmt::Result {
+    for (i, j) in joints.iter().enumerate() {
+        let [ox, oy, oz] = j.origin_m;
+        let [ax, ay, az] = j.axis;
+        writeln!(
+            out,
+            "        custom token sim:control{i}:channel = \"{}\"",
+            j.channel
+        )?;
+        writeln!(
+            out,
+            "        custom double3 sim:control{i}:origin = ({ox:.5}, {oy:.5}, {oz:.5})"
+        )?;
+        writeln!(
+            out,
+            "        custom double3 sim:control{i}:axis = ({ax:.5}, {ay:.5}, {az:.5})"
+        )?;
+        writeln!(
+            out,
+            "        custom double sim:control{i}:perUnit = {:.6}",
+            j.per_unit
+        )?;
+        writeln!(
+            out,
+            "        custom double sim:control{i}:rest = {:.4}",
+            j.rest
+        )?;
+        writeln!(
+            out,
+            "        custom bool sim:control{i}:slides = {}",
+            j.slides
+        )?;
+    }
+    Ok(())
 }

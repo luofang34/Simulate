@@ -11,6 +11,7 @@
 //! unrelated rates (a 120 Hz flight model, an AGC memory cycle of
 //! 12/1,024,000 s) interleave exactly and replay bit-identically.
 
+mod airframe;
 mod block;
 mod camera_sensor;
 mod controls;
@@ -29,6 +30,7 @@ mod time;
 mod virtual_camera;
 mod visual_harness;
 
+pub use airframe::{AirframeLights, CanopyOpening, CockpitControls, FlapSelector, PropellerShaft};
 pub use block::{Block, BlockError};
 pub use camera_sensor::{
     CAMERA_DEFAULT_PERIOD, CameraFrameCapture, CameraMount, CameraPoseEcef, CameraSensorBlock,
@@ -48,7 +50,8 @@ pub use host::ThreadedHost;
 pub use host::{DisplayFrame, FrameSeq, HostError, InlineHost, ShutdownReport, SimHost};
 pub use instrument::{SourceValidity, StampedReading};
 pub use instrument_panel::{
-    InstrumentNeedles, NEEDLE_HANDS_PER_SLOT, NEEDLE_SLOTS, SecondEngineGauges,
+    CARDS_PER_SLOT, DRUM_WHEELS_PER_SLOT, EngineGauges, EngineReadout, FUEL_TANKS,
+    InstrumentNeedles, NEEDLE_HANDS_PER_SLOT, NEEDLE_SLOTS,
 };
 pub use jsbsim_fdm::{
     AirframeArticulation, EngineStartMode, EngineStatus, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock,

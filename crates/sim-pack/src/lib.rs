@@ -15,6 +15,7 @@ mod landmarks;
 mod livery;
 mod loaded;
 mod pec;
+mod typefaces;
 mod views;
 
 pub use builtin::{
@@ -53,6 +54,7 @@ pub use syspack::{
     INITIAL_COMPONENT_TEMPERATURE_K, MANIFEST_FILE, MemoryPackageSource, MountedDeviceSpec,
     PackageSource, SCHEMA_VERSION, SyspackError, SyspackManifest, SystemKind, VerifiedSyspack,
 };
+pub use typefaces::{BUILTIN_TYPEFACES, builtin_typeface_source, resolve_typefaces};
 pub use views::{
     CAMERA_VIEWS_ASSET, CameraView, CameraViewSet, ViewAirframe, ViewPlacement, jsbsim_wingspan_m,
 };

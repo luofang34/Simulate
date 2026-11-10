@@ -109,6 +109,14 @@ pub enum PackError {
         /// The most aft loading station (`in`).
         highest_fs_in: f64,
     },
+    /// An instrument pack pins a typeface pack that is not shipped.
+    #[error("typeface pack {typeface:?} refused: {detail}")]
+    Typeface {
+        /// The pinned typeface's id.
+        typeface: String,
+        /// Why it was refused.
+        detail: String,
+    },
     /// Closed-loop FDM execution failed during calibration or sensitivity evaluation.
     #[error("closed-loop calibration run failed: {detail}")]
     CalibrationRun {

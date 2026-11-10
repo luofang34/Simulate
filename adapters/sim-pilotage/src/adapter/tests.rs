@@ -449,6 +449,10 @@ fn a_system_kind_names_its_pilotage_class_where_there_is_one() {
         (SystemKind::GroundStation, None),
         (SystemKind::TestBench, None),
         (SystemKind::GenericSystem, None),
+        (SystemKind::InstrumentPack, None),
+        (SystemKind::Engine, None),
+        (SystemKind::Propeller, None),
+        (SystemKind::TypefacePack, None),
     ] {
         assert_eq!(vehicle_class(kind), class, "{kind:?}");
     }

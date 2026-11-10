@@ -79,6 +79,9 @@ pub(crate) const STENCIL_YELLOW: P38Material = mat([0.88, 0.68, 0.10], 0.05, 0.4
 /// (0.549, 0.556, 0.554 linear; Akenine-Möller, Haines and Hoffman, *Real-Time
 /// Rendering*, 4th ed., table 9.2).
 pub(crate) const CHROME_OLEO: P38Material = mat([0.549, 0.556, 0.554], 0.92, 0.16);
+/// Aluminised lacquer on the gear legs, forks and struts (light in the 339th FS
+/// photographs; the reflectance is assumed).
+pub(crate) const GEAR_ALUMINIUM: P38Material = mat([0.52, 0.53, 0.54], 0.35, 0.48);
 pub(crate) const GUNMETAL: P38Material = mat([0.16, 0.17, 0.19], 0.82, 0.30);
 pub(crate) const BRASS_SHELL: P38Material = mat([0.74, 0.58, 0.22], 0.78, 0.32);
 pub(crate) const TURBO_STEEL: P38Material = mat([0.36, 0.31, 0.27], 0.78, 0.38);

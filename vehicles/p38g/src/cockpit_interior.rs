@@ -33,6 +33,7 @@ pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
     prims.extend(canopy_frame_prims());
     prims.extend(instrument_panel_prims());
     prims.extend(cockpit_control_prims());
+    prims.extend(crate::cockpit_placards::prims());
     prims
 }
 

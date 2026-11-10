@@ -1,21 +1,27 @@
 //! An airframe's textures on the GPU, one bind group per asset: the albedo,
-//! normal and occlusion/roughness/metallic maps of its baked skin. An asset
-//! without a skin binds one-texel blanks, so every part draws through the
-//! same layout; only parts of the skin draw kind sample them.
+//! normal and occlusion/roughness/metallic maps of its baked skin, then the
+//! display atlas its printed faces sample. An asset without a skin or an
+//! atlas binds one-texel blanks in their place, so every part draws through
+//! the same layout; only parts of the skin and display draw kinds sample them.
 
 use maplibre::render::upload_queue::UploadQueue;
 use wgpu::util::DeviceExt;
 
-use crate::usd_aircraft::{SkinFormat, SkinMap, SkinTextures};
+use crate::usd_aircraft::{DisplayAtlas, SkinFormat, SkinMap, SkinTextures};
 
 /// Anisotropic taps for skin seen along a wing or boom, where texels are
 /// foreshortened many times over.
 const SKIN_ANISOTROPY: u16 = 16;
+/// Anisotropic taps for a dial seen at a glancing angle.
+const DISPLAY_ANISOTROPY: u16 = 8;
 
-/// The bind-group layout, its sampler, and the blank maps of an unskinned asset.
+/// The bind-group layout, its samplers, and the blank textures bound for an
+/// asset with neither skin nor atlas.
 pub(crate) struct AssetTexturesGpu {
     pub(crate) layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
+    skin_sampler: wgpu::Sampler,
+    display_sampler: wgpu::Sampler,
+    blank_maps: [wgpu::Texture; 4],
     pub(crate) blank: wgpu::BindGroup,
 }
 
@@ -28,57 +34,88 @@ impl AssetTexturesGpu {
                 texture_entry(1),
                 texture_entry(2),
                 sampler_entry(3),
+                texture_entry(4),
+                sampler_entry(5),
             ],
         });
-        let sampler = sampler(device, "usd skin", SKIN_ANISOTROPY);
+        let skin_sampler = sampler(device, "usd skin", SKIN_ANISOTROPY);
+        let display_sampler = sampler(device, "usd display atlas", DISPLAY_ANISOTROPY);
         // Never sampled by a part that draws from them, so wgpu's zeroed
         // contents serve.
         let blank = |format| device.create_texture(&descriptor(format, 1, 1, 1));
+        let blank_maps = [
+            blank(SkinFormat::Srgba8),
+            blank(SkinFormat::Normal8),
+            blank(SkinFormat::Rgba8),
+            blank(SkinFormat::Srgba8),
+        ];
+        let [albedo, normal, orm, atlas] = &blank_maps;
         let blank = bind(
             device,
             &layout,
-            &sampler,
-            [
-                &blank(SkinFormat::Srgba8),
-                &blank(SkinFormat::Normal8),
-                &blank(SkinFormat::Rgba8),
-            ],
+            [&skin_sampler, &display_sampler],
+            [albedo, normal, orm, atlas],
         );
         Self {
             layout,
-            sampler,
+            skin_sampler,
+            display_sampler,
+            blank_maps,
             blank,
         }
     }
 
-    /// Uploads `skin`, each map with its mip chain, and binds it; a map wider
-    /// than the device allows starts at the first mip that fits.
+    /// Uploads `skin` and `atlas`, each map with its mip chain, and binds
+    /// them, with a blank where the asset has none; a skin map wider than the
+    /// device allows starts at the first mip that fits.
     pub(crate) fn upload(
         &self,
         device: &wgpu::Device,
         queue: &impl TextureUpload,
-        skin: &SkinTextures,
+        skin: Option<&SkinTextures>,
+        atlas: Option<&DisplayAtlas>,
     ) -> wgpu::BindGroup {
         let limit = device.limits().max_texture_dimension_2d;
-        let [albedo, normal, orm] =
-            [&skin.albedo, &skin.normal, &skin.orm].map(|map| upload(device, queue, map, limit));
+        let skin = skin.map(|skin| {
+            [&skin.albedo, &skin.normal, &skin.orm].map(|map| upload(device, queue, map, limit))
+        });
+        let atlas = atlas.map(|atlas| {
+            let (width, height) = atlas.size();
+            let levels = atlas.levels();
+            upload_levels(
+                device,
+                queue,
+                SkinFormat::Srgba8,
+                width,
+                height,
+                levels,
+                limit,
+            )
+        });
+        let [blank_albedo, blank_normal, blank_orm, blank_atlas] = &self.blank_maps;
+        let [albedo, normal, orm] = skin
+            .as_ref()
+            .map_or([blank_albedo, blank_normal, blank_orm], |[a, n, o]| {
+                [a, n, o]
+            });
         bind(
             device,
             &self.layout,
-            &self.sampler,
-            [&albedo, &normal, &orm],
+            [&self.skin_sampler, &self.display_sampler],
+            [albedo, normal, orm, atlas.as_ref().unwrap_or(blank_atlas)],
         )
     }
 }
 
-/// The bind group of the three skin maps, in binding order.
+/// The bind group of the three skin maps and the display atlas, in binding
+/// order, with the skin's sampler and then the atlas's.
 fn bind(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    textures: [&wgpu::Texture; 3],
+    [skin_sampler, display_sampler]: [&wgpu::Sampler; 2],
+    textures: [&wgpu::Texture; 4],
 ) -> wgpu::BindGroup {
-    let [albedo, normal, orm] =
+    let [albedo, normal, orm, atlas] =
         textures.map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()));
     let texture = |binding, view| wgpu::BindGroupEntry {
         binding,
@@ -93,7 +130,12 @@ fn bind(
             texture(2, &orm),
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: wgpu::BindingResource::Sampler(sampler),
+                resource: wgpu::BindingResource::Sampler(skin_sampler),
+            },
+            texture(4, &atlas),
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::Sampler(display_sampler),
             },
         ],
     })

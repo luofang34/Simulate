@@ -2,16 +2,18 @@ use std::f64::consts::{PI, TAU};
 
 use crate::{ControlInputs, VehicleState};
 
+mod cockpit;
 mod nodes;
 
 pub(super) use nodes::ArticulationNodes;
 
-use crate::instrument_panel::{InstrumentNeedles, SecondEngineGauges};
+pub(super) use crate::airframe::DEFAULT_BLADE_ANGLE_DEG;
+use crate::airframe::{AirframeLights, CockpitControls, PropellerShaft};
+use crate::instrument_panel::{EngineGauges, InstrumentNeedles};
 
 const METRES_PER_FOOT: f64 = 0.3048;
 const KILOGRAMS_PER_POUND: f64 = 0.453_592_37;
 const NEWTONS_PER_POUND_FORCE: f64 = 4.448_221_615_260_5;
-const DEFAULT_BLADE_ANGLE_DEG: f64 = 22.0;
 const DEFAULT_MAX_FLAP_DEG: f64 = 30.0;
 const NOSE_WHEEL_RADIUS_FT: f64 = 0.58;
 const MAIN_WHEEL_RADIUS_FT: f64 = 0.68;
@@ -50,14 +52,8 @@ pub struct AirframeArticulation {
     pub propeller_blade_angle_deg: f64,
     /// Deterministically integrated propeller shaft angle in `[0, 2π)` radians.
     pub propeller_phase_rad: f64,
-    /// Starboard/right engine propeller shaft speed in RPM (mirrors `propeller_rpm` on single-engine aircraft).
-    pub propeller_rpm_right: f64,
-    /// Starboard/right propeller rotation direction (`+1.0` CW, `-1.0` CCW viewed from rear).
-    pub propeller_sense_right: f64,
-    /// Starboard/right propeller blade geometric pitch at the reference station (degrees).
-    pub propeller_blade_angle_right_deg: f64,
-    /// Deterministically integrated starboard/right propeller shaft angle in `[0, 2π)` radians.
-    pub propeller_phase_right_rad: f64,
+    /// The starboard/right propeller of a twin (mirrors the first on a single).
+    pub propeller_right: PropellerShaft,
     /// Whether each propeller is feathered edge-on into the airstream `[left, right]`.
     pub propeller_feathered: [bool; 2],
     /// Left and right hydraulic coolant-radiator exit flap openings `[left, right]` in `0..=1`.
@@ -68,22 +64,10 @@ pub struct AirframeArticulation {
     pub trim_tab_rad: [f64; 3],
     /// Net propeller axial thrust in newtons.
     pub propeller_thrust_n: f64,
-    /// Intake manifold absolute pressure in pascals.
-    pub manifold_pressure_pa: f64,
-    /// The second engine's gauges on a twin (mirrors the first on a single).
-    pub engine_right_gauges: SecondEngineGauges,
+    /// Each engine's and fuel tank's readings, as the cockpit gauges sense them.
+    pub gauges: EngineGauges,
     /// Instrument panel needles, drawn on airframes that model their panel.
     pub instrument_needles: InstrumentNeedles,
-    /// Fuel consumption rate in US gallons per hour.
-    pub fuel_flow_gph: f64,
-    /// Exhaust gas temperature (`°F`).
-    pub egt_deg_f: f64,
-    /// Cylinder head temperature (`°F`).
-    pub cht_deg_f: f64,
-    /// Engine oil temperature (`°F`).
-    pub oil_temp_deg_f: f64,
-    /// Engine oil pressure (`psi`).
-    pub oil_pressure_psi: f64,
     /// Elastic engine-mount angular deflection `[roll, pitch, yaw]` in body radians.
     pub engine_vibration_rad: [f64; 3],
     /// Deployed trailing-edge flap deflection in degrees (`0..=40`).
@@ -106,14 +90,12 @@ pub struct AirframeArticulation {
     pub gear_compression_m: [f64; 3],
     /// Integrated rolling wheel angles `[nose, left_main, right_main]` in `[0, 2π)` radians.
     pub wheel_phase_rad: [f64; 3],
-    /// Anti-collision red fin beacon normalized intensity `[0, 1]`.
-    pub beacon_flash_norm: f64,
-    /// Integrated electrical/beacon phase in `[0, 2π)` radians.
-    pub beacon_phase_rad: f64,
-    /// Normalized landing light illumination `[0, 1]` (`1.0` extended and lit, `0.0` off/stowed).
-    pub landing_light_norm: f64,
+    /// The anti-collision beacon and landing light.
+    pub lights: AirframeLights,
     /// Current gross mass including remaining fuel and payload in kilograms (`0.0` if unknown).
     pub gross_mass_kg: f64,
+    /// Where the pilot has set the cockpit's controls.
+    pub cockpit: CockpitControls,
 }
 
 impl Default for AirframeArticulation {
@@ -126,23 +108,14 @@ impl Default for AirframeArticulation {
             propeller_sense: 1.0,
             propeller_blade_angle_deg: DEFAULT_BLADE_ANGLE_DEG,
             propeller_phase_rad: 0.0,
-            propeller_rpm_right: 0.0,
-            propeller_sense_right: 1.0,
-            propeller_blade_angle_right_deg: DEFAULT_BLADE_ANGLE_DEG,
-            propeller_phase_right_rad: 0.0,
+            propeller_right: PropellerShaft::default(),
             propeller_feathered: [false; 2],
             coolant_flap_norm: [0.20; 2],
             oil_shutter_norm: [0.20; 2],
             trim_tab_rad: [0.0; 3],
             propeller_thrust_n: 0.0,
-            manifold_pressure_pa: 101_325.0,
-            engine_right_gauges: SecondEngineGauges::default(),
+            gauges: EngineGauges::default(),
             instrument_needles: InstrumentNeedles::default(),
-            fuel_flow_gph: 0.0,
-            egt_deg_f: 70.0,
-            cht_deg_f: 70.0,
-            oil_temp_deg_f: 70.0,
-            oil_pressure_psi: 0.0,
             engine_vibration_rad: [0.0; 3],
             flap_deg: 0.0,
             left_aileron_rad: 0.0,
@@ -154,10 +127,9 @@ impl Default for AirframeArticulation {
             gear_pos_norm: 1.0,
             gear_compression_m: [0.0; 3],
             wheel_phase_rad: [0.0; 3],
-            beacon_flash_norm: 0.0,
-            beacon_phase_rad: 0.0,
-            landing_light_norm: 0.0,
+            lights: AirframeLights::default(),
             gross_mass_kg: 0.0,
+            cockpit: CockpitControls::default(),
         }
     }
 }
@@ -180,9 +152,9 @@ impl AirframeArticulation {
         let [feath_0, feath_1] = self.propeller_feathered;
         let (rpm, phase, blade_deg, feathered) = if engine_index == 1 {
             (
-                self.propeller_rpm_right,
-                self.propeller_phase_right_rad,
-                self.propeller_blade_angle_right_deg,
+                self.propeller_right.rpm,
+                self.propeller_right.phase_rad,
+                self.propeller_right.blade_angle_deg,
                 feath_1,
             )
         } else {
@@ -240,23 +212,54 @@ impl AirframeArticulation {
         Self {
             engine_running: rpm > 100.0,
             propeller_rpm: rpm,
-            propeller_rpm_right: rpm,
             engine_rpm: rpm,
             propeller_sense: -1.0,
-            propeller_sense_right: 1.0,
             propeller_phase_rad: prop_phase,
-            propeller_phase_right_rad: (TAU - prop_phase).rem_euclid(TAU),
+            propeller_right: PropellerShaft {
+                rpm,
+                sense: 1.0,
+                phase_rad: (TAU - prop_phase).rem_euclid(TAU),
+                ..PropellerShaft::default()
+            },
             propeller_thrust_n: throttle * 1_650.0,
-            fuel_flow_gph: 2.0 + throttle * 7.5,
+            gauges: kinematic_gauges(rpm, 2.0 + throttle * 7.5),
             left_aileron_rad: aileron,
             right_aileron_rad: -aileron,
             elevator_rad: -controls.pitch.clamp(-1.0, 1.0) * 0.42,
             rudder_rad: -controls.yaw.clamp(-1.0, 1.0) * 0.28,
-            beacon_phase_rad: beacon_phase,
-            beacon_flash_norm: beacon_pulse(beacon_phase, rpm > 100.0),
-            landing_light_norm: f64::from(u8::from(rpm > 100.0)),
+            lights: AirframeLights {
+                beacon_phase_rad: beacon_phase,
+                beacon_flash_norm: beacon_pulse(beacon_phase, rpm > 100.0),
+                landing_light_norm: f64::from(u8::from(rpm > 100.0)),
+            },
+            cockpit: CockpitControls {
+                pitch_norm: controls.clamped().pitch,
+                roll_norm: controls.clamped().roll,
+                yaw_norm: controls.clamped().yaw,
+                throttle_norm: [throttle; 2],
+                ..CockpitControls::default()
+            },
             ..Self::default()
         }
+    }
+}
+
+/// Gauges of a kinematic profile's single engine turning at `rpm`.
+fn kinematic_gauges(rpm: f64, fuel_flow_gph: f64) -> EngineGauges {
+    let engine = crate::instrument_panel::EngineReadout {
+        rpm,
+        fuel_flow_gph,
+        ..Default::default()
+    };
+    EngineGauges {
+        engines: [
+            engine,
+            crate::instrument_panel::EngineReadout {
+                fuel_flow_gph: 0.0,
+                ..engine
+            },
+        ],
+        ..EngineGauges::default()
     }
 }
 

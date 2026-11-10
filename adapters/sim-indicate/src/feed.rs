@@ -1,6 +1,6 @@
 use glam::{DQuat, DVec3};
 use indicate_instrument_feeder::nav_guidance::NavGuidanceTracker;
-use indicate_instrument_state::abi::v8::{DecodeReport, decode_state, encode_state};
+use indicate_instrument_state::abi::v9::{DecodeReport, decode_state, encode_state};
 use indicate_instrument_state::{
     AirData, AircraftState, AltitudeClass, AltitudeDeclaration, Attitude, DynSample,
     EstimateQuality, Kinematics, OriginId, SnapshotCoherence, Stamped, TurnBasis, TurnSample,
@@ -413,6 +413,8 @@ fn air_group(sample: &FlightSample) -> Stamped<AirData> {
             ias_mps: Some(air.indicated_airspeed_m_s() as f32),
             baro_setting_hpa: air.altimeter_setting_hpa.map(|hpa| hpa as f32),
             tas_mps: Some(air.true_airspeed_m_s as f32),
+            // The head-up display carries no rate-of-climb instrument.
+            vsi_mps: None,
         }),
         age_ms: Some(age_ms(sample.timestamp, reading.timestamp)),
     }
@@ -463,7 +465,7 @@ fn coherence(stamps: &[u64]) -> SnapshotCoherence {
 }
 
 /// Writes `state` as a tagged binary frame into `buffer`, returning its
-/// length. [`indicate_instrument_state::abi::v8::CAPACITY`] always suffices.
+/// length. [`indicate_instrument_state::abi::v9::CAPACITY`] always suffices.
 pub fn encode_frame(state: &AircraftState, buffer: &mut [u8]) -> Result<usize, FeedError> {
     encode_state(state, buffer).map_err(|source| FeedError::Encode {
         capacity: buffer.len(),

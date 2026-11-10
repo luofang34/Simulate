@@ -121,6 +121,10 @@ pub struct CockpitInteriorContract {
     pub seat_back_recline_deg: f32,
     /// Main flight and engine instrument panel board.
     pub main_instrument_panel: PanelMountFrame,
+    /// The board's outline `[right, up]` about the panel frame's centre, m,
+    /// clockwise as the pilot sees it from the lower left: an arched crown
+    /// and a cut-out at the bottom for the control column.
+    pub main_instrument_panel_outline_m: &'static [[f32; 2]],
     /// Optical reflector gunsight mount behind the windscreen.
     pub reflector_gunsight_mount: PanelMountFrame,
     /// Left side-console shelf (throttles, propeller and mixture levers).
@@ -154,6 +158,41 @@ const fn frame(
         description,
     }
 }
+
+/// The P-38G-13 board's outline, measured on the surviving panel of
+/// 43-2285 (<https://aeroantique.com/products/p-38g-13-lo-lightening-instrument-panel-43-2285>)
+/// at 0.90 mm per pixel, scaled from its 3-1/8 in and 2-1/4 in cases; about
+/// 5 % uncertain for perspective. Two period Lockheed photographs of a P-38G
+/// cockpit agree with its layout
+/// (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>).
+const P38G_PANEL_OUTLINE_M: &[[f32; 2]] = &[
+    [-0.399, -0.237],
+    [-0.399, -0.042],
+    [-0.383, -0.019],
+    [-0.320, -0.010],
+    [-0.297, 0.030],
+    [-0.270, 0.089],
+    [-0.230, 0.138],
+    [-0.167, 0.192],
+    [-0.095, 0.224],
+    [-0.022, 0.235],
+    [0.050, 0.234],
+    [0.121, 0.217],
+    [0.175, 0.188],
+    [0.230, 0.156],
+    [0.266, 0.102],
+    [0.301, 0.030],
+    [0.320, 0.003],
+    [0.383, -0.037],
+    [0.399, -0.064],
+    [0.399, -0.237],
+    [0.086, -0.237],
+    [0.076, -0.132],
+    [0.059, -0.121],
+    [-0.068, -0.121],
+    [-0.086, -0.132],
+    [-0.095, -0.237],
+];
 
 const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
     frame("FS 95", RUDDER_PEDAL_FS_IN, "Rudder pedal pivots"),
@@ -231,6 +270,7 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
             height_m: PANEL_HEIGHT_M,
             tilt_deg: 0.0,
         },
+        main_instrument_panel_outline_m: P38G_PANEL_OUTLINE_M,
         reflector_gunsight_mount: PanelMountFrame {
             prim_path: "/P38g/CockpitInterior/GunsightReflector",
             center_m: [0.0, fs_to_y(GUNSIGHT_IN.0), frl_to_z(GUNSIGHT_IN.1)],

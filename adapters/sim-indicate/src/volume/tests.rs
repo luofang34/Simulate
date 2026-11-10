@@ -32,6 +32,7 @@ fn sample_panel_data() -> indicate_instrument_state::PanelData {
                 ias_mps: Some(52.0),
                 baro_setting_hpa: Some(1013.25),
                 tas_mps: Some(58.0),
+                vsi_mps: None,
             }),
             age_ms: Some(15.0),
         },

@@ -2,6 +2,7 @@ use jsbsim::{Fdm, NodeId};
 
 use super::fdm_error;
 use crate::BlockError;
+use crate::airframe::CanopyOpening;
 
 /// The ignition switch of a piston engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +92,9 @@ pub struct SystemControls {
     pub landing_light: bool,
     /// Both wheel brakes, 0 (off) to 1 (full).
     pub wheel_brake_norm: f64,
+    /// The canopy's hatch and side windows. The flight model takes no drag or
+    /// noise from an open canopy; this is what the airframe is drawn with.
+    pub canopy: CanopyOpening,
 }
 
 impl SystemControls {
@@ -115,6 +119,10 @@ impl SystemControls {
             gear_down: true,
             landing_light: true,
             wheel_brake_norm: 0.0,
+            canopy: CanopyOpening {
+                hatch: 0.0,
+                side_windows: [0.0; 2],
+            },
         }
     }
 
@@ -129,6 +137,10 @@ impl SystemControls {
             oil_shutter_norm: [0.0; 2],
             landing_light: false,
             wheel_brake_norm: 1.0,
+            canopy: CanopyOpening {
+                hatch: 0.0,
+                side_windows: [0.0; 2],
+            },
             ..Self::running_defaults()
         }
     }
@@ -150,6 +162,10 @@ impl SystemControls {
             coolant_flap_norm: self.coolant_flap_norm.map(lever),
             oil_shutter_norm: self.oil_shutter_norm.map(lever),
             wheel_brake_norm: lever(self.wheel_brake_norm),
+            canopy: CanopyOpening {
+                hatch: 0.0,
+                side_windows: [0.0; 2],
+            },
             ..self
         }
     }
