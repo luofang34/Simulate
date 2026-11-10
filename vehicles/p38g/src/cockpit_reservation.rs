@@ -65,9 +65,12 @@ pub const DESIGN_EYE_ABOVE_FRL_IN: f32 = 34.0;
 /// parachute puts it `33.4 in` below the eye, and the eye sits `7 in` ahead of the back
 /// line, which leaves the point `0.5 in` aft of the eye.
 pub const SEAT_REFERENCE_FROM_EYE_IN: (f32, f32) = (0.5, -33.4);
-/// Top of the rectangular board above the fuselage reference line: as high as a
-/// `0.72 m` wide board fits inside the skin at its station.
-pub const PANEL_TOP_ABOVE_FRL_IN: f32 = 22.0;
+/// Top of the board's arched crown above the fuselage reference line. It puts the
+/// centre of the board's bounding box at `z = 0.350 m`, where Lockheed's frontal
+/// photograph Z-4986 ("P-38 #3474 INSTRUMENT PANEL 12-23-42") shows it: the board
+/// rectified by its own hole pattern, the camera solved on the station 126.2 frame
+/// and the board plane, good to about `2 cm`.
+pub const PANEL_TOP_ABOVE_FRL_IN: f32 = 26.6;
 /// Gunsight behind the windscreen: station (T.O. 01-75FG-2 arm 118) and height above
 /// the fuselage reference line (read off the Weber drawing's sight).
 pub const GUNSIGHT_IN: (f32, f32) = (118.0, 29.0);
@@ -223,8 +226,11 @@ const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
     ),
 ];
 
-/// Board height; with [`PANEL_TOP_ABOVE_FRL_IN`] it places the board's centre.
-const PANEL_HEIGHT_M: f32 = 0.28;
+/// Height and width of the board's bounding box, measured on the surviving board of
+/// 43-2285 (see [`P38G_PANEL_OUTLINE_M`]); with [`PANEL_TOP_ABOVE_FRL_IN`] the height
+/// places the board's centre.
+const PANEL_HEIGHT_M: f32 = 0.474;
+const PANEL_WIDTH_M: f32 = 0.797;
 /// Side consoles: centre off the centreline, shelf height, and stations spanned.
 const CONSOLE_X_M: f32 = 0.36;
 const CONSOLE_Z_M: f32 = 0.16;
@@ -266,7 +272,7 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
                 fs_to_y(INSTRUMENT_PANEL_FS_IN),
                 frl_to_z(PANEL_TOP_ABOVE_FRL_IN) - 0.5 * PANEL_HEIGHT_M,
             ],
-            width_m: 0.72,
+            width_m: PANEL_WIDTH_M,
             height_m: PANEL_HEIGHT_M,
             tilt_deg: 0.0,
         },
