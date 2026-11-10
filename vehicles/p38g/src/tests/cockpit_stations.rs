@@ -343,3 +343,43 @@ fn the_hatch_carries_its_own_frame() {
         );
     }
 }
+
+/// The glare shield runs from the board's arched crown down to the windscreen base: its
+/// aft edge peaks at the outline's crown over the board, and its forward edge is at the
+/// windscreen base, under the sill line.
+#[test]
+fn the_glare_shield_follows_the_boards_crown() {
+    let contract = p38g_cockpit_contract();
+    let [_, board_y, board_z] = contract.main_instrument_panel.center_m;
+    let crown_up = contract
+        .main_instrument_panel_outline_m
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let prims = prims();
+    // The shield shares its prim with the radio boxes behind the main beam.
+    let shield: Vec<Vec3> = stations(&prims, "/P38g/CockpitInterior/CoamingGunsightAndRadios")
+        .into_iter()
+        .filter(|p| p.y < c::INSTRUMENT_PANEL_FS_IN + 1.5)
+        .collect();
+    near(
+        "shield crown",
+        max_by(&shield, |p| p.z),
+        z_to_frl(board_z + crown_up),
+        0.3,
+    );
+    near(
+        "shield aft edge",
+        max_by(&shield, |p| p.y),
+        y_to_fs(board_y),
+        1.0,
+    );
+    let fwd = min_by(&shield, |p| p.y);
+    near("shield forward edge", fwd, d::WINDSCREEN_BASE_FS_IN, 1.5);
+    let fwd_height = shield
+        .iter()
+        .filter(|p| p.y < fwd + 0.1)
+        .map(|p| p.z)
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(fwd_height < d::CANOPY_SILL_ABOVE_FRL_IN, "{fwd_height}");
+}

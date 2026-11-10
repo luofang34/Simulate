@@ -8,8 +8,8 @@ use glam::Vec3;
 use crate::canopy_frames::canopy_frame_prims;
 use crate::cockpit_controls::cockpit_control_prims;
 use crate::cockpit_reservation::{
-    CockpitInteriorContract, MAIN_BEAM_FS_IN, PANEL_TOP_ABOVE_FRL_IN, RUDDER_PEDAL_FS_IN,
-    SEAT_ARMOUR_FS_IN, p38g_cockpit_contract,
+    CockpitInteriorContract, MAIN_BEAM_FS_IN, RUDDER_PEDAL_FS_IN, SEAT_ARMOUR_FS_IN,
+    p38g_cockpit_contract,
 };
 use crate::drawing::{CANOPY_SILL_ABOVE_FRL_IN, WINDSCREEN_BASE_FS_IN, frl_to_z, fs_to_y};
 use crate::gondola::{gondola_half_width_at, gondola_section};
@@ -20,6 +20,12 @@ use crate::stations::{
     PILOT_SUIT,
 };
 
+/// Board outline points at least this far above the board's centre carry the glare
+/// shield: the arched crown, not the board's shoulders or sides.
+const GLARE_SHIELD_FROM_UP_M: f32 = 0.02;
+/// How much narrower the glare shield is at the windscreen base than at the board,
+/// where the deck closes in under the windscreen.
+const GLARE_SHIELD_TAPER: f32 = 0.6;
 /// Clearance between interior parts and the mould line: skin and frame depth.
 const SKIN_GAP_M: f32 = 0.025;
 
@@ -146,20 +152,28 @@ fn build_glare_shield_gunsight_and_radios(
 ) {
     let panel_y = contract.main_instrument_panel.center_m[1];
     let mut panel = MeshBuilder::new();
-    // Glare shield from the windscreen base back to the top of the panel
-    let top = frl_to_z(PANEL_TOP_ABOVE_FRL_IN) + 0.01;
+    // Glare shield: from the board's arched crown forward and down to the windscreen
+    // base, so it follows the board's measured outline instead of a flat lid.
+    let [_, _, board_z] = contract.main_instrument_panel.center_m;
+    let crown: Vec<[f32; 2]> = contract
+        .main_instrument_panel_outline_m
+        .iter()
+        .copied()
+        .filter(|[_, up]| *up >= GLARE_SHIELD_FROM_UP_M)
+        .collect();
     let fwd_y = fs_to_y(WINDSCREEN_BASE_FS_IN + 1.0);
     let fwd_z = frl_to_z(CANOPY_SILL_ABOVE_FRL_IN - 1.5);
-    let half_aft = inner_half_width(panel_y, top);
-    let half_fwd = inner_half_width(fwd_y, fwd_z).min(half_aft);
-    panel.polygon(
-        &[
-            Vec3::new(-half_aft, panel_y - 0.02, top),
-            Vec3::new(half_aft, panel_y - 0.02, top),
-            Vec3::new(half_fwd, fwd_y, fwd_z),
-            Vec3::new(-half_fwd, fwd_y, fwd_z),
-        ],
-        Vec3::Z,
+    let aft: Vec<Vec3> = crown
+        .iter()
+        .map(|&[right, up]| Vec3::new(right, panel_y - 0.02, board_z + up + 0.004))
+        .collect();
+    let fwd: Vec<Vec3> = crown
+        .iter()
+        .map(|&[right, _]| Vec3::new(GLARE_SHIELD_TAPER * right, fwd_y, fwd_z))
+        .collect();
+    panel.loft_open(
+        &[aft, fwd],
+        Inside::Point(Vec3::new(0.0, panel_y, board_z - 1.0)),
     );
     // SCR-274-N command set boxes behind the main beam, under the rear glazing
     let (radio_fwd, radio_aft) = (
