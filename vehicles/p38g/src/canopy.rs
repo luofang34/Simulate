@@ -254,7 +254,7 @@ fn glazing_prims() -> Vec<P38MeshPrim> {
 /// about its hinge (the origin its prim is authored about), a side window
 /// sliding down along its own chord from the rail to the sill, so its top
 /// edge ends on the sill and the pane inside the wall.
-fn pane_joint(name: &str) -> Option<P38ControlJoint> {
+pub(crate) fn pane_joint(name: &str) -> Option<P38ControlJoint> {
     let mid = hatch_mid_y();
     let chord = |side: f32| {
         canopy_point(mid, side * std::f32::consts::FRAC_PI_2)
