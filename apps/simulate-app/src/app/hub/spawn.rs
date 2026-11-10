@@ -36,6 +36,16 @@ impl FlightApp {
                 }
             },
             Some(VehicleLaunch::Scenario(profile)) => self.select(event_loop, Some(profile)),
+            Some(VehicleLaunch::Space) => match self.flight.fly_raketa() {
+                Ok(()) => {
+                    self.after_spawn();
+                    info!(vehicle = title, "spaceflight on the pad");
+                }
+                Err(err) => {
+                    self.fail(event_loop, "starting the spaceflight failed", &err);
+                    return false;
+                }
+            },
             None => return false,
         }
         true

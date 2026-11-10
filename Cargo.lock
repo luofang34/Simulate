@@ -5258,6 +5258,7 @@ dependencies = [
  "sim-orbital",
  "sim-p38g",
  "sim-pack",
+ "sim-raketa",
  "sim-render",
  "sim-scenario",
  "sim-scenery",

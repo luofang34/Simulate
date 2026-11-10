@@ -93,6 +93,41 @@ impl Flight {
         matches!(self.free_spawn, FreeSpawn::Ground { .. })
     }
 
+    /// Starts a spaceflight: `Raketa` on its launch pad under ascent guidance.
+    pub fn fly_raketa(&mut self) -> Result<(), AppSimError> {
+        self.mode = self.space_mode()?;
+        self.begin_flight()
+    }
+
+    /// Whether a spaceflight is flying.
+    #[must_use]
+    pub const fn in_space(&self) -> bool {
+        matches!(self.mode, Mode::Space(_))
+    }
+
+    /// Whether ascent guidance is flying the spaceflight (`None` outside one).
+    #[must_use]
+    pub fn ascent_guidance(&self) -> Option<bool> {
+        match &self.mode {
+            Mode::Space(world) => Some(world.ascent_guidance()),
+            Mode::Free { .. } | Mode::Scenario(_) => None,
+        }
+    }
+
+    /// Whether orbital propagation, not flight dynamics, is flying the spaceflight's
+    /// vessel (`None` outside one).
+    #[must_use]
+    pub fn coasting_in_orbit(&self) -> Option<bool> {
+        match &self.mode {
+            Mode::Space(world) => Some(world.tier() == sim_universe::Tier::Orbital),
+            Mode::Free { .. } | Mode::Scenario(_) => None,
+        }
+    }
+
+    pub(super) fn space_mode(&self) -> Result<Mode, AppSimError> {
+        Mode::space(&self.surface, &self.time_scales, &self.solar)
+    }
+
     /// A free flight on the preferred vehicle from `spawn`, in a universe of its own.
     pub(super) fn free_mode(&self, spawn: FreeSpawn) -> Result<Mode, AppSimError> {
         Mode::free(
@@ -117,6 +152,10 @@ impl Flight {
     /// there). Already in free flight, does nothing. Scenarios off Earth are refused, since
     /// every free-flight plant flies the WGS84 atmosphere.
     pub fn take_manual_control(&mut self) -> Result<(), AppSimError> {
+        if let Mode::Space(world) = &mut self.mode {
+            world.set_ascent_guidance(false);
+            return Ok(());
+        }
         let Mode::Scenario(run) = &self.mode else {
             return Ok(());
         };

@@ -128,7 +128,9 @@ impl FlightApp {
                 info!(realism = realism.title(), "selected onboard sensor realism");
             }
             CockpitAction::ToggleEfb => self.efb_command(EfbCommand::ToggleExpanded),
-            CockpitAction::CycleMagnetos if self.flight.profile().is_some() => {
+            CockpitAction::CycleMagnetos
+                if self.flight.profile().is_some() || self.flight.in_space() =>
+            {
                 self.take_manual_control(event_loop);
             }
             CockpitAction::FlapsDown
@@ -252,6 +254,7 @@ impl FlightApp {
         let launch = match (self.flight.free_vehicle(), self.flight.profile()) {
             (Some(vehicle), _) => VehicleLaunch::Free(vehicle),
             (None, Some(profile)) => VehicleLaunch::Scenario(profile),
+            (None, None) if self.flight.in_space() => VehicleLaunch::Space,
             (None, None) => return None,
         };
         self.catalog

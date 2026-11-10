@@ -10,13 +10,17 @@ use crate::camera_view::{
     DEFAULT_CHASE_BACK_UP_M, camera_from_virtual_spec_on, vehicle_camera_suite,
 };
 
+/// The chase camera's distance behind and above `Raketa`'s centre of gravity,
+/// metres: far enough to hold the whole hull in view.
+const SPACE_CHASE_BACK_UP_M: (f64, f64) = (45.0, 4.0);
+
 impl Flight {
     /// The free-flight vehicle's own camera views from its package, none in a scenario.
     #[must_use]
     pub fn vehicle_cameras(&self) -> &'static [VirtualCameraSpec] {
         match &self.mode {
             Mode::Free { vehicle, .. } => &vehicle_camera_suite(*vehicle).cameras,
-            Mode::Scenario(_) => &[],
+            Mode::Scenario(_) | Mode::Space(_) => &[],
         }
     }
 
@@ -25,6 +29,7 @@ impl Flight {
         match &self.mode {
             Mode::Free { vehicle, .. } => vehicle_camera_suite(*vehicle).chase_back_up_m,
             Mode::Scenario(_) => DEFAULT_CHASE_BACK_UP_M,
+            Mode::Space(_) => SPACE_CHASE_BACK_UP_M,
         }
     }
 

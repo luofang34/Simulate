@@ -32,6 +32,7 @@ sim-navigate = { workspace = true }
 sim-p38g = { workspace = true }
 sim-orbital = { workspace = true }
 sim-pack = { workspace = true }
+sim-raketa = { workspace = true }
 sim-render = { workspace = true }
 sim-scenario = { workspace = true, default-features = true }
 sim-scenery = { workspace = true }

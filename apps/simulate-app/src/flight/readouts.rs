@@ -71,6 +71,7 @@ impl Flight {
                 FreeFlightVehicle::JsbsimP38g => Some(cached_p38_specs()),
                 FreeFlightVehicle::AviateX500Direct => None,
             },
+            Mode::Space(_) => None,
             Mode::Scenario(run) => match run.profile() {
                 ScenarioProfile::Airport47NUncontrolledPattern
                 | ScenarioProfile::AirportKewrToweredPattern
@@ -119,7 +120,7 @@ impl Flight {
             Mode::Free { world, .. } => world
                 .session()
                 .and_then(|session| session.block().plant().specific_force_frd_m_s2()),
-            Mode::Scenario(_) => None,
+            Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
 
@@ -130,7 +131,7 @@ impl Flight {
             Mode::Free { world, .. } => world
                 .session()
                 .and_then(|session| session.block().system_controls()),
-            Mode::Scenario(_) => None,
+            Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
 
@@ -153,6 +154,9 @@ impl Flight {
     /// model or plant without a structural frame.
     #[must_use]
     pub fn model_origin_from_cg_frd_m(&self) -> DVec3 {
+        if matches!(self.mode, Mode::Space(_)) {
+            return super::space_world::SpaceWorld::model_origin_from_cg_frd_m();
+        }
         let Mode::Free { vehicle, world, .. } = &self.mode else {
             return DVec3::ZERO;
         };
@@ -176,7 +180,7 @@ impl Flight {
             Mode::Free { world, .. } => world
                 .session()
                 .and_then(|session| session.block().plant().fdm_ground_m()),
-            Mode::Scenario(_) => None,
+            Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
 
@@ -194,6 +198,7 @@ impl Flight {
                     propeller_rpm: art.propeller_rpm,
                 })
             }
+            Mode::Space(_) => None,
         }
     }
 
@@ -210,6 +215,7 @@ impl Flight {
                     })
             }
             Mode::Scenario(run) => run.articulation(),
+            Mode::Space(world) => world.articulation(),
         }
     }
 
@@ -220,7 +226,7 @@ impl Flight {
             Mode::Free { world, .. } => world
                 .session()
                 .and_then(|session| session.block().plant().aviate_armed()),
-            Mode::Scenario(_) => None,
+            Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
 }

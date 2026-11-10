@@ -11,7 +11,7 @@ use sim_scenario::{
     SimTimeScale,
 };
 use sim_spacetime::{SimEpoch, TimeScaleCatalog};
-use tracing::{debug, info};
+use tracing::debug;
 use web_time::Instant;
 
 use crate::camera_view::{pilot_eye_mount_for, viewport_camera_for};
@@ -37,7 +37,11 @@ mod rewind;
 mod sensor_tests;
 mod sensors;
 #[cfg(test)]
+mod space_tests;
+mod space_world;
+#[cfg(test)]
 mod spawn_tests;
+mod stepping;
 #[cfg(test)]
 mod tests;
 mod views;
@@ -162,10 +166,12 @@ impl Flight {
         Ok(next)
     }
 
-    /// Restarts the active scenario, or the free flight at its spawn, from the beginning.
+    /// Restarts the active scenario, the spaceflight on its pad, or the free flight at
+    /// its spawn, from the beginning.
     pub fn restart(&mut self) -> Result<(), AppSimError> {
         self.mode = match self.profile() {
             Some(profile) => Mode::scenario(profile)?,
+            None if self.in_space() => self.space_mode()?,
             None => self.free_mode(self.free_spawn)?,
         };
         self.begin_flight()
@@ -233,7 +239,7 @@ impl Flight {
     #[must_use]
     pub fn profile(&self) -> Option<ScenarioProfile> {
         match &self.mode {
-            Mode::Free { .. } => None,
+            Mode::Free { .. } | Mode::Space(_) => None,
             Mode::Scenario(run) => Some(run.profile()),
         }
     }
@@ -242,7 +248,7 @@ impl Flight {
     #[must_use]
     pub fn pattern_leg(&self) -> Option<PatternLeg> {
         match &self.mode {
-            Mode::Free { .. } => None,
+            Mode::Free { .. } | Mode::Space(_) => None,
             Mode::Scenario(run) => run.pattern_run().map(AirportPatternRun::leg),
         }
     }
@@ -252,7 +258,7 @@ impl Flight {
     pub fn free_vehicle(&self) -> Option<FreeFlightVehicle> {
         match &self.mode {
             Mode::Free { vehicle, .. } => Some(*vehicle),
-            Mode::Scenario(_) => None,
+            Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
 
@@ -318,38 +324,7 @@ impl Flight {
         if self.last_submitted != Some(controls) {
             self.submit_control_at(self.master_now(), controls);
         }
-        let steps = match &mut self.mode {
-            Mode::Free { world, panel, .. } => {
-                let steps = world.advance(ticks)?;
-                self.exposures.extend(world.take_exposures());
-                if let Some(session) = world.session() {
-                    mode::observe(panel, session.block().plant(), session.physics_time());
-                }
-                for _ in 0..steps {
-                    self.sensors.step(step_s);
-                }
-                steps
-            }
-            Mode::Scenario(run) => {
-                let steps = self.steps.steps_for(ticks);
-                for _ in 0..steps {
-                    self.prev_vehicle = run.vehicle();
-                    run.step()?;
-                    self.sensors.step(step_s);
-                    self.scenario_sensor.on_step(
-                        run.period(),
-                        run.now(),
-                        run.vehicle(),
-                        &mut self.exposures,
-                    );
-                }
-                if run.finished() && !self.finish_logged {
-                    self.finish_logged = true;
-                    info!(scenario = run.profile().title(), "scenario complete");
-                }
-                steps
-            }
-        };
+        let steps = self.step_mode(ticks, controls, step_s)?;
         self.after_steps(steps);
         Ok(())
     }
@@ -383,6 +358,7 @@ impl Flight {
         match &self.mode {
             Mode::Free { world, .. } => world.now(),
             Mode::Scenario(run) => run.now(),
+            Mode::Space(world) => world.now(),
         }
     }
 
@@ -393,7 +369,7 @@ impl Flight {
         self.last_submitted = Some(controls);
         match &mut self.mode {
             Mode::Free { world, .. } => world.submit_at(at, controls),
-            Mode::Scenario(_) => at,
+            Mode::Scenario(_) | Mode::Space(_) => at,
         }
     }
 
@@ -424,6 +400,9 @@ impl Flight {
             Mode::Scenario(run) => {
                 display::interpolate(&self.prev_vehicle, &run.vehicle(), self.steps.phase())
             }
+            Mode::Space(world) => {
+                display::interpolate(&self.prev_vehicle, &world.vehicle(), self.steps.phase())
+            }
         }
     }
 
@@ -441,7 +420,7 @@ impl Flight {
     fn display_phase(&self) -> f64 {
         match &self.mode {
             Mode::Free { world, .. } => world.display_phase(),
-            Mode::Scenario(_) => self.steps.phase(),
+            Mode::Scenario(_) | Mode::Space(_) => self.steps.phase(),
         }
     }
 
@@ -463,6 +442,7 @@ impl Flight {
         match &self.mode {
             Mode::Free { panel, .. } => panel.snapshot(),
             Mode::Scenario(run) => run.cockpit(),
+            Mode::Space(world) => world.cockpit(),
         }
     }
 
@@ -473,6 +453,7 @@ impl Flight {
             Mode::Free { vehicle, world, .. } => Ok(pilot_eye_mount_for(*vehicle)
                 .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m())),
             Mode::Scenario(run) => Ok(run.eye_pose()?),
+            Mode::Space(world) => Ok(world.eye_pose()),
         }
     }
 
