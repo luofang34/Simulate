@@ -98,6 +98,18 @@ minutes. The test `flight_and_orbital_dynamics_agree_across_a_handoff` flies
 one orbit both ways. It allows the two tiers to differ only by the solar and
 lunar tide, which `RigidBody6DofBlock` does not model.
 
+## Libration-point orbits
+
+Gravity is n-body throughout, so an orbit about Sun-Earth L2 needs no special
+frame or patched sphere of influence: it is a trajectory the full ephemeris
+and solar radiation pressure carry, and it is unstable. `sim-mission` plans a
+first arc about the point (`plan_assisted_l2_bounded_arc`) and then holds it
+(`fly_l2_station_keeping`): every few weeks a burn along the Sun-Earth line,
+sized so that the spacecraft crosses the plane through that line with no
+velocity along it a revolution later. A 6,200 kg spacecraft with a 160 m²
+sunshield takes about 5 m/s to settle from the planner's arc and under 4 m/s
+a year after that; left alone it is gone within seven months.
+
 ## Signals
 
 A link between two ends is judged by `sim-analysis` either geometrically,
