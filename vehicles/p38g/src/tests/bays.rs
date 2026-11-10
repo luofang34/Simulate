@@ -91,3 +91,25 @@ fn the_wheels_fit_through_their_bays() {
         );
     }
 }
+
+/// The bays lie where the manuals put the gear: the main bay spans the main leg's pivot
+/// (station `179 7/8`) and ends inside the forward boom (station 265), with room aft of
+/// the pivot for the leg and the 36 in wheel to lie stowed; the nose bay spans the
+/// hanging nose wheel's axle.
+#[test]
+fn the_bays_span_their_gear() {
+    use crate::drawing::{MAIN_AXLE_BELOW_FRL_STATIC_IN, NOSE_AXLE_FS_IN};
+    const MAIN_PIVOT_FS_IN: f32 = 179.875;
+    const FORWARD_BOOM_END_FS_IN: f32 = 265.0;
+    let main = main_bay(1.0);
+    assert!(main.fs.0 < MAIN_PIVOT_FS_IN && main.fs.1 <= FORWARD_BOOM_END_FS_IN);
+    // The stowed wheel's aft edge: the leg no longer than the static axle's depth below
+    // the reference line, swung aft about the pivot, plus the tyre's 18 in radius.
+    let stowed_aft = MAIN_PIVOT_FS_IN + MAIN_AXLE_BELOW_FRL_STATIC_IN + 18.0;
+    assert!(
+        main.fs.1 >= stowed_aft - 3.0,
+        "{} < {stowed_aft}",
+        main.fs.1
+    );
+    assert!((NOSE_BAY.fs.0..NOSE_BAY.fs.1).contains(&NOSE_AXLE_FS_IN));
+}

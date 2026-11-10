@@ -4,13 +4,15 @@
 //!
 //! AN 01-75FF-2 (P-38L-1 erection and maintenance instructions) describes the main
 //! doors: "two doors, hinged to the lower channels of the forward boom, operate
-//! automatically with the landing gear movement". AN 01-75F-2 does not draw the bays.
-//! Their stations are secondary readings of LeRoy Weber's P-38L-5-LO drawing
-//! (Superscale, 1958): the nose-wheel door sections run from station `59 1/4` to the
-//! hinge section at `143 13/16`, and the boom keel is stepped at station `155 1/4`,
-//! where the main doors begin. Where the main doors end is assumed: the drawing's next
-//! keel station, `238.7677`, clear of the stowed 36 in wheel. The openings' widths are
-//! assumed from the tyres they pass (27 in nose, 36 in main).
+//! automatically with the landing gear movement". No manual states the doors' stations.
+//! They are scaled, to about `3 in`, from the doors drawn hanging open on the manuals'
+//! station figures against the figures' own station ticks: main doors station 164 to
+//! 265 on AN 01-75FF-2 figure 4 and 161 to 263 on T.O. 01-75FG-2 (Lightning I) figure 2,
+//! nose doors station 42 to 148 on the latter. Those agree with what the gear needs:
+//! the nose wheel hangs at station 54.9 and stows about station 133, and the main leg
+//! swings aft about its pivot at station `179 7/8` (stated) inside the forward boom,
+//! which ends at station 265 (stated). The openings' widths are assumed from the tyres
+//! they pass (27 in nose, 36 in main); AN 01-75F-2 does not draw the bays.
 
 use glam::{DMat4, DVec3, Vec3};
 
@@ -197,20 +199,21 @@ fn door(
     prim
 }
 
-/// The nose-gear bay in the gondola keel, between the first and last nose-wheel door
-/// sections; the ceiling stays under the cockpit floor.
+/// The nose-gear bay in the gondola keel (stations scaled from the Lightning I station
+/// figure); the ceiling stays under the cockpit floor.
 pub(crate) const NOSE_BAY: Bay = Bay {
-    fs: (59.25, 143.8125),
+    fs: (42.0, 148.0),
     centre_x: 0.0,
     half_width: 7.5 * 0.0254,
     depth: 0.50,
 };
 
-/// The main-gear bay under the boom on `side`, from the step in the boom keel aft; the
-/// wheel hangs `3 in` outboard of the boom centreline (`198 in` tread on `96 in` booms).
+/// The main-gear bay under the boom on `side` (stations the mean of the two manuals'
+/// figures); the wheel hangs `3 in` outboard of the boom centreline (`198 in` tread on
+/// `96 in` booms).
 pub(crate) fn main_bay(side: f32) -> Bay {
     Bay {
-        fs: (155.25, 238.7677),
+        fs: (162.5, 264.0),
         centre_x: side * (crate::stations::BOOM_X + 1.5 * 0.0254),
         half_width: 8.5 * 0.0254,
         depth: 0.50,
