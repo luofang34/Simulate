@@ -1,5 +1,5 @@
 use sim_core::BlockError;
-use sim_orbital::{NaifId, OrientationError, SchedulerError, VesselId};
+use sim_orbital::{LagrangeError, NaifId, OrientationError, SchedulerError, VesselId};
 use sim_spacetime::TimeError;
 
 /// Why a vessel could not be added, advanced, or handed between tiers.
@@ -68,4 +68,8 @@ pub enum UniverseError {
     /// The run's clock could not name the instant.
     #[error("the run clock failed")]
     Time(#[from] TimeError),
+    /// A station-keeping burn could not be solved: the vessel is beyond holding, or
+    /// its prediction failed.
+    #[error("station keeping failed")]
+    Holding(#[source] Box<LagrangeError>),
 }

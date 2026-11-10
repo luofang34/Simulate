@@ -323,7 +323,7 @@ pub(super) const fn space_period() -> TickSpan {
 /// Returns `(utc_s, clamped)` where `utc_s` is `raw_utc_s.floor()` when inside the certified
 /// `2026..2028` kernel window (`clamped = false`), or `2026-03-20T12:00:00Z` (`1_774_008_000.0`,
 /// `clamped = true`) when outside.
-fn certified_space_utc_s(raw_utc_s: f64) -> (f64, bool) {
+pub(super) fn certified_space_utc_s(raw_utc_s: f64) -> (f64, bool) {
     let raw = raw_utc_s.floor();
     if (1_767_225_600.0..=1_822_348_800.0).contains(&raw) {
         (raw, false)

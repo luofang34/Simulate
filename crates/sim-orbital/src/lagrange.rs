@@ -2,6 +2,7 @@
 //! approximate linear/empirical $L_2$ libration seeds, and single-shooting finite-horizon
 //! terminal-$x$ differential correction over full-ephemeris `DOP853`.
 
+mod holding;
 pub mod targeting;
 
 use glam::DVec3;
@@ -15,8 +16,10 @@ use crate::{
     gravity::GravityError,
     ids::NaifId,
     scalar_math::{powf, sqrt},
+    time::TdbEpoch,
 };
 
+pub use holding::{L2HoldingDynamics, L2HoldingTarget, l2_holding_tolerances};
 pub use sim_spacetime::{CollinearLagrangePoint, SynodicFrame, solve_collinear_lagrange_gamma};
 pub use targeting::{
     L2BoundedArcTargetReport, L2BoundedArcTargetSpec, L2SingleShootingFailureReason,
@@ -75,6 +78,30 @@ pub enum LagrangeError {
         iterations: u32,
         /// Final terminal synodic $x(t_f) - x_{L_2}$ residual (`m`).
         residual_x_m: f64,
+    },
+    /// No burn within the limit turns a spacecraft's drift away from $L_2$ around.
+    #[error(
+        "no burn within {max_burn_m_s} m/s holds the spacecraft at {epoch:?}: it is already too far from the libration point"
+    )]
+    NoHoldingBurn {
+        /// The epoch the burn was solved at.
+        epoch: TdbEpoch,
+        /// The limit searched to (`m/s`).
+        max_burn_m_s: f64,
+    },
+    /// A holding target's span, bound, burn limit or crossing count is not positive
+    /// and finite, or its deadband is negative.
+    #[error(
+        "holding-burn lookahead, bound, burn limits and crossing count must be positive and finite"
+    )]
+    InvalidHoldingTarget,
+    /// A state handed to the synodic conversion is not about the secondary body.
+    #[error("state is about body {found}, but the libration point is measured from {expected}")]
+    WrongCentralBody {
+        /// The secondary body the state must be about.
+        expected: NaifId,
+        /// The body it is about.
+        found: NaifId,
     },
 }
 

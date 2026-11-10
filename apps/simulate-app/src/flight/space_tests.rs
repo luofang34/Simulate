@@ -252,9 +252,8 @@ fn spaceflight_navigation_ux_warp_governor_and_light_time_dsn_link_are_live() {
 }
 
 #[test]
-fn jwst_l2_observatory_stays_bounded_under_stationkeeping_and_runs_bus_devices() {
+fn jwst_l2_observatory_coasts_with_the_ownship_and_runs_bus_devices() {
     use sim_core::TickSpan;
-    use sim_orbital::{SynodicFrame, approximate_l2_libration_seed};
 
     let mut flight = Flight::new().expect("flight");
     flight.fly_raketa().expect("spaceflight");
@@ -264,38 +263,13 @@ fn jwst_l2_observatory_stays_bounded_under_stationkeeping_and_runs_bus_devices()
         panic!("spaceflight");
     };
     let span = TickSpan::from_seconds_and_subsec_ticks(12 * 3_600, 0);
-    world
-        .coast(span)
-        .expect("12-hour coast with L2 stationkeeping");
+    world.coast(span).expect("12-hour coast beside JWST_L2");
     assert_eq!(
         world.state_reinitializations(),
         0,
         "JWST_L2 and ownship must advance with zero state reinitializations"
     );
-    let jwst = world.jwst_l2_state().expect("jwst state");
-    let at = world.epoch().tdb_at(world.now());
-    let frame =
-        SynodicFrame::from_ephemeris(NaifId::SUN, NaifId::EARTH, at, flight.solar.ephemeris())
-            .expect("synodic frame");
-    let ctx = flight.solar.context();
-    let mu_sun = ctx
-        .force_model
-        .constants()
-        .require_mu(NaifId::SUN)
-        .expect("mu_sun");
-    let mu_earth = ctx
-        .force_model
-        .constants()
-        .require_mu(NaifId::EARTH)
-        .expect("mu_earth");
-    let seed = approximate_l2_libration_seed(&frame, mu_sun, mu_earth, 120_000_000.0, true);
-    let (pos_syn, _) =
-        frame.icrf_rel_secondary_to_synodic(jwst.pos_rel_icrf_m, jwst.vel_rel_icrf_m_s);
-    let dist_from_l2_x_m = (pos_syn.x - seed.l2_x_rel_secondary_m).abs();
-    assert!(
-        dist_from_l2_x_m < 2.8e8,
-        "JWST_L2 x-excursion from L2 must stay bounded: {dist_from_l2_x_m:.0} m"
-    );
+    assert!(world.jwst_l2_state().is_some());
 
     let jwst_bus = flight.space_jwst_l2_bus_telemetry().expect("jwst bus");
     assert!(jwst_bus.solar_power_w > 1_000.0, "{jwst_bus:?}");
@@ -360,4 +334,93 @@ fn free_flight_preserves_wall_clock_outside_de440_while_spaceflight_flags_clampe
         flight.ephemeris_epoch_clamped(),
         "spaceflight started outside kernel coverage must flag ephemeris_epoch_clamped"
     );
+}
+
+const JWST_YEAR_DAYS: u32 = 365;
+/// Box the observatory must stay in about L2, in the Sun–Earth rotating frame (`m`).
+const JWST_BOX_M: DVec3 = DVec3::new(4.0e8, 1.0e9, 3.0e8);
+
+fn jwst_alone() -> super::space_world::JwstAlone {
+    let solar = super::free_world::SolarSystem::load().expect("solar system");
+    // The date a spaceflight starts on when the host clock is outside the kernels: the
+    // kernels cover the year flown from it and the keeper's lookahead beyond.
+    let (start_utc_s, _) = super::mode::certified_space_utc_s(f64::NEG_INFINITY);
+    let epoch =
+        sim_spacetime::SimEpoch::builtin_from_utc(sim_geo::UtcTime::from_unix_seconds(start_utc_s))
+            .expect("epoch");
+    let hour = sim_core::TickSpan::from_seconds_and_subsec_ticks(3_600, 0);
+    super::space_world::JwstAlone::new(&epoch, &solar, hour).expect("JWST_L2 universe")
+}
+
+fn in_jwst_box(offset: DVec3) -> bool {
+    offset.abs().cmplt(JWST_BOX_M).all()
+}
+
+#[test]
+fn jwst_l2_is_held_in_its_box_for_a_year_by_its_keeper() {
+    use sim_core::TickSpan;
+
+    let mut jwst = jwst_alone();
+    let insertion = jwst
+        .keeper
+        .update(&mut jwst.universe)
+        .expect("insertion solve")
+        .expect("an insertion burn");
+    assert!(insertion.insertion);
+    let look_every = TickSpan::from_seconds_and_subsec_ticks(6 * 3_600, 0);
+    let mut upkeep = Vec::new();
+    let mut largest = DVec3::ZERO;
+    let mut last_y = 0.0_f64;
+    let mut sign_changes = 0_u32;
+    for look in 1..=JWST_YEAR_DAYS * 4 {
+        let next = jwst.universe.now().advanced(look_every);
+        jwst.universe.advance_to(next).expect("advance");
+        if let Some(burn) = jwst.keeper.update(&mut jwst.universe).expect("keeping") {
+            upkeep.push(burn);
+        }
+        let offset = jwst
+            .keeper
+            .offset_from_l2_m(&jwst.universe)
+            .expect("offset from L2");
+        largest = largest.max(offset.abs());
+        assert!(
+            in_jwst_box(offset),
+            "left the box on day {:.2} at {offset:?} after {} burns",
+            f64::from(look) / 4.0,
+            upkeep.len()
+        );
+        if last_y * offset.y < 0.0 {
+            sign_changes = sign_changes.wrapping_add(1);
+        }
+        last_y = offset.y;
+    }
+    let upkeep_m_s: f64 = upkeep.iter().map(|burn| burn.delta_v_m_s.abs()).sum();
+    let summary = format!(
+        "insertion {:.4} m/s; upkeep {upkeep_m_s:.4} m/s in {} burns; largest |offset| {largest:?} m; {sign_changes} y sign changes",
+        insertion.delta_v_m_s.abs(),
+        upkeep.len()
+    );
+    assert!(insertion.delta_v_m_s.abs() <= 10.0, "{summary}");
+    assert!(upkeep_m_s <= 10.0, "{summary}");
+    assert!(upkeep.iter().all(|burn| !burn.insertion), "{summary}");
+    assert!(sign_changes >= 3, "{summary}");
+    assert_eq!(jwst.universe.state_reinitializations(), 0, "{summary}");
+}
+
+#[test]
+fn jwst_l2_left_without_its_keeper_leaves_its_box_within_a_year() {
+    use sim_core::TickSpan;
+
+    let mut jwst = jwst_alone();
+    let day = TickSpan::from_seconds_and_subsec_ticks(86_400, 0);
+    let left_on_day = (1..=JWST_YEAR_DAYS).find(|_| {
+        let next = jwst.universe.now().advanced(day);
+        jwst.universe.advance_to(next).expect("advance");
+        let offset = jwst
+            .keeper
+            .offset_from_l2_m(&jwst.universe)
+            .expect("offset from L2");
+        !in_jwst_box(offset)
+    });
+    assert!(left_on_day.is_some(), "unheld, it stayed a whole year");
 }
