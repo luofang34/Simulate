@@ -69,12 +69,18 @@ pub(crate) const OLIVE_DRAB: P38Material = mat([0.089, 0.078, 0.047], 0.0, 0.70)
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.175, 0.19, 0.205], 0.0, 0.62);
 /// The canopy's frames, painted with the airframe: olive drab over their metal.
 pub(crate) const CANOPY_FRAME: P38Material = mat(OLIVE_DRAB.diffuse_rgb, 0.12, 0.62);
-pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
+/// Insignia White, some months in the sun and dust: about 78 % (assumed; fresh white
+/// lacquer reflects 85 to 90 %).
+pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.78, 0.78, 0.75], 0.0, 0.5);
 /// Insignia Blue: a dark navy that prints near black on the period's
 /// orthochromatic film (the boom stars of 43-2239); approximate.
 pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.022, 0.032, 0.085], 0.06, 0.46);
-pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
-pub(crate) const STENCIL_YELLOW: P38Material = mat([0.88, 0.68, 0.10], 0.05, 0.48);
+/// Insignia Red (assumed: a deep, slightly orange red of about 9 % reflectance; no chip
+/// value was reached).
+pub(crate) const INSIGNIA_RED: P38Material = mat([0.33, 0.035, 0.03], 0.0, 0.5);
+/// Identification Yellow No. 48, an orange-leaning yellow (assumed: about 45 %
+/// reflectance; no chip value was reached).
+pub(crate) const STENCIL_YELLOW: P38Material = mat([0.80, 0.42, 0.02], 0.0, 0.5);
 /// Chromium plate on the oleo pistons and hubs: chromium's normal-incidence reflectance
 /// (0.549, 0.556, 0.554 linear; Akenine-Möller, Haines and Hoffman, *Real-Time
 /// Rendering*, 4th ed., table 9.2).
@@ -82,12 +88,17 @@ pub(crate) const CHROME_OLEO: P38Material = mat([0.549, 0.556, 0.554], 0.92, 0.1
 /// Aluminised lacquer on the gear legs, forks and struts (light in the 339th FS
 /// photographs; the reflectance is assumed).
 pub(crate) const GEAR_ALUMINIUM: P38Material = mat([0.52, 0.53, 0.54], 0.35, 0.48);
-pub(crate) const GUNMETAL: P38Material = mat([0.16, 0.17, 0.19], 0.82, 0.30);
+/// Blued gun steel (assumed).
+pub(crate) const GUNMETAL: P38Material = mat([0.09, 0.095, 0.105], 0.82, 0.35);
 pub(crate) const BRASS_SHELL: P38Material = mat([0.74, 0.58, 0.22], 0.78, 0.32);
-pub(crate) const TURBO_STEEL: P38Material = mat([0.36, 0.31, 0.27], 0.78, 0.38);
-pub(crate) const EXHAUST_RUST: P38Material = mat([0.30, 0.22, 0.18], 0.58, 0.54);
+/// Heat-tinted stainless steel of the turbosupercharger (assumed).
+pub(crate) const TURBO_STEEL: P38Material = mat([0.30, 0.25, 0.21], 0.78, 0.42);
+/// Scaled, sooted exhaust steel (assumed).
+pub(crate) const EXHAUST_RUST: P38Material = mat([0.14, 0.09, 0.065], 0.4, 0.7);
 pub(crate) const PROP_BLACK: P38Material = mat([0.03, 0.03, 0.032], 0.0, 0.55);
-pub(crate) const PROP_YELLOW: P38Material = mat([0.92, 0.74, 0.08], 0.08, 0.36);
+/// The blade tips' yellow, the identification yellow.
+pub(crate) const PROP_YELLOW: P38Material = mat(STENCIL_YELLOW.diffuse_rgb, 0.0, 0.45);
+/// Tyre rubber, dusty (assumed: 3.5 %).
 pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92);
 /// Primer inside the gear bays. Assumed yellow zinc chromate: no source says which
 /// primer Lockheed used in the P-38G's wheel wells.
