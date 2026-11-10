@@ -8,12 +8,17 @@
 //! Where each number comes from:
 //! - AN 01-75F-2 general arrangement ([`crate::drawing`]): the windscreen base and top
 //!   bow, the top hatch's frames, the sill line, the main beam.
+//! - AN 01-75FF-2 (P-38L-1 erection and maintenance instructions), figure 3, "Fuselage
+//!   Station Locations and Removable Panels": the fuselage's frame stations `0, 7 7/8,
+//!   19, 29, 36 7/8, 46 5/16, 63.616, 75, 87 3/4, 95, 105, 115, 126 3/32, 135, 145 9/16,
+//!   162 1/4, 175, 192 1/4, 206 3/8, 220, 236`. Station `126 3/32` is the general
+//!   arrangement's windscreen top bow and `236` its gondola tail, so the two sheets
+//!   share a frame; `95` and `105` are taken here for the pedals and the panel.
 //! - LeRoy Weber's P-38L-5-LO inboard profile (Superscale, 1958), a redraw that carries
-//!   Lockheed station numbers and agrees with the general arrangement where both show
-//!   the same thing (top bow at station 126, canopy top, keel): the instrument panel
-//!   frame, the seat-back armour, the two floor levels, the control column and the
-//!   rudder pedal pivots. Read off a scan to about `2 in`, and of an L, so each is a
-//!   secondary reading.
+//!   Lockheed station numbers: which frame carries what (the instrument panel on the
+//!   frame behind the instrument access panels, pedal pivots at station 95), and the
+//!   seat-back armour, the two floor levels and the control column, read off a scan to
+//!   about `2 in`. Of an L, so each is a secondary reading.
 //! - Derived here: the design eyepoint and the seat reference point (see
 //!   [`DESIGN_EYE_FS_IN`]).
 
@@ -21,11 +26,13 @@ use crate::drawing::{
     INCH_M, WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
 
-/// Rudder pedal pivots (secondary reading).
+/// Rudder pedal pivots: fuselage frame station 95 (AN 01-75FF-2 figure 3; the Weber
+/// drawing puts the pedal pivots on it).
 pub const RUDDER_PEDAL_FS_IN: f32 = 95.0;
-/// Instrument panel frame: the board stands vertical, `6 in` aft of the windscreen base
-/// (secondary reading).
-pub const INSTRUMENT_PANEL_FS_IN: f32 = 106.0;
+/// Instrument panel frame: fuselage frame station 105 (AN 01-75FF-2 figure 3), the
+/// frame behind the instrument access panels in the deck; the board stands vertical on
+/// it, `5 in` aft of the windscreen base (the Weber drawing shows it at `106 ± 2`).
+pub const INSTRUMENT_PANEL_FS_IN: f32 = 105.0;
 /// Control column's floor attachment, on the starboard side (secondary reading).
 pub const CONTROL_COLUMN_FS_IN: f32 = 116.0;
 /// Control column off the ship centreline, to starboard (secondary reading).
@@ -79,7 +86,7 @@ pub struct PanelMountFrame {
 /// Fuselage station (`FS`) frame reservation inside the central gondola.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StationBulkheadSpec {
-    /// Lockheed fuselage station designation (e.g. `"FS 106"`).
+    /// Lockheed fuselage station designation (e.g. `"FS 105"`).
     pub station_name: &'static str,
     /// Station number in inches aft of the nose datum (`FS 0`).
     pub station_in: f32,
@@ -142,7 +149,7 @@ const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
         "Windscreen base on the sill line",
     ),
     frame(
-        "FS 106",
+        "FS 105",
         INSTRUMENT_PANEL_FS_IN,
         "Instrument panel frame under the glare shield",
     ),
