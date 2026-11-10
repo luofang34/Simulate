@@ -80,6 +80,11 @@ axes about a primary body, with a full solar-system force model. They meet in
   first, then restore the universe.
 - `Universe::command` stamps a burn law or another command on an orbital
   vessel at an instant. It takes effect at exactly that instant.
+- `simulate-app`'s free flight is one such vessel. Each free flight has a
+  `Universe` on its `SimEpoch`, and the flight's `SimSession` is the
+  ownship's local plant in it, so stamped controls, sensor exposures and
+  rewind checkpoints all sit on the clock other vessels share. An aircraft
+  stays in the local tier. Scripted scenarios still step their own run.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the
   orbital stack, so `sim-universe` stays the only bridge.
 

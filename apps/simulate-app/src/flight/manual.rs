@@ -93,10 +93,21 @@ impl Flight {
         matches!(self.free_spawn, FreeSpawn::Ground { .. })
     }
 
+    /// A free flight on the preferred vehicle from `spawn`, in a universe of its own.
+    pub(super) fn free_mode(&self, spawn: FreeSpawn) -> Result<Mode, AppSimError> {
+        Mode::free(
+            self.preferred_vehicle,
+            spawn,
+            &self.surface,
+            &self.time_scales,
+            &self.solar,
+        )
+    }
+
     /// Starts free flight on the preferred vehicle at `spawn`; later free flights and
     /// restarts start there too.
     pub(super) fn respawn_free(&mut self, spawn: FreeSpawn) -> Result<(), AppSimError> {
-        self.mode = Mode::free(self.preferred_vehicle, spawn, &self.surface)?;
+        self.mode = self.free_mode(spawn)?;
         self.free_spawn = spawn;
         self.begin_flight()
     }

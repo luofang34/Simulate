@@ -24,11 +24,13 @@ sim-aviate = { workspace = true }
 sim-core = { workspace = true }
 sim-geo = { workspace = true }
 sim-spacetime = { workspace = true }
+sim-universe = { workspace = true }
 sim-indicate = { workspace = true }
 sim-input = { workspace = true }
 sim-maplibre = { workspace = true }
 sim-navigate = { workspace = true }
 sim-p38g = { workspace = true }
+sim-orbital = { workspace = true }
 sim-pack = { workspace = true }
 sim-render = { workspace = true }
 sim-scenario = { workspace = true, default-features = true }
