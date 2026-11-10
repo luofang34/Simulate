@@ -124,19 +124,42 @@ fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) 
     return vec4<f32>(filmic(color, EXPOSURE * sky.sun.w), 1.0);
 }
 
+// Share of the light crossing a pane that its material's opacity absorbs: clean acrylic
+// passes about 92 %, and the opacity an airframe gives its glazing (0.3 for a canopy)
+// scales the tint of thicker or laminated panes (assumed).
+const GLASS_ABSORPTION: f32 = 0.4;
+// Share of the absorbed light dust, crazing and scratches scatter back (assumed).
+const GLASS_HAZE: f32 = 0.5;
+
+// A pane of glazing over whatever is drawn behind it: what it mirrors and scatters is
+// added, what it reflects away or absorbs is taken from the background.
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     var n = normalize(in.normal);
     if (!front) {
         n = -n;
     }
     let v = normalize(-in.world);
-    let r = reflect(-v, n);
-    let mirrored = sky_reflection(r, normalize(draw.sun.xyz), 0.05, 1.0);
-    let f = 0.04 + 0.96 * pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 5.0);
-    let tint = draw.base_color.rgb * 0.25;
-    let alpha = clamp(draw.base_color.a + f * 0.6, 0.0, 0.92);
-    let rgb = filmic(mix(tint, mirrored, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE * sky.sun.w);
-    return vec4<f32>(rgb * alpha, alpha);
+    let l = normalize(draw.sun.xyz);
+    let n_dot_v = clamp(abs(dot(n, v)), 0.0, 1.0);
+    // One air-glass surface (n = 1.5), then the pane's two with the bounces between.
+    let surface = 0.04 + 0.96 * pow(1.0 - n_dot_v, 5.0);
+    let pane = 2.0 * surface / (1.0 + surface);
+    let absorbed = draw.base_color.a * GLASS_ABSORPTION;
+    var radiance = draw.base_color.rgb * absorbed * GLASS_HAZE * (sky_irradiance(n) + ground_irradiance(n, 1.0)) / PI;
+    var reflected = 0.0;
+    // Seen from outside the pane mirrors the sky and glints in the Sun; seen from inside,
+    // through the far side of a canopy, it mirrors the dark cockpit.
+    if (front) {
+        reflected = pane;
+        radiance += sky_reflection(reflect(-v, n), l, draw.params.x, 1.0) * pane;
+        let h = normalize(l + v);
+        let n_dot_l = max(dot(n, l), 0.0);
+        let glint = ggx(max(dot(n, h), 0.0), max(draw.params.x, 0.05)) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
+        let f_h = 0.04 + 0.96 * pow(1.0 - clamp(dot(h, v), 0.0, 1.0), 5.0);
+        radiance += sky.sun.rgb * sun_visibility(in.world, n, in.clip.xy) * glint * f_h * n_dot_l;
+    }
+    let alpha = 1.0 - (1.0 - reflected) * (1.0 - absorbed);
+    return vec4<f32>(filmic(radiance, EXPOSURE * sky.sun.w), alpha);
 }
 
 fn propeller_disc(in: VertexOut) -> vec4<f32> {
