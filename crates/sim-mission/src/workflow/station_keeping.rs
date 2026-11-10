@@ -13,23 +13,13 @@
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use sim_orbital::{
-    BodyOrientationCatalog, CoastControlLaw, CollinearLagrangePoint, ContinuousPlantState,
-    Dop853Tolerances, EphemerisCatalog, ForceModel, LagrangeError, MassPropertiesModel, NaifId,
-    PropellantMode, ReactionWheelMode, SolarRadiationPressureLaw, SrpSurface, SynodicFrame,
-    TdbEpoch, propagate_plant_interval,
+    BodyOrientationCatalog, ContinuousPlantState, EphemerisCatalog, ForceModel, L2HoldingDynamics,
+    L2HoldingTarget, LagrangeError, MassPropertiesModel, NaifId, PropellantMode, ReactionWheelMode,
+    SrpSurface, TdbEpoch, l2_holding_tolerances,
 };
 use sim_spacetime::SolarFluxModel;
 
 const DAY_S: f64 = 86_400.0;
-/// Steps allowed to solve for one burn.
-const SOLVER_STEPS: u32 = 40;
-/// A burn is found once its bracket is this narrow (`m/s`).
-const BURN_RESOLUTION_M_S: f64 = 1.0e-5;
-/// A burn is found once it leaves this little velocity along the line at the crossing
-/// (`m/s`).
-const CROSSING_RATE_TOLERANCE_M_S: f64 = 1.0e-3;
-/// How often the lookahead checks the box and looks for a crossing (`s`).
-const LOOKAHEAD_STEP_S: f64 = 2.0 * DAY_S;
 
 /// A spacecraft to hold about $L_2$ and how to hold it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -115,219 +105,31 @@ pub enum StationKeepingError {
     InvalidSpec,
 }
 
-/// How a trajectory ends up, looking ahead from a maintenance epoch.
-#[derive(Clone, Copy, PartialEq)]
-enum Outlook {
-    /// It left the box towards the secondary before the crossing.
-    FellInward,
-    /// It left the box away from the secondary before the crossing.
-    DriftedOutward,
-    /// It reached the crossing with this velocity along the line of the two bodies
-    /// (`m/s`), positive away from the primary.
-    Crossed(f64),
-    /// It stayed in the box and did not reach the crossing in the time allowed.
-    StillBounded,
-}
-
-impl Outlook {
-    /// Negative when the spacecraft needs a push away from the primary.
-    fn drift(self) -> Option<f64> {
-        match self {
-            Self::FellInward => Some(f64::NEG_INFINITY),
-            Self::DriftedOutward => Some(f64::INFINITY),
-            Self::Crossed(rate) => Some(rate),
-            Self::StillBounded => None,
+impl L2StationKeepingSpec {
+    const fn holding_target(&self) -> L2HoldingTarget {
+        L2HoldingTarget {
+            maintenance_interval_s: self.maintenance_interval_s,
+            crossings_ahead: self.crossings_ahead,
+            lookahead_s: self.lookahead_s,
+            x_bound_m: self.x_bound_m,
+            max_burn_m_s: self.max_burn_m_s,
+            min_burn_m_s: self.min_burn_m_s,
         }
     }
 }
 
-struct Keeper<'a> {
-    spec: &'a L2StationKeepingSpec,
-    mu_primary: f64,
-    mu_secondary: f64,
-    force_model: &'a ForceModel,
-    flux: &'a SolarFluxModel,
-    ephemeris: &'a dyn EphemerisCatalog,
-    orientation: &'a dyn BodyOrientationCatalog,
-}
-
-impl Keeper<'_> {
-    fn frame(&self, epoch: TdbEpoch) -> Result<SynodicFrame, LagrangeError> {
-        Ok(SynodicFrame::from_ephemeris(
-            self.spec.primary,
-            self.spec.secondary,
-            epoch,
-            self.ephemeris,
-        )?)
-    }
-
-    fn coast(
-        &self,
-        state: &ContinuousPlantState,
-        from: TdbEpoch,
-        to: TdbEpoch,
-    ) -> Result<ContinuousPlantState, LagrangeError> {
-        let mass = MassPropertiesModel::diagonal(self.spec.mass_kg, [1.0e4; 3], [0.0; 3]);
-        let wheels = ReactionWheelMode::ConserveMomentum {
-            h_max_nms: 0.0,
-            tau_max_nm: 0.0,
-        };
-        let fly = |law: &dyn sim_orbital::ContinuousControlLaw| {
-            propagate_plant_interval(
-                state,
-                from,
-                to,
-                Some(3_600.0),
-                &tolerances(),
-                &mass,
-                PropellantMode::InfiniteConstantMass,
-                wheels,
-                self.force_model,
-                self.ephemeris,
-                self.orientation,
-                law,
-            )
-        };
-        let out = match self.spec.srp {
-            Some(surface) => fly(&SolarRadiationPressureLaw {
-                inner: &CoastControlLaw,
-                surface,
-                flux: self.flux,
-                ephemeris: self.ephemeris,
-            }),
-            None => fly(&CoastControlLaw),
-        }?;
-        Ok(out.final_state)
-    }
-
-    /// `state` with `delta_v_m_s` added along the line of the two bodies.
-    fn burned(
-        &self,
-        state: &ContinuousPlantState,
-        epoch: TdbEpoch,
-        delta_v_m_s: f64,
-    ) -> Result<ContinuousPlantState, LagrangeError> {
-        let along = self
-            .frame(epoch)?
-            .transform_position_synodic_to_icrf(DVec3::X);
-        Ok(ContinuousPlantState {
-            vel_rel_icrf_m_s: state.vel_rel_icrf_m_s + along * delta_v_m_s,
-            ..*state
-        })
-    }
-
-    /// Position from $L_2$ and velocity, both in the rotating frame.
-    fn synodic_from_l2(
-        &self,
-        state: &ContinuousPlantState,
-        epoch: TdbEpoch,
-    ) -> Result<(DVec3, DVec3), LagrangeError> {
-        let frame = self.frame(epoch)?;
-        let l2 = frame.lagrange_point_synodic_m(
-            self.mu_primary,
-            self.mu_secondary,
-            CollinearLagrangePoint::L2,
-        );
-        let (position, velocity) =
-            frame.icrf_rel_secondary_to_synodic(state.pos_rel_icrf_m, state.vel_rel_icrf_m_s);
-        Ok((position - l2, velocity))
-    }
-
-    /// Where `state` is headed over the lookahead.
-    fn outlook(
-        &self,
-        state: &ContinuousPlantState,
-        epoch: TdbEpoch,
-    ) -> Result<Outlook, LagrangeError> {
-        let mut state = *state;
-        let (mut before, _) = self.synodic_from_l2(&state, epoch)?;
-        let mut before_rate = 0.0;
-        let mut crossings = 0_u32;
-        let mut flown_s = 0.0;
-        while flown_s < self.spec.lookahead_s {
-            let step_s = LOOKAHEAD_STEP_S.min(self.spec.lookahead_s - flown_s);
-            let to = epoch.advanced_seconds(flown_s + step_s);
-            state = self.coast(&state, epoch.advanced_seconds(flown_s), to)?;
-            flown_s += step_s;
-            let (here, velocity) = self.synodic_from_l2(&state, to)?;
-            if here.x > self.spec.x_bound_m {
-                return Ok(Outlook::DriftedOutward);
-            }
-            if here.x < -self.spec.x_bound_m {
-                return Ok(Outlook::FellInward);
-            }
-            if before.y * here.y < 0.0 {
-                crossings = crossings.wrapping_add(1);
-                if crossings >= self.spec.crossings_ahead {
-                    let fraction = before.y / (before.y - here.y);
-                    return Ok(Outlook::Crossed(
-                        before_rate + fraction * (velocity.x - before_rate),
-                    ));
-                }
-            }
-            before = here;
-            before_rate = velocity.x;
-        }
-        Ok(Outlook::StillBounded)
-    }
-
-    /// The burn at `epoch` that leaves `state` crossing the plane with no velocity
-    /// along the line of the two bodies; zero if it is too small to make.
-    fn holding_burn(
-        &self,
-        state: &ContinuousPlantState,
-        epoch: TdbEpoch,
-    ) -> Result<f64, StationKeepingError> {
-        let drift_after = |delta_v: f64| -> Result<Option<f64>, LagrangeError> {
-            Ok(self
-                .outlook(&self.burned(state, epoch, delta_v)?, epoch)?
-                .drift())
-        };
-        let limit = self.spec.max_burn_m_s;
-        let cannot_hold = StationKeepingError::CannotHold {
-            epoch,
-            max_burn_m_s: limit,
-        };
-        let Some(drift_now) = drift_after(0.0)? else {
-            return Ok(0.0);
-        };
-        // Bracket the burn between one that leaves the spacecraft drifting inward and
-        // one that leaves it drifting outward, then close in by false position.
-        let far = if drift_now < 0.0 { limit } else { -limit };
-        let Some(drift_far) = drift_after(far)? else {
-            return Ok(0.0);
-        };
-        if drift_now * drift_far > 0.0 {
-            return Err(cannot_hold);
-        }
-        let (mut a, mut drift_a, mut b, mut drift_b) = (0.0, drift_now, far, drift_far);
-        for _ in 0..SOLVER_STEPS {
-            let both_reach_the_crossing = drift_a.is_finite() && drift_b.is_finite();
-            let next = if both_reach_the_crossing {
-                a - drift_a * (b - a) / (drift_b - drift_a)
-            } else {
-                0.5 * (a + b)
-            };
-            let Some(drift) = drift_after(next)? else {
-                return Ok(self.worth_making(next));
-            };
-            if drift * drift_a > 0.0 {
-                (a, drift_a) = (next, drift);
-            } else {
-                (b, drift_b) = (next, drift);
-            }
-            if drift.abs() < CROSSING_RATE_TOLERANCE_M_S || (b - a).abs() < BURN_RESOLUTION_M_S {
-                return Ok(self.worth_making(next));
-            }
-        }
-        Err(cannot_hold)
-    }
-
-    fn worth_making(&self, delta_v_m_s: f64) -> f64 {
-        if delta_v_m_s.abs() < self.spec.min_burn_m_s {
-            0.0
-        } else {
-            delta_v_m_s
+impl StationKeepingError {
+    fn from_holding(error: LagrangeError) -> Self {
+        match error {
+            LagrangeError::NoHoldingBurn {
+                epoch,
+                max_burn_m_s,
+            } => Self::CannotHold {
+                epoch,
+                max_burn_m_s,
+            },
+            LagrangeError::InvalidHoldingTarget => Self::InvalidSpec,
+            other => Self::Dynamics(other),
         }
     }
 }
@@ -341,32 +143,30 @@ pub fn fly_l2_station_keeping(
     ephemeris: &dyn EphemerisCatalog,
     orientation: &dyn BodyOrientationCatalog,
 ) -> Result<L2StationKeepingReport, StationKeepingError> {
-    let positive = [
-        spec.duration_s,
-        spec.maintenance_interval_s,
-        spec.lookahead_s,
-        spec.x_bound_m,
-        spec.max_burn_m_s,
-        spec.mass_kg,
-        f64::from(spec.crossings_ahead),
-    ];
-    let deadband_ok = spec.min_burn_m_s.is_finite() && spec.min_burn_m_s >= 0.0;
-    if !deadband_ok || positive.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+    let target = spec.holding_target();
+    let durations_ok = [spec.duration_s, spec.mass_kg]
+        .iter()
+        .all(|v| v.is_finite() && *v > 0.0);
+    if !durations_ok || !target.is_valid() {
         return Err(StationKeepingError::InvalidSpec);
     }
-    let constants = force_model.constants();
-    let keeper = Keeper {
-        spec,
-        mu_primary: constants
-            .require_mu(spec.primary)
-            .map_err(LagrangeError::from)?,
-        mu_secondary: constants
-            .require_mu(spec.secondary)
-            .map_err(LagrangeError::from)?,
+    let mass_model = MassPropertiesModel::diagonal(spec.mass_kg, [1.0e4; 3], [0.0; 3]);
+    let tolerances = l2_holding_tolerances();
+    let keeper = L2HoldingDynamics {
+        primary: spec.primary,
+        secondary: spec.secondary,
         force_model,
         flux,
         ephemeris,
         orientation,
+        mass_model: &mass_model,
+        propellant_mode: PropellantMode::InfiniteConstantMass,
+        rw_mode: ReactionWheelMode::ConserveMomentum {
+            h_max_nms: 0.0,
+            tau_max_nm: 0.0,
+        },
+        tolerances: &tolerances,
+        srp: spec.srp,
     };
     let frame0 = keeper.frame(spec.start_epoch)?;
     let (position, velocity) =
@@ -392,13 +192,15 @@ pub fn fly_l2_station_keeping(
     while flown_s < spec.duration_s {
         let epoch = spec.start_epoch.advanced_seconds(flown_s);
         if flown_s >= next_burn_s {
-            let delta_v_m_s = keeper.holding_burn(&state, epoch)?;
+            let delta_v_m_s = keeper
+                .holding_burn_m_s(&target, &state, epoch)
+                .map_err(StationKeepingError::from_holding)?;
             if delta_v_m_s != 0.0 {
                 state = keeper.burned(&state, epoch, delta_v_m_s)?;
                 report.burns.push(StationKeepingBurn { epoch, delta_v_m_s });
                 report.total_delta_v_m_s += delta_v_m_s.abs();
             }
-            next_burn_s += spec.maintenance_interval_s;
+            next_burn_s += target.maintenance_interval_s;
         }
         let step_s = DAY_S
             .min(spec.duration_s - flown_s)
@@ -406,23 +208,10 @@ pub fn fly_l2_station_keeping(
         let to = epoch.advanced_seconds(step_s);
         state = keeper.coast(&state, epoch, to)?;
         flown_s += step_s;
-        let (from_l2, _) = keeper.synodic_from_l2(&state, to)?;
+        let (from_l2, _) = keeper.offset_from_l2(&state, to)?;
         report.max_x_excursion_m = report.max_x_excursion_m.max(from_l2.x.abs());
         report.max_l2_distance_m = report.max_l2_distance_m.max(from_l2.length());
         report.synodic_l2_samples_m.push(from_l2.to_array());
     }
     Ok(report)
-}
-
-fn tolerances() -> Dop853Tolerances {
-    Dop853Tolerances {
-        rtol: 1.0e-10,
-        atol_pos_m: 1.0e-3,
-        atol_vel_m_s: 1.0e-8,
-        h_min_s: 1.0,
-        h_max_s: 43_200.0,
-        h_init_s: 3_600.0,
-        max_steps: 50_000,
-        ..Dop853Tolerances::default()
-    }
 }

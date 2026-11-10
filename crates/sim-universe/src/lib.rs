@@ -11,6 +11,7 @@ mod bus;
 mod error;
 mod handoff;
 mod local;
+mod station_keeping;
 mod tiering;
 mod universe;
 
@@ -18,5 +19,6 @@ pub use bus::{VesselBusConfig, VesselBusTelemetry};
 pub use error::UniverseError;
 pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 pub use local::{CoastingRigidBody, LocalFactory, LocalPlant, OrbitalBody};
+pub use station_keeping::{L2KeepingBurn, L2StationKeeper};
 pub use tiering::{AltitudeBand, TierChange, TierPolicy, planetary_dynamic_pressure_pa};
 pub use universe::{OrbitalContext, Tier, Universe, UniverseCheckpoint};

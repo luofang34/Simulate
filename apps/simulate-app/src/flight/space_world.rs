@@ -22,13 +22,17 @@ use sim_orbital::{
 use sim_raketa::{RAKETA_CG_Y_M, RAKETA_PLANT_PERIOD, RaketaCommand, RaketaPlant};
 use sim_scenario::ScenarioWorld;
 use sim_spacetime::SimEpoch;
-use sim_universe::{Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry};
+use sim_universe::{
+    L2StationKeeper, Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry,
+};
 
 use super::free_world::SolarSystem;
 use crate::error::AppSimError;
 use crate::world_surface::WorldSurfaceHandle;
 
 mod jwst;
+#[cfg(test)]
+pub(super) use jwst::JwstAlone;
 use jwst::spawn_jwst_l2;
 
 /// The vessel the pilot flies.
@@ -56,7 +60,6 @@ const RAKETA_FROM_AIRCRAFT: DMat3 = DMat3::from_cols(
 /// A spaceflight's universe and what the cockpit shows of it.
 pub(super) struct SpaceWorld {
     universe: Universe,
-    solar: Arc<SolarSystem>,
     ground_height_m: f64,
     central: NaifId,
     reference_frame: super::space_ux::SpaceReferenceFrame,
@@ -64,7 +67,7 @@ pub(super) struct SpaceWorld {
     nose_icrf: Option<DVec3>,
     ascent_guidance: bool,
     panel: CockpitInstrumentPanel,
-    jwst_last_sk: SimInstant,
+    jwst_keeper: L2StationKeeper,
     epoch_clamped: bool,
 }
 
@@ -89,14 +92,13 @@ impl SpaceWorld {
         .map_err(|e| universe_error(UniverseError::LocalPlant(Box::new(e))))?;
         let mut universe =
             Universe::new(epoch.clone(), solar.context()).with_tier_policy(TierPolicy::standard());
-        spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
+        let jwst_keeper = spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
         universe
             .insert_local(OWNSHIP, Box::new(plant), RaketaPlant::factory(environment))
             .map_err(universe_error)?;
         let truth = aircraft_axes(universe.vehicle_state(OWNSHIP).map_err(universe_error)?);
         let mut world = Self {
             universe,
-            solar: Arc::clone(solar),
             ground_height_m,
             central: NaifId::EARTH,
             reference_frame: super::space_ux::SpaceReferenceFrame::BodyInertial,
@@ -104,7 +106,7 @@ impl SpaceWorld {
             nose_icrf: None,
             ascent_guidance: true,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
-            jwst_last_sk: SimInstant::START,
+            jwst_keeper,
             epoch_clamped,
         };
         world.observe();
@@ -162,25 +164,23 @@ impl SpaceWorld {
         !self.flown(controls.clamped()) && self.tier() == Tier::Orbital
     }
 
-    /// Carries a coasting vessel `span` on in orbital propagation, running periodic
-    /// `JWST_L2` station-keeping trim burns so its halo trajectory stays bounded with zero
-    /// state reinitializations.
+    /// Carries a coasting vessel `span` on in orbital propagation, letting the
+    /// `JWST_L2` keeper look every few hours for a due maintenance burn. The first
+    /// look makes the insertion burn; an epoch that falls due while the pilot flies is
+    /// made at the next look.
     pub(super) fn coast(&mut self, span: TickSpan) -> Result<(), AppSimError> {
         let target = self.universe.now().advanced(span);
-        let sk_cadence = TickSpan::from_seconds_and_subsec_ticks(6 * 3_600, 0);
+        let look_every = TickSpan::from_seconds_and_subsec_ticks(6 * 3_600, 0);
         while self.universe.now() < target {
             let remaining = target.duration_since(self.universe.now());
-            let step = if remaining > sk_cadence {
-                sk_cadence
+            let step = if remaining > look_every {
+                look_every
             } else {
                 remaining
             };
             let next = self.universe.now().advanced(step);
             self.universe.advance_to(next).map_err(universe_error)?;
-            if self.universe.now().duration_since(self.jwst_last_sk) >= sk_cadence {
-                self.maintain_jwst_l2()?;
-                self.jwst_last_sk = self.universe.now();
-            }
+            self.maintain_jwst_l2();
         }
         self.settle()
     }

@@ -1,21 +1,43 @@
-//! Sun–Earth $L_2$ observatory (`JWST_L2`) initialization and periodic bounded-halo
-//! station-keeping inside [`SpaceWorld`].
+//! A JWST-like observatory (`JWST_L2`) about Sun–Earth $L_2$: where it starts and
+//! the keeper that holds it there inside [`SpaceWorld`].
 
 use glam::{DQuat, DVec3};
 use sim_core::{SimInstant, TickSpan};
 use sim_orbital::{
-    CoastControlLaw, ContinuousPlantState, L2BoundedArcTargetSpec, LatchedBurnLaw,
-    MassPropertiesModel, NaifId, PlayerCommandPayload, PropellantMode, ReactionWheelMode,
-    SolarRadiationPressureLaw, SrpSurface, SynodicFrame, VesselConfig,
-    approximate_l2_libration_seed, propagate_plant_interval, target_l2_terminal_x_arc_dop853,
+    ContinuousPlantState, L2BoundedArcTargetSpec, L2HoldingTarget, MassPropertiesModel, NaifId,
+    PropellantMode, ReactionWheelMode, SrpSurface, SynodicFrame, VesselConfig,
+    target_l2_terminal_x_arc_dop853,
 };
 use sim_raketa::{RaketaEnvironment, RaketaPlant};
-use sim_spacetime::{SimEpoch, SolarFluxModel, TdbEpoch};
-use sim_universe::{Universe, VesselBusConfig};
+use sim_spacetime::SimEpoch;
+use sim_universe::{L2KeepingBurn, L2StationKeeper, Universe, VesselBusConfig};
+use tracing::{info, warn};
 
 use super::super::free_world::SolarSystem;
 use super::{JWST_L2, SpaceWorld, universe_error};
 use crate::error::AppSimError;
+
+const DAY_S: f64 = 86_400.0;
+
+/// Horizon of the arc the observatory starts on; the insertion burn then puts it on a
+/// bounded orbit.
+const ARRIVAL_ARC_S: f64 = 60.0 * DAY_S;
+/// Out-of-plane amplitude of that arc (`m`).
+const ARRIVAL_AZ_M: f64 = 1.2e8;
+
+/// Every three weeks a holding burn aims a revolution ahead, at zero velocity along
+/// the Sun–Earth line at the second crossing of the plane.
+const HOLDING_TARGET: L2HoldingTarget = L2HoldingTarget {
+    maintenance_interval_s: 21.0 * DAY_S,
+    crossings_ahead: 2,
+    lookahead_s: 240.0 * DAY_S,
+    x_bound_m: 6.0e8,
+    max_burn_m_s: 30.0,
+    min_burn_m_s: 1.0e-3,
+};
+
+/// How long each holding burn fires.
+const BURN_SPAN: TickSpan = TickSpan::from_seconds_and_subsec_ticks(60, 0);
 
 pub(super) const fn jwst_srp_surface() -> SrpSurface {
     SrpSurface {
@@ -24,38 +46,45 @@ pub(super) const fn jwst_srp_surface() -> SrpSurface {
     }
 }
 
-pub(super) fn jwst_mass_model() -> MassPropertiesModel {
-    MassPropertiesModel::diagonal(6_200.0, [45_000.0, 45_000.0, 25_000.0], [0.0; 3])
+fn jwst_config(solar: &SolarSystem) -> VesselConfig {
+    VesselConfig {
+        mass_model: MassPropertiesModel::diagonal(
+            6_200.0,
+            [45_000.0, 45_000.0, 25_000.0],
+            [0.0; 3],
+        ),
+        propellant_mode: PropellantMode::InfiniteConstantMass,
+        rw_mode: ReactionWheelMode::ConserveMomentum {
+            h_max_nms: 0.0,
+            tau_max_nm: 0.0,
+        },
+        tolerances: solar.context().tolerances,
+        bounding_radius_m: 11.0,
+        auto_soi_switch: false,
+    }
 }
 
+/// Adds the observatory to `universe` at the first tick of `epoch`, on an arc about
+/// $L_2$, and returns the keeper that will hold it; the keeper's first update makes
+/// the insertion burn.
 pub(super) fn spawn_jwst_l2(
     universe: &mut Universe,
     epoch: &SimEpoch,
     solar: &SolarSystem,
     environment: &RaketaEnvironment,
-) -> Result<(), AppSimError> {
+) -> Result<L2StationKeeper, AppSimError> {
     let tdb_start = epoch.tdb_at(SimInstant::START);
     let frame =
         SynodicFrame::from_ephemeris(NaifId::SUN, NaifId::EARTH, tdb_start, solar.ephemeris())?;
     let ctx = solar.context();
-    let spec = L2BoundedArcTargetSpec {
-        primary: NaifId::SUN,
-        secondary: NaifId::EARTH,
-        start_epoch: tdb_start,
-        horizon_s: 14.0 * 86_400.0,
-        az_amplitude_m: 120_000_000.0,
-        southern: true,
-        tolerance_x_m: 1_000.0,
-        max_iterations: 12,
-    };
-    let targeted = target_l2_terminal_x_arc_dop853(
-        &spec,
+    let arc = target_l2_terminal_x_arc_dop853(
+        &L2BoundedArcTargetSpec::sun_earth_southern(tdb_start, ARRIVAL_ARC_S, ARRIVAL_AZ_M),
         &ctx.force_model,
         solar.ephemeris(),
         solar.orientation(),
     )?;
-    let (pos_rel_earth, vel_rel_earth) = frame
-        .synodic_to_icrf_rel_secondary(targeted.initial_pos_syn_m, targeted.initial_vel_syn_m_s);
+    let (pos_rel_earth, vel_rel_earth) =
+        frame.synodic_to_icrf_rel_secondary(arc.initial_pos_syn_m, arc.initial_vel_syn_m_s);
     let jwst_state = ContinuousPlantState {
         primary_body: NaifId::EARTH,
         pos_rel_icrf_m: pos_rel_earth,
@@ -65,17 +94,7 @@ pub(super) fn spawn_jwst_l2(
         propellant_mass_kg: 150.0,
         h_rw_body_nms: DVec3::ZERO,
     };
-    let jwst_cfg = VesselConfig {
-        mass_model: jwst_mass_model(),
-        propellant_mode: PropellantMode::InfiniteConstantMass,
-        rw_mode: ReactionWheelMode::ConserveMomentum {
-            h_max_nms: 0.0,
-            tau_max_nm: 0.0,
-        },
-        tolerances: ctx.tolerances,
-        bounding_radius_m: 11.0,
-        auto_soi_switch: false,
-    };
+    let config = jwst_config(solar);
     let mut bus_cfg = VesselBusConfig {
         srp_surface: Some(jwst_srp_surface()),
         ..VesselBusConfig::default()
@@ -85,130 +104,69 @@ pub(super) fn spawn_jwst_l2(
     universe
         .insert_orbital_with_bus(
             JWST_L2,
-            jwst_cfg,
+            config,
             jwst_state,
             bus_cfg,
             RaketaPlant::factory(environment.clone()),
         )
-        .map_err(universe_error)
+        .map_err(universe_error)?;
+    Ok(L2StationKeeper::new(
+        JWST_L2,
+        (NaifId::SUN, NaifId::EARTH),
+        &ctx,
+        config,
+        HOLDING_TARGET,
+        BURN_SPAN,
+    ))
+}
+
+/// Reports a burn the keeper commanded, or why it could not; a keeper that cannot
+/// solve (the lookahead runs past the kernels' coverage, or the observatory has
+/// already left) must not end the pilot's flight.
+fn report_keeping(outcome: Result<Option<L2KeepingBurn>, sim_universe::UniverseError>) {
+    match outcome {
+        Ok(Some(burn)) => info!(
+            delta_v_m_s = burn.delta_v_m_s,
+            insertion = burn.insertion,
+            "JWST_L2 holding burn"
+        ),
+        Ok(None) => {}
+        Err(error) => warn!(?error, "JWST_L2 station keeping skipped a burn"),
+    }
 }
 
 impl SpaceWorld {
-    pub(super) fn maintain_jwst_l2(&mut self) -> Result<(), AppSimError> {
-        let now = self.universe.now();
-        let at = self.universe.epoch().tdb_at(now);
-        let jwst = self
-            .universe
-            .inertial_state(JWST_L2)
-            .map_err(universe_error)?;
-        let dv_icrf = compute_jwst_stationkeeping_dv(&jwst, at, &self.solar)?;
-        if dv_icrf.length() > 1.0e-4 {
-            let burn_s = 60.0;
-            let burn_span = TickSpan::from_seconds_and_subsec_ticks(60, 0);
-            let total_mass_kg = 6_200.0 + jwst.propellant_mass_kg;
-            self.universe
-                .command(
-                    JWST_L2,
-                    now,
-                    PlayerCommandPayload::SetBurnLaw(LatchedBurnLaw::InertialThrust {
-                        dir_icrf: dv_icrf.normalize_or_zero().to_array(),
-                        thrust_n: total_mass_kg * dv_icrf.length() / burn_s,
-                        exhaust_vel_m_s: 3_000.0,
-                        rw_torque_cmd_body_nm: [0.0; 3],
-                    }),
-                )
-                .map_err(universe_error)?;
-            self.universe
-                .command(
-                    JWST_L2,
-                    now.advanced(burn_span),
-                    PlayerCommandPayload::SetBurnLaw(LatchedBurnLaw::Coast),
-                )
-                .map_err(universe_error)?;
-        }
-        Ok(())
+    /// Lets the keeper burn if a maintenance epoch of `JWST_L2` is due.
+    pub(super) fn maintain_jwst_l2(&mut self) {
+        report_keeping(self.jwst_keeper.update(&mut self.universe));
     }
 }
 
-fn compute_jwst_stationkeeping_dv(
-    jwst: &ContinuousPlantState,
-    at: TdbEpoch,
-    solar: &SolarSystem,
-) -> Result<DVec3, AppSimError> {
-    let frame = SynodicFrame::from_ephemeris(NaifId::SUN, NaifId::EARTH, at, solar.ephemeris())?;
-    let ctx = solar.context();
-    let mu_sun = ctx.force_model.constants().require_mu(NaifId::SUN)?;
-    let mu_earth = ctx.force_model.constants().require_mu(NaifId::EARTH)?;
-    let seed = approximate_l2_libration_seed(&frame, mu_sun, mu_earth, 120_000_000.0, true);
-    let omega_p = std::f64::consts::TAU / seed.period_s.max(1.0);
-    let (pos_syn, vel_syn) =
-        frame.icrf_rel_secondary_to_synodic(jwst.pos_rel_icrf_m, jwst.vel_rel_icrf_m_s);
-    let tf = at.advanced_seconds(7.0 * 86_400.0);
-    let frame_tf = SynodicFrame::from_ephemeris(NaifId::SUN, NaifId::EARTH, tf, solar.ephemeris())?;
-    let vx_damped = -0.35 * omega_p * (pos_syn.x - seed.l2_x_rel_secondary_m);
-    let vy_solved = solve_secant_vy(vel_syn.y, |vy_test| {
-        let v_syn = DVec3::new(vx_damped, vy_test, vel_syn.z);
-        let (p0, v0) = frame.synodic_to_icrf_rel_secondary(pos_syn, v_syn);
-        let init = ContinuousPlantState {
-            pos_rel_icrf_m: p0,
-            vel_rel_icrf_m_s: v0,
-            ..*jwst
-        };
-        let srp = SolarRadiationPressureLaw {
-            inner: &CoastControlLaw,
-            surface: jwst_srp_surface(),
-            flux: &SolarFluxModel::standard(),
-            ephemeris: solar.ephemeris(),
-        };
-        let out = propagate_plant_interval(
-            &init,
-            at,
-            tf,
-            None,
-            &ctx.tolerances,
-            &jwst_mass_model(),
-            PropellantMode::InfiniteConstantMass,
-            ReactionWheelMode::ConserveMomentum {
-                h_max_nms: 0.0,
-                tau_max_nm: 0.0,
-            },
-            &ctx.force_model,
-            solar.ephemeris(),
-            solar.orientation(),
-            &srp,
-        )
-        .map_err(|e| AppSimError::Lagrange(sim_orbital::LagrangeError::Propagation(e)))?;
-        let (p_syn_f, _) = frame_tf.icrf_rel_secondary_to_synodic(
-            out.final_state.pos_rel_icrf_m,
-            out.final_state.vel_rel_icrf_m_s,
-        );
-        Ok(p_syn_f.x - seed.l2_x_rel_secondary_m)
-    })?;
-    let target_v_syn = DVec3::new(vx_damped, vy_solved, vel_syn.z);
-    let (_, target_v_icrf) = frame.synodic_to_icrf_rel_secondary(pos_syn, target_v_syn);
-    Ok(target_v_icrf - jwst.vel_rel_icrf_m_s)
+/// The observatory alone in a universe of its own, as the flight builds it, with its
+/// keeper: a year of it can be flown without the pilot's vessel stepping beside it.
+///
+/// The orbital tier ends each speculative segment on its quantum grid; a coarser grid
+/// than the flight's changes only where the integrator restarts, not the forces it
+/// integrates, and lets a year be flown in a test.
+#[cfg(test)]
+pub(in crate::flight) struct JwstAlone {
+    pub(in crate::flight) universe: Universe,
+    pub(in crate::flight) keeper: L2StationKeeper,
 }
 
-fn solve_secant_vy<F>(initial_vy: f64, eval_res: F) -> Result<f64, AppSimError>
-where
-    F: Fn(f64) -> Result<f64, AppSimError>,
-{
-    let mut vy0 = initial_vy;
-    let mut f0 = eval_res(vy0)?;
-    let mut vy1 = vy0 + 2.0;
-    for _ in 0..5 {
-        if f0.abs() <= 5_000.0 {
-            break;
-        }
-        let f1 = eval_res(vy1)?;
-        let df = f1 - f0;
-        if df.abs() < 1.0e-6 {
-            break;
-        }
-        let vy_next = (vy1 - f1 * (vy1 - vy0) / df).clamp(initial_vy - 80.0, initial_vy + 80.0);
-        vy0 = vy1;
-        f0 = f1;
-        vy1 = vy_next;
+#[cfg(test)]
+impl JwstAlone {
+    pub(in crate::flight) fn new(
+        epoch: &SimEpoch,
+        solar: &SolarSystem,
+        quantum: TickSpan,
+    ) -> Result<Self, AppSimError> {
+        let context = sim_universe::OrbitalContext {
+            quantum,
+            ..solar.context()
+        };
+        let mut universe = Universe::new(epoch.clone(), context);
+        let keeper = spawn_jwst_l2(&mut universe, epoch, solar, &solar.raketa_environment())?;
+        Ok(Self { universe, keeper })
     }
-    Ok(vy0)
 }
