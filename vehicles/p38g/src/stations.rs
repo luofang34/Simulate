@@ -68,7 +68,8 @@ pub(crate) const OLIVE_DRAB: P38Material = mat([0.089, 0.078, 0.047], 0.0, 0.70)
 /// reflectance, faintly blue (assumed; FS 595 36173 is the match usually quoted, and no
 /// measured value of it was reached).
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.175, 0.19, 0.205], 0.0, 0.62);
-pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
+/// The canopy's frames, painted with the airframe: olive drab over their metal.
+pub(crate) const CANOPY_FRAME: P38Material = mat(OLIVE_DRAB.diffuse_rgb, 0.12, 0.62);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
 /// Insignia Blue: a dark navy that prints near black on the period's
 /// orthochromatic film (the boom stars of 43-2239); approximate.
