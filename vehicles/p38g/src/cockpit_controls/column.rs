@@ -15,13 +15,8 @@ use glam::Vec3;
 
 use super::{CANVAS, GRIP_BLACK, GRIP_WORN, POLISHED, control, polyline, sweep, turn};
 use crate::cockpit_reservation::p38g_cockpit_contract;
-use crate::drawing::{frl_to_z, fs_to_y};
 use crate::mesh::{Inside, MeshBuilder, P38ControlJoint, P38MeshPrim};
 
-/// Centre of the wheel's hub: `3 in` aft of the column's station, within a
-/// `29 in` grip reach of a shoulder `4 in` aft of the design eyepoint, at chest
-/// height. Assumed until the hub is placed from the cockpit photographs.
-pub(super) const HUB: Vec3 = Vec3::new(0.0, fs_to_y(119.0), frl_to_z(20.0));
 /// Radius of the rim's centreline: the rim's outside diameter scales to 0.38 m
 /// against the 3-1/8 in gauges.
 const RIM_RADIUS: f32 = 0.176;
@@ -57,7 +52,7 @@ const ROLL_PER_UNIT: f32 = 1.05;
 /// aircraft: centre, half-length and radius. Read as the ultraviolet instrument
 /// flood lamp the P-38H/J/L pilot's instructions (01-75FF-1) put on the column;
 /// its function on the G is inferred.
-const LAMP_CENTRE: Vec3 = Vec3::new(HUB.x - 0.095, HUB.y + 0.02, HUB.z + 0.01);
+const LAMP_FROM_HUB: Vec3 = Vec3::new(-0.095, 0.02, 0.01);
 const LAMP_HALF_LENGTH: f32 = 0.075;
 const LAMP_RADIUS: f32 = 0.045;
 
@@ -65,7 +60,17 @@ const LAMP_RADIUS: f32 = 0.045;
 /// frame, m: on top of the housing, aimed up at the panel.
 #[must_use]
 pub fn p38g_uv_flood_lamp_m() -> [f32; 3] {
-    (LAMP_CENTRE + Vec3::new(0.0, 0.02, LAMP_RADIUS)).to_array()
+    (lamp_centre() + Vec3::new(0.0, 0.02, LAMP_RADIUS)).to_array()
+}
+
+/// Centre of the wheel's hub, column centred.
+fn hub() -> Vec3 {
+    Vec3::from_array(p38g_cockpit_contract().control_wheel_hub_m)
+}
+
+/// Centre of the housing beside the hub.
+fn lamp_centre() -> Vec3 {
+    hub() + LAMP_FROM_HUB
 }
 
 fn pivot() -> Vec3 {
@@ -74,14 +79,14 @@ fn pivot() -> Vec3 {
 
 /// The top of the column, straight above its foot's buttock line.
 fn column_top() -> Vec3 {
-    Vec3::new(pivot().x, HUB.y, HUB.z) + COLUMN_TOP_FROM_HUB
+    Vec3::new(pivot().x, hub().y, hub().z) + COLUMN_TOP_FROM_HUB
 }
 
 /// A point on the rim's centreline `angle` clockwise from twelve o'clock as the
 /// pilot sees it, `inset` inside the centreline.
 fn rim_point(angle: f32, inset: f32) -> Vec3 {
     let r = RIM_RADIUS - inset;
-    HUB + Vec3::new(angle.sin() * r, 0.0, angle.cos() * r)
+    hub() + Vec3::new(angle.sin() * r, 0.0, angle.cos() * r)
 }
 
 fn rim_arc(from: f32, to: f32) -> Vec<Vec3> {
@@ -93,7 +98,7 @@ fn rim_arc(from: f32, to: f32) -> Vec<Vec3> {
 
 pub(super) fn prims() -> Vec<P38MeshPrim> {
     let pitch = turn("pitch", pivot(), Vec3::X, PITCH_PER_UNIT, 0.0);
-    let roll = turn("roll", HUB, Vec3::Y, ROLL_PER_UNIT, 0.0);
+    let roll = turn("roll", hub(), Vec3::Y, ROLL_PER_UNIT, 0.0);
     let mut prims = column_prims(pitch);
     prims.extend(wheel_prims([pitch, roll]));
     prims
@@ -108,13 +113,19 @@ fn column_prims(pitch: P38ControlJoint) -> Vec<P38MeshPrim> {
     polyline(&mut column, &[p, column_top()], COLUMN_RADIUS, 16);
     column.ellipsoid(column_top(), Vec3::splat(COLUMN_RADIUS * 1.1), 14, 8);
     // The polished hub boss, about 60 mm across.
-    column.tube(HUB - Vec3::Y * 0.015, HUB + Vec3::Y * 0.04, 0.03, 0.026, 18);
-    column.ellipsoid(HUB - Vec3::Y * 0.015, Vec3::new(0.03, 0.01, 0.03), 18, 6);
+    column.tube(
+        hub() - Vec3::Y * 0.015,
+        hub() + Vec3::Y * 0.04,
+        0.03,
+        0.026,
+        18,
+    );
+    column.ellipsoid(hub() - Vec3::Y * 0.015, Vec3::new(0.03, 0.01, 0.03), 18, 6);
     let mut housing = MeshBuilder::new();
     let along = Vec3::X * LAMP_HALF_LENGTH;
     housing.tube(
-        LAMP_CENTRE - along,
-        LAMP_CENTRE + along,
+        lamp_centre() - along,
+        lamp_centre() + along,
         LAMP_RADIUS,
         LAMP_RADIUS,
         20,
@@ -122,7 +133,7 @@ fn column_prims(pitch: P38ControlJoint) -> Vec<P38MeshPrim> {
     // The heavy box-section arm from the column's head inboard to the hub,
     // black like the housing, and the switch plate on its aft face: Z-4986
     // shows both from behind the wheel.
-    let (head, hub) = (column_top(), HUB + Vec3::new(0.0, 0.02, 0.0));
+    let (head, hub) = (column_top(), hub() + Vec3::new(0.0, 0.02, 0.0));
     let reach = 0.5 * (head - hub);
     let across = reach.cross(Vec3::Y).normalize_or(Vec3::Z);
     housing.slab(hub + reach, reach, Vec3::Y * 0.022, across * 0.032);

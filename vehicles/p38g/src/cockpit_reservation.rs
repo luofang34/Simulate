@@ -37,6 +37,15 @@ pub const RUDDER_PEDAL_FS_IN: f32 = 95.0;
 pub const INSTRUMENT_PANEL_FS_IN: f32 = 106.0;
 /// Control column's floor attachment, on the starboard side (secondary reading).
 pub const CONTROL_COLUMN_FS_IN: f32 = 116.0;
+/// Control wheel hub's station: in Lockheed's frontal photograph Z-4986 ("P-38 #3474
+/// INSTRUMENT PANEL 12-23-42") the wheel stands in the near foreground, and with its
+/// rim taken as `0.38 m` across (assumed, about a fifth uncertain) its size in the
+/// picture puts the hub here, give or take `4 in`.
+pub const CONTROL_WHEEL_HUB_FS_IN: f32 = 132.0;
+/// Control wheel hub's height above the model's origin, from the same photograph
+/// (`0.40` to `0.45 m`). The photograph hints that the hub is some `0.1 m` to
+/// starboard; no other view confirms it, and the hub is kept on the centreline.
+pub const CONTROL_WHEEL_HUB_Z_M: f32 = 0.42;
 /// Control column off the ship centreline, to starboard (secondary reading).
 pub const CONTROL_COLUMN_BL_IN: f32 = 10.6;
 /// Armour plate behind and above the seat, just ahead of the main beam (AN 01-75FF-2
@@ -137,6 +146,10 @@ pub struct CockpitInteriorContract {
     /// Floor attachment `(x, y, z)` of the control column, which stands on the starboard
     /// side and carries the wheel inboard on an arm.
     pub control_column_base_m: [f32; 3],
+    /// Centre of the control wheel's hub with the column centred: placed from
+    /// Lockheed's frontal photograph Z-4986, with the rim taken as `0.38 m` across
+    /// (assumed, about a fifth uncertain).
+    pub control_wheel_hub_m: [f32; 3],
     /// Model `y` of the rudder pedal pivots.
     pub rudder_pedal_pivot_y_m: f32,
     /// Model `z` of the floor ahead of the nose-wheel well and over it.
@@ -291,6 +304,7 @@ pub fn p38g_cockpit_contract() -> CockpitInteriorContract {
             fs_to_y(CONTROL_COLUMN_FS_IN),
             floor[0],
         ],
+        control_wheel_hub_m: [0.0, fs_to_y(CONTROL_WHEEL_HUB_FS_IN), CONTROL_WHEEL_HUB_Z_M],
         rudder_pedal_pivot_y_m: fs_to_y(RUDDER_PEDAL_FS_IN),
         floor_z_m: floor,
         floor_step_y_m: [fs_to_y(FLOOR_STEP_FS_IN.0), fs_to_y(FLOOR_STEP_FS_IN.1)],
