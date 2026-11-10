@@ -5,8 +5,11 @@
 //! - Reserved 3-axis CG translational RCS (`±0.25G`), momentum-conserving reaction wheels ($5\times 10^6\text{ N}\cdot\text{m}\cdot\text{s}$),
 //! - Continuous pad-to-ascent execution (`run_uninterrupted_mission` failing closed at unimplemented continuous transitions)
 //!   and explicitly tagged staged phase demonstrations (`run_staged_phase_demonstration`).
+//! - A `sim_universe::LocalPlant` (`RaketaPlant`) that a `Universe` flies off the pad, hands to
+//!   orbital propagation above the atmosphere, and takes back on the way down.
 
 mod aero_actuators;
+mod flight_plant;
 mod limiter;
 mod mission;
 mod usd_contract;
@@ -18,6 +21,10 @@ pub use aero_actuators::{
     RaketaStageLaw, evaluate_cg_rcs_force_body_n, evaluate_raketa_aerodynamics,
     raketa_default_rw_mode, raketa_mass_model, resolve_fin_deflections_deg,
     sample_planetary_atmosphere,
+};
+pub use flight_plant::{
+    RAKETA_BOUNDING_RADIUS_M, RAKETA_PLANT_PERIOD, RAKETA_SENSIBLE_AIR_Q_PA, RaketaCommand,
+    RaketaEnvironment, RaketaPlant, RaketaPlantError,
 };
 pub use limiter::{
     ALERT_PROPER_ACCEL_EXCEEDANCE, ProperAccelLimiterInput, ProperAccelLimiterOutput,
