@@ -92,8 +92,15 @@ pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92
 /// Primer inside the gear bays. Assumed yellow zinc chromate: no source says which
 /// primer Lockheed used in the P-38G's wheel wells.
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
-pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
-pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
+/// The cockpit's painted structure. Assumed: a mid interior green of about 0.11
+/// reflectance; no source found states the P-38G's cockpit finish, and the
+/// period photographs are black and white.
+pub(crate) const COCKPIT_GREEN: P38Material = mat([0.085, 0.12, 0.07], 0.05, 0.7);
+/// The instrument board and the glare shield: a black wrinkle finish, as the
+/// surviving board of 43-2285 has
+/// (<https://aeroantique.com/products/p-38g-13-lo-lightening-instrument-panel-43-2285>).
+/// The reflectance is assumed.
+pub(crate) const PANEL_BLACK: P38Material = mat([0.035, 0.035, 0.037], 0.05, 0.85);
 /// The pilot's khaki cotton flying suit (assumed: a 25 % khaki, matte cloth).
 pub(crate) const PILOT_SUIT: P38Material = mat([0.30, 0.24, 0.13], 0.0, 0.9);
 /// His leather flying helmet (assumed: dark russet leather, worn satin).
