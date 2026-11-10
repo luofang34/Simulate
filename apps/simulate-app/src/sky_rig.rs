@@ -33,6 +33,8 @@ pub struct SkyBodies<'a> {
     pub earth_shadow: Option<CelestialEarthShadow>,
     /// Replacement star list; `None` keeps the stars already uploaded.
     pub stars: Option<&'a [CelestialStar]>,
+    /// Whether the sky evaluation fell back to `Navigate`'s analytic ephemeris outside SPK coverage.
+    pub used_analytic_fallback: bool,
 }
 
 impl SkyFrame<'static> {
@@ -203,6 +205,7 @@ fn sky_bodies<'a>(frame: &CelestialFrame, stars: Option<&'a [CelestialStar]>) ->
             danjon: shadow.danjon,
         }),
         stars,
+        used_analytic_fallback: frame.used_analytic_fallback,
     }
 }
 
@@ -237,8 +240,17 @@ mod tests {
 
         let flight = Flight::new().expect("flight");
         let observer = flight.vehicle_state().position_ecef;
+        let strict = CelestialClock::evaluate_strict_with_ephemeris(
+            &flight.celestial_observer_adapter(),
+            ReferenceBody::Earth,
+            observer,
+            1_782_864_000.0,
+        )
+        .expect("SPK sight evaluation on Earth ITRF93 succeeds without fallback");
+        assert!(!strict.used_analytic_fallback);
+
         let mut rig = SkyRig::new();
-        let sky = rig.evaluate(&flight, observer, wall_clock_utc_s());
+        let sky = rig.evaluate(&flight, observer, 1_782_864_000.0);
         let dynamics = |body| {
             flight
                 .dynamics_direction_fixed(body, observer)
@@ -324,5 +336,40 @@ mod tests {
                 .dynamics_direction_fixed(NaifId::SUN, reentry_obs)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn out_of_coverage_epoch_returns_explicit_error_and_triggers_analytic_fallback() {
+        let flight = Flight::new().expect("flight");
+        let observer = flight.vehicle_state().position_ecef;
+        let out_of_coverage_utc_s = 500_000_000.0; // 1985-11-05 UTC (outside 1969 & 2026-2027 kernels)
+
+        let strict_err = CelestialClock::evaluate_strict_with_ephemeris(
+            &flight.celestial_observer_adapter(),
+            ReferenceBody::Earth,
+            observer,
+            out_of_coverage_utc_s,
+        )
+        .expect_err("1985 epoch must be rejected by strict SPK sight evaluation");
+        assert!(
+            format!("{strict_err:?}").contains("OutOfCoverage"),
+            "expected OutOfCoverage, got {strict_err:?}"
+        );
+
+        let mut clock = CelestialClock::new();
+        let fallback_frame = clock.evaluate_with_ephemeris(
+            &flight.celestial_observer_adapter(),
+            SkyTimeMode::LiveUtc,
+            ReferenceBody::Earth,
+            observer,
+            0.0,
+            None,
+            out_of_coverage_utc_s,
+        );
+        assert!(
+            fallback_frame.used_analytic_fallback,
+            "out-of-coverage epoch must explicitly record analytic fallback"
+        );
+        assert!((fallback_frame.sun_direction_fixed.length() - 1.0).abs() < 1e-6);
     }
 }

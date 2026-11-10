@@ -18,7 +18,7 @@ use crate::{
     orientation::BodyOrientationCatalog,
     plant::{
         ContinuousPlantState, MassPropertiesModel, PropagationAudit, PropellantMode,
-        ReactionWheelMode,
+        ReactionWheelMode, SrpSurface,
     },
     time::SimClockAdapter,
 };
@@ -195,6 +195,9 @@ pub struct DiscreteGncState {
     pub integral_att_error_body: [f64; 3],
     /// Pure continuous steering/burn law latched across continuous integration steps.
     pub latched_law: LatchedBurnLaw,
+    /// Optional cannonball solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
+    #[serde(default)]
+    pub srp_surface: Option<SrpSurface>,
 }
 
 impl DiscreteGncState {
@@ -221,6 +224,11 @@ impl DiscreteGncState {
             h.write_f64_canonical(v);
         }
         self.latched_law.write_to_hasher(h);
+        if let Some(srp) = self.srp_surface {
+            h.write_u8(1);
+            h.write_f64_canonical(srp.area_m2);
+            h.write_f64_canonical(srp.reflectivity_coefficient);
+        }
     }
 }
 
@@ -335,6 +343,13 @@ impl VesselCheckpoint {
             pinned_surface: None,
             audit: PropagationAudit::default(),
         }
+    }
+
+    /// Attaches a solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
+    #[must_use]
+    pub const fn with_srp_surface(mut self, surface: SrpSurface) -> Self {
+        self.gnc.srp_surface = Some(surface);
+        self
     }
 
     fn write_physics_state_to_hasher(&self, h: &mut DomainHasher) {

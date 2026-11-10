@@ -422,3 +422,34 @@ fn free_flight_runs_inside_a_universe_on_one_clock() {
         "the universe is restored within one step of the ownship"
     );
 }
+
+#[test]
+fn scripted_scenario_runs_inside_a_universe_on_one_clock() {
+    use sim_orbital::VesselId;
+
+    let mut flight = Flight::new().expect("flight");
+    flight
+        .select(Some(ScenarioProfile::CorridorNominalCruise))
+        .expect("scenario");
+    let _ = fly(&mut flight, 5.25);
+    let super::mode::Mode::Scenario(run) = &flight.mode else {
+        panic!("scenario mode");
+    };
+    assert_eq!(run.universe().now(), flight.now());
+    assert_eq!(
+        run.universe().vehicle_state(VesselId(1)).expect("vessel 1"),
+        flight.vehicle_state()
+    );
+    let live = run.universe().now();
+
+    assert!(flight.scrub_by_seconds(-3.0).expect("-3 s"));
+    let super::mode::Mode::Scenario(run) = &flight.mode else {
+        panic!("scenario mode after scrub");
+    };
+    assert!(run.universe().now() < live);
+    assert_eq!(run.universe().now(), flight.now());
+    assert_eq!(
+        run.universe().vehicle_state(VesselId(1)).expect("vessel 1"),
+        flight.vehicle_state()
+    );
+}

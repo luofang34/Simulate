@@ -67,6 +67,9 @@ pub struct CelestialFrame {
     pub twilight_day_start_deg: f64,
     /// Night ambient scale relative to day.
     pub night_brightness: f32,
+    /// Whether this frame fell back to `Navigate`'s analytic ephemeris because the primary
+    /// ephemeris provider refused the epoch (e.g. out of SPK kernel coverage).
+    pub used_analytic_fallback: bool,
     /// A fresh star list when the stars moved enough to re-upload, else `None`.
     pub stars_update: Option<Vec<StarSkySample>>,
 }
@@ -84,6 +87,7 @@ impl CelestialFrame {
             twilight_night_end_deg: TWILIGHT_NIGHT_END_DEG,
             twilight_day_start_deg: TWILIGHT_DAY_START_DEG,
             night_brightness: NIGHT_BRIGHTNESS,
+            used_analytic_fallback: false,
             stars_update: None,
         }
     }
@@ -94,6 +98,7 @@ impl CelestialFrame {
         let mut frame = Self::with_sun(DVec3::Z, 0.0);
         frame.utc_unix_s = utc_unix_s;
         frame.sun_angular_radius_deg = None;
+        frame.used_analytic_fallback = true;
         frame
     }
 }

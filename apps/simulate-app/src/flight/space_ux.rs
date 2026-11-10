@@ -71,7 +71,71 @@ pub struct SpaceLinkStatus {
     pub occulted_by: Option<NaifId>,
 }
 
+/// Complete spaceflight HUD and instrument overlay snapshot rendered by `MenuOverlay`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpaceHudChrome {
+    /// Active reference frame label (`ICRF`, `FIXED`, or `SYNODIC`).
+    pub frame_label: &'static str,
+    /// Gimbal-free quaternion `FDAI / Navball` state.
+    pub fdai: FdaiNavballState,
+    /// 3D `Orrery` projected body and spacecraft nodes (`SUN`, `EARTH`, `MOON`, `MARS`, `OWNSHIP`, `JWST_L2`).
+    pub orrery: Vec<ProjectedOrreryNode>,
+    /// Mach- and ambient-pressure-adaptive aerospike plume visual envelope.
+    pub plume: AerospikePlumeVisual,
+    /// Live light-time DSN link status to `DSS-14 Goldstone`.
+    pub dsn_link: Option<SpaceLinkStatus>,
+    /// Live spacecraft bus telemetry (`SolarArrayBlock`, `OscillatorBlock`, `SRP`) for `OWNSHIP`.
+    pub ownship_bus: Option<sim_universe::VesselBusTelemetry>,
+    /// Live spacecraft bus telemetry (`SolarArrayBlock`, `OscillatorBlock`, `SRP`) for `JWST_L2`.
+    pub jwst_bus: Option<sim_universe::VesselBusTelemetry>,
+    /// Whether the initial epoch was clamped into the `2026..2028` DE440 kernel span.
+    pub epoch_clamped: bool,
+}
+
 impl Flight {
+    /// Evaluates the complete [`SpaceHudChrome`] snapshot when in spaceflight mode.
+    #[must_use]
+    pub fn space_hud_chrome(&self) -> Option<SpaceHudChrome> {
+        let frame_label = self.space_reference_frame()?.label();
+        let fdai = self.space_fdai_navball()?;
+        let eye = DVec3::new(0.0, 0.0, 2.5e9);
+        let orrery =
+            self.space_orrery_projection(eye, DQuat::IDENTITY, 60.0_f64.to_radians(), 1.0)?;
+        Some(SpaceHudChrome {
+            frame_label,
+            fdai,
+            orrery,
+            plume: self.space_aerospike_plume()?,
+            dsn_link: self.space_dsn_link_status(),
+            ownship_bus: self.space_ownship_bus_telemetry(),
+            jwst_bus: self.space_jwst_l2_bus_telemetry(),
+            epoch_clamped: self.ephemeris_epoch_clamped(),
+        })
+    }
+    /// Whether the active flight's epoch was clamped into the `2026..2028` DE440 kernel span.
+    #[must_use]
+    pub fn ephemeris_epoch_clamped(&self) -> bool {
+        matches!(&self.mode, Mode::Space(world) if world.epoch_clamped())
+    }
+
+    /// Live spacecraft bus telemetry for the spaceflight ownship.
+    #[must_use]
+    pub fn space_ownship_bus_telemetry(&self) -> Option<sim_universe::VesselBusTelemetry> {
+        match &self.mode {
+            Mode::Space(world) => world.ownship_bus_telemetry(),
+            Mode::Free { .. } | Mode::Scenario(_) => None,
+        }
+    }
+
+    /// Live spacecraft bus telemetry for the `JWST_L2` observatory at Sun–Earth $L_2$.
+    #[must_use]
+    pub fn space_jwst_l2_bus_telemetry(&self) -> Option<sim_universe::VesselBusTelemetry> {
+        match &self.mode {
+            Mode::Space(world) => world.jwst_l2_bus_telemetry(),
+            Mode::Free { .. } | Mode::Scenario(_) => None,
+        }
+    }
+
     /// Active [`SpaceReferenceFrame`] when a spaceflight is flying.
     #[must_use]
     pub fn space_reference_frame(&self) -> Option<SpaceReferenceFrame> {
@@ -387,28 +451,29 @@ impl Flight {
 }
 
 fn solar_system_occultation_env() -> OccultationEnvironmentModel {
+    let body = |body, shape| OccultingBodySpec { body, shape };
     OccultationEnvironmentModel {
         bodies: vec![
-            OccultingBodySpec {
-                body: NaifId::EARTH,
-                shape: OccultingShape::Ellipsoid(BodyEllipsoid::WGS84),
-            },
-            OccultingBodySpec {
-                body: NaifId::MOON,
-                shape: OccultingShape::Sphere {
+            body(
+                NaifId::EARTH,
+                OccultingShape::Ellipsoid(BodyEllipsoid::WGS84),
+            ),
+            body(
+                NaifId::MOON,
+                OccultingShape::Sphere {
                     radius_m: 1_737_400.0,
                 },
-            },
-            OccultingBodySpec {
-                body: NaifId::MARS,
-                shape: OccultingShape::Ellipsoid(BodyEllipsoid::MARS_IAU),
-            },
-            OccultingBodySpec {
-                body: NaifId::SUN,
-                shape: OccultingShape::Sphere {
+            ),
+            body(
+                NaifId::MARS,
+                OccultingShape::Ellipsoid(BodyEllipsoid::MARS_IAU),
+            ),
+            body(
+                NaifId::SUN,
+                OccultingShape::Sphere {
                     radius_m: 695_700_000.0,
                 },
-            },
+            ),
         ],
     }
 }

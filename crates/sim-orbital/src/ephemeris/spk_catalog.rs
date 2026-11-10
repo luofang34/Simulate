@@ -1,8 +1,7 @@
-//! Multi-file binary `DAF/SPK` catalog implementation with precedence and LCA chain resolution.
-
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+//! Multi-file binary `DAF/SPK` catalog implementation backed by [`navigate_astrodynamics::spk::SpkEphemeris`].
 
 use glam::DVec3;
+use navigate_astrodynamics::spk::{SpkDirectedLink, SpkEphemeris as NavSpkEphemeris};
 
 use crate::{
     daf::{SpkFile, SpkSegment},
@@ -15,26 +14,16 @@ use super::{
     DerivativeOrder, EphemerisCatalog, EphemerisError, KinematicStateIcrf, MarsCenterApproximation,
 };
 
-#[derive(Clone, Copy, Debug)]
-struct DirectedLink {
-    seg_indices_high_to_low: usize,
-    forward: bool,
-}
-
-#[derive(Clone, Debug)]
-struct EdgeSlot {
-    candidates: Vec<(usize, bool)>,
-}
-
 /// Multi-file binary `DAF/SPK` catalog with last-loaded segment precedence and shortest-chain LCA resolution.
+///
+/// Shares the underlying [`navigate_astrodynamics::spk::SpkEphemeris`] segment graph and
+/// Chebyshev evaluator with `Navigate`.
 #[derive(Clone, Debug)]
 pub struct SpkEphemerisCatalog {
     hash: ContentHash,
     mars_policy: MarsCenterApproximation,
-    edge_lists: Vec<EdgeSlot>,
+    inner: NavSpkEphemeris,
     segments: Vec<SpkSegment>,
-    adjacency: BTreeMap<NaifId, Vec<(NaifId, DirectedLink)>>,
-    known_bodies: BTreeSet<NaifId>,
 }
 
 impl SpkEphemerisCatalog {
@@ -55,55 +44,17 @@ impl SpkEphemerisCatalog {
         }
 
         let mut segments = Vec::new();
+        let mut nav_files = Vec::with_capacity(files.len());
         for f in files {
             segments.extend_from_slice(f.segments());
-        }
-
-        let mut pair_map: BTreeMap<(NaifId, NaifId), Vec<(usize, bool)>> = BTreeMap::new();
-        let mut known_bodies = BTreeSet::new();
-        let mut idx = 0_usize;
-        while let Some(seg) = segments.get(idx) {
-            let t = seg.target();
-            let c = seg.center();
-            known_bodies.insert(t);
-            known_bodies.insert(c);
-            let (lo, hi, is_lo_to_hi) = if t <= c { (t, c, true) } else { (c, t, false) };
-            pair_map
-                .entry((lo, hi))
-                .or_default()
-                .push((idx, is_lo_to_hi));
-            idx = idx.wrapping_add(1);
-        }
-
-        let mut edge_lists = Vec::with_capacity(pair_map.len());
-        let mut adjacency: BTreeMap<NaifId, Vec<(NaifId, DirectedLink)>> = BTreeMap::new();
-        for ((lo, hi), mut list) in pair_map {
-            list.reverse();
-            let slot = edge_lists.len();
-            edge_lists.push(EdgeSlot { candidates: list });
-            adjacency.entry(lo).or_default().push((
-                hi,
-                DirectedLink {
-                    seg_indices_high_to_low: slot,
-                    forward: true,
-                },
-            ));
-            adjacency.entry(hi).or_default().push((
-                lo,
-                DirectedLink {
-                    seg_indices_high_to_low: slot,
-                    forward: false,
-                },
-            ));
+            nav_files.push(f.into_nav());
         }
 
         Self {
             hash: h.finish(),
             mars_policy,
-            edge_lists,
+            inner: NavSpkEphemeris::from_files(nav_files),
             segments,
-            adjacency,
-            known_bodies,
         }
     }
 
@@ -125,11 +76,18 @@ impl SpkEphemerisCatalog {
         self.mars_policy
     }
 
+    /// Underlying [`navigate_astrodynamics::spk::SpkEphemeris`] instance shared with `Navigate`.
+    #[must_use]
+    pub const fn as_navigate_spk(&self) -> &NavSpkEphemeris {
+        &self.inner
+    }
+
     fn remap_body(&self, id: NaifId) -> Result<NaifId, EphemerisError> {
-        if self.known_bodies.contains(&id) {
+        let known = self.inner.known_bodies();
+        if known.contains(&id.0) {
             return Ok(id);
         }
-        if id == NaifId::MARS && self.known_bodies.contains(&NaifId::MARS_BARYCENTER) {
+        if id == NaifId::MARS && known.contains(&NaifId::MARS_BARYCENTER.0) {
             return match self.mars_policy {
                 MarsCenterApproximation::StrictRequire499 => {
                     Err(EphemerisError::MissingBodyCenter {
@@ -142,7 +100,7 @@ impl SpkEphemerisCatalog {
         }
         if let Some(bary) = id.parent_planetary_barycenter()
             && id.0 % 100 == 99
-            && self.known_bodies.contains(&bary)
+            && known.contains(&bary.0)
         {
             return Err(EphemerisError::MissingBodyCenter {
                 requested: id,
@@ -156,56 +114,31 @@ impl SpkEphemerisCatalog {
         &self,
         target: NaifId,
         center: NaifId,
-    ) -> Result<Vec<DirectedLink>, EphemerisError> {
-        if target == center {
-            return Ok(Vec::new());
-        }
-        let mut visited: BTreeMap<NaifId, Option<(NaifId, DirectedLink)>> = BTreeMap::new();
-        let mut queue = VecDeque::new();
-        visited.insert(target, None);
-        queue.push_back(target);
-
-        while let Some(curr) = queue.pop_front() {
-            if curr == center {
-                let mut chain = Vec::new();
-                let mut walk = center;
-                while let Some(Some((prev, link))) = visited.get(&walk).copied() {
-                    chain.push(link);
-                    walk = prev;
-                }
-                chain.reverse();
-                return Ok(chain);
-            }
-            if let Some(neighbors) = self.adjacency.get(&curr) {
-                for &(next, link) in neighbors {
-                    if let std::collections::btree_map::Entry::Vacant(e) = visited.entry(next) {
-                        e.insert(Some((curr, link)));
-                        queue.push_back(next);
-                    }
-                }
-            }
-        }
-        Err(EphemerisError::UnconnectedBodies { target, center })
+    ) -> Result<Vec<SpkDirectedLink>, EphemerisError> {
+        self.inner
+            .resolve_chain_links(target.0, center.0)
+            .map_err(|_| EphemerisError::UnconnectedBodies { target, center })
     }
 
     fn eval_link(
         &self,
-        link: DirectedLink,
+        link: SpkDirectedLink,
         epoch: TdbEpoch,
     ) -> Result<Option<KinematicStateIcrf>, EphemerisError> {
-        let Some(slot) = self.edge_lists.get(link.seg_indices_high_to_low) else {
-            return Ok(None);
-        };
-        for &(seg_idx, is_lo_to_hi) in &slot.candidates {
+        for &(seg_idx, is_lo_to_hi) in self.inner.link_candidates(link) {
             let Some(seg) = self.segments.get(seg_idx) else {
                 continue;
             };
             if seg.contains(epoch) {
-                let (pos_m, vel_m_s, acc_m_s2) = seg.evaluate_icrf(epoch)?;
+                let (t_whole_s, t_sub_s) = epoch.split_j2000_seconds();
+                let (p, v, a) = seg
+                    .inner()
+                    .evaluate_pva_split_j2000(t_whole_s, t_sub_s)
+                    .map_err(crate::daf::DafError::from)?;
                 let raw = KinematicStateIcrf {
-                    pos_m,
-                    vel_m_s,
-                    acc_m_s2,
+                    pos_m: DVec3::from_array(p),
+                    vel_m_s: DVec3::from_array(v),
+                    acc_m_s2: DVec3::from_array(a),
                 };
                 return Ok(Some(if link.forward == is_lo_to_hi {
                     raw
@@ -217,12 +150,10 @@ impl SpkEphemerisCatalog {
         Ok(None)
     }
 
-    fn link_coverage(&self, link: DirectedLink) -> CoverageSet {
-        let Some(slot) = self.edge_lists.get(link.seg_indices_high_to_low) else {
-            return CoverageSet::empty();
-        };
-        let mut spans = Vec::with_capacity(slot.candidates.len());
-        for &(seg_idx, _) in &slot.candidates {
+    fn link_coverage(&self, link: SpkDirectedLink) -> CoverageSet {
+        let candidates = self.inner.link_candidates(link);
+        let mut spans = Vec::with_capacity(candidates.len());
+        for &(seg_idx, _) in candidates {
             if let Some(seg) = self.segments.get(seg_idx) {
                 spans.push(seg.span_ns());
             }
@@ -318,11 +249,9 @@ impl EphemerisCatalog for SpkEphemerisCatalog {
         };
         let mut knots = Vec::new();
         for link in chain {
-            if let Some(slot) = self.edge_lists.get(link.seg_indices_high_to_low) {
-                for &(seg_idx, _) in &slot.candidates {
-                    if let Some(seg) = self.segments.get(seg_idx) {
-                        seg.collect_interior_knots_in(start, end, &mut knots);
-                    }
+            for &(seg_idx, _) in self.inner.link_candidates(link) {
+                if let Some(seg) = self.segments.get(seg_idx) {
+                    seg.collect_interior_knots_in(start, end, &mut knots);
                 }
             }
         }

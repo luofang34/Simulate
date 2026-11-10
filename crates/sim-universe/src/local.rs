@@ -41,6 +41,19 @@ pub trait LocalPlant {
     /// tier policy leaves such a vessel in the local tier however high it
     /// is.
     fn holds_local_tier(&self) -> bool;
+    /// Instantaneous aerodynamic dynamic pressure $q_\infty$ (`Pa`) acting on
+    /// the vessel in the local tier (`0.0` for vacuum plants).
+    fn dynamic_pressure_pa(&self) -> f64 {
+        0.0
+    }
+    /// Whether the vessel is in contact with or pinned to the ground surface.
+    fn is_ground_contact(&self) -> bool {
+        false
+    }
+    /// Optional cannonball solar radiation pressure surface carried into the orbital tier.
+    fn srp_surface(&self) -> Option<sim_orbital::SrpSurface> {
+        None
+    }
     /// Advances one period.
     fn step(&mut self) -> Result<(), UniverseError>;
     /// Advances by whole periods to the last step instant at or before

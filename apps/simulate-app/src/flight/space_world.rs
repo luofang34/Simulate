@@ -7,6 +7,8 @@
 //! aircraft's whose "up" is the rocket's nose: the chase camera then looks at
 //! its side, and the stick tilts the nose away from or across the view.
 
+use std::sync::Arc;
+
 use glam::{DMat3, DQuat, DVec3};
 use sim_apollo::{CockpitInstrumentPanel, CockpitInstrumentSnapshot, EarthVehicleSources};
 use sim_core::{
@@ -20,11 +22,14 @@ use sim_orbital::{
 use sim_raketa::{RAKETA_CG_Y_M, RAKETA_PLANT_PERIOD, RaketaCommand, RaketaPlant};
 use sim_scenario::ScenarioWorld;
 use sim_spacetime::SimEpoch;
-use sim_universe::{Tier, TierPolicy, Universe, UniverseError};
+use sim_universe::{Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry};
 
 use super::free_world::SolarSystem;
 use crate::error::AppSimError;
 use crate::world_surface::WorldSurfaceHandle;
+
+mod jwst;
+use jwst::spawn_jwst_l2;
 
 /// The vessel the pilot flies.
 const OWNSHIP: VesselId = VesselId(1);
@@ -51,6 +56,7 @@ const RAKETA_FROM_AIRCRAFT: DMat3 = DMat3::from_cols(
 /// A spaceflight's universe and what the cockpit shows of it.
 pub(super) struct SpaceWorld {
     universe: Universe,
+    solar: Arc<SolarSystem>,
     ground_height_m: f64,
     central: NaifId,
     reference_frame: super::space_ux::SpaceReferenceFrame,
@@ -58,6 +64,8 @@ pub(super) struct SpaceWorld {
     nose_icrf: Option<DVec3>,
     ascent_guidance: bool,
     panel: CockpitInstrumentPanel,
+    jwst_last_sk: SimInstant,
+    epoch_clamped: bool,
 }
 
 impl SpaceWorld {
@@ -65,8 +73,9 @@ impl SpaceWorld {
     /// ellipsoid, at the first tick of `epoch`.
     pub(super) fn on_pad(
         epoch: SimEpoch,
-        solar: &SolarSystem,
+        solar: &Arc<SolarSystem>,
         ground_height_m: f64,
+        epoch_clamped: bool,
     ) -> Result<Self, AppSimError> {
         let site = Geodetic::from_degrees(PAD_LAT_DEG, PAD_LON_DEG, ground_height_m);
         let environment = solar.raketa_environment();
@@ -87,6 +96,7 @@ impl SpaceWorld {
         let truth = aircraft_axes(universe.vehicle_state(OWNSHIP).map_err(universe_error)?);
         let mut world = Self {
             universe,
+            solar: Arc::clone(solar),
             ground_height_m,
             central: NaifId::EARTH,
             reference_frame: super::space_ux::SpaceReferenceFrame::BodyInertial,
@@ -94,9 +104,15 @@ impl SpaceWorld {
             nose_icrf: None,
             ascent_guidance: true,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
+            jwst_last_sk: SimInstant::START,
+            epoch_clamped,
         };
         world.observe();
         Ok(world)
+    }
+
+    pub(super) const fn epoch_clamped(&self) -> bool {
+        self.epoch_clamped
     }
 
     /// Ellipsoidal height of the ground at the pad, where `surface` knows it.
@@ -146,10 +162,26 @@ impl SpaceWorld {
         !self.flown(controls.clamped()) && self.tier() == Tier::Orbital
     }
 
-    /// Carries a coasting vessel `span` on in one stride of orbital propagation.
+    /// Carries a coasting vessel `span` on in orbital propagation, running periodic
+    /// `JWST_L2` station-keeping trim burns so its halo trajectory stays bounded with zero
+    /// state reinitializations.
     pub(super) fn coast(&mut self, span: TickSpan) -> Result<(), AppSimError> {
-        let until = self.universe.now().advanced(span);
-        self.universe.advance_to(until).map_err(universe_error)?;
+        let target = self.universe.now().advanced(span);
+        let sk_cadence = TickSpan::from_seconds_and_subsec_ticks(6 * 3_600, 0);
+        while self.universe.now() < target {
+            let remaining = target.duration_since(self.universe.now());
+            let step = if remaining > sk_cadence {
+                sk_cadence
+            } else {
+                remaining
+            };
+            let next = self.universe.now().advanced(step);
+            self.universe.advance_to(next).map_err(universe_error)?;
+            if self.universe.now().duration_since(self.jwst_last_sk) >= sk_cadence {
+                self.maintain_jwst_l2()?;
+                self.jwst_last_sk = self.universe.now();
+            }
+        }
         self.settle()
     }
 
@@ -221,6 +253,19 @@ impl SpaceWorld {
 
     pub(super) fn jwst_l2_state(&self) -> Option<ContinuousPlantState> {
         self.universe.inertial_state(JWST_L2).ok()
+    }
+
+    pub(super) fn jwst_l2_bus_telemetry(&self) -> Option<VesselBusTelemetry> {
+        self.universe.bus_telemetry(JWST_L2).ok()
+    }
+
+    pub(super) fn ownship_bus_telemetry(&self) -> Option<VesselBusTelemetry> {
+        self.universe.bus_telemetry(OWNSHIP).ok()
+    }
+
+    #[cfg(test)]
+    pub(super) const fn state_reinitializations(&self) -> u64 {
+        self.universe.state_reinitializations()
     }
 
     /// Hands the flight to ascent guidance, or to the pilot. A spaceflight
@@ -370,70 +415,4 @@ fn aircraft_axes(state: VehicleState) -> VehicleState {
 
 fn universe_error(error: UniverseError) -> AppSimError {
     AppSimError::Universe(Box::new(error))
-}
-
-fn spawn_jwst_l2(
-    universe: &mut Universe,
-    epoch: &SimEpoch,
-    solar: &SolarSystem,
-    environment: &sim_raketa::RaketaEnvironment,
-) -> Result<(), AppSimError> {
-    let tdb_start = epoch.tdb_at(SimInstant::START);
-    let Ok(frame) = sim_orbital::SynodicFrame::from_ephemeris(
-        NaifId::SUN,
-        NaifId::EARTH,
-        tdb_start,
-        solar.ephemeris(),
-    ) else {
-        return Ok(());
-    };
-    let ctx = solar.context();
-    let mu_sun = ctx
-        .force_model
-        .constants()
-        .require_mu(NaifId::SUN)
-        .unwrap_or(1.327_124_400_41e20);
-    let mu_earth = ctx
-        .force_model
-        .constants()
-        .require_mu(NaifId::EARTH)
-        .unwrap_or(3.986_004_418e14);
-    let l2_seed =
-        sim_orbital::approximate_l2_libration_seed(&frame, mu_sun, mu_earth, 120_000_000.0, true);
-    let (pos_rel_earth, vel_rel_earth) = frame.synodic_to_icrf_rel_secondary(
-        l2_seed.pos_syn_rel_secondary_m,
-        l2_seed.vel_syn_rel_secondary_m_s,
-    );
-    let jwst_state = ContinuousPlantState {
-        primary_body: NaifId::EARTH,
-        pos_rel_icrf_m: pos_rel_earth,
-        vel_rel_icrf_m_s: vel_rel_earth,
-        q_body_to_icrf: DQuat::IDENTITY,
-        omega_body_rad_s: DVec3::ZERO,
-        propellant_mass_kg: 150.0,
-        h_rw_body_nms: DVec3::ZERO,
-    };
-    let jwst_cfg = sim_orbital::VesselConfig {
-        mass_model: sim_orbital::MassPropertiesModel::diagonal(
-            6_200.0,
-            [45_000.0, 45_000.0, 25_000.0],
-            [0.0; 3],
-        ),
-        propellant_mode: sim_orbital::PropellantMode::InfiniteConstantMass,
-        rw_mode: sim_orbital::ReactionWheelMode::ConserveMomentum {
-            h_max_nms: 0.0,
-            tau_max_nm: 0.0,
-        },
-        tolerances: ctx.tolerances,
-        bounding_radius_m: 11.0,
-        auto_soi_switch: false,
-    };
-    universe
-        .insert_orbital(
-            JWST_L2,
-            jwst_cfg,
-            jwst_state,
-            RaketaPlant::factory(environment.clone()),
-        )
-        .map_err(universe_error)
 }

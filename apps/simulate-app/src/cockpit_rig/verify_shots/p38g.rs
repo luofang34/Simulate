@@ -204,6 +204,7 @@ fn draw_chase_orbit_lit(
         OverlayContent::FlightChrome {
             banner: None,
             efb: chrome.as_ref(),
+            space: None,
         },
         SHOT_SIZE,
     )?;

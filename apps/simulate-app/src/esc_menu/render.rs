@@ -7,6 +7,7 @@ use super::scene::{Highlights, tessellate_banner, tessellate_hub};
 use super::view::HubView;
 use crate::cockpit_rig::efb_chrome::EfbChrome;
 use crate::error::AppSimError;
+use crate::flight::SpaceHudChrome;
 
 /// What the overlay shows this frame.
 #[derive(Debug, Clone, Copy)]
@@ -22,12 +23,15 @@ pub enum OverlayContent<'a> {
     },
     /// A one-line banner over the flight.
     Banner(&'a str),
-    /// In-flight chrome: the optional takeover banner and the EFB's bezel and buttons.
+    /// In-flight chrome: the optional takeover banner, the EFB's bezel and buttons, and the
+    /// spaceflight HUD overlay.
     FlightChrome {
         /// Takeover banner text, if shown.
         banner: Option<&'a str>,
         /// The EFB's chrome, if the EFB is shown.
         efb: Option<&'a EfbChrome>,
+        /// Spaceflight HUD overlay (`FDAI / Navball`, 3D `Orrery`, `AerospikePlumeVisual`), if in spaceflight.
+        space: Option<&'a SpaceHudChrome>,
     },
 }
 
@@ -66,9 +70,10 @@ impl MenuOverlay {
             OverlayContent::FlightChrome {
                 banner: None,
                 efb: None,
+                space: None,
             } => return Ok(()),
-            OverlayContent::FlightChrome { banner, efb } => {
-                tessellate_flight_chrome(banner, efb, [w, h])?
+            OverlayContent::FlightChrome { banner, efb, space } => {
+                tessellate_flight_chrome(banner, efb, space, [w, h])?
             }
         };
         let target = match self.target.as_mut() {

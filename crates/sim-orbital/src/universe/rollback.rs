@@ -6,7 +6,6 @@ use sim_spacetime::SimInstant;
 use crate::{
     checkpoint::{PropagatorKind, VesselCheckpoint, VesselConfig},
     contact::PinnedSurfaceState,
-    dop853::propagate_plant_interval,
     ephemeris::EphemerisCatalog,
     gravity::ForceModel,
     orientation::BodyOrientationCatalog,
@@ -15,7 +14,10 @@ use crate::{
     universe::{
         SchedulerError,
         snapshot::VesselSnapshotRecord,
-        worker::{MAX_SPECULATIVE_SEGMENTS, SpeculativeProposal, SpeculativeSegmentEntry},
+        worker::{
+            MAX_SPECULATIVE_SEGMENTS, SpeculativeProposal, SpeculativeSegmentEntry,
+            propagate_checkpoint_interval,
+        },
     },
 };
 
@@ -310,24 +312,17 @@ impl VesselTimeline {
             });
         }
 
-        let out = propagate_plant_interval(
-            &containing.start_checkpoint.plant,
+        let out = propagate_checkpoint_interval(
+            &containing.start_checkpoint,
             clock.instant_to_tdb(containing.start_instant),
             clock.instant_to_tdb(target),
             Some(containing.segment.duration_s),
             &self.config.tolerances,
-            &self.config.mass_model,
-            self.config.propellant_mode,
-            self.config.rw_mode,
+            &self.config,
             force_model,
             ephemeris,
             orientation,
-            &containing.start_checkpoint.gnc.latched_law,
-        )
-        .map_err(|source| SchedulerError::Propagation {
-            vessel_id: containing.start_checkpoint.vessel_id,
-            source,
-        })?;
+        )?;
         let cp = containing.start_checkpoint.advanced_continuous(
             target,
             out.final_state,

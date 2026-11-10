@@ -84,7 +84,14 @@ impl SolarFluxModel {
 
         let mut lit_fraction = 1.0_f64;
         for occulter in &self.occulters {
-            let to_body = body_at(occulter.body)? - position_ssb_m;
+            let to_body = match body_at(occulter.body) {
+                Ok(pos_m) => pos_m - position_ssb_m,
+                Err(
+                    EphemerisError::UnconnectedBodies { .. }
+                    | EphemerisError::MissingBodyCenter { .. },
+                ) => continue,
+                Err(err) => return Err(err),
+            };
             let visible = disc_fraction_visible(
                 to_sun_icrf,
                 sun_distance_m,

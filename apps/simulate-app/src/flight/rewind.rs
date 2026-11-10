@@ -35,7 +35,10 @@ enum CheckpointState {
         universe: Box<UniverseCheckpoint>,
         panel: Box<CockpitInstrumentPanel>,
     },
-    Scenario(Box<ScenarioSnapshot>),
+    Scenario {
+        run: Box<ScenarioSnapshot>,
+        universe: Box<UniverseCheckpoint>,
+    },
 }
 
 /// The flight as it was at `at`.
@@ -66,7 +69,10 @@ impl FlightCheckpoint {
             }
             Mode::Scenario(run) => Some(Self {
                 at: run.now(),
-                state: CheckpointState::Scenario(Box::new(run.snapshot())),
+                state: CheckpointState::Scenario {
+                    run: Box::new(run.snapshot()),
+                    universe: Box::new(run.checkpoint_universe()),
+                },
                 sensors: *sensors,
             }),
             // A spaceflight keeps no rewind history.
@@ -100,7 +106,13 @@ impl FlightCheckpoint {
                 panel.clone_from(saved_panel);
                 Ok(())
             }
-            (Mode::Scenario(run), CheckpointState::Scenario(saved)) => Ok(run.restore(saved)?),
+            (
+                Mode::Scenario(run),
+                CheckpointState::Scenario {
+                    run: saved_run,
+                    universe: saved_universe,
+                },
+            ) => run.restore_with_universe(saved_run, saved_universe),
             _ => Err(ScenarioError::SnapshotMismatch {
                 detail: "the checkpoint was taken from another kind of flight",
             }

@@ -1,6 +1,7 @@
 use glam::DVec3;
 use navigate_celestial::{
-    AnalyticEphemeris, Correction, Ephemeris, Epoch, FrameId, State, civil_time, observe_body,
+    AnalyticEphemeris, Correction, Ephemeris, Epoch, FrameId, ObservationError, State, civil_time,
+    observe_body,
 };
 use sim_geo::{InertialTransform, UtcTime};
 
@@ -30,6 +31,20 @@ pub(super) fn frame_with<P: Ephemeris>(
     epoch: Epoch,
     observer_fixed_m: DVec3,
 ) -> Option<CelestialFrame> {
+    if let Ok(frame) = frame_from(provider, epoch, observer_fixed_m) {
+        return Some(frame);
+    }
+    let mut fallback_frame = frame_from(&AnalyticEphemeris, epoch, observer_fixed_m).ok()?;
+    fallback_frame.used_analytic_fallback = true;
+    Some(fallback_frame)
+}
+
+/// Evaluates the lunar sky strictly from `provider` without falling back.
+pub(super) fn frame_from<P: Ephemeris>(
+    provider: &P,
+    epoch: Epoch,
+    observer_fixed_m: DVec3,
+) -> Result<CelestialFrame, ObservationError<P::Error>> {
     let orientation = moon_orientation(epoch);
     let observer_j2000 = orientation.fixed_to_j2000(observer_fixed_m);
     let observer = State {
@@ -38,17 +53,7 @@ pub(super) fn frame_with<P: Ephemeris>(
         epoch: civil_time(epoch).terrestrial,
         frame: MOON_J2000,
     };
-    let sight = observe_body(provider, observer, SUN, Correction::VacuumReception)
-        .ok()
-        .or_else(|| {
-            observe_body(
-                &AnalyticEphemeris,
-                observer,
-                SUN,
-                Correction::VacuumReception,
-            )
-            .ok()
-        })?;
+    let sight = observe_body(provider, observer, SUN, Correction::VacuumReception)?;
     let direction = orientation
         .j2000_to_fixed(DVec3::from_array(sight.direction))
         .normalize();
@@ -56,5 +61,5 @@ pub(super) fn frame_with<P: Ephemeris>(
         .clamp(-1.0, 1.0)
         .asin()
         .to_degrees();
-    Some(CelestialFrame::with_sun(direction, radius_deg))
+    Ok(CelestialFrame::with_sun(direction, radius_deg))
 }

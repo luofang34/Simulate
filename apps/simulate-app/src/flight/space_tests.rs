@@ -250,3 +250,114 @@ fn spaceflight_navigation_ux_warp_governor_and_light_time_dsn_link_are_live() {
         .expect("mars surface dsn link");
     assert!(mars_surface_link.light_time_s > 180.0);
 }
+
+#[test]
+fn jwst_l2_observatory_stays_bounded_under_stationkeeping_and_runs_bus_devices() {
+    use sim_core::TickSpan;
+    use sim_orbital::{SynodicFrame, approximate_l2_libration_seed};
+
+    let mut flight = Flight::new().expect("flight");
+    flight.fly_raketa().expect("spaceflight");
+    fly_to_orbit(&mut flight);
+
+    let Mode::Space(world) = &mut flight.mode else {
+        panic!("spaceflight");
+    };
+    let span = TickSpan::from_seconds_and_subsec_ticks(12 * 3_600, 0);
+    world
+        .coast(span)
+        .expect("12-hour coast with L2 stationkeeping");
+    assert_eq!(
+        world.state_reinitializations(),
+        0,
+        "JWST_L2 and ownship must advance with zero state reinitializations"
+    );
+    let jwst = world.jwst_l2_state().expect("jwst state");
+    let at = world.epoch().tdb_at(world.now());
+    let frame =
+        SynodicFrame::from_ephemeris(NaifId::SUN, NaifId::EARTH, at, flight.solar.ephemeris())
+            .expect("synodic frame");
+    let ctx = flight.solar.context();
+    let mu_sun = ctx
+        .force_model
+        .constants()
+        .require_mu(NaifId::SUN)
+        .expect("mu_sun");
+    let mu_earth = ctx
+        .force_model
+        .constants()
+        .require_mu(NaifId::EARTH)
+        .expect("mu_earth");
+    let seed = approximate_l2_libration_seed(&frame, mu_sun, mu_earth, 120_000_000.0, true);
+    let (pos_syn, _) =
+        frame.icrf_rel_secondary_to_synodic(jwst.pos_rel_icrf_m, jwst.vel_rel_icrf_m_s);
+    let dist_from_l2_x_m = (pos_syn.x - seed.l2_x_rel_secondary_m).abs();
+    assert!(
+        dist_from_l2_x_m < 2.8e8,
+        "JWST_L2 x-excursion from L2 must stay bounded: {dist_from_l2_x_m:.0} m"
+    );
+
+    let jwst_bus = flight.space_jwst_l2_bus_telemetry().expect("jwst bus");
+    assert!(jwst_bus.solar_power_w > 1_000.0, "{jwst_bus:?}");
+    assert!(jwst_bus.clock_rate_offset.abs() > 1.0e-11, "{jwst_bus:?}");
+    assert!(
+        jwst_bus.oscillator_tau_minus_tdb_s.abs() > 5.0e-6,
+        "{jwst_bus:?}"
+    );
+
+    let own_bus = flight.space_ownship_bus_telemetry().expect("ownship bus");
+    assert!(own_bus.clock_rate_offset.abs() > 1.0e-11, "{own_bus:?}");
+    assert!(
+        own_bus.oscillator_tau_minus_tdb_s.abs() > 1.0e-5,
+        "{own_bus:?}"
+    );
+}
+
+#[test]
+fn free_flight_preserves_wall_clock_outside_de440_while_spaceflight_flags_clamped_epoch() {
+    use sim_core::SimInstant;
+
+    let mut flight = Flight::new().expect("flight");
+    let out_of_kernel_utc_s = 1_893_456_000.0; // 2030-01-01T00:00:00Z
+    flight.mode = Mode::free_at(
+        FreeFlightVehicle::Kinematic,
+        super::mode::FreeSpawn::Delaware,
+        &flight.surface,
+        &flight.time_scales,
+        &flight.solar,
+        out_of_kernel_utc_s,
+    )
+    .expect("free mode at 2030");
+    flight.begin_flight().expect("begin free flight");
+    assert!(!flight.ephemeris_epoch_clamped());
+    let utc_at_start = flight.sim_epoch().utc_at(SimInstant::START).expect("utc");
+    assert!(
+        (utc_at_start.unix_seconds() - out_of_kernel_utc_s).abs() < 1.0,
+        "free flight must preserve the exact wall-clock UTC without silent clamping"
+    );
+    let mut rig = SkyRig::new();
+    let sky = rig.evaluate(
+        &flight,
+        flight.vehicle_state().position_ecef,
+        out_of_kernel_utc_s,
+    );
+    assert!(
+        sky.bodies
+            .as_ref()
+            .is_some_and(|b| b.used_analytic_fallback),
+        "out-of-kernel free flight sky evaluation must flag used_analytic_fallback"
+    );
+
+    flight.mode = Mode::space_at(
+        &flight.surface,
+        &flight.time_scales,
+        &flight.solar,
+        out_of_kernel_utc_s,
+    )
+    .expect("space mode clamped from 2030");
+    flight.begin_flight().expect("begin spaceflight");
+    assert!(
+        flight.ephemeris_epoch_clamped(),
+        "spaceflight started outside kernel coverage must flag ephemeris_epoch_clamped"
+    );
+}

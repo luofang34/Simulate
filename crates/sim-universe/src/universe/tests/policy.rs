@@ -186,3 +186,125 @@ fn a_plant_only_flight_dynamics_can_fly_never_goes_orbital() {
         Err(UniverseError::LocalOnly(VesselId(1)))
     ));
 }
+
+struct HighDynamicPressurePlant(Box<dyn LocalPlant>);
+
+impl LocalPlant for HighDynamicPressurePlant {
+    fn body(&self) -> BodyEllipsoid {
+        self.0.body()
+    }
+    fn period(&self) -> TickSpan {
+        self.0.period()
+    }
+    fn now(&self) -> SimInstant {
+        self.0.now()
+    }
+    fn state(&self) -> VehicleState {
+        self.0.state()
+    }
+    fn orbital_body(&self) -> Option<OrbitalBody> {
+        self.0.orbital_body()
+    }
+    fn holds_local_tier(&self) -> bool {
+        false
+    }
+    fn dynamic_pressure_pa(&self) -> f64 {
+        25.0
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn step(&mut self) -> Result<(), UniverseError> {
+        self.0.step()
+    }
+}
+
+struct GroundContactPlant(Box<dyn LocalPlant>);
+
+impl LocalPlant for GroundContactPlant {
+    fn body(&self) -> BodyEllipsoid {
+        self.0.body()
+    }
+    fn period(&self) -> TickSpan {
+        self.0.period()
+    }
+    fn now(&self) -> SimInstant {
+        self.0.now()
+    }
+    fn state(&self) -> VehicleState {
+        self.0.state()
+    }
+    fn orbital_body(&self) -> Option<OrbitalBody> {
+        self.0.orbital_body()
+    }
+    fn holds_local_tier(&self) -> bool {
+        false
+    }
+    fn is_ground_contact(&self) -> bool {
+        true
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn step(&mut self) -> Result<(), UniverseError> {
+        self.0.step()
+    }
+}
+
+#[test]
+fn dynamic_pressure_and_ground_contact_block_promotion_and_trigger_demotion() {
+    let policy = TierPolicy::standard();
+    let e = sim_orbital::NaifId::EARTH;
+    assert_eq!(
+        policy.wanted(Tier::Local, e, 200_000.0, 0.05, false),
+        Some(Tier::Orbital)
+    );
+    assert_eq!(policy.wanted(Tier::Local, e, 200_000.0, 5.0, false), None);
+    assert_eq!(policy.wanted(Tier::Local, e, 200_000.0, 0.0, true), None);
+    assert_eq!(
+        policy.wanted(Tier::Orbital, e, 155_000.0, 2.0, false),
+        Some(Tier::Local)
+    );
+
+    let epoch = epoch();
+    let mut universe = Universe::new(epoch.clone(), solar_system_context())
+        .with_tier_policy(TierPolicy::standard());
+    let high_q = coaster(
+        BodyEllipsoid::WGS84,
+        &leo_state(),
+        SimInstant::START,
+        &epoch,
+    )
+    .unwrap();
+    let grounded = coaster(
+        BodyEllipsoid::WGS84,
+        &leo_state(),
+        SimInstant::START,
+        &epoch,
+    )
+    .unwrap();
+    universe
+        .insert_local(
+            VesselId(1),
+            Box::new(HighDynamicPressurePlant(high_q)),
+            factory(),
+        )
+        .unwrap();
+    universe
+        .insert_local(
+            VesselId(2),
+            Box::new(GroundContactPlant(grounded)),
+            factory(),
+        )
+        .unwrap();
+    universe.advance_to(seconds(3)).unwrap();
+    assert_eq!(universe.tier(VesselId(1)).unwrap(), Tier::Local);
+    assert_eq!(universe.tier(VesselId(2)).unwrap(), Tier::Local);
+    assert!(universe.take_tier_changes().is_empty());
+}

@@ -16,7 +16,7 @@ pub use camera_stars::{camera_stars, star_camera_epoch};
 pub use frame::{CelestialFrame, EarthShadowSample, MoonDiscSample, StarSkySample};
 
 use glam::DVec3;
-use navigate_celestial::{AnalyticEphemeris, Ephemeris, Epoch};
+use navigate_celestial::{AnalyticEphemeris, Ephemeris, Epoch, ObservationError};
 use sim_geo::BodyEllipsoid;
 
 /// Faintest catalogue star handed to the renderer, Johnson V. About 5000
@@ -217,6 +217,23 @@ impl CelestialClock {
                 .clone()
                 .unwrap_or_else(|| CelestialFrame::fallback(utc)),
         }
+    }
+
+    /// Evaluates the sky strictly from `provider` at `utc_unix_s` without falling back to
+    /// [`AnalyticEphemeris`], returning the underlying [`ObservationError`] on failure.
+    pub fn evaluate_strict_with_ephemeris<P: Ephemeris>(
+        provider: &P,
+        body: ReferenceBody,
+        observer_fixed_m: DVec3,
+        utc_unix_s: f64,
+    ) -> Result<CelestialFrame, ObservationError<P::Error>> {
+        let epoch = Epoch::from_unix_seconds(utc_unix_s);
+        let mut frame = match body {
+            ReferenceBody::Earth => earth::frame_from(provider, epoch, observer_fixed_m)?,
+            ReferenceBody::Moon => moon::frame_from(provider, epoch, observer_fixed_m)?,
+        };
+        frame.utc_unix_s = utc_unix_s;
+        Ok(frame)
     }
 
     fn stars_due(&self, utc: f64, body: ReferenceBody) -> bool {

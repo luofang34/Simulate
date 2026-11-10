@@ -1,10 +1,14 @@
+use std::any::Any;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use sim_apollo::{CockpitInstrumentPanel, EarthVehicleSources};
 use sim_core::{ControlInputs, SimInstant, SimSession, TickSpan, VehicleState};
-use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
-use sim_scenario::{FlightDynamics, ScenarioProfile, ScenarioRun};
+use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
+use sim_orbital::VesselId;
+use sim_scenario::{FlightDynamics, ScenarioProfile, ScenarioRun, ScenarioSnapshot};
 use sim_spacetime::{SimEpoch, TimeScaleCatalog};
+use sim_universe::{LocalPlant, OrbitalBody, Universe, UniverseCheckpoint, UniverseError};
 
 use super::free_world::{FreeWorld, SolarSystem};
 use super::plant_block::PlantBlock;
@@ -14,6 +18,138 @@ use crate::error::AppSimError;
 use crate::sky_rig::wall_clock_utc_s;
 use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
 use crate::world_surface::WorldSurfaceHandle;
+
+const SCENARIO_OWNSHIP: VesselId = VesselId(1);
+
+struct ScenarioPlant {
+    body: BodyEllipsoid,
+    period: TickSpan,
+    now: SimInstant,
+    state: VehicleState,
+}
+
+impl LocalPlant for ScenarioPlant {
+    fn body(&self) -> BodyEllipsoid {
+        self.body
+    }
+
+    fn period(&self) -> TickSpan {
+        self.period
+    }
+
+    fn now(&self) -> SimInstant {
+        self.now
+    }
+
+    fn state(&self) -> VehicleState {
+        self.state
+    }
+
+    fn orbital_body(&self) -> Option<OrbitalBody> {
+        None
+    }
+
+    fn holds_local_tier(&self) -> bool {
+        true
+    }
+
+    fn step(&mut self) -> Result<(), UniverseError> {
+        self.now = self.now.advanced(self.period);
+        Ok(())
+    }
+
+    fn advance_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
+        self.now = until;
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Scripted [`ScenarioRun`] coupled with a [`Universe`] holding the active scenario
+/// vehicle as `OWNSHIP` on the scenario's [`SimEpoch`].
+pub(super) struct ScenarioWorldRun {
+    run: ScenarioRun,
+    universe: Universe,
+}
+
+impl ScenarioWorldRun {
+    pub(super) fn new(run: ScenarioRun, solar: &SolarSystem) -> Result<Self, AppSimError> {
+        let mut universe = Universe::new(run.sim_epoch().clone(), solar.context());
+        let plant = ScenarioPlant {
+            body: run.profile().world().body(),
+            period: run.period(),
+            now: run.now(),
+            state: run.vehicle(),
+        };
+        universe
+            .insert_local(
+                SCENARIO_OWNSHIP,
+                Box::new(plant),
+                Box::new(|_, _, _, _| Err(UniverseError::LocalOnly(SCENARIO_OWNSHIP))),
+            )
+            .map_err(|e| AppSimError::Universe(Box::new(e)))?;
+        Ok(Self { run, universe })
+    }
+
+    pub(super) fn step(&mut self) -> Result<(), AppSimError> {
+        self.run.step()?;
+        let now = self.run.now();
+        let state = self.run.vehicle();
+        if let Some(plant) = self.universe.local_mut::<ScenarioPlant>(SCENARIO_OWNSHIP) {
+            plant.state = state;
+        }
+        self.universe
+            .advance_to(now)
+            .map_err(|e| AppSimError::Universe(Box::new(e)))
+    }
+
+    #[cfg(test)]
+    pub(super) fn universe(&self) -> &Universe {
+        &self.universe
+    }
+
+    pub(super) fn checkpoint_universe(&self) -> UniverseCheckpoint {
+        self.universe.checkpoint()
+    }
+
+    pub(super) fn restore_with_universe(
+        &mut self,
+        saved_run: &ScenarioSnapshot,
+        saved_universe: &UniverseCheckpoint,
+    ) -> Result<(), AppSimError> {
+        self.run.restore(saved_run)?;
+        let now = self.run.now();
+        let state = self.run.vehicle();
+        if let Some(plant) = self.universe.local_mut::<ScenarioPlant>(SCENARIO_OWNSHIP) {
+            plant.now = now;
+            plant.state = state;
+        }
+        self.universe
+            .restore(saved_universe)
+            .map_err(|e| AppSimError::Universe(Box::new(e)))
+    }
+}
+
+impl Deref for ScenarioWorldRun {
+    type Target = ScenarioRun;
+
+    fn deref(&self) -> &Self::Target {
+        &self.run
+    }
+}
+
+impl DerefMut for ScenarioWorldRun {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.run
+    }
+}
 
 /// Where a free flight starts: the Delaware corridor default, or over an airport runway.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -48,7 +184,7 @@ pub(super) enum Mode {
         world: Box<FreeWorld>,
         panel: Box<CockpitInstrumentPanel>,
     },
-    Scenario(Box<ScenarioRun>),
+    Scenario(Box<ScenarioWorldRun>),
     /// Spaceflight on `Raketa`, from its launch pad.
     Space(Box<SpaceWorld>),
 }
@@ -72,6 +208,24 @@ impl Mode {
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
     ) -> Result<Self, AppSimError> {
+        Self::free_at(
+            vehicle,
+            spawn,
+            surface,
+            scales,
+            solar,
+            wall_clock_utc_s().floor(),
+        )
+    }
+
+    pub(super) fn free_at(
+        vehicle: FreeFlightVehicle,
+        spawn: FreeSpawn,
+        surface: &WorldSurfaceHandle,
+        scales: &Arc<TimeScaleCatalog>,
+        solar: &SolarSystem,
+        utc_s: f64,
+    ) -> Result<Self, AppSimError> {
         let plant = match spawn {
             FreeSpawn::Delaware => FreeFlightPlant::new(vehicle)?,
             FreeSpawn::At {
@@ -92,7 +246,7 @@ impl Mode {
             ControlInputs::default(),
         );
         session.register_sensor(OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD)?;
-        let start = UtcTime::from_unix_seconds(certified_wall_clock_utc_s());
+        let start = UtcTime::from_unix_seconds(utc_s.floor());
         let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
         Ok(Self::Free {
             vehicle,
@@ -102,25 +256,37 @@ impl Mode {
     }
 
     /// `Raketa` on its pad, at the wall-clock second the flight begins (or the certified
-    /// 2026 equinox default when the host clock lies outside the `2026..2028` kernel span).
+    /// 2026 equinox default when the host clock lies outside the `2026..2028` kernel span,
+    /// recording `epoch_clamped = true`).
     pub(super) fn space(
         surface: &WorldSurfaceHandle,
         scales: &Arc<TimeScaleCatalog>,
-        solar: &SolarSystem,
+        solar: &Arc<SolarSystem>,
     ) -> Result<Self, AppSimError> {
-        let start = UtcTime::from_unix_seconds(certified_wall_clock_utc_s());
+        Self::space_at(surface, scales, solar, wall_clock_utc_s().floor())
+    }
+
+    pub(super) fn space_at(
+        surface: &WorldSurfaceHandle,
+        scales: &Arc<TimeScaleCatalog>,
+        solar: &Arc<SolarSystem>,
+        raw_utc_s: f64,
+    ) -> Result<Self, AppSimError> {
+        let (utc_s, clamped) = certified_space_utc_s(raw_utc_s);
+        let start = UtcTime::from_unix_seconds(utc_s);
         let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
         let ground_m = SpaceWorld::pad_ground_height_m(surface);
         Ok(Self::Space(Box::new(SpaceWorld::on_pad(
-            epoch, solar, ground_m,
+            epoch, solar, ground_m, clamped,
         )?)))
     }
 
-    pub(super) fn scenario(profile: ScenarioProfile) -> Result<Self, AppSimError> {
-        Ok(Self::Scenario(Box::new(ScenarioRun::continuous_pattern(
-            profile,
-            FlightDynamics::Jsbsim,
-        )?)))
+    pub(super) fn scenario(
+        profile: ScenarioProfile,
+        solar: &SolarSystem,
+    ) -> Result<Self, AppSimError> {
+        let run = ScenarioRun::continuous_pattern(profile, FlightDynamics::Jsbsim)?;
+        Ok(Self::Scenario(Box::new(ScenarioWorldRun::new(run, solar)?)))
     }
 
     pub(super) fn vehicle(&self) -> VehicleState {
@@ -154,14 +320,15 @@ pub(super) const fn space_period() -> TickSpan {
     SpaceWorld::period()
 }
 
-/// Returns `wall_clock_utc_s().floor()` when inside the certified `2026..2028` kernel window,
-/// or defaults to `2026-03-20T12:00:00Z` (`1_774_008_000.0`) when the host clock is outside.
-fn certified_wall_clock_utc_s() -> f64 {
-    let raw = wall_clock_utc_s().floor();
+/// Returns `(utc_s, clamped)` where `utc_s` is `raw_utc_s.floor()` when inside the certified
+/// `2026..2028` kernel window (`clamped = false`), or `2026-03-20T12:00:00Z` (`1_774_008_000.0`,
+/// `clamped = true`) when outside.
+fn certified_space_utc_s(raw_utc_s: f64) -> (f64, bool) {
+    let raw = raw_utc_s.floor();
     if (1_767_225_600.0..=1_822_348_800.0).contains(&raw) {
-        raw
+        (raw, false)
     } else {
-        1_774_008_000.0
+        (1_774_008_000.0, true)
     }
 }
 

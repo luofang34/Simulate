@@ -44,6 +44,14 @@ impl ClockPotential {
         reference_radius_m: 6_378_137.0,
     };
 
+    /// Mars: DE440 `GM`, MRO120D unnormalised `J2`, and IAU equatorial radius
+    /// (Ashby & Patla 2025, `arXiv:2507.21388`, Table 1).
+    pub const MARS: Self = Self {
+        gm_m3_s2: 4.282_837_362_069_909e13,
+        j2: 1.955_45e-3,
+        reference_radius_m: 3_396_190.0,
+    };
+
     /// Positive gravitational potential `U` at `position_m` (body-centred,
     /// `z` along the pole), m²/s². `None` at the centre.
     #[must_use]

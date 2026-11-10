@@ -179,33 +179,55 @@ fn clocks_on_the_moon_and_on_mars_gain_what_the_four_body_studies_give() {
     // Each planet's own year, so its annual swing averages out of its own mean.
     let mars_mean = clocks.mean(686.98, 3_600.0, mars_clock);
     let earth_mean = clocks.mean(365.256_36, 3_600.0, |at| clocks.geoid(at));
-    let mars_us_day = (mars_mean - earth_mean) * DAY_S * 1e6;
+    let mars_time_mean_us_day = (mars_mean - earth_mean) * DAY_S * 1e6;
     // Ashby and Patla (2024) give 56.02 µs/day for the Moon.
     assert!(
         (55.8..56.2).contains(&moon_us_day),
         "the Moon gains {moon_us_day} µs/day"
     );
-    // Mars's mean orbit alone gives 487.9 µs/day: the Sun's potential and Mars's speed
-    // averaged over its ellipse, and its own surface potential. Ashby and Patla (2025)
-    // report 477 µs/day after subtracting the -10.9 µs/day solar-tide synodic term,
-    // with a ~226 µs/day peak-to-peak (±113 µs/day) annual eccentricity modulation.
+    // Ashby and Patla (2025, arXiv:2507.21388) derive two averages for Mars vs Earth geoid:
+    //   1. Time-averaged over mean anomaly M (Eq. 12, <a_M / r_M>_t = 1): ~487.8 µs/day.
+    //   2. True-anomaly-weighted average <a_M / r_M>_f = 1 / (1 - e_M^2) (Sec. III.2,
+    //      where df = (L / r^2) dt, matching the perihelion–aphelion midpoint): ~477.8 µs/day.
     assert!(
-        (486.5..489.0).contains(&mars_us_day),
-        "Mars 1PN barycentric mean gains {mars_us_day} µs/day"
+        (486.5..489.0).contains(&mars_time_mean_us_day),
+        "Mars time-averaged (Eq. 12) rate {mars_time_mean_us_day} µs/day"
     );
-    let ashby_patla_2025_mars_us_day = mars_us_day - 10.9;
-    assert!(
-        (475.5..478.5).contains(&ashby_patla_2025_mars_us_day),
-        "Ashby & Patla (2025) solar-tide-corrected Mars rate {ashby_patla_2025_mars_us_day} µs/day"
-    );
-    let (mut mars_min_us_day, mut mars_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
-    for day in 0..687_u64 {
-        let at = start().advanced_seconds(day as f64 * DAY_S);
-        let r_us_day = (mars_clock(at) - clocks.geoid(at)) * DAY_S * 1e6;
-        mars_min_us_day = mars_min_us_day.min(r_us_day);
-        mars_max_us_day = mars_max_us_day.max(r_us_day);
+
+    let samples = (686.98 * DAY_S / 3_600.0).round() as u64;
+    let mut weighted_rate_sum = 0.0_f64;
+    let mut weight_sum = 0.0_f64;
+    let (mut mars_tdb_min_us_day, mut mars_tdb_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut synodic_min_us_day, mut synodic_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
+    for i in 0..samples {
+        let at = start().advanced_seconds(i as f64 * 3_600.0);
+        let r_mars_sun_m =
+            (clocks.body(NaifId::MARS, at).0 - clocks.body(NaifId::SUN, at).0).length();
+        // Conservation of angular momentum r^2 df/dt = const => df weight is 1 / r^2:
+        let w = 1.0 / (r_mars_sun_m * r_mars_sun_m);
+        let rate_tdb = mars_clock(at) - earth_mean;
+        weighted_rate_sum += w * rate_tdb;
+        weight_sum += w;
+
+        let rate_tdb_us_day = rate_tdb * DAY_S * 1e6;
+        mars_tdb_min_us_day = mars_tdb_min_us_day.min(rate_tdb_us_day);
+        mars_tdb_max_us_day = mars_tdb_max_us_day.max(rate_tdb_us_day);
+
+        let synodic_us_day = (mars_clock(at) - clocks.geoid(at)) * DAY_S * 1e6;
+        synodic_min_us_day = synodic_min_us_day.min(synodic_us_day);
+        synodic_max_us_day = synodic_max_us_day.max(synodic_us_day);
     }
-    let mars_ecc_swing_us_day = mars_max_us_day - mars_min_us_day;
+    let mars_true_anomaly_mean_us_day = (weighted_rate_sum / weight_sum) * DAY_S * 1e6;
+    let mars_apsidal_midpoint_us_day = 0.5 * (mars_tdb_min_us_day + mars_tdb_max_us_day);
+    assert!(
+        (476.5..479.0).contains(&mars_true_anomaly_mean_us_day),
+        "Ashby & Patla (2025, Sec. III.2) true-anomaly-averaged Mars rate {mars_true_anomaly_mean_us_day} µs/day"
+    );
+    assert!(
+        (476.5..479.0).contains(&mars_apsidal_midpoint_us_day),
+        "Mars perihelion–aphelion midpoint rate {mars_apsidal_midpoint_us_day} µs/day"
+    );
+    let mars_ecc_swing_us_day = synodic_max_us_day - synodic_min_us_day;
     assert!(
         (210.0..245.0).contains(&mars_ecc_swing_us_day),
         "Mars–Earth synodic/eccentricity rate swing {mars_ecc_swing_us_day} µs/day"

@@ -15,7 +15,7 @@ use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use sim_orbital::{
     BodyOrientationCatalog, ContinuousPlantState, Dop853Error, Dop853Tolerances, EphemerisCatalog,
     ForceModel, GravityError, NaifId, OrientationError, PinnedSurfaceState, PropellantMode,
-    STANDARD_GRAVITY_G0_M_S2, propagate_plant_interval, quat_normalize_portable,
+    STANDARD_GRAVITY_G0_M_S2, SrpSurface, propagate_plant_interval, quat_normalize_portable,
 };
 use sim_spacetime::SimEpoch;
 use sim_universe::{
@@ -24,8 +24,8 @@ use sim_universe::{
 };
 
 use crate::aero_actuators::{
-    RAKETA_CG_Y_M, RAKETA_INERTIA_DIAGONAL_KG_M2, RAKETA_MASS_KG, RaketaStageLaw,
-    raketa_default_rw_mode, raketa_mass_model,
+    RAKETA_CG_Y_M, RAKETA_INERTIA_DIAGONAL_KG_M2, RAKETA_MASS_KG, RAKETA_REF_AREA_M2,
+    RaketaStageLaw, raketa_default_rw_mode, raketa_mass_model,
 };
 
 /// `Raketa`'s flight-dynamics step, `1/50 s`.
@@ -353,6 +353,21 @@ impl LocalPlant for RaketaPlant {
             inertia_cg_body: DMat3::from_diagonal(DVec3::from_array(RAKETA_INERTIA_DIAGONAL_KG_M2)),
             bounding_radius_m: RAKETA_BOUNDING_RADIUS_M,
         })
+    }
+
+    fn srp_surface(&self) -> Option<SrpSurface> {
+        Some(SrpSurface {
+            area_m2: RAKETA_REF_AREA_M2,
+            reflectivity_coefficient: 1.25,
+        })
+    }
+
+    fn dynamic_pressure_pa(&self) -> f64 {
+        self.q_inf_pa
+    }
+
+    fn is_ground_contact(&self) -> bool {
+        self.pinned.is_some()
     }
 
     fn holds_local_tier(&self) -> bool {

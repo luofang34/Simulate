@@ -35,6 +35,7 @@ mod p38g;
 mod photomatch;
 mod polar;
 mod runway_datum;
+mod space_chrome;
 mod vehicle_views;
 
 const SHOT_SIZE: [u32; 2] = [1280, 720];
@@ -138,12 +139,14 @@ impl VerifyHarness {
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
         let chrome = self.rig.efb_chrome(self.flight.world());
+        let space = self.flight.space_hud_chrome();
         self.overlay.render(
             &self.gpu.device,
             &self.gpu.queue,
             OverlayContent::FlightChrome {
                 banner: None,
                 efb: chrome.as_ref(),
+                space: space.as_ref(),
             },
             SHOT_SIZE,
         )?;

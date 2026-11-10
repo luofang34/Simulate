@@ -245,21 +245,23 @@ impl FlightApp {
             .and_then(HubView::preview_px);
         let live = self.controls.live();
         let chrome = self.efb_chrome();
+        let space = self.flight.space_hud_chrome();
         let hint = (self.hub.hint_s > 0.0).then_some(TAKEOVER_HINT);
         let (Some(renderer), Some(overlay)) = (&self.renderer, self.menu_overlay.as_mut()) else {
             return;
         };
-        let content = match (&view, hint, &chrome) {
-            (Some(view), _, _) => OverlayContent::Hub {
+        let content = match (&view, hint, &chrome, &space) {
+            (Some(view), _, _, _) => OverlayContent::Hub {
                 view,
                 highlights: self.esc_menu.highlights(),
             },
-            (None, Some(hint), None) => OverlayContent::Banner(hint),
-            (None, banner, Some(efb)) => OverlayContent::FlightChrome {
+            (None, Some(hint), None, None) => OverlayContent::Banner(hint),
+            (None, None, None, None) => OverlayContent::Hidden,
+            (None, banner, efb, space) => OverlayContent::FlightChrome {
                 banner,
-                efb: Some(efb),
+                efb: efb.as_ref(),
+                space: space.as_ref(),
             },
-            (None, None, None) => OverlayContent::Hidden,
         };
         if let Err(err) = overlay.render(
             renderer.device(),
