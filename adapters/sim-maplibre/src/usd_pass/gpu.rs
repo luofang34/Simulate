@@ -13,14 +13,16 @@ use super::shadow::{
     ShadowFrame,
     gpu::{Attachments, ShadowGpu, SlotShadow},
 };
+use super::sky::SkyLight;
 use super::textures::AssetTexturesGpu;
 use super::{AircraftLibrary, AssetKey, DRAW_BYTES, DRAW_STRIDE, SharedAircraftLibrary, SlotDraws};
 use crate::UsdAircraftAsset;
 
-const SHADER: &str = concat!(
+pub(super) const SHADER: &str = concat!(
     include_str!("shading.wgsl"),
     include_str!("aircraft.wgsl"),
-    include_str!("shadow.wgsl")
+    include_str!("shadow.wgsl"),
+    include_str!("sky.wgsl")
 );
 
 /// One part's static vertex and index buffers.
@@ -123,7 +125,8 @@ pub(super) fn prepare(ctx: &mut MapContext, library: &SharedAircraftLibrary, dra
     let scene = frames.get(&slot);
     let slot_draws = scene.map_or(&[][..], |scene| scene.draws.as_slice());
     let shadow = scene.and_then(|scene| scene.shadow.as_ref());
-    gpu.upload_slot(device, queue, slot, slot_draws, shadow);
+    let sky = scene.map_or_else(|| SkyLight::new(glam::DVec3::Z, 1.0), |scene| scene.sky);
+    gpu.upload_slot(device, queue, slot, slot_draws, (shadow, &sky));
 }
 
 impl UsdPassGpu {
@@ -226,7 +229,7 @@ impl UsdPassGpu {
         queue: &UploadQueue,
         slot: ViewSlotId,
         draws: &[super::PackedDraw],
-        shadow: Option<&ShadowFrame>,
+        (shadow, sky): (Option<&ShadowFrame>, &SkyLight),
     ) {
         let needed = (draws.len() as u64).max(1).saturating_mul(DRAW_STRIDE);
         let stale = self.slots.get(&slot).is_none_or(|s| s.capacity < needed);
@@ -239,6 +242,7 @@ impl UsdPassGpu {
         };
         slot_gpu.commands.clear();
         queue.write_buffer(&slot_gpu.shadow.block, 0, &ShadowFrame::block(shadow));
+        queue.write_buffer(&slot_gpu.shadow.sky, 0, &sky.block());
         slot_gpu.shadowed = shadow.is_some() && draws.iter().any(|d| d.casts_shadow);
         slot_gpu.ground_shadow = slot_gpu.shadowed && shadow.is_some_and(|s| s.ground.is_some());
         if draws.is_empty() {

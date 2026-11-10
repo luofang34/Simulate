@@ -10,7 +10,7 @@ use crate::{
     usd_pass::{AssetTexturesGpu, DRAW_BYTES, DRAW_STRIDE, vertex},
 };
 
-const SHADER: &str = concat!(
+pub(crate) const SHADER: &str = concat!(
     include_str!("../usd_pass/shading.wgsl"),
     include_str!("studio.wgsl")
 );

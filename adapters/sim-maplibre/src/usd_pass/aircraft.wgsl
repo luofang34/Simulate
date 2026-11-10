@@ -62,9 +62,9 @@ fn vs(in: VertexIn) -> VertexOut {
     return out;
 }
 
-const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
-const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
-const EXPOSURE: f32 = 1.5;
+// Exposure at a clear noon: holds a sunlit, upward-facing panel at the level it had under
+// the pass's former sky-and-ground fill (assumed).
+const EXPOSURE: f32 = 2.2;
 
 fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let world = in.world;
@@ -77,7 +77,6 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let v = normalize(-world);
     let l = normalize(draw.sun.xyz);
     let h = normalize(l + v);
-    let daylight = draw.sun.w;
     let metallic = finish.metallic;
     let roughness = finish.roughness;
     let albedo = finish.albedo;
@@ -87,28 +86,27 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let f = fresnel(f0, dot(h, v));
     let spec = f * ggx(max(dot(n, h), 0.0), roughness) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
     let diffuse = (vec3<f32>(1.0) - f) * (1.0 - metallic) * albedo / PI;
-    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, geometric, in.clip.xy);
-    // Sky above and sunlit ground below both light the airframe, so undersides never go black.
-    // Ground light comes mostly from sunlit ground; under the airframe that
-    // ground lies in its own shadow, so wells and bellies see less of it.
-    let ground_light = ground_bounce(world, in.clip.xy);
-    let hemi = mix(GROUND * 1.6 * ground_light, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
-    let r = reflect(-v, n);
-    let env = mix(GROUND * 1.35 * ground_light, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
-    let gloss = 1.0 - roughness * 0.72;
-    let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
+    let sun = sky.sun.rgb * sun_visibility(world, geometric, in.clip.xy);
+    // The sky dome and the sunlit ground fill the shade; their balance against the beam
+    // sets how dark a shaded side reads. Ground light comes mostly from sunlit ground;
+    // under the airframe that ground lies in its own shadow, so wells and bellies see
+    // less of it.
+    let ground_lit = ground_bounce(world, in.clip.xy);
+    let fill = sky_irradiance(n) + ground_irradiance(n, ground_lit);
+    let reflected = sky_reflection(reflect(-v, n), l, roughness, ground_lit);
+    // Fresnel of a rough surface's reflection of its surroundings (Fdez-Aguera's fit).
+    let env_f = f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(1.0 - n_dot_v, 5.0);
     // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
     // view still sees open sky past a junction.
     let ao = finish.occlusion;
     let specular_ao = mix(ao * ao, 1.0, 0.35);
-    let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
+    let ambient = fill * (vec3<f32>(1.0) - env_f) * (1.0 - metallic) * albedo / PI * ao + reflected * env_f * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
 }
 
 // Share of the ground light reaching `world` from the ground straight below
 // it: 1 in flight, or where that ground is sunlit; down to the sky-lit
 // share where ownship's shadow covers it.
-const SHADED_GROUND: f32 = 0.3;
 
 fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
     if (shadow.ground_centre.w <= 0.0) {
@@ -116,13 +114,13 @@ fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
     }
     let below = vec3<f32>(world.xy, shadow.ground_centre.z);
     let lit = sun_visibility(below, vec3<f32>(0.0), pixel);
-    return mix(SHADED_GROUND, 1.0, lit);
+    return mix(sky.ground.w, 1.0, lit);
 }
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let color = shade(in, front);
-    return vec4<f32>(filmic(color, EXPOSURE), 1.0);
+    return vec4<f32>(filmic(color, EXPOSURE * sky.sun.w), 1.0);
 }
 
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {
@@ -132,11 +130,11 @@ fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     }
     let v = normalize(-in.world);
     let r = reflect(-v, n);
-    let sky = mix(GROUND, SKY * 1.4, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.2 + 0.8 * draw.sun.w);
+    let mirrored = sky_reflection(r, normalize(draw.sun.xyz), 0.05, 1.0);
     let f = 0.04 + 0.96 * pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 5.0);
     let tint = draw.base_color.rgb * 0.25;
     let alpha = clamp(draw.base_color.a + f * 0.6, 0.0, 0.92);
-    let rgb = filmic(mix(tint, sky, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE);
+    let rgb = filmic(mix(tint, mirrored, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE * sky.sun.w);
     return vec4<f32>(rgb * alpha, alpha);
 }
 

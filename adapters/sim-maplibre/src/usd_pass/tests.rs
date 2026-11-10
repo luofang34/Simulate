@@ -343,3 +343,20 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
         "NZSP polar skiway far end {deck_far_mid:?} must register with Body::EARTH far_end {sphere_far_px:?} (<0.25 px, got {err_px:.3} px)"
     );
 }
+
+/// Both passes' composed WGSL parses and validates, so a shader mistake fails `cargo test`
+/// instead of the first frame on a GPU.
+#[test]
+fn the_aircraft_and_studio_shaders_validate() {
+    use wgpu::naga::{front::wgsl, valid};
+    for (name, source) in [
+        ("aircraft", super::gpu::SHADER),
+        ("studio", crate::hangar_preview::STUDIO_SHADER),
+    ] {
+        let module = wgsl::parse_str(source)
+            .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+        valid::Validator::new(valid::ValidationFlags::all(), valid::Capabilities::all())
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+    }
+}
