@@ -5079,6 +5079,8 @@ dependencies = [
  "sim-geo",
  "sim-orbital",
  "sim-scenery",
+ "sim-spacetime",
+ "sim-universe",
  "syspack",
  "thiserror 2.0.21",
 ]

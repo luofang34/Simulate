@@ -22,6 +22,8 @@ sim-core = { workspace = true }
 sim-geo = { workspace = true }
 sim-orbital = { workspace = true }
 sim-scenery = { workspace = true }
+sim-spacetime = { workspace = true }
+sim-universe = { workspace = true }
 syspack = { workspace = true }
 thiserror = { workspace = true }
 
