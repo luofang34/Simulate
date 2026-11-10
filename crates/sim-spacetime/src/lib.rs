@@ -16,6 +16,7 @@ mod mount;
 mod provenance;
 mod relativity;
 mod scalar_math;
+mod solar;
 mod synodic;
 mod terrain;
 mod time;
@@ -50,6 +51,10 @@ pub use scalar_math::{
     acos_clamped, asin_clamped, atan2, body_ellipsoid_serde, clamp_vec_norm, cos, exp, ln,
     mul_add_unfused, powf, quat_from_wire_xyzw, quat_geodesic_angle_rad, quat_normalize_portable,
     quat_omega_derivative, quat_rotate_vec_portable, serde_dquat, serde_dvec3, sin, sin_cos, sqrt,
+};
+pub use solar::{
+    ASTRONOMICAL_UNIT_M, AtmosphericTransmission, OccultingSphere, SOLAR_IRRADIANCE_1AU_W_M2,
+    SOLAR_RADIUS_M, SolarFluxModel, SolarFluxSample,
 };
 pub use terrain::{
     CollisionGroundSample, CollisionTerrain, DiscontinuousStepPatch, ElevationSlab,
