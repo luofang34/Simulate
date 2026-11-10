@@ -105,6 +105,12 @@ vehicles/tools/
 3. **測試網格本身，不比自己的常數**：`mesh_silhouettes_match_the_an01_75f_2_general_arrangement` 按視圖算 IoU、最大與 95% 邊界偏差，限值設在現值之外作為棘輪，只許收緊；`built_mesh_measures_to_the_an01_75f_2_callouts` 量測網格上的槳平面、翼根、輪軸、尾翼等標註尺寸。
 4. **FDM 用圖紙框架**：JSBSim 結構座標 x = FS、y = BL、z = 高於 FRL（in）。推力器在槳平面與推力線；BOGEY 在畫出的未受載輪胎底點，彈簧係數使靜壓縮等於圖上輪胎變形；停放高度由圖紙地面線與受載重心推導。`apps/simulate-app/src/vehicles/tests/gear_datum.rs` 比對輪底對接地點、槳盤對推力器、停放高度。
 5. **結構基準**：`geometry/landmarks.json` 列出有來源的站位（槳盤、輪軸、翼根前緣…，每項附 `source`）與網格特徵規則（`feature.rule`）。載入時以最小平方擬合放置模型；殘差指出哪個特徵偏了，測試設殘差上限（`the_c172_is_placed_by_its_poh_landmarks_within_bounds`）。模型不跟隨重心。
+6. **讀圖規則**：
+   - 尺寸標註量的是它的延伸線所指的兩點，先在圖上確認再用。P-38G 的「STATIC 69.970」是 FRL 到鼻輪**軸**，不是到地面；讀對之後圖上的「GROUND LINE (STATIC) 5°33′46″」就是停放姿態（`built_mesh_stands_on_the_drawn_static_ground_line`、`p38g_stands_nose_up_on_the_drawn_static_ground_line`）。
+   - 某視圖被其他部件遮住的輪廓（機翼後的座艙蓋尾段）改由另一視圖取得，取不到就標為假設。
+   - 總尺寸與分項標註互相矛盾時以分項標註為準，並把差值記錄下來（`the_tail_stands_at_its_drawn_heights`），不去湊。
+   - 手冊明文給出的站位（儀表板 Sta 106、輔助瞄準具準星 Sta 97⅜）優先於後人重繪圖；隔框站位表只定位隔框，不定位裝備。鄰近子型號的手冊可用，但標明「取自某型，假定 G 型相同」。
+7. **座艙契約**：`cockpit_reservation.rs` 的欄位（儀表板框、設計眼點、座椅基準點、操縱桿底座、`control_wheel_hub_m`、地板與踏板站位）各自標明 圖紙／手冊／推導／照片推得 與不確定度；機身與座艙由同一組圖紙截面放樣（`gondola.rs`），`the_cockpit_interior_stays_inside_the_mould_line` 禁止任何內裝頂點穿出蒙皮，另有測試禁止機翼蒙皮穿過座艙。
 
 ---
 
@@ -137,7 +143,7 @@ JSBSim piston 以「每檔一個固定壓比 × 油門」建模增壓器，`rate
 
 ### 4.5 校準原則
 1. **先加有來源的物理，再擬合**，順序：實測螺旋槳表＋槳尖馬赫 → 滑流阻力 → 發動機兩點校正（廠商全油門曲線的兩個轉速，如 Lycoming 2,300 與 2,700 rpm）→ 手冊技術（起飛「機尾略低」、在 VLOF 離地；全富油／最佳功率／EGT 貧油程序由試飛工具照手冊飛）→ 最後才擬合少數參數（CD0、誘導阻力因子、弦長比例），並聯合重擬受同一修正影響的列。
-2. **每個值標為 sourced / fitted / assumed**，寫在設計檔的 `provenance`（範例 `vehicles/c172/design/mccauley_1a170e_jha7660.json`，另有 `stand_in` 與 `not_met`）。被擬合到某列的參數不得再把該列當獨立證據。
+2. **每個值標為 sourced / fitted / assumed**，寫在設計檔的 `provenance`（範例 `vehicles/c172/design/mccauley_1a170e_jha7660.json`，另有 `stand_in` 與 `not_met`）。被擬合到某列的參數不得再把該列當獨立證據。`mbd` 的 `mbd-provenance`（`Sourced`、`Basis`、`SourceTable`）是這套標示的型別化形式，新資料優先用它。
 3. **不放寬容差、不加無來源的修正係數**。無法同時滿足的列寫入 `performance/validation.json`（`passing`、`failing`、`failing_checks`、`known_table_steps`）；測試逐列比對紀錄，列的結果改變而紀錄未更新即失敗。
 4. 排查偏差時逐一以量測排除假說（離地速度、摩擦係數、手冊裕度、工具本身），再動模型。
 
@@ -185,7 +191,10 @@ JSBSim piston 以「每檔一個固定壓比 × 油門」建模增壓器，`rate
 - **不重複濾波**：機構延遲與儀表誤差只在 mbd 機構模型；值→角度只在顯示層；指針只接角度。沒有訊號就顯示 OFF，不假設 0。
 - **錶面與字體**屬於儀表包：刻度、標記、指針與錶面字樣在包內宣告，字體以雜湊釘住的資產引用，不寫死在載具或渲染器。
 - **面板佈局**由現存實物面板或照片量測孔位（§7.3 反投影），來源只引用 URL；查不到的項目列為未知，不補想像的儀表。
-- **操縱件**以關節（軸、每單位行程）由 FDM 的**指令**而非舵面位置驅動；無來源的行程寫成具名的假設常數並註明。
+- **操縱件**以關節（軸、每單位行程）由 FDM 的**指令**而非舵面位置驅動；無來源的行程寫成具名的假設常數並註明。座艙蓋艙口與側窗同樣是帶關節與狀態的部件。
+- **類比儀表是實體 3D 錶**：儀表包的儀表經 `sim-indicate` 交給 Indicate 的類比儀表組繪製（錶面、刻度卡、窗後的帶狀刻度、覆蓋件、離開錶面的指針）；Indicate 沒有的錶面種類列為待辦，不拿別的錶面頂替，空錶殼照實留空並列出。
+- **佈局以正面照片驗證**：正對儀表板的照片用單應矩陣（四個以上板框點＋已知板寬高）直接把板面拉正，不需解相機；`the_pack_layout_lands_on_the_instruments_of_lockheeds_frontal_photograph` 把包內佈局與歷史照片逐孔比對。現存實物面板可能換過戰後儀表，每個儀表都要與同期照片交叉確認。
+- **由照片放置的座艙部件**（開關盒、瞄準具框、駕駛盤）在常數處寫明「照片推得 ±N cm」及深度的來源（手冊站位或假設）。
 
 ---
 
@@ -228,7 +237,8 @@ cargo test -p sim-pack --test p38g_flight_test engine_operating_points -- --igno
 - 塗裝與標記以**圖紙英寸或網格量測的錨點**（機首、翼前後緣、尾桁站位）定位，不用模型絕對座標；側面標記從兩側測試鏡像讀向。貼花沿蒙皮法線偏移 0.6–0.8 mm，弧面圖案做重心座標細分。
 - 顏色寫**規範名稱**（如 OD 41、Neutral Gray 43），RGB 標為近似；查不到的標記不畫，列為待查。
 - 面板線由可重跑的工具自有授權的三視圖描出，不手改，並以工程圖站位測試。磨損由位置、法線、遮蔽計算，以同單位的黑白歷史照片校準對比與輪廓，不判斷色相。
-- 照片與貼圖影像不入庫；程序化生成的表面在建置時產生。
+- 照片與貼圖影像不入庫；程序化生成的表面在建置時產生。P-38G 的烘焙蒙皮在 `vehicles/p38g/src/skin`（塗裝、標記、面板線、磨損），由 `sim-maplibre` 的 `usd_aircraft/skin` 光柵化成反照率／法線／ORM 貼圖組；面板線以 `vehicles/p38g/tools/trace_watts_panels.py` 重描。錨點所指的 prim 不存在時建置直接失敗並指名（`MissingAnchor`），不退回猜測位置；幾何改動後標記自動跟隨，但仍要在對齊視角重看一次。
+- 由多張照片反投影得到的標記位置（機翼星徽、尾號、機砲口）優先於沿用的舊值；單位慣例（如擊落標記的排列）來自同單位他機時寫明是假設。
 
 ### 7.2 預設視角 `views/cameras.json`
 - 列入 `syspack.json` 資產，由 `sim_pack::CameraViewSet` 解析；無檔案時依 JSBSim 翼展自動生成。每個視角有 `id`、`title`、`fov_y_deg`、`airframe`（`external` / `pilot_eye` / `cabin_window` / `hidden`）與 `placement`：`chase {back_m, up_m}`、`look_at {eye_frd_m, target_frd_m, up_frd}`、`cockpit_look {yaw_deg, pitch_deg, eye_shift_frd_m}`、`spotter {grid_step_m, lateral_m, height_m, lead_time_s, frame_span_m}`。
@@ -243,7 +253,10 @@ cargo test -p sim-pack --test p38g_flight_test engine_operating_points -- --igno
 3. **反投影放回模型**（`backproject.rs`）：自解出的相機經特徵像素射線與平面求交（儀表板平面、對稱面）、與網格求交（貼附於表面的標記與零件），兩張以上照片則三角定位（離開表面的零件）。更新佈局並引用照片像素，保留逐項重投影殘差測試；地標隱含的 3D 偏移 > 0.15 m 視為模型真實差異。
 4. **機械件看輪廓**：駕駛盤、操縱桿、座椅、開關盒、起落架等在對齊視角疊輪廓，逐件修到吻合並記錄尺寸來源。
 5. **色調只在對齊視角比較**：以解出的相機與估計的太陽渲染，與照片同區塊比灰階；光照只用晴天照片判斷。
-6. 照片只引用 URL（公有領域或 CC BY），影像放在庫外。地面照片以空中、放輪、順槳姿態渲染（解出的相機可能落在停放模型的地形內），並等起落架行程結束。
+6. **可觀測性**：地標全在一個平面上時焦距與距離無法分離（解會沿視線滑動而殘差幾乎不變）。必須有不共面的固定點，或已知平面上已知直徑的圓（標準錶殼）。對地標容差做擾動並報告解出眼點的散布；散布大於約 5 cm 時不得據以移動契約位置，只能用於形狀與橫向／垂向定位，並如實標示。
+7. **幾何修改的驗收**是重投影 RMS 與逐地標殘差在修改前後的對照（`features_the_photos` 另列出照片辨識出的零件與模型位置之差）。停放照片的輪底地標取靜負載下的接地點（未受載輪底加圖上輪胎變形），不是圓輪胎的最低點。
+8. **亮度**：黑白照片的沖印與底片特性未知，不能用來定曝光或反照率；只在同一張照片內比較受光面與背光面的**比值**，且仍屬參考。
+9. 照片只引用 URL（公有領域或 CC BY），影像放在庫外。地面照片以空中、放輪、順槳姿態渲染（解出的相機可能落在停放模型的地形內），並等起落架行程結束。
 
 ### 7.4 指令（`--release`，各 worktree 自己的 `CARGO_TARGET_DIR`）
 ```sh
@@ -260,6 +273,12 @@ SIMULATE_PHOTOMATCH_DIR=<images> SIMULATE_VERIFY_OUT=<dir> cargo test --release 
 ```
 截圖逐張目視；修改一機的表面時，其他機的參考截圖須像素不變（`magick compare -metric AE`）。
 
+### 7.5 渲染與材質
+- 飛機繪製通道自行做 sRGB 編碼（目標格式不編碼時；`TARGET_ENCODES`），曝光以面向太陽的 18% 灰卡測光；天空與地面反射光按物理比例給背光面。因此**材質一律以反射率給值**（漆樣反射率，如 OD 約 8%、鉻約 0.55），不得對著螢幕調亮；無來源的反射率標為假設。
+- 每一項遮蔽只有一個來源（形狀＝頂點烘焙、縫線鉚釘＝蒙皮 ORM、太陽＝陰影圖），不重複相乘。
+- 螺旋槳模糊按曝光時間內槳葉掃過的比例計算（`set_shutter_exposure_s`）：人眼快門是淡槳盤，照相快門是殘影槳葉。
+- 背景天空與地形由地圖渲染器自己曝光，與飛機通道尚未共用同一曝光；比較色調時只看機體。
+
 ---
 
 ## 8. 提交前門檻與已知陷阱
@@ -275,7 +294,9 @@ for check in scripts/check-*.sh; do "$check"; done
 陷阱：
 - **`cargo fmt --all`** 會連同以路徑依賴的兄弟 repo 一起格式化，改到別人的工作區。
 - **每個 worktree 用自己的 `CARGO_TARGET_DIR`**：共用 target 時同名 crate 互相覆寫且仍顯示 Fresh，測試與截圖會跑到別的 worktree 的程式；建置前 `df -h ~`，完成後在自己的 target `cargo clean`。
-- **分支只在自己的 worktree 內以 `git rebase` 更新**；不要在主 checkout 執行會重設其他分支的指令。兄弟 repo 漂移時 rebase 到帶有新 pin 的分支，不要用快照或路徑覆寫建置。
+- **分支只在自己的 worktree 內以 `git rebase` 更新**；不要在主 checkout 執行會重設其他分支的指令。兄弟 repo 漂移時 rebase 到帶有新 pin 的分支，已推送的分支以 merge 更新，不強制推送。
+- **兄弟 repo 的 pin** 必須是該 repo 主線上的提交，且本機共用 checkout 的內容要與 pin 相同（`scripts/check-external-sources.sh`）。共用 checkout 落後時，以 pin 所指提交的獨立 worktree 加**不提交**的路徑覆寫來建置與跑門檻，並在 PR 說明。
+- **小步落地**：依部件切成可獨立回退的 PR（站位、姿態、起落架、蒙皮、渲染、座艙各自成 PR），每個 PR 附對齊視角的前後對照與觀察到的門檻結果；互相改到同一檔案的分支先講好合併順序。
 - **jsbsim-rs 活塞發動機在同一模型第二次 `run_ic` 後不會重新運轉**（`propulsion/set-running` 不生效）；試飛工具因此每點重新載入模型。
 - **生成時的槳距**：`EngineStartMode::Running` 跑 JSBSim 的發動機穩態求解，不執行 FCS；FCS 調速器的機型必須保留內建調速器，否則停機坪上以細距起步並自行滑走。
 - **JSBSim 配平**（`do_trim(Full)`）在 FCS 驅動槳角的機型上不收斂，且增壓調壓器的平坦區使油門軸導數為零。配平失敗不破壞狀態；需要穩定飛行的測試改用短時間閉環穩定。
