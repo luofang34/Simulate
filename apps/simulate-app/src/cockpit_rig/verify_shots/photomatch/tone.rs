@@ -52,10 +52,40 @@ impl Tone {
     }
 }
 
-/// Photo and model tone inside the silhouette `mask` (`w` wide), as the summary records
-/// them: percentiles `[p05, p25, p50, p75, p95]` of each.
-pub(super) fn compare(photo: &RgbImage, model: &RgbImage, mask: &[bool], w: u32) -> Value {
-    let core = erode(mask, w as usize);
+/// Most the three channels' ratios of a shadowed ground pixel to the same pixel unshadowed
+/// may differ: a shadow dims the ground evenly, an airframe replaces its colour.
+const SHADOW_HUE_TOLERANCE: f64 = 0.06;
+
+/// Whether `shown` is `empty`'s ground under the airframe's shadow and not the airframe.
+fn is_ground_shadow(shown: Rgb<u8>, empty: Rgb<u8>) -> bool {
+    let ratios: Vec<f64> = shown
+        .0
+        .iter()
+        .zip(empty.0)
+        .filter(|(_, e)| *e >= 24)
+        .map(|(s, e)| f64::from(*s) / f64::from(e))
+        .collect();
+    let (lo, hi) = ratios.iter().fold((f64::INFINITY, 0.0_f64), |(lo, hi), r| {
+        (lo.min(*r), hi.max(*r))
+    });
+    ratios.len() == 3 && hi < 1.0 && hi - lo <= SHADOW_HUE_TOLERANCE
+}
+
+/// Photo and model tone on the airframe: inside the silhouette `mask` (`w` wide) less the
+/// ground its shadow darkens, found against the frame rendered `empty` of the airframe.
+/// The summary records percentiles `[p05, p25, p50, p75, p95]` of each.
+pub(super) fn compare(
+    photo: &RgbImage,
+    [model, empty]: [&RgbImage; 2],
+    mask: &[bool],
+    w: u32,
+) -> Value {
+    let airframe: Vec<bool> = mask
+        .iter()
+        .zip(model.pixels().zip(empty.pixels()))
+        .map(|(inside, (shown, bare))| *inside && !is_ground_shadow(*shown, *bare))
+        .collect();
+    let core = erode(&airframe, w as usize);
     json!({
         "photo": Tone::measure(photo, &core).map(Tone::json),
         "model": Tone::measure(model, &core).map(Tone::json),
