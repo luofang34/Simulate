@@ -3,14 +3,15 @@ use sim_pack::{builtin_c172_package, builtin_p38g_package};
 use super::StructuralDatum;
 use crate::UsdAircraftAsset;
 
-/// How far any C172 landmark may sit from its POH station. The embedded mesh's mains
-/// stand 2.9 in aft and its nose axle 2.5 in forward; a worse mesh shows here.
+/// How far any C172 landmark may sit from its POH station, fitted on the N642SP the ownship
+/// draws. Its gear agrees with itself; its propeller disc stands about 2 in forward of the
+/// gear against the POH; a worse mesh shows here.
 const C172_RESIDUAL_BOUND_IN: f64 = 4.0;
 
 fn fit_c172() -> StructuralDatum {
     let package = builtin_c172_package().unwrap();
     let landmarks = package.structural_landmarks().unwrap();
-    StructuralDatum::fit(landmarks, &UsdAircraftAsset::embedded_c172().unwrap()).unwrap()
+    StructuralDatum::fit(landmarks, &UsdAircraftAsset::embedded_n642sp().unwrap()).unwrap()
 }
 
 #[test]
@@ -31,7 +32,7 @@ fn the_c172_is_placed_by_its_poh_landmarks_within_bounds() {
     );
     assert!(residuals.iter().map(|(_, aft)| aft).sum::<f64>().abs() < 1e-9);
     let origin = datum.origin_in();
-    assert!((origin.x - 123.17).abs() < 0.05, "{origin}");
+    assert!((origin.x - 122.25).abs() < 0.05, "{origin} {report:?}");
     assert!((origin.z + 0.055 / 0.0254).abs() < 0.01, "{origin}");
 }
 

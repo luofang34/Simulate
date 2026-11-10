@@ -42,7 +42,7 @@ fn fit(visual: OwnshipVisualKind) -> Option<StructuralDatum> {
             .and_then(|p| {
                 Ok((
                     p,
-                    UsdAircraftAsset::embedded_c172().map_err(|e| e.to_string())?,
+                    UsdAircraftAsset::embedded_n642sp().map_err(|e| e.to_string())?,
                 ))
             }),
         OwnshipVisualKind::P38g => builtin_p38g_package()

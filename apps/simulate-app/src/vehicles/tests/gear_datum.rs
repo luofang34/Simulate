@@ -110,13 +110,14 @@ fn assert_wheels_on_the_ground(
     );
 }
 
-/// Red while the C172 mesh's wheelbase is 70.3 in: placed by its sourced landmarks, its
-/// nose wheel stands 6 cm ahead of the flight model's `NOSE` and its mains 9 cm aft of
-/// `LEFT_MAIN`/`RIGHT_MAIN` (the flight model's gear is 64.4 in apart, the POH's 65.0 in),
-/// 1.4 cm outboard, and all three wheels 1.0 to 1.5 cm above the ground.
+/// Red while the drawn N642SP's gear, fitted with its propeller disc on the sourced
+/// landmarks, stands 1.2 in aft of its POH stations (the disc 2.1 in forward): its nose
+/// wheel 2.9 cm aft of the flight model's `NOSE` and its mains 4.5 cm aft of
+/// `LEFT_MAIN`/`RIGHT_MAIN` (the flight model's mains at FS 57.6 against the POH's 58.2),
+/// 0.8 cm outboard, and the wheels 1.0 to 1.5 cm above the ground.
 #[test]
-#[ignore = "red: C172 mesh wheelbase 70.3 in against the flight model's 64.4 in"]
-fn c172_wheels_meet_the_fdm_gear_red_while_the_mesh_wheelbase_is_70_in() {
+#[ignore = "red: C172 fitted gear 1.2 in aft of its POH stations (mesh propeller 2.1 in forward)"]
+fn c172_wheels_meet_the_fdm_gear_red_while_the_fit_leaves_the_gear_1_in_aft() {
     let asset = UsdAircraftAsset::embedded_n642sp().unwrap();
     let fdm = include_str!("../../../../../vehicles/c172/fdm/c172_class_reference.xml");
     let offsets = wheel_offsets(FreeFlightVehicle::JsbsimC172, fdm, &asset);

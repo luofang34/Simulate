@@ -135,18 +135,21 @@ fn fdm_location_in(xml: &str, name: &str) -> DVec3 {
 #[test]
 fn the_c172_eye_is_one_point_for_the_cameras_and_the_fdm() {
     let xml = include_str!("../../../../vehicles/c172/fdm/c172_class_reference.xml");
-    let origin = sim_maplibre::OwnshipVisualKind::C172
-        .structural_origin_in()
-        .map(DVec3::from_array)
+    let origin = crate::vehicles::ModelOrigins::default()
+        .origin_in(sim_maplibre::OwnshipVisualKind::C172)
         .unwrap();
     let eye = fdm_location_in(xml, "EYEPOINT");
     // Structural axes are x aft, y right, z up, in inches; body axes are FRD metres. The
     // eye mounts on the drawn model's origin, which sits at its structural datum.
     let fdm_eye_frd = DVec3::new(origin.x - eye.x, eye.y, -(eye.z - origin.z)) * 0.0254;
     let eye_frd = sim_scenario::C172_PILOT_EYE_BODY_M;
+    let eye_in = origin + DVec3::new(-eye_frd.x, eye_frd.y, -eye_frd.z) / 0.0254;
     assert!(
         (fdm_eye_frd - eye_frd).length() < 2e-3,
-        "{fdm_eye_frd} vs {eye_frd}"
+        "EYEPOINT should be ({:.2}, {:.2}, {:.2}) in",
+        eye_in.x,
+        eye_in.y,
+        eye_in.z
     );
     let pose = super::pilot_eye_mount().pose(&state(), DVec3::ZERO);
     let svs = super::svs_nose_mount().pose(&state(), DVec3::ZERO);

@@ -18,7 +18,7 @@
     <vtailarm unit="FT"> 15.7 </vtailarm>
     <location name="AERORP" unit="IN"> <x> 122.1128 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
     <!-- Left-seat design eye: simulate C172_PILOT_EYE_BODY_M from the drawn model's structural origin. -->
-    <location name="EYEPOINT" unit="IN"> <x> 121.26 </x> <y> -10.24 </y> <z> 18.70 </z> </location>
+    <location name="EYEPOINT" unit="IN"> <x> 118.31 </x> <y> -10.24 </y> <z> 18.70 </z> </location>
     <location name="VRP" unit="IN"> <x> 0.0000 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
   </metrics>
   <mass_balance>

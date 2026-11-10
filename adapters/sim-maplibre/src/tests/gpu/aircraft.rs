@@ -183,8 +183,9 @@ fn ownship_draws_the_selected_airframe_and_nothing_when_hidden() {
     let quad = frame_with(truth, OwnshipVisualKind::QuadrotorX500, ms + 33);
     let hidden = frame_with(truth, OwnshipVisualKind::Hidden, ms + 66);
     let c172_again = frame_with(truth, OwnshipVisualKind::C172, ms + 99);
+    // The bare-gear N642SP covers about 170 px (2.4 %) of this 96 x 72 tower view.
     assert!(
-        differing_pixels(&control, &c172) > 96 * 72 / 40,
+        differing_pixels(&control, &c172) > 96 * 72 / 80,
         "C172 drawn"
     );
     assert!(differing_pixels(&control, &quad) > 0, "quadrotor drawn");
