@@ -3035,6 +3035,17 @@
    "px": [
     [0, 1372]
    ]
+  },
+  {
+   "name": "canopy_mirror_fairing",
+   "value": 46.1,
+   "unit": "in",
+   "view": "side",
+   "callout": "small fairing on the canopy top behind the windscreen top bow, FS 129.3 to FS 136.5: its upper edge rises from the canopy at x 640 to an apex at x 657 y 218.5 (46.1 in above the reference line, the value) and drops square to the canopy; the front view draws it 4.6 in wide at y 2060",
+   "px": [
+    [640, 226],
+    [657, 218.5]
+   ]
   }
  ]
 }

@@ -94,6 +94,14 @@ pub const HATCH_AFT_FRAME_FS_IN: f32 = 154.3;
 /// Canopy tail station: where the plan view's canopy outline closes at the rear, inches.
 pub const CANOPY_TAIL_FS_IN: f32 = 184.5;
 
+/// Rear-view mirror fairing on the canopy top (side view): forward and aft stations and
+/// the apex above the fuselage reference line, inches.
+pub const MIRROR_FAIRING_FS_IN: (f32, f32) = (129.3, 136.5);
+/// Apex of the mirror fairing above the fuselage reference line (side view), inches.
+pub const MIRROR_FAIRING_APEX_ABOVE_FRL_IN: f32 = 46.1;
+/// Width of the mirror fairing (front view), inches.
+pub const MIRROR_FAIRING_WIDTH_IN: f32 = 4.6;
+
 /// Model `y` of fuselage station `fs_in`.
 #[must_use]
 pub const fn fs_to_y(fs_in: f32) -> f32 {

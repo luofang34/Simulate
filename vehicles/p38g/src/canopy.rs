@@ -6,12 +6,13 @@ use std::f32::consts::PI;
 use glam::Vec3;
 
 use crate::drawing::{
-    CANOPY_TAIL_FS_IN, FRL_Z_M, HATCH_AFT_FRAME_FS_IN, INCH_M, WINDSCREEN_BASE_FS_IN,
-    WINDSCREEN_SLOPE_DEG, WINDSCREEN_TOP_FRAME_FS_IN, fs_to_y,
+    CANOPY_TAIL_FS_IN, FRL_Z_M, HATCH_AFT_FRAME_FS_IN, INCH_M, MIRROR_FAIRING_APEX_ABOVE_FRL_IN,
+    MIRROR_FAIRING_FS_IN, MIRROR_FAIRING_WIDTH_IN, WINDSCREEN_BASE_FS_IN, WINDSCREEN_SLOPE_DEG,
+    WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
 use crate::gondola::{GONDOLA_SECTIONS, canopy_point, canopy_sill_z, section_y};
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
-use crate::stations::{ARMOR_GLASS, CANOPY_FRAME, CANOPY_GLASS};
+use crate::stations::{ARMOR_GLASS, CANOPY_FRAME, CANOPY_GLASS, GUNMETAL};
 
 /// Model `y` of the middle of the top hatch.
 pub(crate) fn hatch_mid_y() -> f32 {
@@ -108,5 +109,40 @@ pub(crate) fn canopy_prims() -> Vec<P38MeshPrim> {
         CANOPY_FRAME,
         frames,
     ));
+    prims.push(mirror_fairing());
     prims
+}
+
+/// The rear-view mirror's fairing on the hatch, as the general arrangement draws it: a
+/// wedge rising aft from the canopy top to a square back, where the mirror faces the pilot.
+fn mirror_fairing() -> P38MeshPrim {
+    let (fwd, aft) = (
+        fs_to_y(MIRROR_FAIRING_FS_IN.0),
+        fs_to_y(MIRROR_FAIRING_FS_IN.1),
+    );
+    let half = 0.5 * MIRROR_FAIRING_WIDTH_IN * INCH_M;
+    let apex = frl_to_z(MIRROR_FAIRING_APEX_ABOVE_FRL_IN);
+    // Sunk a little into the glazing so no gap shows under the wedge.
+    let on_canopy = |y: f32, x: f32| canopy_point(y, 0.0) + Vec3::new(x, 0.0, -0.01);
+    let section = |y: f32, top: f32, half: f32| {
+        vec![
+            on_canopy(y, -half),
+            Vec3::new(-0.7 * half, y, top),
+            Vec3::new(0.7 * half, y, top),
+            on_canopy(y, half),
+        ]
+    };
+    let nose = canopy_point(fwd, 0.0).z + 0.004;
+    let mut mesh = MeshBuilder::new();
+    mesh.loft(
+        &[section(fwd, nose, 0.4 * half), section(aft, apex, half)],
+        true,
+        Inside::Axis,
+    );
+    fixed(
+        "/P38g/Canopy/MirrorFairing",
+        P38PartRole::CabinExterior,
+        GUNMETAL,
+        mesh,
+    )
 }
