@@ -106,6 +106,8 @@ pub(crate) fn canopy_frame_prims() -> Vec<P38MeshPrim> {
         hatch,
     );
     hatch.custom_hinge_axis = Some(DVec3::X);
+    // The hatch's own frame swings up with its pane.
+    hatch.control_joints = crate::canopy::pane_joint("Hatch").into_iter().collect();
     let mut prims = vec![
         fixed(
             "/P38g/Canopy/InteriorFrames",

@@ -1,7 +1,7 @@
 //! Placards whose wording a P-38G photograph shows, each a flat plate the
 //! renderer letters with the panel's own typeface: `GUN HEAT` and `COCKPIT
-//! HEAT` by their knobs on the windscreen's aft frame, and `SURFACE CONTROL
-//! LOCK` along the stowed lock on the right sill
+//! HEAT` by their knobs on the windscreen's aft frame, `SURFACE CONTROL LOCK`
+//! along the stowed lock on the right sill, and `MAIN SWITCH BOX` on that box
 //! (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>,
 //! <https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_right_wing_061019-F-1234P-003.jpg>).
 //! A placard whose wording no source shows is not drawn, nor one whose box is
@@ -17,9 +17,10 @@ use crate::mesh::{MeshBuilder, P38Material, P38MeshPrim, P38PartRole, fixed, mat
 const PLACARD_BLACK: P38Material = mat([0.03, 0.03, 0.03], 0.3, 0.5);
 /// Depth of the frame and skin a plate stands inboard of the mould line.
 const FRAME_DEPTH_M: f32 = 0.03;
-/// The heat knobs' height on the windscreen's aft frame: where the rays to
-/// them in the two photographs pass each other, good to about 0.05 m.
-const HEAT_KNOB_Z_M: f32 = 0.66;
+/// The heat knobs' height on the windscreen's aft frame, which runs on down
+/// the cockpit wall below the sill: read off Lockheed's frontal photograph
+/// Z-4986 at the frame's station, good to about 0.03 m.
+const HEAT_KNOB_Z_M: f32 = 0.50;
 
 /// A placard: its wording and where its plate is, aircraft frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,6 +51,19 @@ fn on_wall(name: &'static str, text: &'static str, centre: Vec3, half: [f32; 2])
     }
 }
 
+/// `MAIN SWITCH BOX`, lettered across the face of the box under the board,
+/// facing aft, where Z-4986 shows it.
+fn main_switch_box() -> P38Placard {
+    let face = crate::cockpit_fittings::main_switch_box_face();
+    P38Placard {
+        name: "MainSwitchBox",
+        text: "MAIN SWITCH BOX",
+        centre_m: (face + Vec3::new(0.14, -0.0006, -0.035)).to_array(),
+        right_m: [0.06, 0.0, 0.0],
+        up_m: [0.0, 0.0, 0.007],
+    }
+}
+
 /// The P-38G's sourced placards.
 #[must_use]
 pub fn p38g_placards() -> Vec<P38Placard> {
@@ -69,6 +83,7 @@ pub fn p38g_placards() -> Vec<P38Placard> {
     vec![
         on_wall("GunHeat", "GUN HEAT", heat(-1.0), [0.035, 0.009]),
         on_wall("CockpitHeat", "COCKPIT HEAT", heat(1.0), [0.042, 0.009]),
+        main_switch_box(),
         on_wall(
             "SurfaceControlLock",
             "SURFACE CONTROL LOCK",

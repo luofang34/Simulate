@@ -401,8 +401,9 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
             dials::moving_part_matrix(part, &art.instrument_needles)
         }
         PartRole::CockpitControl => controls::control_matrix(&part.control_joints, &art.cockpit),
-        // A canopy pane that opens: the hatch on its hinge, a window winding down.
-        PartRole::CabinGlass if !part.control_joints.is_empty() => {
+        // A canopy pane that opens, and the frame it carries: the hatch on its
+        // hinge, a window winding down.
+        PartRole::CabinGlass | PartRole::CabinExterior if !part.control_joints.is_empty() => {
             controls::control_matrix(&part.control_joints, &art.cockpit)
         }
         _ => articulate_auxiliary_part(part, art),
