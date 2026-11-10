@@ -52,7 +52,16 @@ pub struct BarycentricClockModel {
     pub earth: ClockPotential,
     /// Mars with its oblateness (`J2 = 1.95545e-3`), which shifts polar vs equatorial surface clocks.
     pub mars: ClockPotential,
+    /// Mars's rotation pole in ICRF axes (unit vector). It stands 35.6° from the ICRF
+    /// pole, so the oblateness term needs it; Earth's pole is the ICRF pole to within
+    /// what the term can resolve.
+    pub mars_pole_icrf: [f64; 3],
 }
+
+/// Mars's pole at J2000 from the IAU 2015 report's right ascension `317.269202°` and
+/// declination `54.432516°` (`pck00011.tpc`, `BODY499_POLE_RA` and `BODY499_POLE_DEC`).
+/// It precesses `0.1°` a century, far below what a clock rate shows.
+const MARS_POLE_ICRF: [f64; 3] = [0.427259382168775, -0.394689045359322, 0.813430991432035];
 
 impl BarycentricClockModel {
     /// The Sun, Earth, the Moon and the planets out to Saturn, with DE440
@@ -72,6 +81,7 @@ impl BarycentricClockModel {
             ],
             earth: ClockPotential::EARTH,
             mars: ClockPotential::MARS,
+            mars_pole_icrf: MARS_POLE_ICRF,
         }
     }
 
@@ -97,7 +107,10 @@ impl BarycentricClockModel {
             .unwrap_or(0.0)
             + self
                 .mars
-                .potential_m2_s2(from(NaifId::MARS)?)
+                .potential_m2_s2(about_pole(
+                    from(NaifId::MARS)?,
+                    DVec3::from_array(self.mars_pole_icrf),
+                ))
                 .unwrap_or(0.0);
         for mass in &self.bodies {
             let distance_m = sqrt(from(mass.body)?.length_squared());
@@ -108,4 +121,12 @@ impl BarycentricClockModel {
         let kinetic = 0.5 * velocity_ssb_m_s.length_squared();
         Ok(L_B - (potential + kinetic) / (SPEED_OF_LIGHT_M_S * SPEED_OF_LIGHT_M_S))
     }
+}
+
+/// `offset_m` re-expressed with `z` along `pole`: the oblateness term reads only the
+/// distance and the height above the equator, so the direction round the pole is free.
+fn about_pole(offset_m: DVec3, pole: DVec3) -> DVec3 {
+    let along_m = offset_m.dot(pole);
+    let across_m = sqrt((offset_m.length_squared() - along_m * along_m).max(0.0));
+    DVec3::new(across_m, 0.0, along_m)
 }

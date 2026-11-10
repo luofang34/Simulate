@@ -171,7 +171,7 @@ fn clocks_on_the_moon_and_on_mars_gain_what_the_four_body_studies_give() {
     let mars_clock = |at: TdbEpoch| {
         clocks.rate(
             NaifId::MARS,
-            DVec3::new(0.0, 0.0, 3_376_200.0),
+            DVec3::from_array(clocks.model.mars_pole_icrf) * 3_376_200.0,
             DVec3::ZERO,
             at,
         )
@@ -185,51 +185,78 @@ fn clocks_on_the_moon_and_on_mars_gain_what_the_four_body_studies_give() {
         (55.8..56.2).contains(&moon_us_day),
         "the Moon gains {moon_us_day} µs/day"
     );
-    // Ashby and Patla (2025, arXiv:2507.21388) derive two averages for Mars vs Earth geoid:
-    //   1. Time-averaged over mean anomaly M (Eq. 12, <a_M / r_M>_t = 1): ~487.8 µs/day.
-    //   2. True-anomaly-weighted average <a_M / r_M>_f = 1 / (1 - e_M^2) (Sec. III.2,
-    //      where df = (L / r^2) dt, matching the perihelion–aphelion midpoint): ~477.8 µs/day.
+    // Ashby and Patla (2025, arXiv:2507.21388) give two numbers for Mars against Earth's
+    // geoid. Their closed-form estimate from the constants (Eq. 12) is 488.08 µs/day, and
+    // a clock's mean rate over time is what that estimates.
     assert!(
-        (486.5..489.0).contains(&mars_time_mean_us_day),
-        "Mars time-averaged (Eq. 12) rate {mars_time_mean_us_day} µs/day"
+        (487.0..489.0).contains(&mars_time_mean_us_day),
+        "Mars's time-mean rate {mars_time_mean_us_day} µs/day against Eq. 12's 488.08"
     );
 
+    // Their headline 477.60 µs/day is read from one 15.8-year cycle of the DE440 series
+    // (Fig. 1) without a stated weighting. The value midway between the fastest and the
+    // slowest rate of a Martian year lands on it; the time mean above does not, because
+    // Mars lingers near aphelion where its clock runs fastest.
     let samples = (686.98 * DAY_S / 3_600.0).round() as u64;
-    let mut weighted_rate_sum = 0.0_f64;
-    let mut weight_sum = 0.0_f64;
-    let (mut mars_tdb_min_us_day, mut mars_tdb_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut slowest_us_day, mut fastest_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
     let (mut synodic_min_us_day, mut synodic_max_us_day) = (f64::INFINITY, f64::NEG_INFINITY);
     for i in 0..samples {
         let at = start().advanced_seconds(i as f64 * 3_600.0);
-        let r_mars_sun_m =
-            (clocks.body(NaifId::MARS, at).0 - clocks.body(NaifId::SUN, at).0).length();
-        // Conservation of angular momentum r^2 df/dt = const => df weight is 1 / r^2:
-        let w = 1.0 / (r_mars_sun_m * r_mars_sun_m);
-        let rate_tdb = mars_clock(at) - earth_mean;
-        weighted_rate_sum += w * rate_tdb;
-        weight_sum += w;
-
-        let rate_tdb_us_day = rate_tdb * DAY_S * 1e6;
-        mars_tdb_min_us_day = mars_tdb_min_us_day.min(rate_tdb_us_day);
-        mars_tdb_max_us_day = mars_tdb_max_us_day.max(rate_tdb_us_day);
+        let rate_us_day = (mars_clock(at) - earth_mean) * DAY_S * 1e6;
+        slowest_us_day = slowest_us_day.min(rate_us_day);
+        fastest_us_day = fastest_us_day.max(rate_us_day);
 
         let synodic_us_day = (mars_clock(at) - clocks.geoid(at)) * DAY_S * 1e6;
         synodic_min_us_day = synodic_min_us_day.min(synodic_us_day);
         synodic_max_us_day = synodic_max_us_day.max(synodic_us_day);
     }
-    let mars_true_anomaly_mean_us_day = (weighted_rate_sum / weight_sum) * DAY_S * 1e6;
-    let mars_apsidal_midpoint_us_day = 0.5 * (mars_tdb_min_us_day + mars_tdb_max_us_day);
+    let mars_midrange_us_day = 0.5 * (slowest_us_day + fastest_us_day);
     assert!(
-        (476.5..479.0).contains(&mars_true_anomaly_mean_us_day),
-        "Ashby & Patla (2025, Sec. III.2) true-anomaly-averaged Mars rate {mars_true_anomaly_mean_us_day} µs/day"
+        (476.5..479.0).contains(&mars_midrange_us_day),
+        "midway between Mars's extreme rates: {mars_midrange_us_day} µs/day against 477.60"
     );
     assert!(
-        (476.5..479.0).contains(&mars_apsidal_midpoint_us_day),
-        "Mars perihelion–aphelion midpoint rate {mars_apsidal_midpoint_us_day} µs/day"
+        mars_time_mean_us_day - mars_midrange_us_day > 8.0,
+        "the time mean {mars_time_mean_us_day} must stand above the midrange {mars_midrange_us_day}"
     );
+    // The same figure gives 226.79 µs/day for the swing over a Martian year.
     let mars_ecc_swing_us_day = synodic_max_us_day - synodic_min_us_day;
     assert!(
         (210.0..245.0).contains(&mars_ecc_swing_us_day),
         "Mars–Earth synodic/eccentricity rate swing {mars_ecc_swing_us_day} µs/day"
+    );
+}
+
+#[test]
+fn marss_oblateness_is_read_about_marss_own_pole() {
+    let clocks = Clocks::new();
+    let pole = DVec3::from_array(clocks.model.mars_pole_icrf);
+    assert!((pole.length() - 1.0).abs() < 1e-12);
+    assert!(pole.angle_between(DVec3::Z).to_degrees() > 35.0);
+    let mars = clocks.model.mars;
+    let (polar_m, equatorial_m) = (3_376_200.0, 3_396_190.0);
+    let across = pole.cross(DVec3::Z).normalize();
+    let at = start();
+    let on_pole = clocks.rate(NaifId::MARS, pole * polar_m, DVec3::ZERO, at);
+    let on_equator = clocks.rate(NaifId::MARS, across * equatorial_m, DVec3::ZERO, at);
+    let c2 = sim_spacetime::SPEED_OF_LIGHT_M_S * sim_spacetime::SPEED_OF_LIGHT_M_S;
+    let ratio2 = |r_m: f64| mars.reference_radius_m * mars.reference_radius_m / (r_m * r_m);
+    let pole_potential = mars.gm_m3_s2 / polar_m * (1.0 - mars.j2 * ratio2(polar_m));
+    let equator_potential =
+        mars.gm_m3_s2 / equatorial_m * (1.0 + 0.5 * mars.j2 * ratio2(equatorial_m));
+    // The two points are 3 400 km apart, so the Sun's potential differs between them by
+    // more than the oblateness does; it is taken out by the same model without Mars.
+    let sun_only = |offset: DVec3| {
+        let (mars_at, _) = clocks.body(NaifId::MARS, at);
+        let (sun_at, _) = clocks.body(NaifId::SUN, at);
+        1.327_124_400_412_794_2e20 / (mars_at + offset - sun_at).length()
+    };
+    let expected = -((pole_potential - equator_potential)
+        + (sun_only(pole * polar_m) - sun_only(across * equatorial_m)))
+        / c2;
+    assert!(
+        ((on_pole - on_equator) - expected).abs() < 2e-15,
+        "pole minus equator {:e}, expected {expected:e}",
+        on_pole - on_equator
     );
 }
