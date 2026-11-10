@@ -15,6 +15,7 @@ portable-math = ["sim-spacetime/portable-math"]
 glam.workspace = true
 libm.workspace = true
 mbd-core.workspace = true
+navigate-astrodynamics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -23,6 +24,9 @@ sim-geo.workspace = true
 sim-spacetime.workspace = true
 thiserror.workspace = true
 world-core.workspace = true
+
+[dev-dependencies]
+spicekit.workspace = true
 
 [lints]
 workspace = true

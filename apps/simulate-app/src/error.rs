@@ -4,9 +4,10 @@ use sim_aviate::AviateBridgeError;
 use sim_core::SessionError;
 use sim_indicate::{FeedError, PanelError};
 use sim_maplibre::MapAdapterError;
+use sim_orbital::{ConstantsError, LagrangeError};
 use sim_render::RenderError;
 use sim_scenario::ScenarioError;
-use sim_spacetime::TimeError;
+use sim_spacetime::{SynodicError, TimeError};
 use sim_universe::UniverseError;
 
 use crate::flight::SolarSystemError;
@@ -59,6 +60,15 @@ pub enum AppSimError {
     /// The solar system the universe propagates in could not be set up.
     #[error("the solar system could not be set up")]
     SolarSystem(#[from] SolarSystemError),
+    /// Synodic frame or Lagrange-point targeting failed.
+    #[error("Lagrange-point targeting failed")]
+    Lagrange(#[from] LagrangeError),
+    /// Rotating synodic frame construction failed.
+    #[error("synodic frame construction failed")]
+    Synodic(#[from] SynodicError),
+    /// Gravitational constant lookup failed.
+    #[error("gravitational constant lookup failed")]
+    Constants(#[from] ConstantsError),
     /// Manual control cannot take over the active scenario.
     #[error("manual control is unavailable in {scenario}: {detail}")]
     ManualControlUnavailable {

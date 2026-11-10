@@ -336,22 +336,28 @@ fn a_martian_crater_rim_occults_low_elevation_links_and_shifts_downlink_edges_by
 #[cfg(test)]
 fn build_mars_relay_orbiter_trajectory(
     start: TdbEpoch,
-) -> sim_spacetime::SampledKinematicTrajectory {
+) -> Result<sim_spacetime::SampledKinematicTrajectory, sim_spacetime::TrajectoryQueryError> {
     use glam::{DQuat, DVec3};
     use sim_spacetime::{
         DynamicalModelIdentity, KinematicTrajectoryNode, SampledKinematicTrajectory,
     };
 
+    let r_m: f64 = 3_796_000.0;
+    let gm_mars_m3_s2: f64 = 4.282_837_362_069_909e13;
+    let omega_rad_s: f64 = (gm_mars_m3_s2 / (r_m * r_m * r_m)).sqrt();
+    let v_m_s: f64 = r_m * omega_rad_s;
+
     let traj_start = start.advanced_seconds(-3_600.0);
-    let nodes = (0..=48)
+    let nodes = (0..=370)
         .map(|k| {
-            let ep = traj_start.advanced_seconds(f64::from(k) * 300.0);
-            let theta = f64::from(k) * 0.08;
-            let (r, v) = (3_796_000.0, 3_360.0);
+            let dt_s = f64::from(k) * 30.0;
+            let ep = traj_start.advanced_seconds(dt_s);
+            let theta = omega_rad_s * dt_s;
+            let (s, c) = theta.sin_cos();
             KinematicTrajectoryNode {
                 epoch: ep,
-                pos_m: DVec3::new(r * theta.cos(), r * theta.sin(), 0.0),
-                vel_m_s: DVec3::new(-v * theta.sin(), v * theta.cos(), 0.0),
+                pos_m: DVec3::new(r_m * c, r_m * s, 0.0),
+                vel_m_s: DVec3::new(-v_m_s * s, v_m_s * c, 0.0),
                 q_body_to_axes: DQuat::IDENTITY,
                 omega_body_rad_s: DVec3::ZERO,
             }
@@ -363,7 +369,69 @@ fn build_mars_relay_orbiter_trajectory(
         DynamicalModelIdentity::PlanetaryKinematicOrFlight { body: NaifId::MARS },
         nodes,
     )
-    .expect("orbiter trajectory")
+}
+
+#[cfg(test)]
+fn verify_retarded_two_hop_photon_equations(
+    link: &Link,
+    orbiter_traj: &sim_spacetime::SampledKinematicTrajectory,
+    sample: &sim_analysis::RelayAccessSample,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use sim_spacetime::{
+        BodyOrientationCatalog, DerivativeOrder, EphemerisCatalog, SPEED_OF_LIGHT_M_S,
+        TranslationalTrajectorySource,
+    };
+    let lt1 = sample
+        .hop1_aircraft_to_satellite
+        .light_time_s
+        .ok_or("lt1")?;
+    let lt2 = sample.hop2_satellite_to_ground.light_time_s.ok_or("lt2")?;
+    let (t_rx, t_orb) = (sample.epoch, sample.hop1_aircraft_to_satellite.epoch);
+    let t_rov = t_orb.advanced_seconds(-lt1);
+    assert!((t_orb.signed_offset_seconds_from(t_rx) + lt2).abs() < 1.0e-6);
+
+    let ssb = |b: NaifId, ep: TdbEpoch| -> Result<glam::DVec3, Box<dyn std::error::Error>> {
+        Ok(link
+            .solar
+            .ephemeris
+            .geometric_state_icrf(b, NaifId::SSB, ep, DerivativeOrder::Position)?
+            .pos_m)
+    };
+    let station_ssb = |st: &GroundStationModel,
+                       ep: TdbEpoch|
+     -> Result<glam::DVec3, Box<dyn std::error::Error>> {
+        let fixed = st.ellipsoid.geodetic_to_fixed(&st.geodetic);
+        let rot = link.solar.orientation.body_rotation(st.body, ep)?;
+        Ok(ssb(st.body, ep)? + rot.fixed_to_icrf_pv(fixed, glam::DVec3::ZERO).0)
+    };
+    let orb_rel = |ep: TdbEpoch| -> Result<glam::DVec3, Box<dyn std::error::Error>> {
+        Ok(orbiter_traj.sample_translational_icrf(ep)?.pos)
+    };
+    let orb_ssb = |ep: TdbEpoch| -> Result<glam::DVec3, Box<dyn std::error::Error>> {
+        Ok(ssb(NaifId::MARS, ep)? + orb_rel(ep)?)
+    };
+
+    let hop2_res_m =
+        (station_ssb(&link.goldstone, t_rx)? - orb_ssb(t_orb)?).length() - SPEED_OF_LIGHT_M_S * lt2;
+    let hop1_res_m =
+        (orb_ssb(t_orb)? - station_ssb(&link.rover, t_rov)?).length() - SPEED_OF_LIGHT_M_S * lt1;
+    assert!(hop2_res_m.abs() < 0.05 && hop1_res_m.abs() < 0.05);
+    assert!((orb_rel(t_rx)? - orb_rel(t_orb)?).length() > 1_000_000.0);
+    let wrong_range_m = (orb_ssb(t_rx)? - station_ssb(&link.rover, t_rx)?).length();
+    assert!((wrong_range_m - sample.hop1_aircraft_to_satellite.slant_range_m).abs() > 300_000.0);
+
+    let bsp = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../sim-orbital/data/solar_de440s_mar099s_2026_2028.bsp");
+    let mut pool = spicekit::KernelPool::new();
+    pool.furnish(bsp)?;
+    let [ex, ey, ez, ..] =
+        pool.spk_state(NaifId::EARTH.0, NaifId::SSB.0, t_rx.as_j2000_seconds_f64())?;
+    let [mx, my, mz, ..] =
+        pool.spk_state(NaifId::MARS.0, NaifId::SSB.0, t_orb.as_j2000_seconds_f64())?;
+    let spice_lt_s =
+        glam::DVec3::new(ex - mx, ey - my, ez - mz).length() * 1_000.0 / SPEED_OF_LIGHT_M_S;
+    assert!((lt2 - spice_lt_s).abs() < 0.04);
+    Ok(())
 }
 
 #[test]
@@ -372,7 +440,7 @@ fn two_hop_mars_rover_to_orbiter_to_dsn_relay_chains_light_time_across_both_hops
 
     let link = Link::new();
     let start = TdbEpoch::new(820_497_600 + 424 * 86_400, 0);
-    let orbiter_traj = build_mars_relay_orbiter_trajectory(start);
+    let orbiter_traj = build_mars_relay_orbiter_trajectory(start).expect("orbiter trajectory");
     let omni = VehicleSensorModel::omnidirectional_at_cg(1, "Omni");
     let rover_ep = AnalysisEndpoint::SurfaceStation {
         station: &link.rover,
@@ -416,15 +484,7 @@ fn two_hop_mars_rover_to_orbiter_to_dsn_relay_chains_light_time_across_both_hops
     let sample = report.samples.first().expect("relay sample");
     let lt1 = sample.hop1_aircraft_to_satellite.light_time_s.expect("lt1");
     let lt2 = sample.hop2_satellite_to_ground.light_time_s.expect("lt2");
-    assert!((0.001..0.05).contains(&lt1));
-    assert!((300.0..420.0).contains(&lt2));
-    assert!(
-        (sample
-            .hop1_aircraft_to_satellite
-            .epoch
-            .signed_offset_seconds_from(sample.epoch)
-            + lt2)
-            .abs()
-            < 1.0e-6
-    );
+    assert!((0.001..0.05).contains(&lt1) && (300.0..420.0).contains(&lt2));
+    verify_retarded_two_hop_photon_equations(&link, &orbiter_traj, sample)
+        .expect("retarded 2-hop photon verification");
 }

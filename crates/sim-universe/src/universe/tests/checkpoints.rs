@@ -74,4 +74,31 @@ fn a_local_plant_is_reachable_as_the_type_that_built_it() {
             .local_mut::<CoastingRigidBody>(VesselId(1))
             .is_none()
     );
+    assert_eq!(universe.state_reinitializations(), 0);
+}
+
+#[test]
+fn spacecraft_bus_tracks_solar_power_and_proper_time_across_tiers_and_checkpoints() {
+    let mut universe = universe_with(&[1]);
+    let initial_bus = universe.bus_telemetry(VesselId(1)).unwrap();
+    assert!(initial_bus.clock_rate_offset < 0.0);
+
+    universe.promote_to_orbital(VesselId(1)).unwrap();
+    universe.advance_to(seconds(2_700)).unwrap();
+    let saved = universe.checkpoint();
+    let bus_day = universe.bus_telemetry(VesselId(1)).unwrap();
+    assert_eq!(bus_day.solar_lit_fraction, 1.0);
+    assert!(bus_day.solar_irradiance_w_m2 > 1_300.0);
+    assert!(bus_day.solar_power_w > 9_000.0);
+    assert!(
+        bus_day.oscillator_tau_minus_tdb_s < -1.0e-6,
+        "oscillator must accumulate relativistic proper-time offset: {:?}",
+        bus_day
+    );
+
+    universe.advance_to(seconds(2_800)).unwrap();
+    assert_eq!(universe.state_reinitializations(), 0);
+    universe.restore(&saved).unwrap();
+    assert_eq!(universe.state_reinitializations(), 1);
+    assert_eq!(universe.bus_telemetry(VesselId(1)).unwrap(), bus_day);
 }

@@ -55,7 +55,7 @@ pub use pacing::{PacingMonitor, PacingSession, PacingStats};
 use panel_gauges::PanelGauges;
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
-pub use space_ux::{SpaceLinkStatus, SpaceReferenceFrame};
+pub use space_ux::{SpaceHudChrome, SpaceLinkStatus, SpaceReferenceFrame};
 
 /// Longest wall-clock gap simulated after a stall (`500 ms`), long enough that a transient
 /// tile-compile frame loses no simulated time, short enough that a backgrounded tab does not
@@ -148,7 +148,7 @@ impl Flight {
     /// Starts `profile` from its beginning, or returns to free flight on `None`.
     pub fn select(&mut self, profile: Option<ScenarioProfile>) -> Result<(), AppSimError> {
         self.mode = match profile {
-            Some(profile) => Mode::scenario(profile)?,
+            Some(profile) => Mode::scenario(profile, &self.solar)?,
             None => self.free_mode(self.free_spawn)?,
         };
         self.begin_flight()
@@ -172,7 +172,7 @@ impl Flight {
     /// its spawn, from the beginning.
     pub fn restart(&mut self) -> Result<(), AppSimError> {
         self.mode = match self.profile() {
-            Some(profile) => Mode::scenario(profile)?,
+            Some(profile) => Mode::scenario(profile, &self.solar)?,
             None if self.in_space() => self.space_mode()?,
             None => self.free_mode(self.free_spawn)?,
         };

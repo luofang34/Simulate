@@ -7,6 +7,7 @@ use sim_orbital::{UniverseSnapshot, VesselId};
 
 use super::{Flight, Tier, Universe};
 use crate::UniverseError;
+use crate::bus::VesselBusSnapshot;
 
 /// A [`Universe`] at one instant: its clock, every orbital vessel with its
 /// pending events and commands, and which tier each vessel was in.
@@ -19,6 +20,7 @@ pub struct UniverseCheckpoint {
     now: SimInstant,
     orbital: UniverseSnapshot,
     tiers: BTreeMap<VesselId, Tier>,
+    buses: BTreeMap<VesselId, VesselBusSnapshot>,
 }
 
 impl UniverseCheckpoint {
@@ -33,10 +35,16 @@ impl Universe {
     /// The universe as it is now, for [`Self::restore`].
     #[must_use]
     pub fn checkpoint(&self) -> UniverseCheckpoint {
+        let buses = self
+            .vessels
+            .iter()
+            .map(|(&id, vessel)| (id, vessel.bus.snapshot()))
+            .collect();
         UniverseCheckpoint {
             now: self.now,
             orbital: self.orbital.capture_snapshot(),
             tiers: self.tiers(),
+            buses,
         }
     }
 
@@ -58,9 +66,15 @@ impl Universe {
         self.orbital
             .restore_snapshot(&checkpoint.orbital)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
+        for (&id, entry) in &mut self.vessels {
+            if let Some(bus_snap) = checkpoint.buses.get(&id) {
+                entry.bus.restore(bus_snap);
+            }
+        }
         self.now = checkpoint.now;
         self.tier_changes
             .retain(|change| change.at <= checkpoint.now);
+        self.state_reinitializations = self.state_reinitializations.wrapping_add(1);
         Ok(())
     }
 

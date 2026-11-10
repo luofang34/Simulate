@@ -14,9 +14,10 @@ use sim_orbital::{
 use sim_spacetime::{BodyRotationState, SimEpoch};
 
 use crate::UniverseError;
+use crate::bus::{VesselBusConfig, VesselBusState};
 use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 use crate::local::{LocalFactory, LocalPlant};
-use crate::tiering::{TierChange, TierPolicy};
+use crate::tiering::{TierChange, TierPolicy, planetary_dynamic_pressure_pa};
 
 mod checkpoint;
 
@@ -47,15 +48,16 @@ pub struct OrbitalContext {
     pub tolerances: Dop853Tolerances,
 }
 
-enum Flight {
+pub(crate) enum Flight {
     Local(Box<dyn LocalPlant>),
     /// Held by the orbital scheduler, which knows the vessel's central body.
     Orbital,
 }
 
-struct Vessel {
-    flight: Flight,
-    rebuild: LocalFactory,
+pub(crate) struct Vessel {
+    pub(crate) flight: Flight,
+    pub(crate) rebuild: LocalFactory,
+    pub(crate) bus: VesselBusState,
 }
 
 /// Every vessel of a run, advanced together on the master clock.
@@ -68,12 +70,14 @@ struct Vessel {
 pub struct Universe {
     epoch: SimEpoch,
     orbital: OrbitalUniverse,
+    pub(crate) ephemeris: Arc<dyn EphemerisCatalog>,
     orientation: Arc<dyn BodyOrientationCatalog>,
     tolerances: Dop853Tolerances,
-    vessels: BTreeMap<VesselId, Vessel>,
+    pub(crate) vessels: BTreeMap<VesselId, Vessel>,
     now: SimInstant,
     policy: Option<TierPolicy>,
     tier_changes: Vec<TierChange>,
+    state_reinitializations: u64,
 }
 
 impl Universe {
@@ -95,20 +99,28 @@ impl Universe {
             manifest,
             clock,
             context.force_model,
-            context.ephemeris,
+            Arc::clone(&context.ephemeris),
             Arc::clone(&context.orientation),
         )
         .with_horizon_quantum_ticks(context.quantum.ticks_u128());
         Self {
             epoch,
             orbital,
+            ephemeris: context.ephemeris,
             orientation: context.orientation,
             tolerances: context.tolerances,
             vessels: BTreeMap::new(),
             now: SimInstant::START,
             policy: None,
             tier_changes: Vec::new(),
+            state_reinitializations: 0,
         }
+    }
+
+    /// Number of times [`Self::restore`] has overwritten the universe's state (`0` during uninterrupted runs).
+    #[must_use]
+    pub const fn state_reinitializations(&self) -> u64 {
+        self.state_reinitializations
     }
 
     /// Moves vessels between tiers by `policy` as the universe advances.
@@ -155,8 +167,21 @@ impl Universe {
         if self.vessels.contains_key(&id) {
             return Err(UniverseError::DuplicateVessel(id));
         }
+        let bus_cfg = VesselBusConfig {
+            srp_surface: plant.srp_surface(),
+            ..VesselBusConfig::default()
+        };
+        let bus = VesselBusState::new(bus_cfg, self.now);
         let flight = Flight::Local(plant);
-        self.vessels.insert(id, Vessel { flight, rebuild });
+        self.vessels.insert(
+            id,
+            Vessel {
+                flight,
+                rebuild,
+                bus,
+            },
+        );
+        self.refresh_vessel_bus(id);
         Ok(())
     }
 
@@ -168,20 +193,38 @@ impl Universe {
         state: ContinuousPlantState,
         rebuild: LocalFactory,
     ) -> Result<(), UniverseError> {
+        self.insert_orbital_with_bus(id, config, state, VesselBusConfig::default(), rebuild)
+    }
+
+    /// Adds a vessel starting directly in the orbital tier at [`Self::now`] with explicit bus configuration.
+    pub fn insert_orbital_with_bus(
+        &mut self,
+        id: VesselId,
+        config: VesselConfig,
+        state: ContinuousPlantState,
+        bus_config: VesselBusConfig,
+        rebuild: LocalFactory,
+    ) -> Result<(), UniverseError> {
         if self.vessels.contains_key(&id) {
             return Err(UniverseError::DuplicateVessel(id));
         }
-        let checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        if let Some(srp) = bus_config.srp_surface {
+            checkpoint = checkpoint.with_srp_surface(srp);
+        }
         self.orbital
             .insert_vessel(config, checkpoint)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
+        let bus = VesselBusState::new(bus_config, self.now);
         self.vessels.insert(
             id,
             Vessel {
                 flight: Flight::Orbital,
                 rebuild,
+                bus,
             },
         );
+        self.refresh_vessel_bus(id);
         Ok(())
     }
 
@@ -301,6 +344,7 @@ impl Universe {
             .advance_committed_to(until)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
         self.now = until;
+        self.refresh_all_buses();
         Ok(())
     }
 
@@ -310,7 +354,7 @@ impl Universe {
         };
         let mut wanted = Vec::new();
         for (&id, vessel) in &self.vessels {
-            let (tier, body, state) = match &vessel.flight {
+            let (tier, body, state, q_pa, ground_contact) = match &vessel.flight {
                 Flight::Local(plant) => {
                     if plant.now() != self.now
                         || plant.holds_local_tier()
@@ -318,21 +362,30 @@ impl Universe {
                     {
                         continue;
                     }
-                    (Tier::Local, plant.body(), plant.state())
+                    (
+                        Tier::Local,
+                        plant.body(),
+                        plant.state(),
+                        plant.dynamic_pressure_pa(),
+                        plant.is_ground_contact(),
+                    )
                 }
                 Flight::Orbital => {
                     let primary = self.inertial_state(id)?.primary_body;
                     let Some(body) = body_ellipsoid(primary) else {
                         continue;
                     };
-                    (Tier::Orbital, body, self.vehicle_state(id)?)
+                    let st = self.vehicle_state(id)?;
+                    let h = body.fixed_to_geodetic(st.position_ecef).height_m;
+                    let q = planetary_dynamic_pressure_pa(primary, h, st.velocity_ecef.length());
+                    (Tier::Orbital, body, st, q, h <= 0.0)
                 }
             };
             let Some(naif) = naif_body(body) else {
                 continue;
             };
             let height_m = body.fixed_to_geodetic(state.position_ecef).height_m;
-            if let Some(to) = policy.wanted(tier, naif, height_m) {
+            if let Some(to) = policy.wanted(tier, naif, height_m, q_pa, ground_contact) {
                 wanted.push((id, to));
             }
         }
@@ -363,6 +416,9 @@ impl Universe {
         let Some(carried) = plant.orbital_body() else {
             return Err(UniverseError::LocalOnly(id));
         };
+        let srp = plant
+            .srp_surface()
+            .or_else(|| self.vessels.get(&id).and_then(|v| v.bus.srp_surface()));
         let config = VesselConfig {
             mass_model: MassPropertiesModel {
                 dry_mass_kg: carried.mass_kg,
@@ -379,7 +435,10 @@ impl Universe {
             bounding_radius_m: carried.bounding_radius_m,
             auto_soi_switch: true,
         };
-        let checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
+        if let Some(surface) = srp {
+            checkpoint = checkpoint.with_srp_surface(surface);
+        }
         self.orbital
             .insert_vessel(config, checkpoint)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
@@ -407,7 +466,7 @@ impl Universe {
         Ok(())
     }
 
-    fn rotation(
+    pub(crate) fn rotation(
         &self,
         body: BodyEllipsoid,
         at: SimInstant,

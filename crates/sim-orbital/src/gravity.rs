@@ -278,23 +278,26 @@ impl ForceModel {
         epoch: TdbEpoch,
         ephemeris: &dyn EphemerisCatalog,
     ) -> Result<DVec3, GravityError> {
-        const SOLAR_PRESSURE_1AU_PA: f64 = 1_361.0 / 299_792_458.0;
-        const AU_M: f64 = 149_597_870_700.0;
-        let sun_rel_primary = if primary_body == NaifId::SUN {
+        let origin_ssb_m = if primary_body == NaifId::SSB {
             DVec3::ZERO
         } else {
             ephemeris
-                .geometric_state_icrf(NaifId::SUN, primary_body, epoch, DerivativeOrder::Position)?
+                .geometric_state_icrf(primary_body, NaifId::SSB, epoch, DerivativeOrder::Position)?
                 .pos_m
         };
-        let sun_to_sc = pos_rel_icrf_m - sun_rel_primary;
-        let r_sq = sun_to_sc.length_squared();
-        if r_sq <= 0.0 {
+        let sample = sim_spacetime::SolarFluxModel::standard().sample(
+            origin_ssb_m + pos_rel_icrf_m,
+            epoch,
+            ephemeris,
+        )?;
+        if sample.sun_distance_m <= 0.0 {
             return Err(GravityError::SingularRadius(NaifId::SUN));
         }
-        let r_norm = sqrt(r_sq);
-        let flux_pa = SOLAR_PRESSURE_1AU_PA * (AU_M * AU_M / r_sq);
-        Ok((flux_pa * self.cannonball_srp_cr_area_over_mass_m2_kg / r_norm) * sun_to_sc)
+        let surface = crate::plant::SrpSurface {
+            area_m2: self.cannonball_srp_cr_area_over_mass_m2_kg,
+            reflectivity_coefficient: 1.0,
+        };
+        Ok(surface.force_icrf_n(&sample))
     }
 
     fn barycentric_point_mass_accel(

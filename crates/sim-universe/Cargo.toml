@@ -10,7 +10,9 @@ workspace = true
 
 [dependencies]
 glam = { workspace = true }
+sim-atmosphere = { workspace = true }
 sim-core = { workspace = true }
+sim-devices = { workspace = true }
 sim-geo = { workspace = true }
 sim-orbital = { workspace = true }
 sim-spacetime = { workspace = true }
@@ -18,4 +20,3 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 mbd-core = { workspace = true }
-sim-atmosphere = { workspace = true }

@@ -207,7 +207,7 @@ pub fn run_staged_phase_demonstration(
     let mut fin_lock_ok = true;
     let mut reinit_count = 0_u32;
 
-    let (mut epoch, mut state, liftoff_peak, pad_lock) =
+    let (mut epoch, mut state, liftoff_peak, _liftoff_dv, pad_lock) =
         execute_earth_pad_liftoff(solar, force_model, start_epoch)?;
     peak_a = peak_a.max(liftoff_peak);
     fin_lock_ok &= pad_lock;
@@ -272,7 +272,7 @@ pub(super) fn execute_earth_pad_liftoff(
     solar: &BuiltinSolarSystem2026_2028,
     force_model: &ForceModel,
     t0: TdbEpoch,
-) -> Result<(TdbEpoch, ContinuousPlantState, f64, bool), RaketaMissionError> {
+) -> Result<(TdbEpoch, ContinuousPlantState, f64, f64, bool), RaketaMissionError> {
     let earth_terrain = PinnedCollisionTerrain::earth_wgs84(0.0, Vec::new());
     let ell = BodyEllipsoid::WGS84;
     let pad_geo = Geodetic {
@@ -328,6 +328,7 @@ pub(super) fn execute_earth_pad_liftoff(
         out.state,
         out.peak_proper_accel_m_s2
             .max(lim.resulting_proper_accel_m_s2),
+        lim.effective_thrust_accel_m_s2 * 1.0,
         fin_locked && out.contact.pinned.is_none() && out.min_foot_clearance_m > 0.0,
     ))
 }

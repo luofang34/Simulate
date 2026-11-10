@@ -96,6 +96,36 @@ impl From<DafError> for sim_spacetime::OrientationError {
     }
 }
 
+impl From<navigate_astrodynamics::spk::SpkError> for DafError {
+    fn from(err: navigate_astrodynamics::spk::SpkError) -> Self {
+        use navigate_astrodynamics::spk::SpkError;
+        match err {
+            SpkError::Truncated { len, needed } => Self::Truncated { len, needed },
+            SpkError::UnexpectedIdWord { found } => Self::UnexpectedIdWord {
+                expected: "DAF/SPK ",
+                found,
+            },
+            SpkError::UnsupportedBinaryFormat(fmt) => Self::UnsupportedBinaryFormat(fmt),
+            SpkError::InvalidSummaryFormat { nd, ni } => Self::InvalidSummaryFormat { nd, ni },
+            SpkError::CorruptSummaryChain { record } => Self::CorruptSummaryChain { record },
+            SpkError::InvalidAddressRange {
+                start_word,
+                end_word,
+            } => Self::InvalidAddressRange {
+                start_word,
+                end_word,
+            },
+            SpkError::UnsupportedDataType(dt) => Self::UnsupportedSpkDataType(dt),
+            SpkError::UnsupportedBaseFrame(frame) => Self::UnsupportedBaseFrame(frame),
+            SpkError::MalformedDirectory(name) | SpkError::InvalidChebyshevRecord(name) => {
+                Self::MalformedDirectory(name)
+            }
+            SpkError::Chebyshev(c) => Self::Chebyshev(c),
+            other => Self::MalformedDirectory(other.to_string()),
+        }
+    }
+}
+
 /// Parsed raw summary entry from a `DAF` container.
 #[derive(Clone, Debug)]
 pub(crate) struct RawDafSummary {

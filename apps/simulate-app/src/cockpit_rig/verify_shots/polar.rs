@@ -213,6 +213,7 @@ fn step_and_readback_composite(h: &mut VerifyHarness) -> Result<Vec<u8>, AppSimE
         OverlayContent::FlightChrome {
             banner: None,
             efb: chrome.as_ref(),
+            space: None,
         },
         SHOT_SIZE,
     )?;

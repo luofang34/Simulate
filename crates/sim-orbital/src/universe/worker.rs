@@ -123,24 +123,17 @@ pub fn propose_vessel_horizon(
         .max_steps
         .min((remaining_slots as u32).saturating_mul(64).max(64));
 
-    let out = propagate_plant_interval(
-        &base_checkpoint.plant,
+    let out = propagate_checkpoint_interval(
+        base_checkpoint,
         start_epoch,
         end_epoch,
         base_checkpoint.integrator_hint.h_trial_s,
         &chunk_tol,
-        &config.mass_model,
-        config.propellant_mode,
-        config.rw_mode,
+        config,
         force_model,
         ephemeris,
         orientation,
-        &base_checkpoint.gnc.latched_law,
-    )
-    .map_err(|source| SchedulerError::Propagation {
-        vessel_id: vid,
-        source,
-    })?;
+    )?;
 
     package_segments_and_events(
         base_checkpoint,
@@ -151,6 +144,53 @@ pub fn propose_vessel_horizon(
         ephemeris,
         out,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn propagate_checkpoint_interval(
+    checkpoint: &VesselCheckpoint,
+    start_epoch: TdbEpoch,
+    end_epoch: TdbEpoch,
+    h_init_s: Option<f64>,
+    tolerances: &crate::dop853::Dop853Tolerances,
+    config: &VesselConfig,
+    force_model: &ForceModel,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<crate::dop853::PlantPropagationOutput, SchedulerError> {
+    let flux = sim_spacetime::SolarFluxModel::standard();
+    let srp_law =
+        checkpoint
+            .gnc
+            .srp_surface
+            .map(|surface| crate::plant::SolarRadiationPressureLaw {
+                inner: &checkpoint.gnc.latched_law,
+                surface,
+                flux: &flux,
+                ephemeris,
+            });
+    let control: &dyn crate::plant::ContinuousControlLaw = match &srp_law {
+        Some(law) => law,
+        None => &checkpoint.gnc.latched_law,
+    };
+    propagate_plant_interval(
+        &checkpoint.plant,
+        start_epoch,
+        end_epoch,
+        h_init_s,
+        tolerances,
+        &config.mass_model,
+        config.propellant_mode,
+        config.rw_mode,
+        force_model,
+        ephemeris,
+        orientation,
+        control,
+    )
+    .map_err(|source| SchedulerError::Propagation {
+        vessel_id: checkpoint.vessel_id,
+        source,
+    })
 }
 
 fn clamp_proposal_end(base: &VesselCheckpoint, horizon_target: SimInstant) -> SimInstant {

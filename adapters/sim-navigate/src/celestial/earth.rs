@@ -1,5 +1,7 @@
 use glam::DVec3;
-use navigate_celestial::{AnalyticEphemeris, Ephemeris, Epoch, moon_ecef_with, sun_ecef_with};
+use navigate_celestial::{
+    AnalyticEphemeris, Ephemeris, Epoch, ObservationError, moon_ecef_with, sun_ecef_with,
+};
 
 use super::frame::{CelestialFrame, EarthShadowSample, MoonDiscSample};
 
@@ -21,22 +23,26 @@ pub(super) fn frame_with<P: Ephemeris>(
     epoch: Epoch,
     observer_ecef_m: DVec3,
 ) -> Option<CelestialFrame> {
-    frame_from(provider, epoch, observer_ecef_m)
-        .or_else(|| frame_from(&AnalyticEphemeris, epoch, observer_ecef_m))
+    if let Ok(frame) = frame_from(provider, epoch, observer_ecef_m) {
+        return Some(frame);
+    }
+    let mut fallback_frame = frame_from(&AnalyticEphemeris, epoch, observer_ecef_m).ok()?;
+    fallback_frame.used_analytic_fallback = true;
+    Some(fallback_frame)
 }
 
 /// The sky for an observer at `observer_ecef_m`. Sun and Moon are
 /// topocentric: the Moon's parallax reaches about 1°, which decides whether
 /// an eclipse is total at a given site.
-fn frame_from<P: Ephemeris>(
+pub(super) fn frame_from<P: Ephemeris>(
     provider: &P,
     epoch: Epoch,
     observer_ecef_m: DVec3,
-) -> Option<CelestialFrame> {
+) -> Result<CelestialFrame, ObservationError<P::Error>> {
     let observer = Some(observer_ecef_m.to_array());
-    let sun = sun_ecef_with(provider, epoch, observer).ok()?;
-    let moon = moon_ecef_with(provider, epoch, observer).ok()?;
-    let moon_geocentric = moon_ecef_with(provider, epoch, None).ok()?;
+    let sun = sun_ecef_with(provider, epoch, observer)?;
+    let moon = moon_ecef_with(provider, epoch, observer)?;
+    let moon_geocentric = moon_ecef_with(provider, epoch, None)?;
     let sun_direction = DVec3::from_array(sun.direction);
     let moon_direction = DVec3::from_array(moon.direction);
     let sun_radius_deg = sun.angular_radius_rad.to_degrees();
@@ -60,7 +66,7 @@ fn frame_from<P: Ephemeris>(
         moon.distance_m,
         sun.distance_m,
     ));
-    Some(frame)
+    Ok(frame)
 }
 
 /// Shadow cone radii at the Moon's geocentric distance, seen from the

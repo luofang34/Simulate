@@ -10,9 +10,9 @@ use sim_core::TickSpan;
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use sim_orbital::{
     BodyOrientationCatalog, BuiltinSolarSystem2026_2028, CoastControlLaw, ContactFootSpec,
-    ContinuousPlantState, FOUR_G_PROPER_ACCEL_M_S2, ForceModel, NaifId, PropellantMode,
-    STANDARD_GRAVITY_G0_M_S2, TdbEpoch, VesselContactState, integrate_contact_interval,
-    quat_normalize_portable,
+    ContinuousPlantState, DerivativeOrder, EphemerisCatalog, FOUR_G_PROPER_ACCEL_M_S2, ForceModel,
+    NaifId, PropellantMode, STANDARD_GRAVITY_G0_M_S2, TdbEpoch, VesselContactState,
+    integrate_contact_interval, quat_normalize_portable,
 };
 use sim_raketa::{
     ALERT_PROPER_ACCEL_EXCEEDANCE, EXPECTED_RAKETA_USD_SHA256, ProperAccelLimiterInput,
@@ -336,21 +336,45 @@ fn raketa_flies_from_the_pad_into_the_moons_sphere_of_influence_with_no_state_re
         "lunar transfer took {flight_days:.2} days"
     );
     assert!(
-        cont.terminal_distance_to_target_m < 66_183_000.0,
-        "terminal distance from the Moon: {:.0} km",
-        cont.terminal_distance_to_target_m * 1e-3
+        (8_000.0..11_500.0).contains(&cont.ascent_delta_v_m_s),
+        "lunar mission LEO ascent delta-v = {:.1} m/s",
+        cont.ascent_delta_v_m_s
     );
-    assert!(
-        (cont.terminal_state.pos_rel_icrf_m.length() - cont.terminal_distance_to_target_m).abs()
-            < 1.0
-    );
+    assert!((2_900.0..3_500.0).contains(&cont.injection_burn_delta_v_m_s));
+    assert!((2_900.0..4_100.0).contains(&cont.total_transfer_delta_v_m_s));
+    let moon_ssb = solar
+        .ephemeris
+        .geometric_state_icrf(
+            NaifId::MOON,
+            NaifId::SSB,
+            cont.terminal_epoch,
+            DerivativeOrder::Position,
+        )
+        .expect("Moon SSB position")
+        .pos_m;
+    let earth_ssb = solar
+        .ephemeris
+        .geometric_state_icrf(
+            NaifId::EARTH,
+            NaifId::SSB,
+            cont.terminal_epoch,
+            DerivativeOrder::Position,
+        )
+        .expect("Earth SSB position")
+        .pos_m;
+    let independent_dist_to_moon_m = (cont.terminal_vessel_pos_ssb_m - moon_ssb).length();
+    let dist_from_earth_m = (cont.terminal_vessel_pos_ssb_m - earth_ssb).length();
+    assert!((independent_dist_to_moon_m - cont.terminal_distance_to_target_m).abs() < 1.0);
+    assert!(independent_dist_to_moon_m < 66_183_000.0);
+    assert!(dist_from_earth_m > 300_000_000.0);
 }
 
 #[test]
 fn raketa_flies_from_the_pad_into_marss_sphere_of_influence_with_no_state_reset() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
     let fm = ForceModel::standard_solar_system(solar.constants.clone()).expect("fm");
-    let t0 = TdbEpoch::new(835_000_000, 0);
+    // Launch during the October 2026 Earth-Mars Hohmann opposition window (`2026-10-18`):
+    let t0 = TdbEpoch::new(845_500_000, 0);
 
     let cont = run_continuous_pad_to_transfer(&solar, &fm, t0, RaketaMissionTarget::MarsSurface)
         .expect("continuous pad to Mars SOI");
@@ -374,12 +398,53 @@ fn raketa_flies_from_the_pad_into_marss_sphere_of_influence_with_no_state_reset(
         "Martian transfer took {flight_days:.1} days"
     );
     assert!(
-        cont.terminal_distance_to_target_m < 577_200_000.0,
-        "terminal distance from Mars: {:.0} km",
-        cont.terminal_distance_to_target_m * 1e-3
+        (8_000.0..11_500.0).contains(&cont.ascent_delta_v_m_s),
+        "Mars mission LEO ascent delta-v = {:.1} m/s",
+        cont.ascent_delta_v_m_s
     );
     assert!(
-        (cont.terminal_state.pos_rel_icrf_m.length() - cont.terminal_distance_to_target_m).abs()
-            < 1.0
+        (3_400.0..5_500.0).contains(&cont.total_transfer_delta_v_m_s),
+        "Mars TMI + MCC delta-v = {:.1} m/s (injection={:.1}, mcc={:.1})",
+        cont.total_transfer_delta_v_m_s,
+        cont.injection_burn_delta_v_m_s,
+        cont.midcourse_correction_delta_v_m_s
+    );
+    let mars_ssb = solar
+        .ephemeris
+        .geometric_state_icrf(
+            NaifId::MARS,
+            NaifId::SSB,
+            cont.terminal_epoch,
+            DerivativeOrder::Position,
+        )
+        .expect("Mars SSB position")
+        .pos_m;
+    let earth_ssb = solar
+        .ephemeris
+        .geometric_state_icrf(
+            NaifId::EARTH,
+            NaifId::SSB,
+            cont.terminal_epoch,
+            DerivativeOrder::Position,
+        )
+        .expect("Earth SSB position")
+        .pos_m;
+    let independent_dist_to_mars_m = (cont.terminal_vessel_pos_ssb_m - mars_ssb).length();
+    let dist_from_earth_m = (cont.terminal_vessel_pos_ssb_m - earth_ssb).length();
+    assert!(
+        (independent_dist_to_mars_m - cont.terminal_distance_to_target_m).abs() < 1.0,
+        "independent SSB Mars distance {:.1} m vs reported {:.1} m",
+        independent_dist_to_mars_m,
+        cont.terminal_distance_to_target_m
+    );
+    assert!(
+        independent_dist_to_mars_m < 577_200_000.0,
+        "terminal distance from Mars: {:.0} km",
+        independent_dist_to_mars_m * 1e-3
+    );
+    assert!(
+        dist_from_earth_m > 50_000_000_000.0,
+        "vessel must have travelled across interplanetary space (>50M km from Earth), got {:.0} km",
+        dist_from_earth_m * 1e-3
     );
 }

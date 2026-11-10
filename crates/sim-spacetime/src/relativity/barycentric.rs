@@ -50,6 +50,8 @@ pub struct BarycentricClockModel {
     pub bodies: Vec<MassiveBody>,
     /// Earth with its oblateness, which matters to clocks near it.
     pub earth: ClockPotential,
+    /// Mars with its oblateness (`J2 = 1.95545e-3`), which shifts polar vs equatorial surface clocks.
+    pub mars: ClockPotential,
 }
 
 impl BarycentricClockModel {
@@ -65,11 +67,11 @@ impl BarycentricClockModel {
                 mass(NaifId::MERCURY_BARYCENTER, 2.203_186_855_1e13),
                 mass(NaifId::VENUS_BARYCENTER, 3.248_585_92e14),
                 mass(NaifId::MOON, 4.902_800_118e12),
-                mass(NaifId::MARS, 4.282_837_362_069_909e13),
                 mass(NaifId::JUPITER_BARYCENTER, 1.267_127_641e17),
                 mass(NaifId::SATURN_BARYCENTER, 3.794_058_484_18e16),
             ],
             earth: ClockPotential::EARTH,
+            mars: ClockPotential::MARS,
         }
     }
 
@@ -92,7 +94,11 @@ impl BarycentricClockModel {
         let mut potential = self
             .earth
             .potential_m2_s2(from(NaifId::EARTH)?)
-            .unwrap_or(0.0);
+            .unwrap_or(0.0)
+            + self
+                .mars
+                .potential_m2_s2(from(NaifId::MARS)?)
+                .unwrap_or(0.0);
         for mass in &self.bodies {
             let distance_m = sqrt(from(mass.body)?.length_squared());
             if distance_m > 0.0 {

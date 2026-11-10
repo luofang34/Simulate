@@ -320,6 +320,7 @@ fn settle_cockpit(
         OverlayContent::FlightChrome {
             banner: None,
             efb: chrome.as_ref(),
+            space: None,
         },
         SHOT_SIZE,
     )?;

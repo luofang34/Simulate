@@ -280,6 +280,7 @@ fn settle_and_save_sun(
         OverlayContent::FlightChrome {
             banner: None,
             efb: chrome.as_ref(),
+            space: None,
         },
         SHOT_SIZE,
     )?;

@@ -7,10 +7,18 @@
 
 use std::collections::BTreeMap;
 
+use sim_atmosphere::{AtmosphereField, MarsAtmosphere, ReentryAtmosphere};
 use sim_core::{SimInstant, TickSpan};
+use sim_geo::{Geodetic, UtcTime};
 use sim_orbital::{NaifId, VesselId};
 
 use crate::universe::Tier;
+
+/// Default maximum dynamic pressure (`Pa`) at which a local vessel may be promoted to orbital propagation.
+pub const DEFAULT_MAX_PROMOTE_DYNAMIC_PRESSURE_PA: f64 = 0.1;
+
+/// Default dynamic pressure (`Pa`) above which an orbital vessel is demoted back to local flight dynamics.
+pub const DEFAULT_DEMOTE_ABOVE_DYNAMIC_PRESSURE_PA: f64 = 0.5;
 
 /// The heights about one body between which a vessel keeps the tier it has.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,12 +40,18 @@ pub struct TierPolicy {
     /// The band about each body. A vessel about a body with no band keeps
     /// its tier.
     pub bands: BTreeMap<NaifId, AltitudeBand>,
+    /// Maximum dynamic pressure, Pa, at which a local vessel may be promoted
+    /// to orbital propagation.
+    pub max_promote_dynamic_pressure_pa: f64,
+    /// Dynamic pressure, Pa, above which an orbital vessel is demoted to
+    /// local flight dynamics even if above `demote_below_m`.
+    pub demote_above_dynamic_pressure_pa: f64,
 }
 
 impl TierPolicy {
     /// Checks once a second, with bands that clear what flight dynamics
     /// must model: Earth's and Mars's sensible atmosphere, and the Moon's
-    /// highest terrain.
+    /// highest terrain, plus dynamic-pressure and ground-contact gates.
     #[must_use]
     pub fn standard() -> Self {
         let band = |promote_above_m, demote_below_m| AltitudeBand {
@@ -51,6 +65,8 @@ impl TierPolicy {
                 (NaifId::MOON, band(20_000.0, 15_000.0)),
                 (NaifId::MARS, band(130_000.0, 110_000.0)),
             ]),
+            max_promote_dynamic_pressure_pa: DEFAULT_MAX_PROMOTE_DYNAMIC_PRESSURE_PA,
+            demote_above_dynamic_pressure_pa: DEFAULT_DEMOTE_ABOVE_DYNAMIC_PRESSURE_PA,
         }
     }
 
@@ -68,15 +84,55 @@ impl TierPolicy {
     }
 
     /// The tier a vessel now in `tier` should move to, at `height_m` above
-    /// `body`, or `None` to stay.
-    pub(crate) fn wanted(&self, tier: Tier, body: NaifId, height_m: f64) -> Option<Tier> {
+    /// `body` with `dynamic_pressure_pa` and `ground_contact`, or `None` to stay.
+    #[must_use]
+    pub fn wanted(
+        &self,
+        tier: Tier,
+        body: NaifId,
+        height_m: f64,
+        dynamic_pressure_pa: f64,
+        ground_contact: bool,
+    ) -> Option<Tier> {
         let band = self.bands.get(&body)?;
         match tier {
-            Tier::Local if height_m > band.promote_above_m => Some(Tier::Orbital),
-            Tier::Orbital if height_m < band.demote_below_m => Some(Tier::Local),
+            Tier::Local
+                if !ground_contact
+                    && dynamic_pressure_pa <= self.max_promote_dynamic_pressure_pa
+                    && height_m > band.promote_above_m =>
+            {
+                Some(Tier::Orbital)
+            }
+            Tier::Orbital
+                if ground_contact
+                    || dynamic_pressure_pa > self.demote_above_dynamic_pressure_pa
+                    || height_m < band.demote_below_m =>
+            {
+                Some(Tier::Local)
+            }
             Tier::Local | Tier::Orbital => None,
         }
     }
+}
+
+/// Evaluates standard planetary atmospheric dynamic pressure $q = \frac{1}{2} \rho(h) v^2$ (`Pa`)
+/// for `body` at ellipsoidal `height_m` and body-relative speed `speed_ecef_m_s`.
+#[must_use]
+pub fn planetary_dynamic_pressure_pa(body: NaifId, height_m: f64, speed_ecef_m_s: f64) -> f64 {
+    let pos = Geodetic::from_degrees(0.0, 0.0, height_m);
+    let utc = UtcTime::from_unix_seconds(0.0);
+    let rho = if body == NaifId::EARTH {
+        ReentryAtmosphere
+            .sample(&pos, utc)
+            .map_or(0.0, |s| s.density_kg_m3)
+    } else if body == NaifId::MARS {
+        MarsAtmosphere::new()
+            .sample(&pos, utc)
+            .map_or(0.0, |s| s.density_kg_m3)
+    } else {
+        0.0
+    };
+    0.5 * rho * speed_ecef_m_s * speed_ecef_m_s
 }
 
 /// One vessel's change of tier, made by a [`TierPolicy`].

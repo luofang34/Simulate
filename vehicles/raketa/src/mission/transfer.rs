@@ -7,7 +7,8 @@ use glam::DVec3;
 use sim_orbital::{
     BuiltinSolarSystem2026_2028, ContinuousControlLaw, ContinuousPlantState, DerivativeOrder,
     Dop853Tolerances, EphemerisCatalog, ForceModel, NaifId, PlantStageWrench, PropellantMode,
-    STANDARD_GRAVITY_G0_M_S2, TdbEpoch, propagate_plant_interval, solve_lambert_universal,
+    STANDARD_GRAVITY_G0_M_S2, TdbEpoch, propagate_kepler_universal, propagate_plant_interval,
+    solve_lambert_universal,
 };
 
 use crate::{
@@ -54,6 +55,9 @@ pub(super) struct Voyage<'a> {
     pub(super) epoch: TdbEpoch,
     pub(super) state: ContinuousPlantState,
     pub(super) peak_proper_accel_m_s2: f64,
+    pub(super) injection_burn_delta_v_m_s: f64,
+    pub(super) midcourse_correction_delta_v_m_s: f64,
+    pub(super) state_reinitializations: u32,
 }
 
 impl Voyage<'_> {
@@ -93,13 +97,14 @@ impl Voyage<'_> {
         self.fly_with_tols(10.0, &tols, &RateDampCoastLaw { kd_s_inv: 2.5 })
     }
 
-    /// Flies `seconds` pointing along `direction` at `specific_force_m_s2` of thrust.
+    /// Flies `seconds` pointing along `direction` at `specific_force_m_s2` of thrust,
+    /// returning the integrated thrust $\Delta v$ (`m/s`).
     fn thrust(
         &mut self,
         direction: DVec3,
         specific_force_m_s2: f64,
         seconds: f64,
-    ) -> Result<(), RaketaMissionError> {
+    ) -> Result<f64, RaketaMissionError> {
         let law = RaketaOuterGuidanceSetpoint::ThrustVector {
             direction_unit_icrf: direction,
             specific_force_m_s2,
@@ -113,31 +118,46 @@ impl Voyage<'_> {
         self.peak_proper_accel_m_s2 = self
             .peak_proper_accel_m_s2
             .max(limited.resulting_proper_accel_m_s2);
+        let step_dv = limited.effective_thrust_accel_m_s2 * seconds.max(0.0);
         let tols = closed_loop_tols();
-        self.fly_with_tols(seconds, &tols, &law)
+        self.fly_with_tols(seconds, &tols, &law)?;
+        Ok(step_dv)
     }
 
     /// Burns until the vessel has the velocity `wanted` asks for, re-asking as it goes:
     /// the nose is brought round first, and the engine throttles down into the last of
-    /// the velocity owed.
+    /// the velocity owed. Returns the total integrated thrust $\Delta v$ (`m/s`).
     fn burn_until(
         &mut self,
         wanted: impl Fn(&Self) -> Result<DVec3, RaketaMissionError>,
-    ) -> Result<(), RaketaMissionError> {
+    ) -> Result<f64, RaketaMissionError> {
+        let mut burn_dv = 0.0_f64;
         for _ in 0..4_000 {
             let owed = wanted(self)? - self.state.vel_rel_icrf_m_s;
             let to_go = owed.length();
-            if to_go < VELOCITY_TO_GO_DONE_M_S {
-                return self.damp_rates();
+            let nose = self.state.q_body_to_icrf * DVec3::Y;
+            if to_go < VELOCITY_TO_GO_DONE_M_S
+                || (burn_dv > 25.0 && to_go < 25.0 && owed.dot(nose) <= VELOCITY_TO_GO_DONE_M_S)
+            {
+                self.damp_rates()?;
+                return Ok(burn_dv);
             }
             let direction = owed / to_go;
-            let nose = self.state.q_body_to_icrf * DVec3::Y;
             if nose.angle_between(direction) > POINTING_TOLERANCE_RAD {
-                self.thrust(direction, 0.0, 2.0)?;
+                let aim = if nose.dot(direction) < -0.5 {
+                    let perp = nose
+                        .cross(DVec3::Z)
+                        .try_normalize()
+                        .unwrap_or_else(|| nose.cross(DVec3::X).normalize_or_zero());
+                    (nose + perp).normalize_or_zero()
+                } else {
+                    direction
+                };
+                let _ = self.thrust(aim, 0.0, 2.0)?;
                 continue;
             }
             let seconds = (to_go / BURN_ACCEL_M_S2).clamp(0.05, 5.0);
-            self.thrust(direction, (to_go / seconds).min(BURN_ACCEL_M_S2), seconds)?;
+            burn_dv += self.thrust(direction, (to_go / seconds).min(BURN_ACCEL_M_S2), seconds)?;
         }
         Err(RaketaMissionError::TransferBurnDidNotConverge { epoch: self.epoch })
     }
@@ -181,19 +201,39 @@ impl Voyage<'_> {
     }
 
     /// The velocity that carries the vessel from where it is to where `target` will be
-    /// at `arrival`, about the current origin.
+    /// at `arrival`, about the current origin, selecting the branch (`short_way` vs `long_way`)
+    /// closest to the vessel's current velocity.
     fn intercept_velocity(
         &self,
         target: NaifId,
+        arrival: TdbEpoch,
+    ) -> Result<DVec3, RaketaMissionError> {
+        let aim = self.body_from_origin(target, arrival)?.0;
+        self.lambert_velocity_to_point(aim, arrival)
+    }
+
+    fn lambert_velocity_to_point(
+        &self,
+        aim: DVec3,
         arrival: TdbEpoch,
     ) -> Result<DVec3, RaketaMissionError> {
         let mu = self
             .force_model
             .constants()
             .require_mu(self.state.primary_body)?;
-        let aim = self.body_from_origin(target, arrival)?.0;
         let time_s = arrival.signed_offset_seconds_from(self.epoch);
-        Ok(solve_lambert_universal(self.state.pos_rel_icrf_m, aim, time_s, mu, false)?.v1_m_s)
+        let short = solve_lambert_universal(self.state.pos_rel_icrf_m, aim, time_s, mu, false);
+        let long = solve_lambert_universal(self.state.pos_rel_icrf_m, aim, time_s, mu, true);
+        match (short, long) {
+            (Ok(s), Ok(l)) => {
+                let ds = (s.v1_m_s - self.state.vel_rel_icrf_m_s).length_squared();
+                let dl = (l.v1_m_s - self.state.vel_rel_icrf_m_s).length_squared();
+                Ok(if ds <= dl { s.v1_m_s } else { l.v1_m_s })
+            }
+            (Ok(s), Err(_)) => Ok(s.v1_m_s),
+            (Err(_), Ok(l)) => Ok(l.v1_m_s),
+            (Err(e), Err(_)) => Err(e.into()),
+        }
     }
 
     /// Coasts in strides of `stride_s` towards `target`, correcting course at the given
@@ -223,7 +263,9 @@ impl Voyage<'_> {
                 });
             }
             if corrections.next_if(|at| flown_s >= at * trip_s).is_some() {
-                self.burn_until(|voyage| voyage.intercept_velocity(target, arrival))?;
+                let mcc_dv =
+                    self.burn_until(|voyage| voyage.intercept_velocity(target, arrival))?;
+                self.midcourse_correction_delta_v_m_s += mcc_dv;
             }
             let step_s = ((dist_m - 0.85 * within_m) / 60_000.0).clamp(60.0, stride_s);
             self.coast(step_s)?;
@@ -233,8 +275,49 @@ impl Voyage<'_> {
     /// From an Earth parking orbit to the Moon's sphere of influence, three and a half
     /// days out.
     pub(super) fn transfer_to_the_moon(&mut self) -> Result<(), RaketaMissionError> {
-        let arrival = self.epoch.advanced_seconds(3.5 * DAY_S);
-        self.burn_until(|voyage| voyage.intercept_velocity(NaifId::MOON, arrival))?;
+        let mu_earth = self.force_model.constants().require_mu(NaifId::EARTH)?;
+        let h_hat = self
+            .state
+            .pos_rel_icrf_m
+            .cross(self.state.vel_rel_icrf_m_s)
+            .normalize_or_zero();
+        let best_tof_s = 3.5 * DAY_S;
+        let mut best_coast_s = 0.0_f64;
+        let mut best_cost = f64::INFINITY;
+        for step in (0..=5_400).step_by(20) {
+            let dt = f64::from(step);
+            let (r_step, v_step) = propagate_kepler_universal(
+                self.state.pos_rel_icrf_m,
+                self.state.vel_rel_icrf_m_s,
+                dt,
+                mu_earth,
+            );
+            let t_arr = self.epoch.advanced_seconds(dt + best_tof_s);
+            let moon_pos = self.body_from_origin(NaifId::MOON, t_arr)?.0;
+            let moon_in_plane =
+                (moon_pos - h_hat * moon_pos.dot(h_hat)).normalize_or_zero() * moon_pos.length();
+            for long_way in [false, true] {
+                if let Ok(sol) =
+                    solve_lambert_universal(r_step, moon_in_plane, best_tof_s, mu_earth, long_way)
+                {
+                    let cost = (sol.v1_m_s - v_step).length();
+                    if cost < best_cost {
+                        best_cost = cost;
+                        best_coast_s = dt;
+                    }
+                }
+            }
+        }
+        let pre_burn_coast_s = (best_coast_s - 45.0).max(0.0);
+        if pre_burn_coast_s > 0.0 {
+            self.coast(pre_burn_coast_s)?;
+        }
+        let arrival = self.epoch.advanced_seconds(best_tof_s);
+        let moon_pos = self.body_from_origin(NaifId::MOON, arrival)?.0;
+        let moon_in_plane =
+            (moon_pos - h_hat * moon_pos.dot(h_hat)).normalize_or_zero() * moon_pos.length();
+        self.injection_burn_delta_v_m_s +=
+            self.burn_until(|voyage| voyage.lambert_velocity_to_point(moon_in_plane, arrival))?;
         self.coast_to(NaifId::MOON, arrival, 0.95 * MOON_SOI_M, 600.0, &[0.3, 0.7])?;
         self.move_origin_to(NaifId::MOON)
     }
@@ -242,68 +325,100 @@ impl Voyage<'_> {
     /// From an Earth parking orbit out of Earth's sphere of influence, then round the
     /// Sun to Mars's.
     pub(super) fn transfer_to_mars(&mut self) -> Result<(), RaketaMissionError> {
-        let (arrival, v_inf) = self.cheapest_earth_to_mars_departure()?;
-        for _ in 0..60 {
-            if self.state.pos_rel_icrf_m.dot(v_inf) >= 0.0 {
-                break;
-            }
-            self.coast(60.0)?;
-        }
         let mu_earth = self.force_model.constants().require_mu(NaifId::EARTH)?;
-        let v_inf_hat = v_inf.normalize_or_zero();
+        let h_hat = self
+            .state
+            .pos_rel_icrf_m
+            .cross(self.state.vel_rel_icrf_m_s)
+            .normalize_or_zero();
+        let (arrival, v_inf) = self.cheapest_earth_to_mars_departure(h_hat)?;
+        let v_inf_in_plane = v_inf - h_hat * v_inf.dot(h_hat);
+        let u_inf = v_inf_in_plane.normalize_or_zero();
         let v_inf_sq = v_inf.length_squared();
-        self.burn_until(|voyage| {
+        let r0 = self.state.pos_rel_icrf_m.length();
+        let ecc = 1.0 + r0 * v_inf_sq / mu_earth;
+        let beta = (1.0 / ecc).clamp(0.0, 1.0).asin();
+        let v_p_hat = glam::DQuat::from_axis_angle(h_hat, -(beta + 0.075)) * u_inf;
+
+        let mut best_coast_s = 0.0_f64;
+        let mut best_align = f64::NEG_INFINITY;
+        for step in (0..=5_400).step_by(20) {
+            let dt = f64::from(step);
+            let (_, v_step) = propagate_kepler_universal(
+                self.state.pos_rel_icrf_m,
+                self.state.vel_rel_icrf_m_s,
+                dt,
+                mu_earth,
+            );
+            let align = v_step.normalize_or_zero().dot(v_p_hat);
+            if align > best_align {
+                best_align = align;
+                best_coast_s = dt;
+            }
+        }
+        if best_coast_s > 0.0 {
+            self.coast(best_coast_s)?;
+        }
+        self.injection_burn_delta_v_m_s += self.burn_until(|voyage| {
             let state = &voyage.state;
-            let r_hat = state.pos_rel_icrf_m.normalize_or_zero();
-            let dir = (v_inf_hat + 0.35 * r_hat).normalize_or_zero();
-            let escape_speed = (2.0 * mu_earth / state.pos_rel_icrf_m.length()).sqrt();
-            let leaving_speed = (escape_speed * escape_speed + v_inf_sq).sqrt();
-            Ok(dir * leaving_speed)
+            let v_hat = state.vel_rel_icrf_m_s.normalize_or_zero();
+            let leaving_speed =
+                (2.0 * mu_earth / state.pos_rel_icrf_m.length().max(1.0) + v_inf_sq).sqrt();
+            Ok(v_hat * leaving_speed)
         })?;
         while self.state.pos_rel_icrf_m.length() < 1.3 * EARTH_SOI_M {
             self.coast(3_600.0)?;
         }
         self.move_origin_to(NaifId::SUN)?;
 
-        self.burn_until(|voyage| voyage.intercept_velocity(NaifId::MARS, arrival))?;
+        self.midcourse_correction_delta_v_m_s +=
+            self.burn_until(|voyage| voyage.intercept_velocity(NaifId::MARS, arrival))?;
         self.coast_to(
             NaifId::MARS,
             arrival,
             0.95 * MARS_SOI_M,
             DAY_S / 4.0,
-            &[0.5, 0.85, 0.97],
+            &[0.5, 0.85],
         )?;
         self.move_origin_to(NaifId::MARS)
     }
 
     /// The arrival date and Earth hyperbolic excess velocity $\mathbf{v}_\infty$, among trips
     /// of 120 to 320 days, that asks least of the engine.
-    fn cheapest_earth_to_mars_departure(&self) -> Result<(TdbEpoch, DVec3), RaketaMissionError> {
+    fn cheapest_earth_to_mars_departure(
+        &self,
+        h_hat: DVec3,
+    ) -> Result<(TdbEpoch, DVec3), RaketaMissionError> {
         let mu_sun = self.force_model.constants().require_mu(NaifId::SUN)?;
+        let escape_epoch = self.epoch.advanced_seconds(3.5 * DAY_S);
         let earth = self.solar.ephemeris.geometric_state_icrf(
             NaifId::EARTH,
             NaifId::SUN,
-            self.epoch,
+            escape_epoch,
             DerivativeOrder::Velocity,
         )?;
         let mut best: Option<(f64, TdbEpoch, DVec3)> = None;
-        for days in (120..=320).step_by(10) {
+        for days in (120..=350).step_by(5) {
             let tof_s = f64::from(days) * DAY_S;
-            let arrival = self.epoch.advanced_seconds(tof_s);
+            let arrival = escape_epoch.advanced_seconds(tof_s);
             let mars = self.solar.ephemeris.geometric_state_icrf(
                 NaifId::MARS,
                 NaifId::SUN,
                 arrival,
                 DerivativeOrder::Position,
             )?;
-            let Ok(sol) = solve_lambert_universal(earth.pos_m, mars.pos_m, tof_s, mu_sun, false)
-            else {
-                continue;
-            };
-            let v_inf = sol.v1_m_s - earth.vel_m_s;
-            let cost = v_inf.length();
-            if best.is_none_or(|(least, _, _)| cost < least) {
-                best = Some((cost, arrival, v_inf));
+            for long_way in [false, true] {
+                let Ok(sol) =
+                    solve_lambert_universal(earth.pos_m, mars.pos_m, tof_s, mu_sun, long_way)
+                else {
+                    continue;
+                };
+                let v_inf = sol.v1_m_s - earth.vel_m_s;
+                let out_of_plane = v_inf.dot(h_hat).abs();
+                let cost = v_inf.length() + 0.8 * out_of_plane;
+                if best.is_none_or(|(least, _, _)| cost < least) {
+                    best = Some((cost, arrival, v_inf));
+                }
             }
         }
         best.map(|(_, arrival, v_inf)| (arrival, v_inf)).ok_or(
@@ -317,6 +432,24 @@ impl Voyage<'_> {
     /// Distance to `target`, for the summary.
     pub(super) fn distance_to_target_m(&self, target: NaifId) -> Result<f64, RaketaMissionError> {
         self.distance_to(target)
+    }
+
+    /// Vessel position in Solar System Barycenter (`SSB`) `ICRF` coordinates (`m`).
+    pub(super) fn vessel_pos_ssb_m(&self) -> Result<DVec3, RaketaMissionError> {
+        let origin_ssb = if self.state.primary_body == NaifId::SSB {
+            DVec3::ZERO
+        } else {
+            self.solar
+                .ephemeris
+                .geometric_state_icrf(
+                    self.state.primary_body,
+                    NaifId::SSB,
+                    self.epoch,
+                    DerivativeOrder::Position,
+                )?
+                .pos_m
+        };
+        Ok(origin_ssb + self.state.pos_rel_icrf_m)
     }
 }
 

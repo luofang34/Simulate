@@ -78,7 +78,7 @@ impl<E: EphemerisCatalog + ?Sized, O: BodyOrientationCatalog + ?Sized> NavEpheme
         } else {
             let rot = self.orientation.body_rotation(center_id, tdb)?;
             let code = FrameCode(state.frame.orientation_naif_id);
-            if code != rot.frame_code && code != default_iau_frame_code(center_id) {
+            if !is_compatible_body_fixed_frame(center_id, code, rot.frame_code) {
                 return Err(CelestialAdapterError::UnrecognizedFrame {
                     center: state.frame.center_naif_id,
                     orientation: state.frame.orientation_naif_id,
@@ -159,4 +159,25 @@ impl<E: EphemerisCatalog + ?Sized> NavEphemeris for PureEphemerisNavAdapter<'_, 
             frame: FrameId::SSB_J2000,
         })
     }
+}
+
+fn is_compatible_body_fixed_frame(
+    center_id: NaifId,
+    requested: FrameCode,
+    catalog_frame: FrameCode,
+) -> bool {
+    if requested == catalog_frame || requested == default_iau_frame_code(center_id) {
+        return true;
+    }
+    const NAV_ITRF93: FrameCode = FrameCode(FrameId::EARTH_ITRF93.orientation_naif_id);
+    matches!(
+        (center_id, requested),
+        (
+            NaifId::EARTH,
+            NAV_ITRF93 | FrameCode::ITRF93 | FrameCode::IAU_EARTH
+        ) | (
+            NaifId::MOON,
+            FrameCode::MOON_ME | FrameCode::MOON_PA | FrameCode::IAU_MOON
+        )
+    )
 }
