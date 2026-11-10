@@ -2103,6 +2103,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "indicate-instrument-analog"
+version = "0.1.0"
+dependencies = [
+ "indicate-instrument-descriptor",
+ "indicate-instrument-scene",
+ "indicate-instrument-state",
+ "indicate-instrument-symbology",
+ "libm",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "indicate-instrument-descriptor"
 version = "0.1.0"
 dependencies = [
@@ -2128,6 +2140,7 @@ name = "indicate-instrument-glyphs"
 version = "0.1.0"
 dependencies = [
  "indicate-sha256",
+ "libm",
  "thiserror 2.0.21",
 ]
 
@@ -4874,6 +4887,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "indicate-alerts",
+ "indicate-instrument-analog",
  "indicate-instrument-descriptor",
  "indicate-instrument-feeder",
  "indicate-instrument-glyphs",
@@ -4890,6 +4904,7 @@ dependencies = [
  "sim-core",
  "sim-geo",
  "sim-render",
+ "syspack",
  "thiserror 2.0.21",
  "world-core",
  "world-geomag",
