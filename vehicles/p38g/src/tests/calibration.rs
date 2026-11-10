@@ -50,7 +50,7 @@ fn built_mesh_measures_to_the_an01_75f_2_callouts() {
         // the drawing's 15.3 in rolling radius implies.
         (
             "tyre static deflection",
-            ground - r.tyre_bottom_frl_in,
+            ground - r.main_tyre_bottom_frl_in,
             18.0 - d::MAIN_ROLLING_RADIUS_IN,
             0.5,
         ),
@@ -83,4 +83,37 @@ fn built_mesh_measures_to_the_an01_75f_2_callouts() {
         "{failures} dimensions off the drawing:\n{report}"
     );
     assert!(r.prim_count >= 50 && r.total_triangles >= 8_000);
+}
+
+/// The airframe stands nose-up on the drawing's static ground line: the nose axle at its
+/// static callout, the ground under both tyres at `5°33'46"`, and the propeller tips the
+/// dimensioned `16.726 in` clear of it.
+#[test]
+fn built_mesh_stands_on_the_drawn_static_ground_line() {
+    let r = verify_p38g_three_view_and_stations();
+    for (name, measured, drawn, tolerance) in [
+        (
+            "nose axle height",
+            r.nose_axle_frl_in,
+            -d::NOSE_AXLE_BELOW_FRL_STATIC_IN,
+            0.5,
+        ),
+        (
+            "static ground angle deg",
+            r.static_ground_angle_deg,
+            d::STATIC_GROUND_ANGLE_DEG,
+            0.1,
+        ),
+        (
+            "propeller ground clearance",
+            r.prop_tip_ground_clearance_in,
+            d::PROP_TIP_GROUND_CLEARANCE_STATIC_IN,
+            0.5,
+        ),
+    ] {
+        assert!(
+            (measured - drawn).abs() <= tolerance,
+            "{name}: mesh {measured:.2}, drawing {drawn:.2}"
+        );
+    }
 }

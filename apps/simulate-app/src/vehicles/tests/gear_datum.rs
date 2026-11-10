@@ -182,7 +182,38 @@ fn p38g_parked_height_matches_the_flight_models_loaded_cg() {
         FreeFlightPlant::new_on_ground(FreeFlightVehicle::JsbsimP38g, parked, 0.0, true).unwrap();
     let cg = plant.cg_structural_in().unwrap();
     assert!(
-        (cg.z - crate::vehicles::P38G_LOADED_CG_ABOVE_FRL_IN).abs() < 0.05,
+        (cg.z - crate::vehicles::P38G_LOADED_CG_ABOVE_FRL_IN).abs() < 0.05
+            && (cg.x - crate::vehicles::P38G_LOADED_CG_FS_IN).abs() < 0.3,
         "flight model CG {cg} in"
+    );
+}
+
+/// The parked P-38G stands on AN 01-75F-2's static ground line: nose-up by `5°33'46"`,
+/// from the first step (it spawns at that attitude and height) to settled.
+#[test]
+fn p38g_stands_nose_up_on_the_drawn_static_ground_line() {
+    let parked = Geodetic::from_degrees(40.5244, -74.5984, 30.0);
+    let mut plant =
+        FreeFlightPlant::new_on_ground(FreeFlightVehicle::JsbsimP38g, parked, 0.0, true).unwrap();
+    let world = WorldSurfaceHandle::new();
+    let pitch_deg = |plant: &FreeFlightPlant| {
+        let state = plant.state();
+        let up = sim_geo::LocalFrame::at(&sim_geo::ecef_to_geodetic(state.position_ecef)).up();
+        (state.attitude * DVec3::X).dot(up).asin().to_degrees()
+    };
+    let drawn = f64::from(sim_p38g::drawing::STATIC_GROUND_ANGLE_DEG);
+    let mut worst = 0.0_f64;
+    for _ in 0..((6.0 / plant.period().as_seconds()) as usize) {
+        plant.step(ControlInputs::default(), &world).unwrap();
+        worst = worst.max((pitch_deg(&plant) - drawn).abs());
+    }
+    let settled = pitch_deg(&plant);
+    assert!(
+        (settled - drawn).abs() < 0.2,
+        "settled at {settled:.2} deg, drawn {drawn:.2}"
+    );
+    assert!(
+        worst < 0.6,
+        "pitch swung {worst:.2} deg off the static line"
     );
 }

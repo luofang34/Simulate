@@ -56,8 +56,14 @@ pub const MAIN_TREAD_IN: f32 = 198.0;
 pub const MAIN_AXLE_BELOW_FRL_STATIC_IN: f32 = 54.575;
 /// Main tyre static rolling radius (front view `STATIC 15.300`, 36 in tyre), inches.
 pub const MAIN_ROLLING_RADIUS_IN: f32 = 15.3;
-/// Fuselage reference line above the ground at the nose gear, static (side view `69.970`).
-pub const FRL_ABOVE_GROUND_NOSE_STATIC_IN: f32 = 69.97;
+/// Nose axle below the fuselage reference line at the static oleo (side view `STATIC
+/// 69.970`, dimensioned to the nose tyre's centre), inches.
+pub const NOSE_AXLE_BELOW_FRL_STATIC_IN: f32 = 69.97;
+/// Static ground line below the horizontal of the fuselage reference line (side view
+/// `5°-33'-46"`): the aircraft stands nose-up by this angle, degrees.
+pub const STATIC_GROUND_ANGLE_DEG: f32 = 5.0 + 33.0 / 60.0 + 46.0 / 3600.0;
+/// Propeller tip above the static ground line (side view `16.726`), inches.
+pub const PROP_TIP_GROUND_CLEARANCE_STATIC_IN: f32 = 16.726;
 /// Nose tyre static rolling radius (side view `STATIC 11.600`, 27 in tyre), inches.
 pub const NOSE_ROLLING_RADIUS_IN: f32 = 11.6;
 /// Nose axle station: centre of the dashed nose tyre on the side view, inches.

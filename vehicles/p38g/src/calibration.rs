@@ -4,10 +4,10 @@
 use glam::{DVec3, Vec3};
 
 use crate::airframe::WING_GONDOLA_X;
-use crate::drawing::{INCH_M, y_to_fs, z_to_frl};
+use crate::drawing::{INCH_M, MAIN_ROLLING_RADIUS_IN, NOSE_ROLLING_RADIUS_IN, y_to_fs, z_to_frl};
 use crate::mesh::{P38MeshPrim, P38PartRole};
 use crate::package::p38g_mesh_prims;
-use crate::stations::{SEMI_SPAN, TIP_START_X, wing_station};
+use crate::stations::{PROP_HUB_Z, PROP_RADIUS_M, SEMI_SPAN, TIP_START_X, wing_station};
 
 /// Dimensions read off the built mesh (`p38g_mesh_prims`), in inches unless named
 /// otherwise. Stations are fuselage stations (inches aft of the gondola nose) and
@@ -38,8 +38,18 @@ pub struct P38BlueprintCalibrationReport {
     pub main_axle_fs_in: f32,
     /// Main axle height above the fuselage reference line (negative: below).
     pub main_axle_frl_in: f32,
-    /// Lowest tyre point above the fuselage reference line (negative: below).
-    pub tyre_bottom_frl_in: f32,
+    /// Nose axle height above the fuselage reference line (negative: below).
+    pub nose_axle_frl_in: f32,
+    /// Lowest main-tyre point above the fuselage reference line (negative: below).
+    pub main_tyre_bottom_frl_in: f32,
+    /// Angle of the static ground line (through the points one static rolling radius
+    /// under the nose and main axles) below the reference line's horizontal, degrees.
+    pub static_ground_angle_deg: f32,
+    /// Gap between the propeller arc's lowest point and the static ground line, measured
+    /// in the propeller plane.
+    pub prop_tip_ground_clearance_in: f32,
+    /// Highest point of the fins above the static ground line, measured square to it.
+    pub height_above_static_ground_in: f32,
     /// Fin top above the fuselage reference line.
     pub fin_top_frl_in: f32,
     /// Horizontal-tail tip to tip.
@@ -113,11 +123,8 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
     let starboard_fin: Vec<Vec3> = fins.iter().copied().filter(|p| p.x > 0.0).collect();
     let blades = gather(&prims, |p| p.role == P38PartRole::PropellerBlades);
     let spinners = gather(&prims, |p| p.role == P38PartRole::PropellerSpinner);
-    let tyres = gather(&prims, |p| {
-        matches!(
-            p.role,
-            P38PartRole::WheelLeft | P38PartRole::WheelRight | P38PartRole::NoseWheel
-        )
+    let main_tyres = gather(&prims, |p| {
+        matches!(p.role, P38PartRole::WheelLeft | P38PartRole::WheelRight)
     });
     let stab = gather(&prims, |p| p.prim_path.ends_with("HorizontalTail"));
     let stab_inner: Vec<Vec3> = stab.iter().copied().filter(|p| p.x.abs() < 1.0).collect();
@@ -128,6 +135,11 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
     let nose = translation(&prims, P38PartRole::NoseWheel);
     let blade_y = blades.iter().map(|p| p.y).sum::<f32>() / blades.len().max(1) as f32;
     let (root_le, root_te) = root_section(&prims);
+    let ground = StaticGround::under(
+        (y_to_fs(nose.y as f32), z_to_frl(nose.z as f32)),
+        (y_to_fs(right.y as f32), z_to_frl(right.z as f32)),
+    );
+    let prop_bottom = z_to_frl(PROP_HUB_Z) - PROP_RADIUS_M / INCH_M;
     let (span_lo, span_hi) = extent(&all, X);
     let (tail_y, nose_y) = extent(&hull, Y);
     let (fin_lo, fin_hi) = extent(&starboard_fin, X);
@@ -146,7 +158,14 @@ pub fn verify_p38g_three_view_and_stations() -> P38BlueprintCalibrationReport {
         nose_axle_fs_in: y_to_fs(nose.y as f32),
         main_axle_fs_in: y_to_fs(right.y as f32),
         main_axle_frl_in: z_to_frl(right.z as f32),
-        tyre_bottom_frl_in: z_to_frl(extent(&tyres, Z).0),
+        nose_axle_frl_in: z_to_frl(nose.z as f32),
+        main_tyre_bottom_frl_in: z_to_frl(extent(&main_tyres, Z).0),
+        static_ground_angle_deg: ground.slope.atan().to_degrees(),
+        prop_tip_ground_clearance_in: prop_bottom - ground.height_at(y_to_fs(blade_y)),
+        height_above_static_ground_in: fins
+            .iter()
+            .map(|p| ground.height_of(y_to_fs(p.y), z_to_frl(p.z)))
+            .fold(f32::NEG_INFINITY, f32::max),
         fin_top_frl_in: z_to_frl(extent(&fins, Z).1),
         stab_span_in: (stab_x.1 - stab_x.0) / INCH_M,
         stab_le_fs_in: y_to_fs(extent(&stab_inner, Y).1),
@@ -175,6 +194,36 @@ fn root_section(prims: &[P38MeshPrim]) -> (f32, f32) {
     let ((te_a, le_a), (te_b, le_b)) = (row(WING_GONDOLA_X), row(OUTER_ROW_X));
     let to_centre = |a: f32, b: f32| a - WING_GONDOLA_X * (b - a) / (OUTER_ROW_X - WING_GONDOLA_X);
     (to_centre(le_a, le_b), to_centre(te_a, te_b))
+}
+
+/// The ground the aircraft stands on at rest, in the drawing's side-view frame: a line
+/// through the tyre contact points, each its static rolling radius under its axle.
+struct StaticGround {
+    /// Station and height above the reference line of the main-tyre contact.
+    main: (f32, f32),
+    /// Rise of the ground per inch of station, going aft.
+    slope: f32,
+}
+
+impl StaticGround {
+    fn under(nose_axle: (f32, f32), main_axle: (f32, f32)) -> Self {
+        let nose = (nose_axle.0, nose_axle.1 - NOSE_ROLLING_RADIUS_IN);
+        let main = (main_axle.0, main_axle.1 - MAIN_ROLLING_RADIUS_IN);
+        Self {
+            main,
+            slope: (main.1 - nose.1) / (main.0 - nose.0),
+        }
+    }
+
+    /// Height of the ground above the reference line at station `fs`.
+    fn height_at(&self, fs: f32) -> f32 {
+        self.main.1 + (fs - self.main.0) * self.slope
+    }
+
+    /// Height of the point (`fs`, `h`) above the ground, square to it.
+    fn height_of(&self, fs: f32, h: f32) -> f32 {
+        (h - self.height_at(fs)) * self.slope.atan().cos()
+    }
 }
 
 fn planform_wing_area() -> f32 {
