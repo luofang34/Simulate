@@ -10,6 +10,7 @@ mod ace_bridge;
 mod cruise;
 mod design;
 mod engines;
+mod loading;
 mod markdown;
 mod mission;
 mod mixture;

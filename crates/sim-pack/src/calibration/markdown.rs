@@ -50,7 +50,7 @@ impl CalibrationReport {
         }
         if !self.stalls.is_empty() {
             out.push_str(
-                "## Power-Off Stalls\n| Condition | Sim KCAS | POH KCAS | Sim KIAS | POH KIAS | Status |\n|---|---:|---:|---:|---:|:---:|\n",
+                "## Power-Off Stalls\n| Condition | CG (FS in) | Sim KCAS | POH KCAS | Sim KIAS | POH KIAS | Status |\n|---|---:|---:|---:|---:|---:|:---:|\n",
             );
             for s in &self.stalls {
                 let sk = s
@@ -60,8 +60,9 @@ impl CalibrationReport {
                     .target_kias
                     .map_or_else(|| "-".to_owned(), |v| format!("{v:.1}"));
                 out.push_str(&format!(
-                    "| {} | {:.1} | {:.1} | {} | {} | {} |\n",
+                    "| {} | {} | {:.1} | {:.1} | {} | {} | {} |\n",
                     s.label,
+                    cg_str(s.flown_cg_fs_in),
                     s.sim_kcas,
                     s.target_kcas,
                     sk,
@@ -143,12 +144,13 @@ impl CalibrationReport {
     fn append_takeoffs(&self, out: &mut String) {
         if !self.takeoffs.is_empty() {
             out.push_str(
-                "\n## Takeoff Distance\n| Condition | Sim roll (ft) | POH roll (ft) | Sim 50 ft (ft) | POH 50 ft (ft) | Sim lift-off (KCAS) | POH lift-off (KCAS) | Status |\n|---|---:|---:|---:|---:|---:|---:|:---:|\n",
+                "\n## Takeoff Distance\n| Condition | CG (FS in) | Sim roll (ft) | POH roll (ft) | Sim 50 ft (ft) | POH 50 ft (ft) | Sim lift-off (KCAS) | POH lift-off (KCAS) | Status |\n|---|---:|---:|---:|---:|---:|---:|---:|:---:|\n",
             );
             for t in &self.takeoffs {
                 out.push_str(&format!(
-                    "| {} | {:.0} | {:.0} | {:.0} | {:.0} | {:.1} | {:.1} | {} |\n",
+                    "| {} | {} | {:.0} | {:.0} | {:.0} | {:.0} | {:.1} | {:.1} | {} |\n",
                     t.label,
+                    cg_str(t.flown_cg_fs_in),
                     t.sim_ground_roll_ft,
                     t.target_ground_roll_ft,
                     t.sim_total_ft,
@@ -316,4 +318,9 @@ impl DesignPerformanceReport {
 
 const fn pass_str(ok: bool) -> &'static str {
     if ok { "PASS" } else { "FAIL" }
+}
+
+/// A flown CG for a report column, `-` when the card gave none.
+fn cg_str(cg_fs_in: Option<f64>) -> String {
+    cg_fs_in.map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"))
 }

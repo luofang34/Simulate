@@ -8,6 +8,7 @@ use crate::calibration::cruise::{
     get_opt, restore_engine_tuning, set_if_exists, solve_cruise, solve_empirical, step_wings_level,
 };
 use crate::calibration::engines::{ManifoldPressureHold, set_each_engine};
+use crate::calibration::loading::{cg_target, load_point};
 use crate::calibration::mixture::{MixtureProcedure, set_mixture};
 use crate::calibration::results::{ClimbResult, RawSuiteEvaluation, StallResult};
 use crate::calibration::schema::{
@@ -62,6 +63,7 @@ pub(super) fn run_suite_with_overrides(
             suite.tolerances.stall_kt,
             base_non_payload_lbs,
             overrides,
+            suite.fuselage_station_origin_in,
         )?);
     }
     let powered = fly_powered_points(package, suite, base_non_payload_lbs, overrides)?;
@@ -100,7 +102,10 @@ fn fly_powered_points(
         .map(|cr| solve_cruise(&mut fresh()?, cr, suite.rated_bhp, tol, base_lbs, overrides))
         .collect::<Result<Vec<_>, _>>()?;
     let takeoffs = (suite.takeoff_points.iter())
-        .map(|t| solve_takeoff(&mut fresh()?, t, tol.takeoff_pct, base_lbs, overrides))
+        .map(|t| {
+            let cg = cg_target(&t.label, t.cg_fs_in, suite.fuselage_station_origin_in)?;
+            solve_takeoff(&mut fresh()?, t, tol.takeoff_pct, base_lbs, overrides, cg)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     // Recorded segments fly this tail as it is, not the handbook's airplane.
     let empirical = (suite.empirical_segments.iter())
@@ -185,8 +190,16 @@ fn solve_stall(
     tol_kt: f64,
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
+    origin_in: Option<f64>,
 ) -> Result<StallResult, PackError> {
-    configure_mass_and_overrides(fdm, bench.gross_mass_kg, base_non_payload_lbs, overrides)?;
+    let cg = cg_target(&bench.label, bench.cg_fs_in, origin_in)?;
+    let flown_cg_fs_in = load_point(
+        fdm,
+        bench.gross_mass_kg,
+        base_non_payload_lbs,
+        overrides,
+        cg,
+    )?;
     let ref_kt = 55.0_f64;
     let mut max_lift_lbs = 0.0_f64;
     let mut weight_lbs = bench.gross_mass_kg * POUNDS_PER_KG;
@@ -231,6 +244,7 @@ fn solve_stall(
         sim_kias,
         target_kias: bench.target_kias,
         residual_kias,
+        flown_cg_fs_in,
         passed: residual_kcas.abs() <= tol_kt && kias_ok,
     })
 }
