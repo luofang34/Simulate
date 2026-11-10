@@ -34,6 +34,10 @@ struct Draw {
     detail: vec4<f32>,
     // x soot source |x|, y start station, z fade length, w strength
     soot: vec4<f32>,
+    // where a display part's uv lands in the aircraft pass's atlas; unused here
+    display: vec4<f32>,
+    // the aircraft pass's UV flood lamp; unused here
+    lamp: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;

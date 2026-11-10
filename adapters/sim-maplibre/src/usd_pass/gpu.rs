@@ -69,7 +69,7 @@ pub(super) struct UsdPassGpu {
     layout: wgpu::BindGroupLayout,
     textures: AssetTexturesGpu,
     pub(super) meshes: BTreeMap<AssetKey, Vec<Option<PartMesh>>>,
-    /// Each skinned asset's textures.
+    /// The textures of each asset with a skin or a display atlas.
     pub(super) texture_groups: BTreeMap<AssetKey, wgpu::BindGroup>,
     pub(super) slots: BTreeMap<ViewSlotId, SlotGpu>,
 }
@@ -213,8 +213,13 @@ impl UsdPassGpu {
                 continue;
             }
             self.meshes.insert(key, upload_asset(device, queue, asset));
-            if let Some(skin) = asset.skin() {
-                let group = self.textures.upload(device, queue, skin);
+            if asset.skin().is_some() || asset.display_atlas().is_some() {
+                let group = self.textures.upload(
+                    device,
+                    queue,
+                    asset.skin().map(AsRef::as_ref),
+                    asset.display_atlas().map(AsRef::as_ref),
+                );
                 self.texture_groups.insert(key, group);
             }
         }

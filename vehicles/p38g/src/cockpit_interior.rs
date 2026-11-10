@@ -16,7 +16,7 @@ use crate::gondola::{gondola_half_width_at, gondola_section};
 use crate::instrument_panel::instrument_panel_prims;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
-    ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
+    ARMOR_GLASS, CHROME_OLEO, COCKPIT_FINISH, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
     PILOT_SUIT, PROP_YELLOW,
 };
 
@@ -33,6 +33,7 @@ pub(crate) fn cockpit_interior_prims() -> Vec<P38MeshPrim> {
     prims.extend(canopy_frame_prims());
     prims.extend(instrument_panel_prims());
     prims.extend(cockpit_control_prims());
+    prims.extend(crate::cockpit_placards::prims());
     prims
 }
 
@@ -131,7 +132,7 @@ fn build_cockpit_tub(prims: &mut Vec<P38MeshPrim>, contract: &CockpitInteriorCon
     let mut tub = fixed(
         "/P38g/CockpitInterior/TubAndBulkheads",
         P38PartRole::CabinInterior,
-        COCKPIT_GREEN,
+        COCKPIT_FINISH,
         tub,
     );
     tub.double_sided = true;

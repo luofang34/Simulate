@@ -23,6 +23,8 @@ use crate::world_surface::WorldSurfaceHandle;
 mod airport_spawn;
 mod display;
 mod estimate;
+#[cfg(test)]
+mod gauge_hud_tests;
 mod manual;
 mod mode;
 mod pacing;
@@ -216,7 +218,12 @@ impl Flight {
 
     fn gauge_inputs(&self) -> GaugeInputs {
         let air = self.onboard_sensors().air_data.map(|reading| reading.value);
-        GaugeInputs::sense(air.as_ref(), &self.articulation())
+        GaugeInputs::sense(air.as_ref(), &self.articulation()).with_flight(
+            self.now(),
+            self.vehicle_state(),
+            self.specific_force_frd_m_s2(),
+            self.world(),
+        )
     }
 
     /// Active scripted scenario profile, or `None` in free flight.

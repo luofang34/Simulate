@@ -12,7 +12,7 @@ struct Draw {
     // rgb emissive radiance (already scaled), w metallic
     emissive: vec4<f32>,
     // x roughness, y propeller phase (rad), z shutter blur (rad), w kind (0 opaque, 1 glass,
-    // 2 disc, 5 painted by the baked skin)
+    // 2 disc, 4 printed from the display atlas, 5 painted by the baked skin)
     params: vec4<f32>,
     // xyz unit direction to the sun in ENU, w daylight factor
     sun: vec4<f32>,
@@ -20,7 +20,15 @@ struct Draw {
     detail: vec4<f32>,
     // x soot source |x|, y start station, z fade length, w strength
     soot: vec4<f32>,
+    // where a display part's uv 0..1 lands in the atlas: xy origin, zw extent
+    display: vec4<f32>,
+    // xyz the ultraviolet flood lamp in ENU, w its level; w < 0 for a part
+    // whose emission it does not drive
+    lamp: vec4<f32>,
 };
+
+// Distance from the UV flood lamp at which luminous paint shows its rated glow.
+const LAMP_REFERENCE_M: f32 = 0.35;
 
 @group(0) @binding(0) var<uniform> draw: Draw;
 // The asset's baked skin (see `surface_finish`).
@@ -28,6 +36,9 @@ struct Draw {
 @group(2) @binding(1) var skin_normal: texture_2d<f32>;
 @group(2) @binding(2) var skin_orm: texture_2d<f32>;
 @group(2) @binding(3) var skin_sampler: sampler;
+// Dial faces printed once: sRGB colour, and in alpha the glow of luminous paint.
+@group(2) @binding(4) var display_atlas: texture_2d<f32>;
+@group(2) @binding(5) var display_sampler: sampler;
 
 struct VertexIn {
     @location(0) position: vec3<f32>,
@@ -65,14 +76,38 @@ fn vs(in: VertexIn) -> VertexOut {
 const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
 const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
 const EXPOSURE: f32 = 1.5;
+// Share of the occluded sky light that comes back off the surrounding surfaces.
+const BOUNCE_FILL: f32 = 0.35;
 
-fn shade(in: VertexOut, front: bool) -> vec3<f32> {
+// A display part's printed colour and glow; other parts keep their material.
+struct Surface {
+    albedo: vec3<f32>,
+    emissive: vec3<f32>,
+};
+
+fn surface(in: VertexOut) -> Surface {
+    // Sampled in uniform control flow for every part, then chosen by kind.
+    let printed = textureSample(display_atlas, display_sampler, draw.display.xy + clamp(in.uv, vec2<f32>(0.0), vec2<f32>(1.0)) * draw.display.zw);
+    let display = abs(draw.params.w - 4.0) < 0.5;
+    var out: Surface;
+    out.albedo = select(draw.base_color.rgb, printed.rgb, display);
+    // Luminous paint glows as the UV lamp's irradiance falls on it.
+    let to_lamp = draw.lamp.xyz - in.world;
+    let lamp_d = max(length(to_lamp), 0.05);
+    let irradiance = max(dot(normalize(in.normal), to_lamp / lamp_d), 0.0)
+        * (LAMP_REFERENCE_M * LAMP_REFERENCE_M) / (lamp_d * lamp_d);
+    let flood = select(1.0, draw.lamp.w * irradiance, draw.lamp.w >= 0.0);
+    out.emissive = draw.emissive.rgb * select(1.0, printed.a, display) * flood;
+    return out;
+}
+
+fn shade(in: VertexOut, front: bool, printed: Surface) -> vec3<f32> {
     let world = in.world;
     var geometric = normalize(in.normal);
     if (!front) {
         geometric = -geometric;
     }
-    let finish = surface_finish(draw.base_color.rgb, geometric, in.local, in.local_normal, in.occlusion, in.uv, in.tangent);
+    let finish = surface_finish(printed.albedo, geometric, in.local, in.local_normal, in.occlusion, in.uv, in.tangent);
     let n = finish.normal;
     let v = normalize(-world);
     let l = normalize(draw.sun.xyz);
@@ -101,8 +136,11 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     // view still sees open sky past a junction.
     let ao = finish.occlusion;
     let specular_ao = mix(ao * ao, 1.0, 0.35);
-    let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
-    return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
+    // What baked occlusion takes from the sky the surfaces around still pass on:
+    // a cockpit or wheel well is lit by its own walls, so its shade is never black.
+    let bounce = hemi * albedo * (1.0 - metallic) * (1.0 - ao) * BOUNCE_FILL;
+    let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + bounce + env_spec * specular_ao;
+    return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + printed.emissive;
 }
 
 // Share of the ground light reaching `world` from the ground straight below
@@ -121,7 +159,7 @@ fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    let color = shade(in, front);
+    let color = shade(in, front, surface(in));
     return vec4<f32>(filmic(color, EXPOSURE), 1.0);
 }
 
@@ -137,7 +175,15 @@ fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     let tint = draw.base_color.rgb * 0.25;
     let alpha = clamp(draw.base_color.a + f * 0.6, 0.0, 0.92);
     let rgb = filmic(mix(tint, sky, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE);
-    return vec4<f32>(rgb * alpha, alpha);
+    // The Sun's own mirror image on the pane, where the airframe does not shade it.
+    let l = normalize(draw.sun.xyz);
+    let h = normalize(l + v);
+    let n_dot_l = max(dot(n, l), 0.0);
+    let f_sun = 0.04 + 0.96 * pow(1.0 - clamp(dot(h, v), 0.0, 1.0), 5.0);
+    let glint = ggx(max(dot(n, h), 0.0), 0.08) * f_sun * n_dot_l * 0.25 / max(abs(dot(n, v)), 0.2)
+        * draw.sun.w * sun_visibility(in.world, n, in.clip.xy);
+    let glint_rgb = filmic(vec3<f32>(3.1, 2.95, 2.75) * glint, EXPOSURE);
+    return vec4<f32>(rgb * alpha + glint_rgb, alpha);
 }
 
 fn propeller_disc(in: VertexOut) -> vec4<f32> {

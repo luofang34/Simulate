@@ -7,10 +7,6 @@ use glam::{DMat4, DVec3, Vec2, Vec3};
 
 pub use crate::role::P38PartRole;
 
-/// Needle hands one instrument layout slot may carry; channels run
-/// `slot * NEEDLE_HANDS_PER_SLOT + hand`.
-pub const NEEDLE_HANDS_PER_SLOT: usize = 3;
-
 /// PBR `UsdPreviewSurface` material parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct P38Material {
@@ -57,6 +53,26 @@ pub struct P38MeshVertex {
     pub uv: [f32; 2],
 }
 
+/// One joint a cockpit control moves on, authored as `sim:control<i>:*` attributes:
+/// the part turns about (or slides along) `axis` through `origin_m` by `per_unit` for
+/// each unit its channel's value is away from `rest`, the value the mesh is modelled at.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct P38ControlJoint {
+    /// The pilot's control followed: `pitch`, `roll`, `yaw`, `throttle_left`,
+    /// `propeller_right`, `mixture_left`, `trim_elevator`, `flap_selector`, `gear_lever`, ...
+    pub channel: &'static str,
+    /// A point on the joint axis, part-local metres.
+    pub origin_m: [f32; 3],
+    /// The joint axis, part-local unit vector.
+    pub axis: [f32; 3],
+    /// Radians (or metres, sliding) per unit of the channel's value.
+    pub per_unit: f32,
+    /// The channel value the mesh is modelled at.
+    pub rest: f32,
+    /// Whether the joint slides along its axis instead of turning about it.
+    pub slides: bool,
+}
+
 /// One articulated or fixed mesh prim in the P-38G OpenUSD stage.
 #[derive(Clone, Debug)]
 pub struct P38MeshPrim {
@@ -72,9 +88,8 @@ pub struct P38MeshPrim {
     pub rest_to_aircraft: DMat4,
     /// Optional custom hinge axis (`sim:hingeAxis`).
     pub custom_hinge_axis: Option<DVec3>,
-    /// The panel needle channel an [`P38PartRole::InstrumentNeedle`] follows
-    /// (`sim:needleChannel`): layout slot times [`NEEDLE_HANDS_PER_SLOT`] plus hand.
-    pub needle_channel: Option<usize>,
+    /// The joints a cockpit control moves on, outermost first.
+    pub control_joints: Vec<P38ControlJoint>,
     /// Triangulated vertex buffer.
     pub vertices: Vec<P38MeshVertex>,
     /// Triangle index buffer (`0..vertices.len()`).
@@ -96,7 +111,7 @@ pub(crate) fn part(
         double_sided: false,
         rest_to_aircraft: rest,
         custom_hinge_axis: None,
-        needle_channel: None,
+        control_joints: Vec::new(),
         vertices,
         indices,
     }
@@ -352,6 +367,36 @@ impl MeshBuilder {
                 (p.get(a), p.get(b), p.get(c), p.get(d))
             {
                 self.polygon(&[va, vb, vc, vd], n);
+            }
+        }
+    }
+
+    /// A flat quad at `centre` spanning `right` and `up` half-extents, facing
+    /// `right × up`, its `uv` running `0..1` left to right and top to bottom.
+    pub(crate) fn label_quad(&mut self, centre: Vec3, right: Vec3, up: Vec3) {
+        let normal = right.cross(up);
+        let corners = [
+            (centre - right + up, Vec2::new(0.0, 0.0)),
+            (centre + right + up, Vec2::new(1.0, 0.0)),
+            (centre + right - up, Vec2::new(1.0, 1.0)),
+            (centre - right - up, Vec2::new(0.0, 1.0)),
+        ];
+        let [a, b, c, d] = corners.map(|(p, uv)| self.push_vertex(p, normal, uv));
+        self.push_oriented([a, b, c], normal);
+        self.push_oriented([a, c, d], normal);
+    }
+
+    /// A box at `centre` with half-extent vectors `u`, `v`, `w` along its own
+    /// (orthogonal) edges, for plates set at an angle.
+    pub(crate) fn slab(&mut self, centre: Vec3, u: Vec3, v: Vec3, w: Vec3) {
+        for (axis, sides) in [(u, [v, w]), (v, [w, u]), (w, [u, v])] {
+            let [a, b] = sides;
+            for sign in [-1.0_f32, 1.0] {
+                let face = centre + axis * sign;
+                self.polygon(
+                    &[face - a - b, face + a - b, face + a + b, face - a + b],
+                    axis * sign,
+                );
             }
         }
     }

@@ -47,9 +47,12 @@ pub enum P38PartRole {
     WheelLeft,
     /// Right main-gear tire and hubcap.
     WheelRight,
-    /// An instrument needle turning about its dial-local `+Y` axis by the angle of
-    /// its prim's `needle_channel`.
-    InstrumentNeedle,
+    /// A flat face a display texture maps onto (an instrument dial), with `uv`
+    /// spanning `0..1` across it (`u` right, `v` down).
+    DisplaySurface,
+    /// A cockpit control (wheel, lever, pedal, trim wheel) moving on its
+    /// [`crate::P38ControlJoint`]s.
+    CockpitControl,
 }
 
 impl P38PartRole {
@@ -79,7 +82,8 @@ impl P38PartRole {
             Self::NoseWheel => "nose_wheel",
             Self::WheelLeft => "wheel_left",
             Self::WheelRight => "wheel_right",
-            Self::InstrumentNeedle => "instrument_needle",
+            Self::DisplaySurface => "display_surface",
+            Self::CockpitControl => "cockpit_control",
         }
     }
 }

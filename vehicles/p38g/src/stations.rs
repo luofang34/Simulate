@@ -78,7 +78,16 @@ pub(crate) const PROP_BLACK: P38Material = mat([0.03, 0.03, 0.032], 0.0, 0.55);
 pub(crate) const PROP_YELLOW: P38Material = mat([0.92, 0.74, 0.08], 0.08, 0.36);
 pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92);
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
-pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
+/// The cockpit interior finish: unpainted Alclad aluminium sheet, dulled by
+/// handling (albedo about 0.5). Chosen by tone from Lockheed's negative Z-4972
+/// (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>):
+/// its right-wall panels read grey 196-209 against 222 for the white canvas
+/// column boot in the same light. Taking canvas as albedo 0.60-0.70, the
+/// candidates would read: Dull Dark Green (FS 34092) 64-69, Bronze Green 61-66,
+/// Interior Green (FS 34151) 110-118, zinc chromate yellow (FS 33481) 171-183,
+/// bare aluminium 191-205. The candidates' colours are approximate chip values;
+/// the photograph is the evidence, and it rules out the dark greens.
+pub(crate) const COCKPIT_FINISH: P38Material = mat([0.48, 0.49, 0.50], 0.3, 0.6);
 pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
 pub(crate) const LEATHER_BROWN: P38Material = mat([0.34, 0.21, 0.12], 0.05, 0.72);
 pub(crate) const PILOT_SUIT: P38Material = mat([0.42, 0.36, 0.24], 0.04, 0.78);

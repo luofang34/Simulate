@@ -194,7 +194,10 @@ fn the_cockpit_interior_stays_inside_the_mould_line() {
     for prim in prims() {
         if !matches!(
             prim.role,
-            P38PartRole::CabinInterior | P38PartRole::PilotFigure | P38PartRole::InstrumentNeedle
+            P38PartRole::CabinInterior
+                | P38PartRole::PilotFigure
+                | P38PartRole::DisplaySurface
+                | P38PartRole::CockpitControl
         ) {
             continue;
         }

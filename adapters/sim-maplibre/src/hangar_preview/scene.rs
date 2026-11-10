@@ -34,7 +34,7 @@ impl SceneAsset {
         Self {
             textures: asset.skin().map_or_else(
                 || textures.blank.clone(),
-                |skin| textures.upload(device, queue, skin),
+                |skin| textures.upload(device, queue, Some(skin.as_ref()), None),
             ),
             fingerprint: fingerprint(asset),
             asset: asset.clone(),
@@ -169,6 +169,8 @@ fn pack_part(part: &UsdMeshPart, draw: &UsdPartDraw, rig: &StudioRig) -> (bool, 
         ],
         sun: [rig.key.x as f32, rig.key.y as f32, rig.key.z as f32, 1.0],
         detail: part.detail.uniform_rows(),
+        display: [0.0; 4],
+        lamp: [0.0, 0.0, 0.0, -1.0],
     };
     let pipeline = match (translucent, part.double_sided) {
         (true, _) => PipelineKind::Translucent,

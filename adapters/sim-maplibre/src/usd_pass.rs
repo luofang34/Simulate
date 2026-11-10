@@ -52,9 +52,15 @@ pub const USD_AIRCRAFT_PASS: &str = "usd_aircraft_pass";
 /// Bytes per draw in a slot's uniform buffer (the dynamic-offset alignment).
 pub(crate) const DRAW_STRIDE: u64 = 256;
 /// Bytes of the `Draw` uniform block the shader reads.
-pub(crate) const DRAW_BYTES: usize = 224;
+pub(crate) const DRAW_BYTES: usize = 256;
+/// Draw kind of a part printed from the asset's display atlas.
+const KIND_DISPLAY: f32 = 4.0;
 /// Draw kind of a part painted by the asset's baked skin.
 pub(crate) const KIND_SKIN: f32 = 5.0;
+/// Radiance of luminous paint under the cockpit's ultraviolet flood lamp at
+/// full night, at the lamp's reference distance: enough to read a dial by,
+/// far below a sunlit face.
+const LUMINOUS_RADIANCE: f32 = 0.6;
 
 /// One aircraft to draw: placement, articulation, and whether it is ownship.
 #[derive(Clone, Copy, Debug)]
@@ -161,6 +167,7 @@ pub(crate) fn pack_slot_draws(
                     enu_from_skiway * part_draw.part_to_aircraft,
                     clip_from_enu,
                     view,
+                    None,
                 ));
             }
         }
@@ -184,6 +191,9 @@ pub(crate) fn pack_slot_draws(
         } else {
             SlotCameraRole::External
         };
+        let uv_lamp = asset
+            .uv_flood_lamp_m()
+            .map(|lamp| enu_from_aircraft.transform_point3(lamp));
         for part_draw in asset.evaluate_draws(&instance.articulation, role) {
             let Some(part) = asset.parts().get(part_draw.part_index) else {
                 continue;
@@ -196,6 +206,7 @@ pub(crate) fn pack_slot_draws(
                 enu_from_part,
                 clip_from_enu,
                 view,
+                uv_lamp,
             );
             draw.casts_shadow = instance.ownship && !draw.translucent;
             packed.push((distance, draw));
@@ -218,6 +229,7 @@ fn pack_part(
     enu_from_part: DMat4,
     clip_from_enu: DMat4,
     view: &AircraftSlotView<'_>,
+    uv_lamp_enu: Option<DVec3>,
 ) -> (f64, PackedDraw) {
     let translucent = part_draw.is_prop_disc || part_draw.opacity < 0.999;
     let kind = if part_draw.is_prop_disc {
@@ -230,10 +242,18 @@ fn pack_part(
         1.0
     } else if part.surface == PartSurface::Skin {
         KIND_SKIN
+    } else if matches!(part.surface, PartSurface::Display { .. }) {
+        KIND_DISPLAY
     } else {
         0.0
     };
     let material = part.material;
+    let (glow, display) = match part.surface {
+        PartSurface::Material | PartSurface::Skin => ([0.0; 3], [0.0; 4]),
+        PartSurface::Display { uv_rect, glow_rgb } => (glow_rgb, uv_rect),
+        PartSurface::Luminous { glow_rgb } => (glow_rgb, [0.0; 4]),
+    };
+    let (glow, lamp) = uv_flood(glow, uv_lamp_enu, view.daylight);
     let opacity = if part.role == PartRole::CabinGlass {
         part_draw.opacity.min(0.28)
     } else {
@@ -247,6 +267,7 @@ fn pack_part(
         emissive: emissive(
             material.emissive_rgb,
             part_draw.emissive_scale,
+            glow,
             material.metallic,
         ),
         params: [
@@ -262,6 +283,8 @@ fn pack_part(
             view.daylight,
         ],
         detail: part.detail.uniform_rows(),
+        display,
+        lamp,
     };
     (
         enu_from_part.w_axis.truncate().length(),
@@ -276,9 +299,27 @@ fn pack_part(
     )
 }
 
-fn emissive(rgb: [f32; 3], scale: f32, metallic: f32) -> [f32; 4] {
+/// Luminous paint glows only under the ultraviolet flood lamp a pilot
+/// switches on at dusk: the glow's radiance at the lamp's reference
+/// distance, and the shader's `lamp` row (the lamp's position in the slot's
+/// ENU frame and how far it is turned up). A part without luminous paint
+/// gets `w = -1`, and so does one on an airframe without a lamp, whose glow
+/// is then scaled here alone.
+fn uv_flood(glow: [f32; 3], lamp: Option<DVec3>, daylight: f32) -> ([f32; 3], [f32; 4]) {
+    let level = 1.0 - daylight;
+    let radiant = glow.map(|c| c * LUMINOUS_RADIANCE);
+    match lamp {
+        Some(p) if glow.iter().any(|c| *c > 0.0) => {
+            (radiant, [p.x as f32, p.y as f32, p.z as f32, level])
+        }
+        _ => (radiant.map(|c| c * level), [0.0, 0.0, 0.0, -1.0]),
+    }
+}
+
+fn emissive(rgb: [f32; 3], scale: f32, glow: [f32; 3], metallic: f32) -> [f32; 4] {
     let [r, g, b] = rgb;
-    [r * scale, g * scale, b * scale, metallic]
+    let [gr, gg, gb] = glow;
+    [r * scale + gr, g * scale + gg, b * scale + gb, metallic]
 }
 
 /// Model transform from the aircraft's USD axes into the slot's anchor ENU frame.
@@ -334,6 +375,11 @@ pub(crate) struct DrawBlock {
     pub(crate) sun: [f32; 4],
     /// [`crate::SurfaceDetail`] rows: panel pitch and weathering, then soot.
     pub(crate) detail: [[f32; 4]; 2],
+    /// Where a display part's `uv` lands in the atlas, `[u0, v0, du, dv]`.
+    pub(crate) display: [f32; 4],
+    /// The ultraviolet flood lamp lighting the part's luminous paint: its
+    /// position in the slot's ENU frame and level, `w < 0` for none.
+    pub(crate) lamp: [f32; 4],
 }
 
 impl DrawBlock {
@@ -347,7 +393,9 @@ impl DrawBlock {
             .chain(self.emissive)
             .chain(self.params)
             .chain(self.sun)
-            .chain(self.detail.into_iter().flatten());
+            .chain(self.detail.into_iter().flatten())
+            .chain(self.display)
+            .chain(self.lamp);
         let mut out = [0_u8; DRAW_BYTES];
         for (chunk, value) in out.as_chunks_mut::<4>().0.iter_mut().zip(floats) {
             *chunk = value.to_le_bytes();

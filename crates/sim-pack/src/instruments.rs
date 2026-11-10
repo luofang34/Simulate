@@ -24,6 +24,8 @@ const USAAF_1943_FIGHTER_MANIFEST: &[u8] =
     include_bytes!("../../../instruments/usaaf-1943-fighter/syspack.json");
 const USAAF_1943_FIGHTER_INSTRUMENTS: &[u8] =
     include_bytes!("../../../instruments/usaaf-1943-fighter/instruments.json");
+const USAAF_1943_FIGHTER_PROVENANCE: &[u8] =
+    include_bytes!("../../../instruments/usaaf-1943-fighter/PROVENANCE.md");
 
 /// Ids of the instrument packs shipped in the binary.
 pub const BUILTIN_INSTRUMENT_PACKS: [&str; 2] = ["ga-analog-six-pack", "usaaf-1943-fighter"];
@@ -31,15 +33,20 @@ pub const BUILTIN_INSTRUMENT_PACKS: [&str; 2] = ["ga-analog-six-pack", "usaaf-19
 /// The shipped instrument pack with `id`, as package files.
 #[must_use]
 pub fn builtin_instrument_pack_source(id: &str) -> Option<MemoryPackageSource> {
-    let (manifest, instruments) = match id {
-        "ga-analog-six-pack" => (GA_ANALOG_SIX_PACK_MANIFEST, GA_ANALOG_SIX_PACK_INSTRUMENTS),
-        "usaaf-1943-fighter" => (USAAF_1943_FIGHTER_MANIFEST, USAAF_1943_FIGHTER_INSTRUMENTS),
-        _ => return None,
-    };
-    Some(MemoryPackageSource::from_embedded(
-        manifest,
-        &[(syspack::INSTRUMENTS_ASSET, instruments)],
-    ))
+    match id {
+        "ga-analog-six-pack" => Some(MemoryPackageSource::from_embedded(
+            GA_ANALOG_SIX_PACK_MANIFEST,
+            &[(syspack::INSTRUMENTS_ASSET, GA_ANALOG_SIX_PACK_INSTRUMENTS)],
+        )),
+        "usaaf-1943-fighter" => Some(MemoryPackageSource::from_embedded(
+            USAAF_1943_FIGHTER_MANIFEST,
+            &[
+                (syspack::INSTRUMENTS_ASSET, USAAF_1943_FIGHTER_INSTRUMENTS),
+                ("PROVENANCE.md", USAAF_1943_FIGHTER_PROVENANCE),
+            ],
+        )),
+        _ => None,
+    }
 }
 
 /// The pack `vehicle` pins, verified against the pin, with every pitot-static
@@ -58,6 +65,7 @@ pub(crate) fn resolve_pinned_pack(
     let pack = VerifiedSyspack::load_pinned(&source, pin)?;
     if let Some(document) = pack.instrument_pack() {
         check_bindings(vehicle, &pin.id, document)?;
+        crate::resolve_typefaces(document)?;
     }
     Ok(Some(pack))
 }

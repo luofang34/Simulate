@@ -33,6 +33,12 @@ enum FeedDomain {
     ApolloCommandModule,
 }
 
+/// The feed of an aircraft flying over the Earth: what the panel's gyro, turn
+/// and compass instruments read their flight state from.
+pub(crate) fn earth_aircraft_feed_config() -> FeedConfig {
+    FeedDomain::EarthAircraft.feed_config()
+}
+
 impl FeedDomain {
     const fn for_profile(profile: Option<ScenarioProfile>) -> Self {
         match profile {

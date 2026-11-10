@@ -13,8 +13,10 @@ sim-apollo = { workspace = true }
 sim-geo = { workspace = true }
 sim-render = { workspace = true }
 sim-core = { workspace = true }
+syspack = { workspace = true }
 glam = { workspace = true }
 indicate-alerts = { workspace = true }
+indicate-instrument-analog = { workspace = true }
 indicate-instrument-descriptor = { workspace = true }
 indicate-instrument-feeder = { workspace = true }
 indicate-instrument-glyphs = { workspace = true }

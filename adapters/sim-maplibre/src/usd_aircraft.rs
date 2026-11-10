@@ -9,6 +9,8 @@ use sim_core::AirframeArticulation;
 
 use crate::MapAdapterError;
 
+mod controls;
+mod dials;
 mod export;
 mod finish;
 mod loader;
@@ -20,6 +22,8 @@ mod skin;
 #[cfg(test)]
 mod tests;
 
+pub use controls::{ControlChannel, ControlJoint};
+pub use dials::DisplayAtlas;
 pub use export::{UsdCameraSample, UsdRunwaySample, UsdSceneExportInput, export_scene_usda};
 pub use finish::{SootStreak, SurfaceDetail};
 pub(crate) use resolver::EmbeddedUsdResolver;
@@ -55,7 +59,7 @@ impl Default for PbrMaterial {
 }
 
 /// How a part's surface is coloured beyond its material.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum PartSurface {
     /// Its material alone.
     #[default]
@@ -63,6 +67,21 @@ pub enum PartSurface {
     /// Painted by the asset's baked [`SkinTextures`], sampled through the
     /// part's texture coordinates and tangents.
     Skin,
+    /// Printed from the asset's [`DisplayAtlas`]: the part's `uv` `0..1` maps
+    /// onto `uv_rect` `[u0, v0, du, dv]` of the atlas, whose alpha marks
+    /// luminous paint glowing `glow_rgb` (linear) under the cockpit's lamps.
+    Display {
+        /// Where the part's texture sits in the atlas.
+        uv_rect: [f32; 4],
+        /// Linear colour of the luminous paint's glow.
+        glow_rgb: [f32; 3],
+    },
+    /// Painted all over in luminous paint glowing `glow_rgb` (linear) under
+    /// the cockpit's lamps, as a dial's needle is.
+    Luminous {
+        /// Linear colour of the glow.
+        glow_rgb: [f32; 3],
+    },
 }
 
 /// Interleaved GPU-ready vertex extracted from a composed OpenUSD `UsdGeomMesh`.
@@ -106,6 +125,8 @@ pub struct UsdMeshPart {
     /// The [`sim_core::InstrumentNeedles`] channel a [`PartRole::InstrumentNeedle`]
     /// follows (`sim:needleChannel`).
     pub needle_channel: Option<usize>,
+    /// The joints a [`PartRole::CockpitControl`] moves on, outermost first.
+    pub control_joints: Vec<ControlJoint>,
     /// Procedural paint finish: panel seams, weathering and soot.
     pub detail: SurfaceDetail,
     /// What colours the surface beyond the material.
@@ -149,6 +170,8 @@ pub struct UsdAircraftAsset {
     radius_m: f32,
     lowest_z_m: f32,
     skin: Option<Arc<SkinTextures>>,
+    display_atlas: Option<Arc<DisplayAtlas>>,
+    uv_flood_lamp_m: Option<DVec3>,
 }
 
 impl UsdAircraftAsset {
@@ -178,6 +201,8 @@ impl UsdAircraftAsset {
             radius_m,
             lowest_z_m,
             skin: None,
+            display_atlas: None,
+            uv_flood_lamp_m: None,
         }
     }
 
@@ -185,6 +210,19 @@ impl UsdAircraftAsset {
     #[must_use]
     pub fn skin(&self) -> Option<&Arc<SkinTextures>> {
         self.skin.as_ref()
+    }
+
+    /// Where the cockpit's ultraviolet flood lamp sits, aircraft frame, if
+    /// the airframe has one to light its instruments' luminous paint.
+    #[must_use]
+    pub fn uv_flood_lamp_m(&self) -> Option<DVec3> {
+        self.uv_flood_lamp_m
+    }
+
+    /// The printed faces its [`PartSurface::Display`] parts sample.
+    #[must_use]
+    pub fn display_atlas(&self) -> Option<&Arc<DisplayAtlas>> {
+        self.display_atlas.as_ref()
     }
 
     /// An airframe whose vertices carry ambient occlusion baked from its own rest pose.
@@ -240,6 +278,9 @@ impl UsdAircraftAsset {
             if !role_visible_to_camera(part.role, camera_role) {
                 continue;
             }
+            if !dials::instrument_part_shown(part, &articulation.instrument_needles) {
+                continue;
+            }
             if articulation.gear_pos_norm < 0.03
                 && matches!(
                     part.role,
@@ -254,9 +295,9 @@ impl UsdAircraftAsset {
             }
             let engine_idx = usize::from(part.prim_path.contains("PropRight"));
             let prop_vis = articulation.propeller_visual_for_engine(engine_idx, 1.0 / 60.0);
-            let beacon_emissive = (0.15 + 2.55 * articulation.beacon_flash_norm) as f32;
+            let beacon_emissive = (0.15 + 2.55 * articulation.lights.beacon_flash_norm) as f32;
             let land_emissive =
-                (0.08 + 3.20 * articulation.landing_light_norm.clamp(0.0, 1.0)) as f32;
+                (0.08 + 3.20 * articulation.lights.landing_light_norm.clamp(0.0, 1.0)) as f32;
             let (opacity, emissive_scale, is_prop_disc) = match part.role {
                 PartRole::PropellerBlades => (prop_vis.blade_opacity, 1.0, false),
                 PartRole::PropellerDisc => (prop_vis.disc_opacity, 1.0, true),
@@ -339,10 +380,10 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
             let t = DVec3::new(0.0, -retract * 0.78, comp + retract * 1.22);
             DMat4::from_translation(t) * DMat4::from_rotation_x(-retract * 1.35 - spin)
         }
-        PartRole::InstrumentNeedle => DMat4::from_rotation_y(
-            part.needle_channel
-                .map_or(0.0, |ch| art.instrument_needles.angle_rad(ch)),
-        ),
+        PartRole::InstrumentNeedle | PartRole::InstrumentDrum | PartRole::InstrumentCard => {
+            dials::moving_part_matrix(part, &art.instrument_needles)
+        }
+        PartRole::CockpitControl => controls::control_matrix(&part.control_joints, &art.cockpit),
         _ => articulate_auxiliary_part(part, art),
     }
 }
@@ -350,17 +391,17 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
 fn propeller_joint_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
     let r = part.prim_path.contains("PropRight");
     let s = if r {
-        art.propeller_sense_right
+        art.propeller_right.sense
     } else {
         art.propeller_sense
     };
     let ph = if r {
-        art.propeller_phase_right_rad
+        art.propeller_right.phase_rad
     } else {
         art.propeller_phase_rad
     };
     let deg = if r {
-        art.propeller_blade_angle_right_deg
+        art.propeller_right.blade_angle_deg
     } else {
         art.propeller_blade_angle_deg
     };

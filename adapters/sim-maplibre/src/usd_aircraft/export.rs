@@ -203,12 +203,13 @@ fn author_ownship_telemetry(
     set_custom_double(prim, "sim:propellerRpm", art.propeller_rpm)?;
     set_custom_double(prim, "sim:bladeAngleDeg", art.propeller_blade_angle_deg)?;
     set_custom_double(prim, "sim:thrustN", art.propeller_thrust_n)?;
-    set_custom_double(prim, "sim:manifoldPressurePa", art.manifold_pressure_pa)?;
-    set_custom_double(prim, "sim:fuelFlowGph", art.fuel_flow_gph)?;
-    set_custom_double(prim, "sim:egtDegF", art.egt_deg_f)?;
-    set_custom_double(prim, "sim:chtDegF", art.cht_deg_f)?;
-    set_custom_double(prim, "sim:oilTempDegF", art.oil_temp_deg_f)?;
-    set_custom_double(prim, "sim:oilPressurePsi", art.oil_pressure_psi)?;
+    let [engine, _] = art.gauges.engines;
+    set_custom_double(prim, "sim:manifoldPressurePa", engine.manifold_pressure_pa)?;
+    set_custom_double(prim, "sim:fuelFlowGph", art.gauges.total_fuel_flow_gph())?;
+    set_custom_double(prim, "sim:egtDegF", engine.egt_deg_f)?;
+    set_custom_double(prim, "sim:chtDegF", engine.cht_deg_f)?;
+    set_custom_double(prim, "sim:oilTempDegF", engine.oil_temp_deg_f)?;
+    set_custom_double(prim, "sim:oilPressurePsi", engine.oil_pressure_psi)?;
     set_custom_double(prim, "sim:propellerPhaseRad", art.propeller_phase_rad)?;
     set_custom_double(
         prim,

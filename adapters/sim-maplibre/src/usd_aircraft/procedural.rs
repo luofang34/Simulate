@@ -6,11 +6,15 @@
 //! local `+X` (control surfaces) or its spin axis along local `+Y` (propellers and rotors)
 //! through the local origin, and `rest_to_aircraft` places that origin on the airframe.
 
-use std::f32::consts::TAU;
+use std::{f32::consts::TAU, sync::Arc};
 
 use glam::{DMat4, Mat4, Vec3};
 
-use super::{PartRole, PbrMaterial, SurfaceDetail, UsdAircraftAsset, UsdMeshPart, UsdMeshVertex};
+use super::{
+    PartRole, PbrMaterial, SurfaceDetail, UsdAircraftAsset, UsdMeshPart, UsdMeshVertex, controls,
+};
+use sim_indicate::{FaceTable, PanelDials, Typeface};
+
 use crate::MapAdapterError;
 
 mod fixed_wing;
@@ -37,13 +41,14 @@ impl UsdAircraftAsset {
     }
 
     /// Builds a Lockheed P-38G-13-LO Lightning (`"Miss Virginia"`, `s/n 43-2264`) from the
-    /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`).
+    /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`), its instrument panel faced with
+    /// Indicate's dials of the pack the panel is built for.
     pub fn p38g() -> Result<Self, MapAdapterError> {
         let prims = sim_p38g::p38g_mesh_prims();
         let skin = sim_p38g::P38Skin::new(&prims).map_err(|err| MapAdapterError::OpenUsd {
             detail: format!("P-38G skin: {err}"),
         })?;
-        let parts = prims
+        let mut parts: Vec<UsdMeshPart> = prims
             .into_iter()
             .map(|prim| UsdMeshPart {
                 detail: p38_finish::detail(&prim.prim_path),
@@ -60,7 +65,8 @@ impl UsdAircraftAsset {
                 double_sided: prim.double_sided,
                 rest_to_aircraft: prim.rest_to_aircraft,
                 custom_hinge_axis: prim.custom_hinge_axis,
-                needle_channel: prim.needle_channel,
+                needle_channel: None,
+                control_joints: controls::from_p38(&prim.control_joints),
                 vertices: prim
                     .vertices
                     .into_iter()
@@ -75,7 +81,43 @@ impl UsdAircraftAsset {
                 indices: prim.indices,
             })
             .collect();
+        let pack = sim_p38g::p38g_instrument_pack();
+        let dials = pack.as_ref().map_or_else(PanelDials::default, |pack| {
+            let (dials, refused) = PanelDials::from_pack(pack, &[]);
+            for err in refused {
+                tracing::warn!(error = %err, "P-38G instrument has no dial");
+            }
+            dials
+        });
+        // The faces the pack pins, verified, then parsed in place.
+        let typefaces = pack
+            .as_ref()
+            .map_or_else(|| Ok(Vec::new()), sim_pack::resolve_typefaces);
+        let typefaces = typefaces.unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "P-38G dials fall back to the reference face");
+            Vec::new()
+        });
+        let parsed: Vec<(&str, Typeface<'_>)> = typefaces
+            .iter()
+            .filter_map(|pack| {
+                let face = Typeface::parse(pack.typeface_face()?).ok()?;
+                Some((pack.manifest().id.as_str(), face))
+            })
+            .collect();
+        let faces = dials.lettering().faces(&parsed).unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "P-38G dials fall back to the reference face");
+            Vec::new()
+        });
+        let face = pack
+            .as_ref()
+            .and_then(|pack| pack.typefaces.first())
+            .map(|pin| pin.id.as_str());
+        let placards = p38_placards(face, &dials);
+        let atlas = super::dials::attach(&mut parts, &dials, &FaceTable::new(&faces), &placards);
         let mut asset = assemble("p38g", parts)?;
+        asset.display_atlas = atlas.map(Arc::new);
+        asset.uv_flood_lamp_m =
+            Some(glam::Vec3::from_array(sim_p38g::p38g_uv_flood_lamp_m()).as_dvec3());
         p38_finish::finish(&mut asset, skin);
         Ok(asset)
     }
@@ -84,6 +126,26 @@ impl UsdAircraftAsset {
     /// four landing legs with footpads (origin on the footpad contact plane).
     pub fn lunar_lander() -> Result<Self, MapAdapterError> {
         assemble("lunar_lander", lunar_lander::parts())
+    }
+}
+
+/// The P-38G's placards, lettered in `face` (the pack's first pinned
+/// typeface) in its unstyled slot.
+fn p38_placards(face: Option<&str>, dials: &PanelDials) -> super::dials::Placards {
+    let slot = face
+        .and_then(|face| dials.lettering().plain_slot(face))
+        .unwrap_or_default();
+    super::dials::Placards {
+        plates: sim_p38g::p38g_placards()
+            .into_iter()
+            .map(|p| {
+                (
+                    format!("/P38g/CockpitInterior/Placards/{}", p.name),
+                    p.text.to_owned(),
+                )
+            })
+            .collect(),
+        slot,
     }
 }
 
@@ -129,6 +191,7 @@ fn part(
         rest_to_aircraft: rest,
         custom_hinge_axis: None,
         needle_channel: None,
+        control_joints: Vec::new(),
         detail: SurfaceDetail::default(),
         surface: crate::usd_aircraft::PartSurface::Material,
         vertices,

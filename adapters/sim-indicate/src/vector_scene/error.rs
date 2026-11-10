@@ -7,6 +7,13 @@ use thiserror::Error;
 /// drawing part of it.
 #[derive(Debug, Error, Clone, Copy, PartialEq)]
 pub enum VectorSceneError {
+    /// The scene letters text along an arc, which this tessellator, bound to
+    /// the reference face alone, does not place.
+    #[error("command {command} letters text along an arc")]
+    ArcText {
+        /// Zero-based index of the command in the scene.
+        command: usize,
+    },
     /// The scene failed Indicate's layer and stack validation.
     #[error("scene failed layer validation")]
     Layers(#[from] LayerError),
