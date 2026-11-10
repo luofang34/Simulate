@@ -163,3 +163,30 @@ fn a_missing_anchor_prim_is_an_error_not_a_guess() {
     assert!(err.to_string().contains("TurboBucketWheels"), "{err}");
     assert!(super::P38Skin::new(&crate::p38g_mesh_prims()).is_ok());
 }
+
+#[test]
+fn marking_sites_follow_the_measured_airframe() {
+    use crate::{MarkingKind, P38Skin};
+    let prims = crate::p38g_mesh_prims();
+    let anchors = Anchors::measure(&prims).unwrap();
+    let sites = P38Skin::new(&prims).unwrap().marking_sites();
+    assert_eq!(sites.len(), super::livery::MARKINGS.len());
+    let find = |kind: MarkingKind, side: f32| {
+        sites
+            .iter()
+            .find(|s| s.kind == kind && s.on_axis.x * side > 0.0)
+            .unwrap_or_else(|| panic!("no {kind:?} on side {side}"))
+    };
+    // Upper port and lower starboard wing only.
+    assert_eq!(find(MarkingKind::WingInsignia, -1.0).facing, Vec3::Z);
+    assert_eq!(find(MarkingKind::WingInsignia, 1.0).facing, Vec3::NEG_Z);
+    // The call number sits on each fin's outboard face at FS 425.
+    for side in [-1.0_f32, 1.0] {
+        let call = find(MarkingKind::CallNumber, side);
+        assert_eq!(call.facing, Vec3::X * side);
+        assert!((anchors.fs_in(call.on_axis.y) - 425.0).abs() < 0.01);
+        let star = find(MarkingKind::BoomInsignia, side);
+        let (_, trail) = anchors.wing_chord(anchors.boom_x + 0.6).unwrap();
+        assert!(((trail - star.on_axis.y) / M_PER_IN - 24.0).abs() < 0.01);
+    }
+}

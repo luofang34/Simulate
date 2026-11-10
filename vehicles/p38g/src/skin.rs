@@ -22,6 +22,7 @@ use glam::Vec3;
 
 use crate::mesh::P38MeshPrim;
 use anchors::{Anchors, M_PER_IN};
+pub use markings::{MarkingKind, MarkingSite};
 use seams::Seams;
 use weathering::Exposure;
 
@@ -108,6 +109,15 @@ impl P38Skin {
             || path.starts_with("Empennage/")
             || path.ends_with("/SpinnerBase")
             || path.ends_with("/SpinnerNose")
+    }
+
+    /// Where each of the skin's markings is painted, in painting order.
+    #[must_use]
+    pub fn marking_sites(&self) -> Vec<MarkingSite> {
+        livery::MARKINGS
+            .iter()
+            .filter_map(|marking| marking.site(&self.anchors))
+            .collect()
     }
 
     /// The skin at `query`.

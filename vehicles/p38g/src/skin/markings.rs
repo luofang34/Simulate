@@ -73,6 +73,33 @@ pub(crate) enum Place {
     },
 }
 
+/// Which of the airframe's markings a [`MarkingSite`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarkingKind {
+    /// National insignia on a wing surface.
+    WingInsignia,
+    /// National insignia on a boom side.
+    BoomInsignia,
+    /// The squadron's number on the nose.
+    NoseNumber,
+    /// The victory marks on the nose.
+    VictoryMarks,
+    /// The radio call number on a fin.
+    CallNumber,
+}
+
+/// Where a marking is to be found: it is painted where the line through
+/// [`Self::on_axis`] along [`Self::facing`] meets the skin from outside.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkingSite {
+    /// What is painted there.
+    pub kind: MarkingKind,
+    /// A point on the marking's centre line, aircraft frame, metres.
+    pub on_axis: Vec3,
+    /// Unit direction the marking faces, out of the skin.
+    pub facing: Vec3,
+}
+
 /// One marking.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Marking {
@@ -105,6 +132,31 @@ impl Marking {
         let offset = (p - centre) / M_PER_IN;
         let at = Vec2::new(offset.dot(right), offset.dot(up));
         self.art.paint(at, footprint_in)
+    }
+
+    /// Where the marking is on the airframe measured as `anchors`.
+    pub(crate) fn site(&self, anchors: &Anchors) -> Option<MarkingSite> {
+        // A point of the marking's own surface on its side of the airframe;
+        // `frame` fills in the centre's other two coordinates.
+        let (path, side, kind) = match (self.place, self.art) {
+            (Place::Wing { side, .. }, _) => ("/Wing/", side, MarkingKind::WingInsignia),
+            (Place::Boom { side, .. }, _) => ("/Booms/", side, MarkingKind::BoomInsignia),
+            (Place::Nose { side, .. }, Art::Victories { .. }) => {
+                ("/Gondola/", side, MarkingKind::VictoryMarks)
+            }
+            (Place::Nose { side, .. }, _) => ("/Gondola/", side, MarkingKind::NoseNumber),
+            (Place::Fin { side, .. }, _) => ("VerticalFins", side, MarkingKind::CallNumber),
+        };
+        let probe = match self.place {
+            Place::Nose { .. } => Vec3::new(side * 1e-3, 0.0, 0.0),
+            _ => Vec3::new(side * anchors.boom_x, 0.0, 0.0),
+        };
+        let (on_axis, _, _, facing) = self.frame(anchors, path, probe)?;
+        Some(MarkingSite {
+            kind,
+            on_axis,
+            facing,
+        })
     }
 
     /// The marking's centre, its reading axes and the way its face looks,
