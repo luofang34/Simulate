@@ -240,7 +240,7 @@ fn eval_mars_dem_link(
     link: &Link,
     dem: &sim_analysis::DemElevationGrid,
     downlink: bool,
-) -> sim_analysis::EndpointLinkAccessReport {
+) -> sim_analysis::EndpointLinkReport {
     use sim_analysis::{AltitudeSpec, TerrainElevationSource, TerrainLosConfig, VerticalDatumSpec};
 
     let start = TdbEpoch::new(820_497_600 + 424 * 86_400, 0);
