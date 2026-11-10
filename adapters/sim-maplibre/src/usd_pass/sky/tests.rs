@@ -65,7 +65,7 @@ fn shade_to_sun_ratios_follow_a_clear_day() {
         "low Sun sky/beam on the ground {low_ratio}"
     );
     // A low Sun is red against a blue sky.
-    assert!(low.sun.x / low.sun.z > 2.0 * high.sun.x / high.sun.z);
+    assert!(low.sun.x / low.sun.z > 1.2 * high.sun.x / high.sun.z);
     let sky = low.sky_irradiance(Vec3::Z);
     assert!(sky.z > sky.x);
     // The sky is brightest around the Sun.

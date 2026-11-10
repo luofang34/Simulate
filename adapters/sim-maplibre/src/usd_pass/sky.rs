@@ -41,12 +41,9 @@ const DAY_SKY_SHARE: f32 = 0.115;
 
 /// Most an exposure opens up for dusk and night, so a night airframe stays dim (assumed).
 const MAX_EXPOSURE_GAIN: f32 = 6.0;
-/// Share (as an exponent) of a fall in light the exposure makes up: a camera metering a
-/// scene with the bright sky in it, like the eye, compensates only partly, so low Sun
-/// still reads darker and warmer than noon (fitted: the airframe's quartile tones in a
-/// colour photograph taken with the Sun 8° up, photo match `p38_10`, are 44, 64 and 90
-/// of 255, the model's 34, 76 and 100).
-const ADAPTATION: f32 = 0.25;
+/// Share (as an exponent) of the light's colour cast a camera's or the eye's white
+/// balance removes: most of a low Sun's warmth, not all of it (assumed).
+const WHITE_BALANCE: f32 = 0.7;
 /// Sun elevation of the clear noon the exposure gain is relative to.
 const NOON_ELEVATION_DEG: f32 = 70.0;
 
@@ -68,8 +65,8 @@ pub(crate) struct SkyLight {
     pub(crate) horizon: Vec3,
     /// Radiance of the sunlit ground below the horizon.
     pub(crate) ground: Vec3,
-    /// Exposure relative to a clear noon: a camera, or an eye, opens up as the light on the
-    /// ground falls, so a dusk airframe is not drawn black over a terrain that is not.
+    /// Exposure relative to a clear noon: a camera, or an eye, opens up as the light on a
+    /// subject's sunlit side falls, so a dusk airframe is not drawn black.
     pub(crate) exposure: f32,
     /// Share of [`Self::ground`] left where the ground is shaded from the beam: the sky's
     /// part of the light falling on it.
@@ -105,16 +102,23 @@ impl SkyLight {
             / std::f32::consts::PI;
         let global = beam_on_ground.y + sky_on_ground;
         let shaded_ground = sky_on_ground / global.max(1e-6);
-        let exposure = (noon_global() / global.max(1e-4))
-            .powf(ADAPTATION)
-            .clamp(1.0, MAX_EXPOSURE_GAIN);
+        let exposure =
+            (noon_card() / card(sun.y, sky_on_ground).max(1e-4)).clamp(1.0, MAX_EXPOSURE_GAIN);
+        // The light on the ground, by channel, is what a camera or the eye balances to.
+        let sky_rgb = basis(Vec3::Z)
+            .iter()
+            .zip(&irradiance_sh)
+            .map(|(y, c)| *c * *y)
+            .sum::<Vec3>();
+        let lit = (beam_on_ground + sky_rgb).max(Vec3::splat(1e-6));
+        let balance = (Vec3::splat(lit.y) / lit).powf(WHITE_BALANCE);
         Self {
-            irradiance_sh,
-            sun,
-            zenith: unit.zenith * scale,
+            irradiance_sh: irradiance_sh.map(|c| c * balance),
+            sun: sun * balance,
+            zenith: unit.zenith * scale * balance,
             cie_zenith,
-            horizon: unit.horizon * scale,
-            ground,
+            horizon: unit.horizon * scale * balance,
+            ground: ground * balance,
             exposure,
             shaded_ground,
         }
@@ -149,10 +153,21 @@ impl SkyLight {
     }
 }
 
-/// Global horizontal irradiance (beam plus sky, green) of a clear noon.
-fn noon_global() -> f32 {
-    let sine = NOON_ELEVATION_DEG.to_radians().sin();
-    beam(NOON_ELEVATION_DEG.to_radians()).y * sine + sky_share(1.0, sine) * SUN_EXTRATERRESTRIAL[1]
+/// Irradiance (green) on a grey card held facing the Sun, which a photographer meters
+/// the lit side of a subject by: the beam at normal incidence and about half the sky
+/// (`sky_on_ground` is the whole dome's on a level surface). Exposing for it keeps a
+/// sunlit panel at one tone from noon to a low Sun, where the level ground gets far less.
+fn card(beam_green: f32, sky_on_ground: f32) -> f32 {
+    beam_green + 0.5 * sky_on_ground
+}
+
+/// [`card`] at a clear noon.
+fn noon_card() -> f32 {
+    let elevation = NOON_ELEVATION_DEG.to_radians();
+    card(
+        beam(elevation).y,
+        sky_share(1.0, elevation.sin()) * SUN_EXTRATERRESTRIAL[1],
+    )
 }
 
 /// Sky irradiance on the ground as a share of `SUN_EXTRATERRESTRIAL`, for a Sun whose
