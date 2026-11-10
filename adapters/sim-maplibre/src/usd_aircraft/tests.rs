@@ -139,3 +139,65 @@ fn embedded_raketa_loads_meshes_and_promotes_porthole_glass() {
         assert!(glass.material.opacity < 0.5);
     }
 }
+
+/// The blur shader reads a propeller disc's texture coordinates as the unit disc about the
+/// hub; coordinates outside it draw nothing.
+#[test]
+fn every_propeller_disc_spans_the_unit_disc_in_texture_coordinates() {
+    for (name, asset) in [
+        ("c172", UsdAircraftAsset::embedded_c172().unwrap()),
+        ("p38g", UsdAircraftAsset::p38g().unwrap()),
+    ] {
+        let discs: Vec<_> = asset
+            .parts()
+            .iter()
+            .filter(|p| p.role == PartRole::PropellerDisc)
+            .collect();
+        assert!(!discs.is_empty(), "{name} has a propeller disc");
+        for disc in discs {
+            let radii: Vec<f32> = disc
+                .vertices
+                .iter()
+                .map(|v| v.uv[0].hypot(v.uv[1]))
+                .collect();
+            let (least, most) = radii.iter().fold((f32::INFINITY, 0.0_f32), |(lo, hi), r| {
+                (lo.min(*r), hi.max(*r))
+            });
+            // A disc may be an annulus that starts at its spinner.
+            assert!(least < 0.2, "{name} {}: hub at {least}", disc.prim_path);
+            assert!(
+                (0.95..=1.001).contains(&most),
+                "{name} {}: rim at {most}",
+                disc.prim_path
+            );
+        }
+    }
+}
+
+/// A camera with a short exposure records a narrower blade smear than the eye does.
+#[test]
+fn a_shorter_shutter_smears_the_propeller_over_a_smaller_angle() {
+    let asset = UsdAircraftAsset::p38g().unwrap();
+    let art = AirframeArticulation {
+        propeller_rpm: 1_500.0,
+        propeller_rpm_right: 1_500.0,
+        ..AirframeArticulation::default()
+    };
+    let smear = |shutter_s: f64| {
+        asset
+            .evaluate_draws_exposed(&art, SlotCameraRole::External, shutter_s)
+            .into_iter()
+            .find(|d| d.is_prop_disc)
+            .map(|d| d.shutter_blur_rad)
+            .unwrap()
+    };
+    let (eye, camera) = (
+        smear(UsdAircraftAsset::DISPLAY_SHUTTER_S),
+        smear(1.0 / 500.0),
+    );
+    assert!((camera - 1_500.0 * std::f32::consts::TAU / 60.0 / 500.0).abs() < 1e-3);
+    assert!(eye > 5.0 * camera, "eye {eye} rad, camera {camera} rad");
+    let default = asset.evaluate_draws(&art, SlotCameraRole::External);
+    let disc = default.iter().find(|d| d.is_prop_disc).unwrap();
+    assert_eq!(disc.shutter_blur_rad, eye);
+}

@@ -107,7 +107,13 @@ fn fs_ground(in: GroundOut) -> @location(0) vec4<f32> {
     let edge = 1.0 - smoothstep(0.85, 1.0, max(abs(in.quad.x), abs(in.quad.y)));
     // Shaded ground keeps the sky's share of its light (`sky.ground.w`): a deep shadow
     // under a high Sun, a faint one when the Sun is low and most light is the sky's.
-    let lost = 1.0 - sky.ground.w;
-    let dark = (1.0 - sun_visibility(in.world, vec3<f32>(0.0), in.clip.xy)) * lost * shadow.ground_centre.w * edge;
+    let shaded = 1.0 - (1.0 - sun_visibility(in.world, vec3<f32>(0.0), in.clip.xy)) * shadow.ground_centre.w * edge;
+    var kept = mix(sky.ground.w, 1.0, shaded);
+    // The blend scales what the target holds: for a target that stores encoded colour,
+    // the share of light is taken through the display curve first.
+    if (!TARGET_ENCODES) {
+        kept = pow(kept, 1.0 / 2.2);
+    }
+    let dark = 1.0 - kept;
     return vec4<f32>(0.0, 0.0, 0.0, dark);
 }

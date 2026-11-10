@@ -356,6 +356,9 @@ fn the_aircraft_and_studio_shaders_validate() {
     use wgpu::naga::{front::wgsl, valid};
     let encoding = super::gpu::shader_source(wgpu::TextureFormat::Rgba8UnormSrgb);
     let stored = super::gpu::shader_source(wgpu::TextureFormat::Rgba8Unorm);
+    // A target that stores what it is given must be handed encoded colour.
+    assert!(encoding.starts_with("const TARGET_ENCODES: bool = true;"));
+    assert!(stored.starts_with("const TARGET_ENCODES: bool = false;"));
     for (name, source) in [
         ("aircraft, sRGB target", encoding.as_str()),
         ("aircraft, linear target", stored.as_str()),
