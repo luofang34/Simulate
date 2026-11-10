@@ -158,7 +158,9 @@
       "gear_down": false,
       "sun": {
         "azimuth_from_view_deg": 60,
-        "elevation_deg": 60
+        "elevation_deg": 60,
+        "to_sun_airframe": [-0.8, 0.15, 0.58],
+        "to_sun_airframe_basis": "the gondola's shadow reaches across the centre section to the right boom (about 1.6 m from a canopy 1.2 m above the wing), the right boom and the right fin's outer face are in shade and the left wing's upper surface is fully lit"
       },
       "landmarks_px": {
         "wingtip_r": [

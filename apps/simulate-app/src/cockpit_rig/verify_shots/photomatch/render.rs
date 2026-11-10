@@ -160,7 +160,13 @@ fn capture(
     let pose = matched.solved.pose;
     let fov_y_rad = framing.render_fov_y_rad;
     let camera = |h: &VerifyHarness| Some(photo_camera(h, &pose, fov_y_rad));
-    let sun = photo_sun(h, &pose, matched.photo.sun_deg.unwrap_or(DEFAULT_SUN_DEG));
+    let sun = match matched.photo.sun_airframe {
+        Some(to_sun) => {
+            let attitude = DMat3::from_quat(h.flight.display_vehicle_state().attitude);
+            (attitude * MESH_TO_FRD * to_sun).normalize_or(DVec3::Z)
+        }
+        None => photo_sun(h, &pose, matched.photo.sun_deg.unwrap_or(DEFAULT_SUN_DEG)),
+    };
     capture_camera_lit(h, camera, sun)
 }
 

@@ -43,6 +43,10 @@ struct Photo {
     /// Sun `(azimuth from the view direction, elevation)`, degrees: azimuth `0` lights
     /// the subject from behind the camera, `+90` from the camera's right.
     sun_deg: Option<(f64, f64)>,
+    /// Direction to the Sun in mesh axes (`x` right, `y` forward, `z` up), where the
+    /// shadows the airframe casts on itself give it; it overrides [`Self::sun_deg`], which
+    /// cannot express a banked aircraft's light.
+    sun_airframe: Option<DVec3>,
     landmarks_px: Vec<(String, [f64; 2])>,
     /// Features identified on the photo, placed in 3D by [`features::place_features`].
     features_px: Vec<(String, [f64; 2])>,
@@ -71,6 +75,16 @@ fn photo(v: &Value) -> Option<Photo> {
             s.get("elevation_deg")?.as_f64()?,
         ))
     });
+    let sun_airframe = v
+        .get("sun")
+        .and_then(|s| s.get("to_sun_airframe"))
+        .and_then(|d| {
+            Some(DVec3::new(
+                d.get(0)?.as_f64()?,
+                d.get(1)?.as_f64()?,
+                d.get(2)?.as_f64()?,
+            ))
+        });
     let points = |key: &str| -> Vec<(String, [f64; 2])> {
         v.get(key)
             .and_then(Value::as_object)
@@ -90,6 +104,7 @@ fn photo(v: &Value) -> Option<Photo> {
         airborne: flag("airborne")?,
         gear_down: flag("gear_down")?,
         sun_deg: sun,
+        sun_airframe,
         landmarks_px,
         features_px,
     })
