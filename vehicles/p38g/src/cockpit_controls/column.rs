@@ -28,6 +28,13 @@ const RIM_RADIUS: f32 = 0.176;
 /// Where the arm meets the ring, clockwise from twelve as the pilot sees it,
 /// and half the opening there, rad: the ring is whole but for the arm's gap
 /// at its upper right.
+/// Radius of the ring's section: a thick moulded rim, about 38 mm across against
+/// the hub's 60 mm in Z-4986.
+const RIM_TUBE_RADIUS: f32 = 0.019;
+/// Where the hands hold the ring, clockwise from twelve, each with moulded
+/// finger ridges on its inside.
+const GRIPS: [(f32, f32); 2] = [(1.75, 2.2), (4.1, 4.55)];
+const GRIP_RIDGES: usize = 4;
 const ARM_ANGLE: f32 = 1.35;
 const ARM_GAP: f32 = 0.24;
 /// The other two spokes, clockwise from twelve: up-left and down.
@@ -50,7 +57,7 @@ const ROLL_PER_UNIT: f32 = 1.05;
 /// aircraft: centre, half-length and radius. Read as the ultraviolet instrument
 /// flood lamp the P-38H/J/L pilot's instructions (01-75FF-1) put on the column;
 /// its function on the G is inferred.
-const LAMP_CENTRE: Vec3 = Vec3::new(HUB.x - 0.085, HUB.y + 0.05, HUB.z + 0.06);
+const LAMP_CENTRE: Vec3 = Vec3::new(HUB.x - 0.095, HUB.y + 0.02, HUB.z + 0.01);
 const LAMP_HALF_LENGTH: f32 = 0.075;
 const LAMP_RADIUS: f32 = 0.045;
 
@@ -100,16 +107,6 @@ fn column_prims(pitch: P38ControlJoint) -> Vec<P38MeshPrim> {
     let mut column = MeshBuilder::new();
     polyline(&mut column, &[p, column_top()], COLUMN_RADIUS, 16);
     column.ellipsoid(column_top(), Vec3::splat(COLUMN_RADIUS * 1.1), 14, 8);
-    // The arm runs down and inboard to the hub through the ring's gap.
-    let arm_end = HUB + Vec3::new(0.0, 0.02, 0.0);
-    // The column carries the hub on a short stub of its own tube, not a
-    // separate arm.
-    polyline(
-        &mut column,
-        &[column_top(), arm_end],
-        COLUMN_RADIUS * 0.85,
-        14,
-    );
     // The polished hub boss, about 60 mm across.
     column.tube(HUB - Vec3::Y * 0.015, HUB + Vec3::Y * 0.04, 0.03, 0.026, 18);
     column.ellipsoid(HUB - Vec3::Y * 0.015, Vec3::new(0.03, 0.01, 0.03), 18, 6);
@@ -122,7 +119,19 @@ fn column_prims(pitch: P38ControlJoint) -> Vec<P38MeshPrim> {
         LAMP_RADIUS,
         20,
     );
-    housing.tube(LAMP_CENTRE + along, HUB, 0.012, 0.012, 8);
+    // The heavy box-section arm from the column's head inboard to the hub,
+    // black like the housing, and the switch plate on its aft face: Z-4986
+    // shows both from behind the wheel.
+    let (head, hub) = (column_top(), HUB + Vec3::new(0.0, 0.02, 0.0));
+    let reach = 0.5 * (head - hub);
+    let across = reach.cross(Vec3::Y).normalize_or(Vec3::Z);
+    housing.slab(hub + reach, reach, Vec3::Y * 0.022, across * 0.032);
+    housing.slab(
+        hub + reach * 1.1 - Vec3::Y * 0.024,
+        reach.normalize_or(Vec3::X) * 0.045,
+        Vec3::Y * 0.002,
+        across * 0.022,
+    );
     // The large canvas boot over the floor opening, 0.18 m across at the floor.
     let mut boot = MeshBuilder::new();
     boot_folds(&mut boot, p);
@@ -170,12 +179,24 @@ fn wheel_prims(both: [P38ControlJoint; 2]) -> Vec<P38MeshPrim> {
     sweep(
         &mut rim,
         &rim_arc(ARM_ANGLE + ARM_GAP, ARM_ANGLE - ARM_GAP + 2.0 * PI),
-        0.0145,
+        RIM_TUBE_RADIUS,
         Vec3::Y,
         14,
     );
     for end in [ARM_ANGLE + ARM_GAP, ARM_ANGLE - ARM_GAP] {
-        rim.ellipsoid(rim_point(end, 0.0), Vec3::splat(0.0145), 12, 6);
+        rim.ellipsoid(rim_point(end, 0.0), Vec3::splat(RIM_TUBE_RADIUS), 12, 6);
+    }
+    // Finger grips moulded into the inside of the ring where each hand holds it.
+    for (from, to) in GRIPS {
+        for k in 0..GRIP_RIDGES {
+            let angle = from + (to - from) * (k as f32 + 0.5) / GRIP_RIDGES as f32;
+            rim.ellipsoid(
+                rim_point(angle, RIM_TUBE_RADIUS * 0.55),
+                Vec3::splat(RIM_TUBE_RADIUS * 0.75),
+                10,
+                6,
+            );
+        }
     }
     let mut spokes = MeshBuilder::new();
     for angle in SPOKES.into_iter().chain([ARM_ANGLE]) {
@@ -196,8 +217,14 @@ fn wheel_prims(both: [P38ControlJoint; 2]) -> Vec<P38MeshPrim> {
     );
     // Hands polish the black where they hold the ring, either side.
     let mut grip_wear = MeshBuilder::new();
-    for (a, b) in [(1.75_f32, 2.2_f32), (4.1, 4.55)] {
-        sweep(&mut grip_wear, &rim_arc(a, b), 0.0148, Vec3::Y, 14);
+    for (a, b) in GRIPS {
+        sweep(
+            &mut grip_wear,
+            &rim_arc(a, b),
+            RIM_TUBE_RADIUS + 0.0003,
+            Vec3::Y,
+            14,
+        );
     }
     vec![
         control(path, GRIP_BLACK, rim, &both),
