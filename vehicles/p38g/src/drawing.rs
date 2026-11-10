@@ -71,26 +71,43 @@ pub const CANOPY_TOP_ABOVE_FRL_IN: f32 = 41.25;
 /// Gondola bottom below the fuselage reference line (front view `31.010`), inches.
 pub const GONDOLA_BOTTOM_BELOW_FRL_IN: f32 = 31.01;
 
+/// Gondola maximum half-breadth (plan view `18.995`), inches.
+pub const GONDOLA_HALF_BREADTH_IN: f32 = 18.995;
+/// Canopy sill line above the fuselage reference line: the horizontal line under the side
+/// windows on the side view, inches.
+pub const CANOPY_SILL_ABOVE_FRL_IN: f32 = 25.6;
+/// Windscreen base station: where the side view's windscreen line meets the sill line and
+/// the plan view's canopy outline closes at the front, inches.
+pub const WINDSCREEN_BASE_FS_IN: f32 = 100.0;
+/// Windscreen slope above the horizontal on the side view, degrees.
+pub const WINDSCREEN_SLOPE_DEG: f32 = 29.3;
+/// Windscreen top bow, the forward frame of the top hatch (side view frame line), inches.
+pub const WINDSCREEN_TOP_FRAME_FS_IN: f32 = 126.2;
+/// Aft frame of the top hatch (side view frame line), inches.
+pub const HATCH_AFT_FRAME_FS_IN: f32 = 154.3;
+/// Canopy tail station: where the plan view's canopy outline closes at the rear, inches.
+pub const CANOPY_TAIL_FS_IN: f32 = 184.5;
+
 /// Model `y` of fuselage station `fs_in`.
 #[must_use]
-pub fn fs_to_y(fs_in: f32) -> f32 {
+pub const fn fs_to_y(fs_in: f32) -> f32 {
     NOSE_Y_M - fs_in * INCH_M
 }
 
 /// Fuselage station of model `y`, inches.
 #[must_use]
-pub fn y_to_fs(y: f32) -> f32 {
+pub const fn y_to_fs(y: f32) -> f32 {
     (NOSE_Y_M - y) / INCH_M
 }
 
 /// Model `z` of a point `h_in` above the fuselage reference line.
 #[must_use]
-pub fn frl_to_z(h_in: f32) -> f32 {
+pub const fn frl_to_z(h_in: f32) -> f32 {
     FRL_Z_M + h_in * INCH_M
 }
 
 /// Height of model `z` above the fuselage reference line, inches.
 #[must_use]
-pub fn z_to_frl(z: f32) -> f32 {
+pub const fn z_to_frl(z: f32) -> f32 {
     (z - FRL_Z_M) / INCH_M
 }
