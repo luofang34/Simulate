@@ -119,6 +119,7 @@ fn decode_mesh_prim(
         custom_hinge_axis,
         needle_channel,
         detail: crate::usd_aircraft::SurfaceDetail::default(),
+        surface: crate::usd_aircraft::PartSurface::Material,
         vertices,
         indices,
     }))
@@ -268,6 +269,7 @@ fn triangulate_usd_mesh(
             normal: [nrm.x, nrm.y, nrm.z],
             uv: [uv.x, uv.y],
             occlusion: 1.0,
+            tangent: crate::UsdMeshVertex::NO_TANGENT,
         });
     }
 

@@ -3,49 +3,31 @@
 //! has them, or reported missing where it has none.
 
 use glam::DVec3;
-use sim_p38g::{P38MeshPrim, p38g_mesh_prims};
+use sim_p38g::{MarkingKind, MarkingSite, P38MeshPrim, P38Skin, p38g_mesh_prims};
 
+use super::backproject::Ray;
 use super::landmarks::{extreme, prim_points};
 use super::{Match, hit_mesh, hit_plane, ray_through, triangulate};
 
-/// Where the model carries a feature: the centroid, or the extreme along a direction, of
-/// one prim's vertices inside an axis-aligned box (mesh axes, metres).
-struct ModelFeature {
-    prim: &'static str,
-    within: ([f64; 3], [f64; 3]),
-    toward: Option<[f64; 3]>,
+/// Where the model carries a feature.
+enum ModelFeature {
+    /// The centroid, or the extreme along `toward`, of one prim's vertices inside an
+    /// axis-aligned box (mesh axes, metres).
+    Prim {
+        prim: &'static str,
+        within: ([f64; 3], [f64; 3]),
+        toward: Option<[f64; 3]>,
+    },
+    /// A marking the baked skin paints on the side of the airframe with this sign of `x`.
+    Marking { kind: MarkingKind, side: f64 },
 }
 
 /// Features the photographs are measured for, and where the model has each one.
 const FEATURES: &[(&str, Option<ModelFeature>)] = &[
-    (
-        "serial_r",
-        centroid("/Decals/Serial32264", [2.0, -9.0, 0.0], [3.0, -5.0, 2.0]),
-    ),
-    (
-        "boom_star_r",
-        centroid(
-            "/Decals/RoundelBlueDiscs",
-            [2.0, -6.0, -1.0],
-            [3.4, 0.0, 1.0],
-        ),
-    ),
-    (
-        "boom_star_l",
-        centroid(
-            "/Decals/RoundelBlueDiscs",
-            [-3.4, -6.0, -1.0],
-            [-2.0, 0.0, 1.0],
-        ),
-    ),
-    (
-        "wing_star_l",
-        centroid(
-            "/Decals/RoundelBlueDiscs",
-            [-6.5, -3.0, 0.3],
-            [-3.6, 1.0, 1.2],
-        ),
-    ),
+    ("serial_r", marking(MarkingKind::CallNumber, 1.0)),
+    ("boom_star_r", marking(MarkingKind::BoomInsignia, 1.0)),
+    ("boom_star_l", marking(MarkingKind::BoomInsignia, -1.0)),
+    ("wing_star_l", marking(MarkingKind::WingInsignia, -1.0)),
     (
         "turbo_r",
         centroid(
@@ -64,7 +46,7 @@ const FEATURES: &[(&str, Option<ModelFeature>)] = &[
     ),
     (
         "radiator_inlet_r",
-        Some(ModelFeature {
+        Some(ModelFeature::Prim {
             prim: "/Powerplant/RadiatorScoops",
             within: ([2.6, -6.0, -1.0], [3.4, 0.0, 1.0]),
             toward: Some([0.0, 1.0, 0.0]),
@@ -75,11 +57,15 @@ const FEATURES: &[(&str, Option<ModelFeature>)] = &[
 ];
 
 const fn centroid(prim: &'static str, lo: [f64; 3], hi: [f64; 3]) -> Option<ModelFeature> {
-    Some(ModelFeature {
+    Some(ModelFeature::Prim {
         prim,
         within: (lo, hi),
         toward: None,
     })
+}
+
+const fn marking(kind: MarkingKind, side: f64) -> Option<ModelFeature> {
+    Some(ModelFeature::Marking { kind, side })
 }
 
 /// One feature placed from the photographs.
@@ -112,6 +98,7 @@ impl PlacedFeature {
 /// Places every measured feature from `matches`' solved cameras.
 pub(super) fn place_features(matches: &[Match]) -> Vec<PlacedFeature> {
     let prims = p38g_mesh_prims();
+    let sites = P38Skin::new(&prims).map_or_else(|_| Vec::new(), |skin| skin.marking_sites());
     FEATURES
         .iter()
         .map(|(id, model)| {
@@ -132,23 +119,50 @@ pub(super) fn place_features(matches: &[Match]) -> Vec<PlacedFeature> {
                 on_centreline: rays
                     .first()
                     .and_then(|r| hit_plane(r, DVec3::ZERO, DVec3::X)),
-                model: model.as_ref().and_then(|f| model_point(&prims, f)),
+                model: model.as_ref().and_then(|f| model_point(&prims, &sites, f)),
             }
         })
         .collect()
 }
 
-fn model_point(prims: &[P38MeshPrim], feature: &ModelFeature) -> Option<DVec3> {
-    let (lo, hi) = (DVec3::from(feature.within.0), DVec3::from(feature.within.1));
-    let inside: Vec<DVec3> = prim_points(prims, feature.prim)
+fn model_point(
+    prims: &[P38MeshPrim],
+    sites: &[MarkingSite],
+    feature: &ModelFeature,
+) -> Option<DVec3> {
+    let (prim, within, toward) = match feature {
+        ModelFeature::Prim {
+            prim,
+            within,
+            toward,
+        } => (prim, within, toward),
+        ModelFeature::Marking { kind, side } => {
+            let site = sites
+                .iter()
+                .find(|s| s.kind == *kind && f64::from(s.on_axis.x) * side > 0.0)?;
+            // Looked at from well outside the airframe, along the marking's own axis.
+            let facing = site.facing.as_dvec3();
+            let sight = Ray {
+                origin: site.on_axis.as_dvec3() + facing * SIGHT_STANDOFF_M,
+                dir: -facing,
+            };
+            return hit_mesh(&sight, prims).map(|(p, _)| p);
+        }
+    };
+    let (lo, hi) = (DVec3::from(within.0), DVec3::from(within.1));
+    let inside: Vec<DVec3> = prim_points(prims, prim)
         .into_iter()
         .filter(|p| p.cmpge(lo).all() && p.cmple(hi).all())
         .collect();
-    match feature.toward {
-        Some(toward) => extreme(&inside, DVec3::from(toward)),
+    match toward {
+        Some(toward) => extreme(&inside, DVec3::from(*toward)),
         None => {
             let count = u32::try_from(inside.len()).ok().filter(|&n| n > 0)?;
             Some(inside.iter().sum::<DVec3>() / f64::from(count))
         }
     }
 }
+
+/// How far outside the airframe a marking is sighted from: beyond a wing tip or a fin
+/// from any marking's centre line.
+const SIGHT_STANDOFF_M: f64 = 10.0;

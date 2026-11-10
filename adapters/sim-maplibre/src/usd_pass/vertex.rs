@@ -3,15 +3,17 @@
 
 use crate::UsdMeshVertex;
 
-/// Bytes per vertex: position, normal, texture coordinate, baked occlusion.
-pub(crate) const VERTEX_STRIDE: u64 = 36;
+/// Bytes per vertex: position, normal, texture coordinate, baked occlusion,
+/// tangent with handedness.
+pub(crate) const VERTEX_STRIDE: u64 = 52;
 
-/// Attribute locations `0..=3` the shaders' `VertexIn` declares.
-pub(crate) const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+/// Attribute locations `0..=4` the shaders' `VertexIn` declares.
+pub(crate) const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Float32x3,
     1 => Float32x3,
     2 => Float32x2,
     3 => Float32,
+    4 => Float32x4,
 ];
 
 /// The interleaved vertex buffer layout of one part.
@@ -33,6 +35,7 @@ pub(crate) fn vertex_bytes(vertices: &[UsdMeshVertex]) -> Vec<u8> {
                 .chain(v.normal)
                 .chain(v.uv)
                 .chain([v.occlusion])
+                .chain(v.tangent)
         })
         .flat_map(f32::to_le_bytes)
         .collect()

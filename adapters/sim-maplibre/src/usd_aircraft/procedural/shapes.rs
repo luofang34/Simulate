@@ -40,6 +40,7 @@ impl MeshBuilder {
             normal: normal.normalize_or(Vec3::Z).to_array(),
             uv: uv.to_array(),
             occlusion: 1.0,
+            tangent: crate::UsdMeshVertex::NO_TANGENT,
         });
         index
     }
@@ -129,6 +130,7 @@ impl MeshBuilder {
                 normal: [0.0; 3],
                 uv: [0.0; 2],
                 occlusion: 1.0,
+                tangent: crate::UsdMeshVertex::NO_TANGENT,
             }));
         }
         let index = |ring: usize, j: usize| {
@@ -282,6 +284,7 @@ impl MeshBuilder {
                     .to_array(),
                 uv: v.uv,
                 occlusion: v.occlusion,
+                tangent: v.tangent,
             }
         }));
         self.indices

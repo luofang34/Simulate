@@ -24,7 +24,7 @@ use sim_core::AirframeArticulation;
 use sim_geo::{Geodetic, LocalFrame};
 
 use crate::{
-    ConformalFrameStamp, PartRole, SlotCameraRole,
+    ConformalFrameStamp, PartRole, PartSurface, SlotCameraRole,
     pose::{anchor_enu_from_local_enu, clip_from_anchor_enu, local_enu_from_geodetic},
 };
 
@@ -35,12 +35,16 @@ mod shadow;
 mod skiway;
 #[cfg(test)]
 mod tests;
+mod textures;
 pub(crate) mod vertex;
 
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
 pub use library::{OwnshipVisualKind, StructuralDatum};
 pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
+pub(crate) use textures::AssetTexturesGpu;
+#[cfg(test)]
+pub(crate) use textures::first_fitting_level;
 
 /// Draw-graph node label of the aircraft pass.
 pub const USD_AIRCRAFT_PASS: &str = "usd_aircraft_pass";
@@ -49,6 +53,8 @@ pub const USD_AIRCRAFT_PASS: &str = "usd_aircraft_pass";
 pub(crate) const DRAW_STRIDE: u64 = 256;
 /// Bytes of the `Draw` uniform block the shader reads.
 pub(crate) const DRAW_BYTES: usize = 224;
+/// Draw kind of a part painted by the asset's baked skin.
+pub(crate) const KIND_SKIN: f32 = 5.0;
 
 /// One aircraft to draw: placement, articulation, and whether it is ownship.
 #[derive(Clone, Copy, Debug)]
@@ -222,6 +228,8 @@ fn pack_part(
         }
     } else if translucent {
         1.0
+    } else if part.surface == PartSurface::Skin {
+        KIND_SKIN
     } else {
         0.0
     };

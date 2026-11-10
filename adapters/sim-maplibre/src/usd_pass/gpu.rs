@@ -13,6 +13,7 @@ use super::shadow::{
     ShadowFrame,
     gpu::{Attachments, ShadowGpu, SlotShadow},
 };
+use super::textures::AssetTexturesGpu;
 use super::{AircraftLibrary, AssetKey, DRAW_BYTES, DRAW_STRIDE, SharedAircraftLibrary, SlotDraws};
 use crate::UsdAircraftAsset;
 
@@ -66,7 +67,10 @@ pub(super) struct UsdPassGpu {
     pub(super) translucent: wgpu::RenderPipeline,
     pub(super) shadow: ShadowGpu,
     layout: wgpu::BindGroupLayout,
+    textures: AssetTexturesGpu,
     pub(super) meshes: BTreeMap<AssetKey, Vec<Option<PartMesh>>>,
+    /// Each skinned asset's textures.
+    pub(super) texture_groups: BTreeMap<AssetKey, wgpu::BindGroup>,
     pub(super) slots: BTreeMap<ViewSlotId, SlotGpu>,
 }
 
@@ -156,9 +160,14 @@ impl UsdPassGpu {
                 samples,
             },
         );
+        let textures = AssetTexturesGpu::new(device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("usd aircraft"),
-            bind_group_layouts: &[Some(&layout), Some(&shadow.receiver_layout)],
+            bind_group_layouts: &[
+                Some(&layout),
+                Some(&shadow.receiver_layout),
+                Some(&textures.layout),
+            ],
             immediate_size: 0,
         });
         let build = |kind| {
@@ -178,9 +187,18 @@ impl UsdPassGpu {
             translucent: build(PipelineKind::Translucent),
             shadow,
             meshes: BTreeMap::new(),
+            texture_groups: BTreeMap::new(),
             layout,
+            textures,
             slots: BTreeMap::new(),
         }
+    }
+
+    /// The textures `asset` samples, or blanks.
+    pub(super) fn textures(&self, asset: AssetKey) -> &wgpu::BindGroup {
+        self.texture_groups
+            .get(&asset)
+            .unwrap_or(&self.textures.blank)
     }
 
     /// Uploads the meshes of every airframe in `library` not yet on the GPU.
@@ -191,9 +209,14 @@ impl UsdPassGpu {
         library: &AircraftLibrary,
     ) {
         for (key, asset) in library.resident() {
-            self.meshes
-                .entry(key)
-                .or_insert_with(|| upload_asset(device, queue, asset));
+            if self.meshes.contains_key(&key) {
+                continue;
+            }
+            self.meshes.insert(key, upload_asset(device, queue, asset));
+            if let Some(skin) = asset.skin() {
+                let group = self.textures.upload(device, queue, skin);
+                self.texture_groups.insert(key, group);
+            }
         }
     }
 
