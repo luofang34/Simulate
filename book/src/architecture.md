@@ -72,6 +72,12 @@ axes about a primary body, with a full solar-system force model. They meet in
   not flip. It acts only at whole multiples of its check period, and a local
   plant in ground contact, in air or under power holds its tier.
   `Universe::take_tier_changes` reports what it did.
+- A plant says whether orbital propagation can carry it at all. An aircraft
+  cannot, so it stays in flight dynamics whatever a policy says.
+- `Universe::checkpoint` and `restore` take the clock and every orbital
+  vessel back to an earlier instant. A local plant's state stays with
+  whoever built it: they reach it through `Universe::local_mut`, put it back
+  first, then restore the universe.
 - `Universe::command` stamps a burn law or another command on an orbital
   vessel at an instant. It takes effect at exactly that instant.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the

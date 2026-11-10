@@ -18,6 +18,10 @@ use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, t
 use crate::local::{LocalFactory, LocalPlant};
 use crate::tiering::{TierChange, TierPolicy};
 
+mod checkpoint;
+
+pub use checkpoint::UniverseCheckpoint;
+
 /// Which dynamics currently fly a vessel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {
@@ -161,6 +165,25 @@ impl Universe {
         self.vessels.keys().copied()
     }
 
+    /// `id`'s local plant as the type that built it, or `None` when the
+    /// vessel is orbital, unknown, or flown by another type of plant.
+    #[must_use]
+    pub fn local<P: LocalPlant + 'static>(&self, id: VesselId) -> Option<&P> {
+        match &self.vessels.get(&id)?.flight {
+            Flight::Local(plant) => plant.as_any().downcast_ref(),
+            Flight::Orbital => None,
+        }
+    }
+
+    /// [`Self::local`], to change what only that plant type exposes: its
+    /// stamped inputs, its sensors, its own checkpoints.
+    pub fn local_mut<P: LocalPlant + 'static>(&mut self, id: VesselId) -> Option<&mut P> {
+        match &mut self.vessels.get_mut(&id)?.flight {
+            Flight::Local(plant) => plant.as_any_mut().downcast_mut(),
+            Flight::Orbital => None,
+        }
+    }
+
     /// Which tier flies `id`.
     pub fn tier(&self, id: VesselId) -> Result<Tier, UniverseError> {
         Ok(match self.vessel(id)?.flight {
@@ -246,9 +269,7 @@ impl Universe {
     fn advance_all_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
         for vessel in self.vessels.values_mut() {
             if let Flight::Local(plant) = &mut vessel.flight {
-                while plant.now().advanced(plant.period()) <= until {
-                    plant.step()?;
-                }
+                plant.advance_to(until)?;
             }
         }
         self.orbital
@@ -266,7 +287,10 @@ impl Universe {
         for (&id, vessel) in &self.vessels {
             let (tier, body, state) = match &vessel.flight {
                 Flight::Local(plant) => {
-                    if plant.now() != self.now || plant.holds_local_tier() {
+                    if plant.now() != self.now
+                        || plant.holds_local_tier()
+                        || plant.orbital_body().is_none()
+                    {
                         continue;
                     }
                     (Tier::Local, plant.body(), plant.state())
@@ -311,11 +335,13 @@ impl Universe {
         let body = plant.body();
         let (naif, rotation) = self.rotation(body, self.now)?;
         let state = to_inertial(&plant.state(), naif, &rotation, InertialExtras::default());
-        let (mass_kg, inertia) = plant.mass_and_inertia();
+        let Some(carried) = plant.orbital_body() else {
+            return Err(UniverseError::LocalOnly(id));
+        };
         let config = VesselConfig {
             mass_model: MassPropertiesModel {
-                dry_mass_kg: mass_kg,
-                dry_inertia_cols: inertia.to_cols_array_2d(),
+                dry_mass_kg: carried.mass_kg,
+                dry_inertia_cols: carried.inertia_cg_body.to_cols_array_2d(),
                 propellant_inertia_per_kg_cols: [[0.0; 3]; 3],
                 uncompensated_idot_factor: 0.0,
             },
@@ -325,7 +351,7 @@ impl Universe {
                 tau_max_nm: 0.0,
             },
             tolerances: self.tolerances,
-            bounding_radius_m: plant.bounding_radius_m(),
+            bounding_radius_m: carried.bounding_radius_m,
             auto_soi_switch: true,
         };
         let checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
