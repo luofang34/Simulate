@@ -7,7 +7,7 @@
 
 use std::f32::consts::FRAC_PI_2;
 
-use glam::Vec3;
+use glam::{DMat4, DVec3, Vec3};
 
 use crate::canopy::{HATCH_RAIL_A, armor_glass_corners};
 use crate::drawing::{
@@ -15,7 +15,7 @@ use crate::drawing::{
     fs_to_y,
 };
 use crate::gondola::{canopy_point, canopy_sill_z};
-use crate::mesh::{MeshBuilder, P38MeshPrim, P38PartRole, fixed};
+use crate::mesh::{MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
 use crate::stations::{CANOPY_FRAME, GUNMETAL};
 
 /// Arc angle of the windscreen quarter posts either side of the centre panel.
@@ -43,41 +43,78 @@ fn polyline(mesh: &mut MeshBuilder, points: &[Vec3]) {
     }
 }
 
-fn bow(mesh: &mut MeshBuilder, y: f32) {
+/// A frame member across the canopy at station `y`, from arc angle `a_from` to `a_to`,
+/// authored about `origin`.
+fn bow(mesh: &mut MeshBuilder, y: f32, (a_from, a_to): (f32, f32), origin: Vec3) {
     let points: Vec<Vec3> = (0..=16)
-        .map(|i| glazing_point(y, -FRAC_PI_2 + std::f32::consts::PI * i as f32 / 16.0))
+        .map(|i| glazing_point(y, a_from + (a_to - a_from) * i as f32 / 16.0) - origin)
         .collect();
     polyline(mesh, &points);
 }
 
-fn rail(mesh: &mut MeshBuilder, a: f32, y_from: f32, y_to: f32) {
+/// A frame member along the canopy at arc angle `a`, authored about `origin`.
+fn rail(mesh: &mut MeshBuilder, a: f32, (y_from, y_to): (f32, f32), origin: Vec3) {
     let points: Vec<Vec3> = (0..=12)
-        .map(|i| glazing_point(y_from + (y_to - y_from) * i as f32 / 12.0, a))
+        .map(|i| glazing_point(y_from + (y_to - y_from) * i as f32 / 12.0, a) - origin)
         .collect();
     polyline(mesh, &points);
 }
+
+/// How far inside the fixed bows the hatch's own end members sit, metres.
+const HATCH_END_INSET_M: f32 = 0.025;
 
 pub(crate) fn canopy_frame_prims() -> Vec<P38MeshPrim> {
     let windscreen_top = fs_to_y(WINDSCREEN_TOP_FRAME_FS_IN);
     let hatch_aft = fs_to_y(HATCH_AFT_FRAME_FS_IN);
     let front = fs_to_y(WINDSCREEN_BASE_FS_IN + END_MARGIN_IN);
     let tail = fs_to_y(CANOPY_TAIL_FS_IN - END_MARGIN_IN);
+    // Fixed structure: the two bows, the windscreen's quarter posts, the sills and the
+    // rear glazing's spine.
     let mut frames = MeshBuilder::new();
     for y in [windscreen_top, hatch_aft] {
-        bow(&mut frames, y);
+        bow(&mut frames, y, (-FRAC_PI_2, FRAC_PI_2), Vec3::ZERO);
     }
     for side in [-1.0_f32, 1.0] {
-        rail(&mut frames, side * QUARTER_POST_A, front, windscreen_top);
-        rail(&mut frames, side * HATCH_RAIL_A, windscreen_top, hatch_aft);
-        rail(&mut frames, side * FRAC_PI_2, front, tail);
+        rail(
+            &mut frames,
+            side * QUARTER_POST_A,
+            (front, windscreen_top),
+            Vec3::ZERO,
+        );
+        rail(&mut frames, side * FRAC_PI_2, (front, tail), Vec3::ZERO);
     }
-    rail(&mut frames, 0.0, hatch_aft, tail);
-    let mut prims = vec![fixed(
-        "/P38g/Canopy/InteriorFrames",
+    rail(&mut frames, 0.0, (hatch_aft, tail), Vec3::ZERO);
+    // The hatch's own frame, which rises with it: its side rails and an end member
+    // inside each fixed bow, authored about the hatch pane's hinge.
+    let hinge = canopy_point(hatch_aft, 0.0);
+    let ends = (
+        windscreen_top - HATCH_END_INSET_M,
+        hatch_aft + HATCH_END_INSET_M,
+    );
+    let mut hatch = MeshBuilder::new();
+    for side in [-1.0_f32, 1.0] {
+        rail(&mut hatch, side * HATCH_RAIL_A, ends, hinge);
+    }
+    for y in [ends.0, ends.1] {
+        bow(&mut hatch, y, (-HATCH_RAIL_A, HATCH_RAIL_A), hinge);
+    }
+    let mut hatch = part(
+        "/P38g/Canopy/HatchFrames",
         P38PartRole::CabinExterior,
         CANOPY_FRAME,
-        frames,
-    )];
+        DMat4::from_translation(hinge.as_dvec3()),
+        hatch,
+    );
+    hatch.custom_hinge_axis = Some(DVec3::X);
+    let mut prims = vec![
+        fixed(
+            "/P38g/Canopy/InteriorFrames",
+            P38PartRole::CabinExterior,
+            CANOPY_FRAME,
+            frames,
+        ),
+        hatch,
+    ];
 
     // Steel retainer around the internal armoured glass, matching its quad corners.
     let mut armor = MeshBuilder::new();

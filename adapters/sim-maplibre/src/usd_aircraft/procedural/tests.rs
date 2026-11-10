@@ -111,7 +111,12 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     }
     assert_eq!(count(&p38, PartRole::LandingLight), 1);
     // Windscreen, hatch, a window either side of it, and the rear glazing.
-    assert_eq!(count(&p38, PartRole::CabinGlass), 5);
+    let panes = p38
+        .parts()
+        .iter()
+        .filter(|p| p.prim_path.starts_with("/P38g/Canopy/Glazing/"))
+        .count();
+    assert_eq!(panes, 5);
     // The P-38's ailerons, elevator and flaps are olive drab over a neutral-gray
     // underside part that deflects with them.
     for role in [
