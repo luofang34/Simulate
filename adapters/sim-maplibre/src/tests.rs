@@ -54,6 +54,7 @@ pub(super) fn sample_panel_data() -> PanelData {
                 ias_mps: Some(55.0),
                 baro_setting_hpa: Some(1013.25),
                 tas_mps: Some(58.0),
+                vsi_mps: None,
             }),
             age_ms: Some(10.0),
         },

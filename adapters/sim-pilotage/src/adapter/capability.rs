@@ -69,6 +69,7 @@ pub fn vehicle_class(kind: SystemKind) -> Option<VehicleClass> {
         | SystemKind::GenericSystem
         | SystemKind::InstrumentPack
         | SystemKind::Engine
-        | SystemKind::Propeller => None,
+        | SystemKind::Propeller
+        | SystemKind::TypefacePack => None,
     }
 }

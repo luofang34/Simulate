@@ -22,6 +22,8 @@ mod features;
 #[cfg(test)]
 mod landmarks;
 #[cfg(test)]
+mod panel;
+#[cfg(test)]
 mod render;
 #[cfg(test)]
 mod resection;

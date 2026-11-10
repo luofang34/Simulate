@@ -1,7 +1,7 @@
 use indicate_instrument_descriptor::InstrumentDrawError;
 use indicate_instrument_raster::RasterError;
 use indicate_instrument_scene::{LayerError, SceneError};
-use indicate_instrument_state::abi::v8::AbiError;
+use indicate_instrument_state::abi::v9::AbiError;
 use indicate_interaction::InteractionError;
 use thiserror::Error;
 
@@ -117,6 +117,13 @@ pub enum PanelError {
         /// Indicate's interaction error.
         #[source]
         source: InteractionError,
+    },
+    /// An analog dial refused to draw its face or overflowed its buffer.
+    #[error("analog dial face draw failed: {source}")]
+    DialDraw {
+        /// Indicate's reason.
+        #[source]
+        source: InstrumentDrawError,
     },
     /// A scene could not be tessellated into anti-aliased vector geometry.
     #[error("vector tessellation failed: {source}")]

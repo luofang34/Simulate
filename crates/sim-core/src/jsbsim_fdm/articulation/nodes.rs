@@ -4,13 +4,15 @@ use std::f64::consts::TAU;
 
 use jsbsim::{Fdm, NodeId};
 
+use super::cockpit::CockpitCommandNodes;
 use super::{
     AirframeArticulation, DEFAULT_BLADE_ANGLE_DEG, DEFAULT_MAX_FLAP_DEG, KILOGRAMS_PER_POUND,
     MAIN_WHEEL_RADIUS_FT, METRES_PER_FOOT, NEWTONS_PER_POUND_FORCE, NOSE_WHEEL_RADIUS_FT,
     beacon_pulse, piston_mount_vibration,
 };
 use crate::BlockError;
-use crate::instrument_panel::SecondEngineGauges;
+use crate::airframe::{AirframeLights, PropellerShaft};
+use crate::instrument_panel::{EngineGauges, EngineReadout, FUEL_TANKS};
 use crate::jsbsim_fdm::fdm_error;
 use crate::jsbsim_fdm::system::SystemControls;
 
@@ -27,15 +29,8 @@ pub(in crate::jsbsim_fdm) struct ArticulationNodes {
     blade_1_angle_deg: Option<NodeId>,
     thrust_lbs: Option<NodeId>,
     engine_1_thrust_lbs: Option<NodeId>,
-    map_pa: Option<NodeId>,
-    map_1_pa: Option<NodeId>,
-    engine_1_rpm: Option<NodeId>,
-    fuel_flow_gph: Option<NodeId>,
-    engine_1_fuel_flow_gph: Option<NodeId>,
-    egt_deg_f: Option<NodeId>,
-    cht_deg_f: Option<NodeId>,
-    oil_temp_deg_f: Option<NodeId>,
-    oil_pressure_psi: Option<NodeId>,
+    gauges: [EngineGaugeNodes; 2],
+    fuel_tanks_lbs: [Option<NodeId>; FUEL_TANKS],
     flap_pos_deg: Option<NodeId>,
     flap_pos_norm: Option<NodeId>,
     left_aileron_rad: Option<NodeId>,
@@ -48,6 +43,7 @@ pub(in crate::jsbsim_fdm) struct ArticulationNodes {
     gear_wow: [Option<NodeId>; 3],
     gear_comp_ft: [Option<NodeId>; 3],
     wheel_speed_fps: [Option<NodeId>; 3],
+    cockpit: CockpitCommandNodes,
 }
 
 impl ArticulationNodes {
@@ -68,15 +64,16 @@ impl ArticulationNodes {
             blade_1_angle_deg: opt("propulsion/engine[1]/blade-angle")?,
             thrust_lbs: opt("propulsion/engine[0]/thrust-lbs")?,
             engine_1_thrust_lbs: opt("propulsion/engine[1]/thrust-lbs")?,
-            map_pa: opt("propulsion/engine[0]/map-pa")?,
-            map_1_pa: opt("propulsion/engine[1]/map-pa")?,
-            engine_1_rpm: opt("propulsion/engine[1]/engine-rpm")?,
-            fuel_flow_gph: opt("propulsion/engine[0]/fuel-flow-rate-gph")?,
-            engine_1_fuel_flow_gph: opt("propulsion/engine[1]/fuel-flow-rate-gph")?,
-            egt_deg_f: opt("propulsion/engine[0]/egt-degF")?,
-            cht_deg_f: opt("propulsion/engine[0]/cht-degF")?,
-            oil_temp_deg_f: opt("propulsion/engine[0]/oil-temperature-degF")?,
-            oil_pressure_psi: opt("propulsion/engine[0]/oil-pressure-psi")?,
+            gauges: [
+                EngineGaugeNodes::resolve(fdm, 0)?,
+                EngineGaugeNodes::resolve(fdm, 1)?,
+            ],
+            fuel_tanks_lbs: [
+                opt("propulsion/tank[0]/contents-lbs")?,
+                opt("propulsion/tank[1]/contents-lbs")?,
+                opt("propulsion/tank[2]/contents-lbs")?,
+                opt("propulsion/tank[3]/contents-lbs")?,
+            ],
             flap_pos_deg: opt("fcs/flap-pos-deg")?,
             flap_pos_norm: opt("fcs/flap-pos-norm")?,
             left_aileron_rad: opt("fcs/left-aileron-pos-rad")?,
@@ -97,6 +94,7 @@ impl ArticulationNodes {
                 "gear/unit[1]/wheel-speed-fps",
                 "gear/unit[2]/wheel-speed-fps",
             )?,
+            cockpit: CockpitCommandNodes::resolve(fdm)?,
         })
     }
 
@@ -113,6 +111,7 @@ impl ArticulationNodes {
             0.0
         };
         let mut out = self.sample_surfaces_and_gear(fdm, prev, step_dt)?;
+        out.cockpit = self.cockpit.read(fdm, controls)?;
         let mut rd = |n: Option<NodeId>, fallback: f64| -> Result<f64, BlockError> {
             n.map_or(Ok(fallback), |id| fdm.read_node(id).map_err(fdm_error))
         };
@@ -142,8 +141,8 @@ impl ArticulationNodes {
         let step_phase =
             |p: f64, s: f64, rpm: f64| (p + s * (rpm * TAU / 60.0) * step_dt).rem_euclid(TAU);
         let prop_phase = step_phase(prev.propeller_phase_rad, sense, prop_rpm);
-        let prop_phase_r = step_phase(prev.propeller_phase_right_rad, sense_r, prop_rpm_r);
-        let beacon_phase = (prev.beacon_phase_rad + 1.2 * TAU * step_dt).rem_euclid(TAU);
+        let prop_phase_r = step_phase(prev.propeller_right.phase_rad, sense_r, prop_rpm_r);
+        let beacon_phase = (prev.lights.beacon_phase_rad + 1.2 * TAU * step_dt).rem_euclid(TAU);
         out.engine_running = running;
         out.starter_engaged = starter;
         out.engine_rpm = eng_rpm;
@@ -151,22 +150,26 @@ impl ArticulationNodes {
         out.propeller_sense = sense;
         out.propeller_blade_angle_deg = if feath_l { 85.0 } else { raw_blade_l };
         out.propeller_phase_rad = prop_phase;
-        out.propeller_rpm_right = prop_rpm_r;
-        out.propeller_sense_right = sense_r;
-        out.propeller_blade_angle_right_deg = if feath_r { 85.0 } else { raw_blade_r };
-        out.propeller_phase_right_rad = prop_phase_r;
+        out.propeller_right = PropellerShaft {
+            rpm: prop_rpm_r,
+            sense: sense_r,
+            blade_angle_deg: if feath_r { 85.0 } else { raw_blade_r },
+            phase_rad: prop_phase_r,
+        };
         out.propeller_feathered = controls.prop_feather;
         out.coolant_flap_norm = controls.coolant_flap_norm;
         out.oil_shutter_norm = controls.oil_shutter_norm;
         out.trim_tab_rad = controls.trim_norm.map(|t| t * 0.28);
         self.sample_engine_readouts(&mut rd, &mut out, eng_rpm)?;
         out.engine_vibration_rad = piston_mount_vibration(eng_rpm, prop_phase, running || starter);
-        out.beacon_phase_rad = beacon_phase;
-        out.beacon_flash_norm = beacon_pulse(beacon_phase, running || starter);
-        out.landing_light_norm = if controls.landing_light && (running || starter) {
-            out.gear_pos_norm.clamp(0.0, 1.0)
-        } else {
-            0.0
+        out.lights = AirframeLights {
+            beacon_phase_rad: beacon_phase,
+            beacon_flash_norm: beacon_pulse(beacon_phase, running || starter),
+            landing_light_norm: if controls.landing_light && (running || starter) {
+                out.gear_pos_norm.clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
         };
         Ok(out)
     }
@@ -180,20 +183,32 @@ impl ArticulationNodes {
     ) -> Result<(), BlockError> {
         out.propeller_thrust_n = (rd(self.thrust_lbs, 0.0)? + rd(self.engine_1_thrust_lbs, 0.0)?)
             * NEWTONS_PER_POUND_FORCE;
-        out.manifold_pressure_pa = rd(self.map_pa, 101_325.0)?;
-        let (rpm_1, map_1) = (
-            rd(self.engine_1_rpm, eng_rpm)?,
-            rd(self.map_1_pa, out.manifold_pressure_pa)?,
-        );
-        out.engine_right_gauges = SecondEngineGauges {
-            engine_rpm: rpm_1,
-            manifold_pressure_pa: map_1,
+        let [left, right] = &self.gauges;
+        let first = left.read(
+            rd,
+            EngineReadout {
+                rpm: eng_rpm,
+                ..EngineReadout::default()
+            },
+        )?;
+        // A single engine's second gauges mirror the first, burning no fuel.
+        let second = right.read(
+            rd,
+            EngineReadout {
+                fuel_flow_gph: 0.0,
+                ..first
+            },
+        )?;
+        let mut fuel_tanks_lbs = [None; FUEL_TANKS];
+        for (slot, node) in fuel_tanks_lbs.iter_mut().zip(self.fuel_tanks_lbs) {
+            if node.is_some() {
+                *slot = Some(rd(node, 0.0)?);
+            }
+        }
+        out.gauges = EngineGauges {
+            engines: [first, second],
+            fuel_tanks_lbs,
         };
-        out.fuel_flow_gph = rd(self.fuel_flow_gph, 0.0)? + rd(self.engine_1_fuel_flow_gph, 0.0)?;
-        out.egt_deg_f = rd(self.egt_deg_f, 70.0)?;
-        out.cht_deg_f = rd(self.cht_deg_f, 70.0)?;
-        out.oil_temp_deg_f = rd(self.oil_temp_deg_f, 70.0)?;
-        out.oil_pressure_psi = rd(self.oil_pressure_psi, 0.0)?;
         out.gross_mass_kg = rd(self.weight_lbs, 0.0)?.max(0.0) * KILOGRAMS_PER_POUND;
         Ok(())
     }
@@ -253,6 +268,54 @@ impl ArticulationNodes {
             gear_compression_m: comp_m,
             wheel_phase_rad: wheel_phase,
             ..AirframeArticulation::default()
+        })
+    }
+}
+
+/// The gauge properties of one engine.
+#[derive(Debug, Clone, Copy)]
+struct EngineGaugeNodes {
+    rpm: Option<NodeId>,
+    map_pa: Option<NodeId>,
+    fuel_flow_gph: Option<NodeId>,
+    egt_deg_f: Option<NodeId>,
+    cht_deg_f: Option<NodeId>,
+    oil_temp_deg_f: Option<NodeId>,
+    oil_pressure_psi: Option<NodeId>,
+}
+
+impl EngineGaugeNodes {
+    fn resolve(fdm: &Fdm, engine: usize) -> Result<Self, BlockError> {
+        let opt = |quantity: &str| {
+            fdm.node(&format!("propulsion/engine[{engine}]/{quantity}"))
+                .map_err(fdm_error)
+        };
+        Ok(Self {
+            rpm: opt("engine-rpm")?,
+            map_pa: opt("map-pa")?,
+            fuel_flow_gph: opt("fuel-flow-rate-gph")?,
+            egt_deg_f: opt("egt-degF")?,
+            cht_deg_f: opt("cht-degF")?,
+            oil_temp_deg_f: opt("oil-temperature-degF")?,
+            oil_pressure_psi: opt("oil-pressure-psi")?,
+        })
+    }
+
+    /// The engine's readings, each falling back to `absent`'s where the
+    /// flight model has no such property.
+    fn read(
+        &self,
+        rd: &mut impl FnMut(Option<NodeId>, f64) -> Result<f64, BlockError>,
+        absent: EngineReadout,
+    ) -> Result<EngineReadout, BlockError> {
+        Ok(EngineReadout {
+            rpm: rd(self.rpm, absent.rpm)?,
+            manifold_pressure_pa: rd(self.map_pa, absent.manifold_pressure_pa)?,
+            fuel_flow_gph: rd(self.fuel_flow_gph, absent.fuel_flow_gph)?,
+            egt_deg_f: rd(self.egt_deg_f, absent.egt_deg_f)?,
+            cht_deg_f: rd(self.cht_deg_f, absent.cht_deg_f)?,
+            oil_temp_deg_f: rd(self.oil_temp_deg_f, absent.oil_temp_deg_f)?,
+            oil_pressure_psi: rd(self.oil_pressure_psi, absent.oil_pressure_psi)?,
         })
     }
 }

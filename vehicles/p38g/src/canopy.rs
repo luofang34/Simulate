@@ -14,7 +14,7 @@ use crate::drawing::{
     WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
 use crate::gondola::{GONDOLA_SECTIONS, canopy_point, canopy_sill_z, section_y};
-use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
+use crate::mesh::{Inside, MeshBuilder, P38ControlJoint, P38MeshPrim, P38PartRole, fixed, part};
 use crate::stations::{ARMOR_GLASS, CANOPY_FRAME, CANOPY_GLASS, GUNMETAL};
 
 /// Model `y` of the middle of the top hatch.
@@ -177,6 +177,11 @@ fn mirror_fairing() -> P38MeshPrim {
 /// windows. The drawing does not show the rail; assumed.
 pub(crate) const HATCH_RAIL_A: f32 = 1.0;
 
+/// How far the hatch swings up on its aft hinge when fully open, rad. Assumed:
+/// no source found gives the angle, and the cockpit photographs that show it
+/// raised are not yet measured.
+const HATCH_OPEN_RAD: f32 = 1.05;
+
 /// One pane of the glazing: the stations and arc angles it spans, the arc steps it is
 /// lofted with, and the point its prim is authored about.
 struct Pane {
@@ -235,7 +240,40 @@ fn glazing_prims() -> Vec<P38MeshPrim> {
         pane("Rear", (aft, tail), (-FRAC_PI_2, FRAC_PI_2), 16, Vec3::ZERO),
     ];
     let inside = Vec3::new(0.0, hatch_mid_y(), FRL_Z_M + 0.6);
-    panes.into_iter().map(|pane| pane.prim(inside)).collect()
+    panes
+        .into_iter()
+        .map(|pane| {
+            let mut prim = pane.prim(inside);
+            prim.control_joints = pane_joint(pane.name).into_iter().collect();
+            prim
+        })
+        .collect()
+}
+
+/// The joint the pane named `name` opens on, if it opens: the hatch turning
+/// about its hinge (the origin its prim is authored about), a side window
+/// sliding down along its own chord from the rail to the sill, so its top
+/// edge ends on the sill and the pane inside the wall.
+fn pane_joint(name: &str) -> Option<P38ControlJoint> {
+    let mid = hatch_mid_y();
+    let chord = |side: f32| {
+        canopy_point(mid, side * std::f32::consts::FRAC_PI_2)
+            - canopy_point(mid, side * HATCH_RAIL_A)
+    };
+    let (channel, axis, per_unit, slides) = match name {
+        "Hatch" => ("canopy_hatch", Vec3::X, HATCH_OPEN_RAD, false),
+        "SideWindowLeft" => ("window_left", chord(-1.0), chord(-1.0).length(), true),
+        "SideWindowRight" => ("window_right", chord(1.0), chord(1.0).length(), true),
+        _ => return None,
+    };
+    Some(P38ControlJoint {
+        channel,
+        origin_m: [0.0; 3],
+        axis: axis.normalize_or_zero().to_array(),
+        per_unit,
+        rest: 0.0,
+        slides,
+    })
 }
 
 impl Pane {

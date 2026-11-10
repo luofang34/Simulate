@@ -2,12 +2,16 @@
   "schema_version": 1,
   "id": "usaaf-1943-fighter",
   "name": "USAAF 1943 single-seat fighter panel (P-38G)",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "kind": "InstrumentPack",
   "assets": {
+    "PROVENANCE.md": {
+      "sha256": "7c3253bfd62ce1daf985d388b69e02bf5a7469059fe42bd294bb171397384e06",
+      "size_bytes": 4385
+    },
     "instruments.json": {
-      "sha256": "80757673a1f3a90339e49e6227b1385eafd2ccdfbcb67409e45ed2f1d2d12f08",
-      "size_bytes": 7193
+      "sha256": "a901d67db3c56afb2e34ec4795861cff832f7a3996aa6e99e565747428e491eb",
+      "size_bytes": 52055
     }
   },
   "components": [

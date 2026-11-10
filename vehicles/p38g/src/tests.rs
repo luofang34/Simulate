@@ -25,7 +25,6 @@ fn powerplant_and_cockpit_reservation_prims_are_present() {
         "/P38g/Powerplant/CoolerMatrixCores",
         "/P38g/CockpitInterior/TubAndBulkheads",
         "/P38g/CockpitInterior/InstrumentPanel/Board",
-        "/P38g/CockpitInterior/GunsightReflector",
         "/P38g/CockpitInterior/ControlWheel",
     ] {
         assert!(

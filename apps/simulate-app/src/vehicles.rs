@@ -132,7 +132,7 @@ pub enum PlantSnapshot {
         /// Body FRD specific force (`m/s²`) at the snapshot.
         specific_force_frd_m_s2: DVec3,
         /// Latched operator system controls at the snapshot.
-        system: SystemControls,
+        system: Box<SystemControls>,
     },
     /// Aviate X500 rigid body and position-hold target.
     AviateX500(Box<X500Snapshot>),
@@ -403,7 +403,7 @@ impl FreeFlightPlant {
             } => PlantSnapshot::Jsbsim {
                 fdm: Box::new(fdm.snapshot()),
                 specific_force_frd_m_s2: *specific_force_frd_m_s2,
-                system: fdm.system_controls(),
+                system: Box::new(fdm.system_controls()),
             },
             Self::AviateX500(rig) => PlantSnapshot::AviateX500(Box::new(rig.snapshot())),
             Self::AviateFixedWing(rig) => PlantSnapshot::AviateFixedWing(Box::new(rig.snapshot())),
@@ -428,7 +428,7 @@ impl FreeFlightPlant {
             ) => {
                 fdm.try_restore(saved)
                     .map_err(sim_scenario::ScenarioError::from)?;
-                fdm.set_system_controls(*system);
+                fdm.set_system_controls(**system);
                 *specific_force_frd_m_s2 = *force;
                 Ok(())
             }

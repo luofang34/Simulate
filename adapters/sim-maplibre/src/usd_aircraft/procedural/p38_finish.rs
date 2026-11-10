@@ -70,6 +70,29 @@ pub(super) fn detail(prim_path: &str) -> SurfaceDetail {
             weathering: 0.6,
             soot: None,
         },
+        // Riveted sheet seams between the cockpit's wall frames and along its
+        // stringers, scuffed and grimy.
+        "CockpitInterior/TubAndBulkheads" => SurfaceDetail {
+            panel_pitch_m: [0.0, 0.24, 0.24],
+            weathering: 0.35,
+            soot: None,
+        },
+        "CockpitInterior/Consoles"
+        | "CockpitInterior/WallFrames"
+        | "CockpitInterior/BucketSeat" => SurfaceDetail {
+            panel_pitch_m: [0.0; 3],
+            weathering: 0.3,
+            soot: None,
+        },
+        // Every other painted cockpit part keeps its paint's handled, uneven
+        // look; the instruments' printed faces and moving parts do not.
+        p if p.starts_with("CockpitInterior/") && !p.starts_with("CockpitInterior/Instruments") => {
+            SurfaceDetail {
+                panel_pitch_m: [0.0; 3],
+                weathering: 0.2,
+                soot: None,
+            }
+        }
         _ => SurfaceDetail::default(),
     }
 }

@@ -250,11 +250,128 @@ fn render_p38_other_views(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
     ] {
         draw_p38_cockpit_look(h, yaw_deg, pitch_deg, &dir.join(name))?;
     }
+    render_p38_panel_closeups(h, dir)?;
+    render_p38_cabin_looks(h, dir)?;
     h.rig.set_show_conformal_hud(true);
     h.rig
         .supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Chase);
     Ok(())
+}
+
+/// The flight instruments from close in and off to one side, so the needles
+/// stand visibly off the recessed faces under the cover glass; then the
+/// panel at dusk and at night, when the luminous paint glows.
+fn render_p38_panel_closeups(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSimError> {
+    // A low Sun from behind, under the glare shield onto the faces.
+    let sun = sun_relative_to_nose(h, 2.9, 14.0_f64.to_radians());
+    let close = CockpitLook {
+        eye_m: [0.02, -0.14, 0.52],
+        yaw_deg: -20.0,
+        pitch_deg: -22.0,
+    };
+    draw_p38_cockpit_view(h, close, sun, &dir.join("p38_16_panel_closeup_oblique.png"))?;
+    let dusk = sun_relative_to_nose(h, 2.6, 2.0_f64.to_radians());
+    let panel = CockpitLook {
+        eye_m: [0.0, 0.0, 0.0],
+        yaw_deg: 0.0,
+        pitch_deg: -30.0,
+    };
+    draw_p38_cockpit_view(h, panel, dusk, &dir.join("p38_17_panel_dusk.png"))?;
+    let night = sun_relative_to_nose(h, 2.6, -12.0_f64.to_radians());
+    draw_p38_cockpit_view(h, close, night, &dir.join("p38_18_panel_night_closeup.png"))
+}
+
+/// The pilot turned to look back over the right shoulder at the armour, headrest
+/// and canopy; then the controls from above the pilot's right shoulder, centred
+/// and then held deflected, so the wheel, column, quadrant and pedals are seen to
+/// move with the flight model's commands.
+fn render_p38_cabin_looks(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSimError> {
+    let sun = h.flight.world().sun_direction_ecef();
+    let back = CockpitLook {
+        eye_m: [0.06, 0.02, 0.03],
+        yaw_deg: 150.0,
+        pitch_deg: -10.0,
+    };
+    draw_p38_cockpit_view(h, back, sun, &dir.join("p38_19_cockpit_look_back.png"))?;
+    // From over the left sill looking down and right across the cockpit, the
+    // way Lockheed's negative Z-4972 looks in
+    // (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>).
+    // The viewpoint and field are chosen by eye; the photograph's camera is
+    // not solved.
+    let z4972 = CockpitLook {
+        eye_m: [-0.36, 0.20, -0.30],
+        yaw_deg: 30.0,
+        pitch_deg: -36.0,
+    };
+    draw_p38_view_with_fov(
+        h,
+        z4972,
+        Some(70.0),
+        sun,
+        &dir.join("p38_23_over_left_sill.png"),
+    )?;
+    // The same look with the canopy as the photograph has it: hatch raised,
+    // both side windows wound down.
+    let open = sim_core::CanopyOpening {
+        hatch: 1.0,
+        side_windows: [1.0; 2],
+    };
+    h.flight.update_system_controls(|sys| sys.canopy = open);
+    h.flight
+        .advance_by(0.05, ControlInputs::default(), SimTimeScale::RealTime)?;
+    draw_p38_view_with_fov(
+        h,
+        z4972,
+        Some(70.0),
+        sun,
+        &dir.join("p38_24_over_left_sill_canopy_open.png"),
+    )?;
+    h.flight
+        .update_system_controls(|sys| sys.canopy = sim_core::CanopyOpening::default());
+    let controls = CockpitLook {
+        eye_m: [0.16, 0.10, -0.02],
+        yaw_deg: -18.0,
+        pitch_deg: -48.0,
+    };
+    draw_p38_cockpit_view(h, controls, sun, &dir.join("p38_20_controls_centred.png"))?;
+    h.flight.update_system_controls(|sys| {
+        sys.flaps_norm = 1.0;
+        sys.gear_down = false;
+        sys.throttle_split = Some([0.25, 1.0]);
+        sys.trim_norm = [0.0, -0.6, 0.0];
+    });
+    for _ in 0..4 {
+        h.flight.advance_by(
+            0.05,
+            ControlInputs {
+                roll: 0.9,
+                pitch: 0.8,
+                yaw: -0.8,
+                throttle: 1.0,
+            },
+            SimTimeScale::RealTime,
+        )?;
+    }
+    draw_p38_cockpit_view(h, controls, sun, &dir.join("p38_21_controls_deflected.png"))?;
+    // The gyro horizon, directional gyro, turn and bank, compass and clock,
+    // seen past the wheel's right horn while the deflected controls roll and
+    // yaw the aircraft.
+    let gyros = CockpitLook {
+        eye_m: [0.17, -0.06, 0.40],
+        yaw_deg: -8.0,
+        pitch_deg: -20.0,
+    };
+    draw_p38_cockpit_view(h, gyros, sun, &dir.join("p38_22_gyro_group.png"))
+}
+
+/// A seated view moved `eye_m` `[right, up, forward]` from the design eye and
+/// turned `yaw_deg` right and `pitch_deg` up.
+#[derive(Clone, Copy)]
+struct CockpitLook {
+    eye_m: [f64; 3],
+    yaw_deg: f64,
+    pitch_deg: f64,
 }
 
 /// The seated pilot's view turned `yaw_deg` right and `pitch_deg` up.
@@ -264,15 +381,47 @@ fn draw_p38_cockpit_look(
     pitch_deg: f64,
     out: &Path,
 ) -> Result<(), AppSimError> {
-    let sky = SkyFrame::of_world(h.flight.world());
-    let look = LookOffset {
-        yaw_rad: yaw_deg.to_radians(),
-        pitch_rad: pitch_deg.to_radians(),
+    let sun = h.flight.world().sun_direction_ecef();
+    let look = CockpitLook {
+        eye_m: [0.0; 3],
+        yaw_deg,
+        pitch_deg,
     };
+    draw_p38_cockpit_view(h, look, sun, out)
+}
+
+fn draw_p38_cockpit_view(
+    h: &mut VerifyHarness,
+    view: CockpitLook,
+    sun_ecef: DVec3,
+    out: &Path,
+) -> Result<(), AppSimError> {
+    draw_p38_view_with_fov(h, view, None, sun_ecef, out)
+}
+
+/// [`draw_p38_cockpit_view`] with the vertical field of view `fov_y_deg`
+/// in place of the cockpit camera's own, to match a photograph's.
+fn draw_p38_view_with_fov(
+    h: &mut VerifyHarness,
+    view: CockpitLook,
+    fov_y_deg: Option<f64>,
+    sun_ecef: DVec3,
+    out: &Path,
+) -> Result<(), AppSimError> {
+    let sky = SkyFrame::fixed_sun(h.flight.world().body(), sun_ecef);
+    let look = LookOffset {
+        yaw_rad: view.yaw_deg.to_radians(),
+        pitch_rad: view.pitch_deg.to_radians(),
+    };
+    let [right, up, forward] = view.eye_m;
     for _ in 0..35 {
         let state = h.flight.display_vehicle_state();
-        let base_cam = h.flight.display_camera(OperatorViewportMode::Cockpit)?;
-        let cam = look.apply(OperatorViewportMode::Cockpit, base_cam, &state);
+        let mut base_cam = h.flight.display_camera(OperatorViewportMode::Cockpit)?;
+        base_cam.pose.position_ecef += base_cam.pose.orientation * DVec3::new(right, up, -forward);
+        let mut cam = look.apply(OperatorViewportMode::Cockpit, base_cam, &state);
+        if let Some(fov) = fov_y_deg {
+            cam.fov_y_rad = fov.to_radians();
+        }
         let _globe = h
             .rig
             .prepare_frame(&h.gpu.queue, SHOT_SIZE, &h.flight, &cam, &sky, &[])?;

@@ -1,4 +1,4 @@
-use indicate_instrument_state::abi::v8::{AbiError, CAPACITY};
+use indicate_instrument_state::abi::v9::{AbiError, CAPACITY};
 use indicate_instrument_state::{
     AirframeDisplayProfile, FreshnessPolicy, HeadingReference, IdentStr, PanelData, SignalStatus,
     UnusualAttitudeState, resolve_stateful,
@@ -356,10 +356,10 @@ fn a_frame_that_does_not_fit_or_does_not_parse_says_so() {
         Err(FeedError::Encode { capacity: 16, .. })
     ));
     assert_eq!(
-        decode_frame(&[9, 0]).unwrap_err(),
+        decode_frame(&[10, 0]).unwrap_err(),
         FeedError::Decode {
             length: 2,
-            source: AbiError::BadVersion { found: 9 }
+            source: AbiError::BadVersion { found: 10 }
         },
     );
 }

@@ -23,6 +23,7 @@ fn part_from(triangles: &[[Vec3; 3]], normal: Vec3) -> UsdMeshPart {
         rest_to_aircraft: DMat4::IDENTITY,
         custom_hinge_axis: None,
         needle_channel: None,
+        control_joints: Vec::new(),
         detail: crate::usd_aircraft::SurfaceDetail::default(),
         surface: crate::usd_aircraft::PartSurface::Material,
         indices: (0..vertices.len() as u32).collect(),

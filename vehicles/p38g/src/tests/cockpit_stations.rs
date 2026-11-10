@@ -194,7 +194,10 @@ fn the_cockpit_interior_stays_inside_the_mould_line() {
     for prim in prims() {
         if !matches!(
             prim.role,
-            P38PartRole::CabinInterior | P38PartRole::PilotFigure | P38PartRole::InstrumentNeedle
+            P38PartRole::CabinInterior
+                | P38PartRole::PilotFigure
+                | P38PartRole::DisplaySurface
+                | P38PartRole::CockpitControl
         ) {
             continue;
         }
@@ -297,7 +300,7 @@ fn the_glazing_is_split_into_its_panes_on_the_drawn_frames() {
     assert_eq!(
         prims
             .iter()
-            .filter(|p| p.role == P38PartRole::CabinGlass)
+            .filter(|p| p.prim_path.starts_with("/P38g/Canopy/Glazing/"))
             .count(),
         5
     );

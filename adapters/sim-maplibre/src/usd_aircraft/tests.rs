@@ -180,7 +180,10 @@ fn a_shorter_shutter_smears_the_propeller_over_a_smaller_angle() {
     let asset = UsdAircraftAsset::p38g().unwrap();
     let art = AirframeArticulation {
         propeller_rpm: 1_500.0,
-        propeller_rpm_right: 1_500.0,
+        propeller_right: sim_core::PropellerShaft {
+            rpm: 1_500.0,
+            ..sim_core::PropellerShaft::default()
+        },
         ..AirframeArticulation::default()
     };
     let smear = |shutter_s: f64| {

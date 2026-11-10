@@ -47,6 +47,7 @@ fn part(vertices: Vec<UsdMeshVertex>, indices: Vec<u32>) -> UsdMeshPart {
         rest_to_aircraft: DMat4::IDENTITY,
         custom_hinge_axis: None,
         needle_channel: None,
+        control_joints: Vec::new(),
         detail: SurfaceDetail::default(),
         surface: PartSurface::Material,
         vertices,

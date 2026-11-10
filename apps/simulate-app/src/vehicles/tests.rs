@@ -61,9 +61,9 @@ fn an_airborne_p38g_spawns_with_both_engines_turning() {
     assert!(art.engine_running, "{art:?}");
     assert!(art.gear_pos_norm < 0.01, "gear at {}", art.gear_pos_norm);
     assert!(
-        art.propeller_rpm > 500.0 && art.propeller_rpm_right > 500.0,
+        art.propeller_rpm > 500.0 && art.propeller_right.rpm > 500.0,
         "propellers at {} and {} rpm",
         art.propeller_rpm,
-        art.propeller_rpm_right
+        art.propeller_right.rpm
     );
 }

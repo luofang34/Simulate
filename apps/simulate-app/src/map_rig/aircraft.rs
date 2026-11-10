@@ -2,7 +2,9 @@
 //! parts each camera sees.
 
 use glam::{DMat3, DQuat, DVec3};
-use sim_core::{AirframeArticulation, AirframeVisibility, VehicleState, VirtualCameraSpec};
+use sim_core::{
+    AirframeArticulation, AirframeLights, AirframeVisibility, VehicleState, VirtualCameraSpec,
+};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_maplibre::{
     AircraftInstance, AltitudeReference, DynamicEntity3D, DynamicEntityKind, LatLon,
@@ -71,7 +73,10 @@ pub fn traffic_aircraft(entities: &[DynamicEntity3D], elapsed_s: f64) -> Vec<Air
                 engine_rpm: TRAFFIC_PROP_RPM,
                 propeller_rpm: TRAFFIC_PROP_RPM,
                 propeller_phase_rad: phase,
-                beacon_flash_norm: if (elapsed_s % 1.2) < 0.12 { 1.0 } else { 0.0 },
+                lights: AirframeLights {
+                    beacon_flash_norm: if (elapsed_s % 1.2) < 0.12 { 1.0 } else { 0.0 },
+                    ..AirframeLights::default()
+                },
                 ..AirframeArticulation::default()
             },
             ownship: false,

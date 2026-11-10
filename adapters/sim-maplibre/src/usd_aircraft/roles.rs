@@ -73,10 +73,36 @@ pub enum PartRole {
     /// Right main-gear tire and hubcap.
     WheelRight,
     /// An instrument needle turning about its part-local `+Y` (the dial normal,
-    /// into the panel) by the angle of its [`UsdMeshPart::needle_channel`].
+    /// into the panel) by the angle of its [`UsdMeshPart::needle_channel`],
+    /// clockwise from twelve o'clock as the pilot sees the dial.
     ///
     /// [`UsdMeshPart::needle_channel`]: super::UsdMeshPart::needle_channel
     InstrumentNeedle,
+    /// A flat face a display texture maps onto (an instrument dial), with `uv`
+    /// spanning `0..1` across it (`u` right, `v` down).
+    DisplaySurface,
+    /// A drum window's digit wheel turning about its part-local `+X` by the
+    /// position of its [`UsdMeshPart::needle_channel`] wheel channel, and
+    /// hidden while its slot's drum shows no value.
+    ///
+    /// [`UsdMeshPart::needle_channel`]: super::UsdMeshPart::needle_channel
+    InstrumentDrum,
+    /// A dial's failure flag, shown while the layout slot its
+    /// [`UsdMeshPart::needle_channel`] names is flagged.
+    ///
+    /// [`UsdMeshPart::needle_channel`]: super::UsdMeshPart::needle_channel
+    InstrumentFlag,
+    /// A dial's moving card, such as a gyro horizon's bar, turning about its
+    /// part-local `+Y` and travelling down its turned vertical as its
+    /// [`UsdMeshPart::needle_channel`] card channel says.
+    ///
+    /// [`UsdMeshPart::needle_channel`]: super::UsdMeshPart::needle_channel
+    InstrumentCard,
+    /// A cockpit control (wheel, lever, pedal, trim wheel) moving on its
+    /// [`UsdMeshPart::control_joints`].
+    ///
+    /// [`UsdMeshPart::control_joints`]: super::UsdMeshPart::control_joints
+    CockpitControl,
 }
 
 impl PartRole {
@@ -106,6 +132,11 @@ impl PartRole {
             "wheel_left" => Self::WheelLeft,
             "wheel_right" => Self::WheelRight,
             "instrument_needle" => Self::InstrumentNeedle,
+            "display_surface" => Self::DisplaySurface,
+            "instrument_drum" => Self::InstrumentDrum,
+            "instrument_flag" => Self::InstrumentFlag,
+            "cockpit_control" => Self::CockpitControl,
+            "instrument_card" => Self::InstrumentCard,
             _ => Self::CabinExterior,
         }
     }
@@ -113,8 +144,8 @@ impl PartRole {
 
 pub(super) fn role_visible_to_camera(role: PartRole, camera: SlotCameraRole) -> bool {
     use PartRole::{
-        CabinExterior, CabinGlass, CabinInterior, PilotFigure, PropellerBlades, PropellerDisc,
-        PropellerSpinner,
+        CabinExterior, CabinGlass, CabinInterior, CockpitControl, PilotFigure, PropellerBlades,
+        PropellerDisc, PropellerSpinner,
     };
     match camera {
         SlotCameraRole::External => true,
@@ -125,7 +156,7 @@ pub(super) fn role_visible_to_camera(role: PartRole, camera: SlotCameraRole) -> 
         SlotCameraRole::PilotEye => role != PilotFigure,
         SlotCameraRole::LeftCabinWindow => !matches!(
             role,
-            CabinExterior | CabinInterior | CabinGlass | PilotFigure
+            CabinExterior | CabinInterior | CockpitControl | CabinGlass | PilotFigure
         ),
     }
 }
