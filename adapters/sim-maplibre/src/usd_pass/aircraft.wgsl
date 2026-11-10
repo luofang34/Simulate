@@ -96,11 +96,12 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let reflected = sky_reflection(reflect(-v, n), l, roughness, ground_lit);
     // Fresnel of a rough surface's reflection of its surroundings (Fdez-Aguera's fit).
     let env_f = f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(1.0 - n_dot_v, 5.0);
-    // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
-    // view still sees open sky past a junction.
+    // Baked occlusion shuts out sky and ground light, less in a pale recess than a dark
+    // one; reflections go with it except at a glancing view of a smooth finish.
     let ao = finish.occlusion;
-    let specular_ao = mix(ao * ao, 1.0, 0.35);
-    let ambient = fill * (vec3<f32>(1.0) - env_f) * (1.0 - metallic) * albedo / PI * ao + reflected * env_f * specular_ao;
+    let diffuse_ao = multi_bounce(ao, albedo * (1.0 - metallic));
+    let specular_ao = specular_occlusion(n_dot_v, ao, roughness);
+    let ambient = fill * (vec3<f32>(1.0) - env_f) * (1.0 - metallic) * albedo / PI * diffuse_ao + reflected * env_f * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
 }
 

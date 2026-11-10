@@ -170,3 +170,21 @@ fn surface_finish(albedo_in: vec3<f32>, n: vec3<f32>, local: vec3<f32>, local_no
     }
     return out;
 }
+
+// Occlusion as light actually finds it in a cavity of reflectance `albedo`: light that
+// enters bounces between the walls, so a pale recess is less dark than a black one with
+// the same opening (Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate
+// Indirect Occlusion", their fit).
+fn multi_bounce(ao: f32, albedo: vec3<f32>) -> vec3<f32> {
+    let a = 2.0404 * albedo - vec3<f32>(0.3324);
+    let b = -4.7951 * albedo + vec3<f32>(0.6417);
+    let c = 2.7552 * albedo + vec3<f32>(0.6903);
+    return max(vec3<f32>(ao), ((ao * a + b) * ao + c) * ao);
+}
+
+// Share of the reflected surroundings an occluded point still mirrors: a rough finish
+// loses it with its diffuse light, a smooth one seen at a glancing angle keeps the open
+// sky past the edge (Lagarde and de Rousiers 2014, "Moving Frostbite to PBR").
+fn specular_occlusion(n_dot_v: f32, ao: f32, roughness: f32) -> f32 {
+    return clamp(pow(n_dot_v + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
+}
