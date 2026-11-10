@@ -23,6 +23,12 @@ pub enum UniverseError {
         /// The body the state is centred on.
         found: NaifId,
     },
+    /// The vessel's plant can only be flown by flight dynamics.
+    #[error("vessel {0:?} cannot leave the local tier")]
+    LocalOnly(VesselId),
+    /// A local plant of a kind this crate does not know failed.
+    #[error("a local plant failed")]
+    LocalPlant(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// The request needs the vessel in the orbital tier.
     #[error("vessel {0:?} is not in the orbital tier")]
     NotOrbital(VesselId),
@@ -33,6 +39,16 @@ pub enum UniverseError {
     /// universe's instant.
     #[error("vessel {vessel:?} is between steps; hand it off at one of its step instants")]
     BetweenSteps {
+        /// The vessel.
+        vessel: VesselId,
+    },
+    /// A checkpoint was offered to a universe whose vessels are no longer
+    /// in the tiers they were in when it was taken.
+    #[error("a vessel was added, removed or changed tier since the checkpoint")]
+    TiersChangedSinceCheckpoint,
+    /// A local plant was not put back before its universe was.
+    #[error("vessel {vessel:?}'s local plant is later than the checkpoint; restore it first")]
+    LocalAheadOfCheckpoint {
         /// The vessel.
         vessel: VesselId,
     },
