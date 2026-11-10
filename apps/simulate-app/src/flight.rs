@@ -38,6 +38,7 @@ mod sensor_tests;
 mod sensors;
 #[cfg(test)]
 mod space_tests;
+mod space_ux;
 mod space_world;
 #[cfg(test)]
 mod spawn_tests;
@@ -54,6 +55,8 @@ pub use pacing::{PacingMonitor, PacingSession, PacingStats};
 use panel_gauges::PanelGauges;
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
+#[allow(unused_imports)]
+pub use space_ux::{SpaceLinkStatus, SpaceReferenceFrame};
 
 /// Longest wall-clock gap simulated after a stall (`500 ms`), long enough that a transient
 /// tile-compile frame loses no simulated time, short enough that a backgrounded tab does not
@@ -265,8 +268,12 @@ impl Flight {
     /// Central-body terrain world for the active flight.
     #[must_use]
     pub fn world(&self) -> ScenarioWorld {
-        self.profile()
-            .map_or(ScenarioWorld::EarthGlobe, ScenarioProfile::world)
+        match &self.mode {
+            Mode::Space(world) => world.world(),
+            Mode::Free { .. } | Mode::Scenario(_) => self
+                .profile()
+                .map_or(ScenarioWorld::EarthGlobe, ScenarioProfile::world),
+        }
     }
 
     /// Current simulation clock instant.
@@ -319,7 +326,9 @@ impl Flight {
         controls: ControlInputs,
         time_scale: SimTimeScale,
     ) -> Result<(), AppSimError> {
-        let ticks = self.clock.advance(elapsed_s, time_scale.factor());
+        let ticks = self
+            .clock
+            .advance(elapsed_s, self.governed_warp(time_scale.factor(), controls));
         let step_s = self.mode.period().as_seconds();
         if self.last_submitted != Some(controls) {
             self.submit_control_at(self.master_now(), controls);

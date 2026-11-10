@@ -34,9 +34,8 @@ pub struct SkyBodies<'a> {
     pub stars: Option<&'a [CelestialStar]>,
 }
 
-#[cfg(any(test, not(target_arch = "wasm32")))]
 impl SkyFrame<'static> {
-    /// A sky over `body` lit only by a fixed Sun direction, for deterministic headless renders.
+    /// A sky over `body` lit only by the Sun in a given direction.
     #[must_use]
     pub fn fixed_sun(body: BodyEllipsoid, sun_direction_ecef: DVec3) -> Self {
         Self {
@@ -47,7 +46,10 @@ impl SkyFrame<'static> {
             bodies: None,
         }
     }
+}
 
+#[cfg(any(test, not(target_arch = "wasm32")))]
+impl SkyFrame<'static> {
     /// [`Self::fixed_sun`] with the scenario world's body and Sun.
     #[must_use]
     pub fn of_world(world: sim_scenario::ScenarioWorld) -> Self {
@@ -111,6 +113,15 @@ impl SkyRig {
         live_wall_utc_s: f64,
     ) -> SkyFrame<'_> {
         let world_body = flight.world().body();
+        // The sky's own ephemeris stands on Earth or the Moon. Anywhere else a flight
+        // goes, the Sun is where the dynamics have it (or the world's fixed Sun outside
+        // kernel coverage).
+        if world_body != BodyEllipsoid::WGS84 && world_body != BodyEllipsoid::MOON_IAU {
+            let sun = flight
+                .dynamics_direction_fixed(sim_orbital::NaifId::SUN, observer_fixed_m)
+                .unwrap_or_else(|| flight.world().sun_direction_ecef());
+            return SkyFrame::fixed_sun(world_body, sun);
+        }
         let body = if world_body == BodyEllipsoid::MOON_IAU {
             ReferenceBody::Moon
         } else {
@@ -219,6 +230,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_sky_draws_the_sun_and_moon_where_the_dynamics_have_them() {
+        use sim_orbital::NaifId;
+
+        let flight = Flight::new().expect("flight");
+        let observer = flight.vehicle_state().position_ecef;
+        let mut rig = SkyRig::new();
+        let sky = rig.evaluate(&flight, observer, wall_clock_utc_s());
+        let dynamics = |body| {
+            flight
+                .dynamics_direction_fixed(body, observer)
+                .expect("inside the built-in kernels")
+        };
+
+        // The sky shows the Sun where its light arrives from, 20 arc-seconds behind where
+        // the ephemeris puts it by the aberration of light.
+        let sun_apart = dynamics(NaifId::SUN).angle_between(sky.environment.sun.direction_fixed);
+        assert!(
+            sun_apart.to_degrees() < 0.01,
+            "the sky's Sun is {} degrees from the dynamics'",
+            sun_apart.to_degrees()
+        );
+        let moon = sky.bodies.and_then(|bodies| bodies.moon).expect("a Moon");
+        let moon_apart = dynamics(NaifId::MOON).angle_between(moon.direction_ecef);
+        assert!(
+            moon_apart.to_degrees() < 0.001,
+            "the sky's Moon is {} degrees from the dynamics'",
+            moon_apart.to_degrees()
+        );
+    }
+
+    #[test]
     fn srgb_encoding_matches_the_transfer_function_and_clamps() {
         assert_eq!(srgb_encode(0.0), 0.0);
         assert!((srgb_encode(0.002) - 0.025_84).abs() < 1e-5);
@@ -242,5 +284,43 @@ mod tests {
         assert!(stars > 1_000, "naked-eye starfield, got {stars}");
         let second = rig.evaluate(&flight, observer, 1_782_864_000.5);
         assert!(second.bodies.is_some_and(|c| c.stars.is_none()));
+    }
+
+    #[test]
+    fn apollo_1969_loads_a_kernel_pack_for_1969_lunar_and_reentry_epochs() {
+        use sim_orbital::NaifId;
+
+        let mut flight = Flight::new().expect("flight");
+        flight
+            .select(Some(ScenarioProfile::Apollo11LunarLanding))
+            .expect("apollo 11 landing");
+        let observer = flight.vehicle_state().position_ecef;
+        let sun_from_moon = flight
+            .dynamics_direction_fixed(NaifId::SUN, observer)
+            .expect("1969 kernel pack covers Apollo 11 landing");
+        let earth_from_moon = flight
+            .dynamics_direction_fixed(NaifId::EARTH, observer)
+            .expect("1969 kernel pack covers Earth from Tranquility Base");
+        assert!((sun_from_moon.length() - 1.0).abs() < 1e-12);
+        assert!((earth_from_moon.length() - 1.0).abs() < 1e-12);
+
+        let mut rig = SkyRig::new();
+        let sky = rig.evaluate(&flight, observer, 0.0);
+        let sun_apart = sun_from_moon.angle_between(sky.environment.sun.direction_fixed);
+        assert!(
+            sun_apart.to_degrees() < 1.0,
+            "1969 lunar Sun agrees with SkyRig within {} deg",
+            sun_apart.to_degrees()
+        );
+
+        flight
+            .select(Some(ScenarioProfile::Apollo11CapsuleReentry))
+            .expect("apollo 11 reentry");
+        let reentry_obs = flight.vehicle_state().position_ecef;
+        assert!(
+            flight
+                .dynamics_direction_fixed(NaifId::SUN, reentry_obs)
+                .is_some()
+        );
     }
 }

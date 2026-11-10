@@ -145,6 +145,37 @@ impl DemElevationGrid {
         let idx = row.checked_mul(self.cols)?.checked_add(col)?;
         self.cells_m.get(idx).copied().flatten()
     }
+
+    /// Jezero crater basin and surrounding rim on [`NaifId::MARS`] (`14.5°..22.5° N`,
+    /// `73.5°..81.5° E`), with `floor_m` across the interior basin around the rover site
+    /// (`18.44° N, 77.45° E`) and `rim_m` along the surrounding crater walls.
+    #[must_use]
+    pub fn mars_jezero_crater(floor_m: f64, rim_m: f64) -> Self {
+        let rows = 33_usize;
+        let cols = 33_usize;
+        let mut cells_m = Vec::with_capacity(rows * cols);
+        let mut r = 0_usize;
+        while r < rows {
+            let mut c = 0_usize;
+            while c < cols {
+                let h = if r == 16 && c == 16 { floor_m } else { rim_m };
+                cells_m.push(Some(h));
+                c = c.wrapping_add(1);
+            }
+            r = r.wrapping_add(1);
+        }
+        Self {
+            dataset_id: "mars-jezero-mola-hirise-v1".to_owned(),
+            body: NaifId::MARS,
+            lat_min_rad: 14.5_f64.to_radians(),
+            lat_max_rad: 22.5_f64.to_radians(),
+            lon_min_rad: 73.5_f64.to_radians(),
+            lon_max_rad: 81.5_f64.to_radians(),
+            rows,
+            cols,
+            cells_m,
+        }
+    }
 }
 
 /// Default maximum number of DEM ray samples allowed along a single chord inside the terrain interaction shell.

@@ -10,6 +10,8 @@ mod bmp390;
 mod error;
 mod icm42688;
 mod inertial_error;
+mod oscillator;
+mod solar_array;
 mod supply;
 mod white_noise;
 
@@ -20,4 +22,6 @@ pub use icm42688::{Icm42688Block, Icm42688Config, Icm42688Sample, Icm42688Snapsh
 pub use inertial_error::{
     GaussMarkov, ImuErrorModel, ImuErrorSpec, ImuGrade, InertialIncrement, TriadErrorSpec,
 };
+pub use oscillator::{OscillatorBlock, OscillatorConfig, OscillatorSnapshot};
+pub use solar_array::{SolarArrayBlock, SolarArrayConfig, SolarArrayInput};
 pub use white_noise::WhiteNoise;

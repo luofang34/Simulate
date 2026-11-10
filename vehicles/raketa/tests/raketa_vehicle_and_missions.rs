@@ -19,8 +19,8 @@ use sim_raketa::{
     RAKETA_CG_Y_M, RaketaArticulationState, RaketaMissionError, RaketaMissionPhase,
     RaketaMissionTarget, evaluate_cg_rcs_force_body_n, evaluate_raketa_aerodynamics,
     limit_main_thrust_proper_accel, raketa_default_rw_mode, raketa_mass_model,
-    resolve_fin_deflections_deg, run_staged_phase_demonstration, run_uninterrupted_mission,
-    verify_raketa_usd_contract,
+    resolve_fin_deflections_deg, run_continuous_pad_to_transfer, run_staged_phase_demonstration,
+    run_uninterrupted_mission, verify_raketa_usd_contract,
 };
 use sim_scenery::{DiscontinuousStepPatch, PinnedCollisionTerrain};
 
@@ -303,4 +303,29 @@ fn staged_raketa_earth_to_moon_and_mars_phase_demonstrations_verified() {
     );
     assert!(mars_demo.fin_lock_verified);
     assert_eq!(mars_demo.final_pinned_state.body, NaifId::MARS);
+}
+
+#[test]
+fn continuous_pad_to_leo_and_trans_mars_injection_runs_with_zero_state_resets() {
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let fm = ForceModel::standard_solar_system(solar.constants.clone()).expect("fm");
+    let t0 = TdbEpoch::new(835_000_000, 0);
+
+    let cont = run_continuous_pad_to_transfer(&solar, &fm, t0, RaketaMissionTarget::MarsSurface)
+        .expect("continuous pad to Mars transfer");
+    assert_eq!(cont.explicit_state_reinitializations, 0);
+    assert_eq!(
+        cont.phases_completed,
+        vec![
+            RaketaMissionPhase::EarthPadPinned,
+            RaketaMissionPhase::EarthLiftoff,
+            RaketaMissionPhase::GravityTurnAscent,
+            RaketaMissionPhase::TransInjectionBurn,
+            RaketaMissionPhase::DeepSpaceTransfer,
+        ]
+    );
+    assert!(cont.fin_lock_verified);
+    assert!(cont.peak_proper_accel_g <= 4.000_001);
+    assert_eq!(cont.terminal_state.primary_body, NaifId::MARS);
+    assert!(cont.terminal_epoch > cont.leo_insertion_epoch);
 }

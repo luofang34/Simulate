@@ -12,7 +12,10 @@
 //!    scenario initial states and reports `is_continuous_end_to_end = false` alongside the exact
 //!    count of scenario state initializations (`explicit_state_reinitializations`).
 
+mod continuous;
 mod landing;
+
+pub use continuous::{RaketaContinuousTransferSummary, run_continuous_pad_to_transfer};
 
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
@@ -257,7 +260,7 @@ pub fn run_staged_phase_demonstration(
     })
 }
 
-fn execute_earth_pad_liftoff(
+pub(super) fn execute_earth_pad_liftoff(
     solar: &BuiltinSolarSystem2026_2028,
     force_model: &ForceModel,
     t0: TdbEpoch,

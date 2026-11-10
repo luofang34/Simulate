@@ -289,18 +289,18 @@ impl SupervisorRig {
         next
     }
 
-    /// Cycles simulation warp (`1x` → `2x` → `4x` → `1x`).
-    pub fn cycle_warp(&mut self) -> SimTimeScale {
-        let next = match self.supervisor.time_scale() {
-            SimTimeScale::Paused | SimTimeScale::Warp(_)
-                if (self.supervisor.time_scale().factor() - 4.0).abs() < 0.1 =>
-            {
-                SimTimeScale::RealTime
-            }
-            SimTimeScale::RealTime => SimTimeScale::Warp(2.0),
-            SimTimeScale::Warp(w) if w < 3.0 => SimTimeScale::Warp(4.0),
-            SimTimeScale::Paused | SimTimeScale::Warp(_) => SimTimeScale::RealTime,
+    /// Steps simulation warp up `ladder`, a rising list of rates above real time, and
+    /// back to real time from its top or from a pause.
+    pub fn cycle_warp(&mut self, ladder: &[f64]) -> SimTimeScale {
+        let now = match self.supervisor.time_scale() {
+            SimTimeScale::Paused => f64::INFINITY,
+            scale @ (SimTimeScale::RealTime | SimTimeScale::Warp(_)) => scale.factor(),
         };
+        let next = ladder
+            .iter()
+            .copied()
+            .find(|rate| *rate > now * 1.05)
+            .map_or(SimTimeScale::RealTime, SimTimeScale::Warp);
         self.supervisor.set_time_scale(next);
         next
     }

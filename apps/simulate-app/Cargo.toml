@@ -19,6 +19,7 @@ indicate-instrument-scene = { workspace = true }
 mbd-airdata = { workspace = true }
 mbd-core = { workspace = true }
 sim-apollo = { workspace = true }
+sim-analysis = { workspace = true }
 sim-atmosphere = { workspace = true }
 sim-aviate = { workspace = true }
 sim-core = { workspace = true }

@@ -8,16 +8,22 @@ use sim_spacetime::{
 };
 
 use crate::{
-    access::{AccessAnalysisError, DataCoverageError, ModelNotApplicableReason},
+    access::{
+        AccessAnalysisError, AccessRestrictionReason, DataCoverageError, ModelNotApplicableReason,
+    },
     models::SensorFovModel,
-    relay::AnalysisEndpoint,
-    terrain::{TerrainElevationSource, resolve_altitude_ellipsoidal_height_m},
+    relay::{AnalysisEndpoint, evaluator::EndpointPairCtx},
+    terrain::{
+        TerrainElevationSource, check_terrain_line_of_sight_fixed,
+        resolve_altitude_ellipsoidal_height_m,
+    },
 };
 
 pub(super) struct EndpointWorldState {
     pub(super) endpoint_id: u32,
     pub(super) is_surface_station: bool,
     pub(super) host_body: NaifId,
+    pub(super) ellipsoid: BodyEllipsoid,
     pub(super) pos_ssb_m: DVec3,
     pub(super) vel_ssb_m_s: DVec3,
     pub(super) r_enu_to_icrf: DMat3,
@@ -122,6 +128,7 @@ fn evaluate_surface_station_world_state(
         endpoint_id: station.station_id,
         is_surface_station: true,
         host_body: station.body,
+        ellipsoid: station.ellipsoid,
         pos_ssb_m: host_ssb.pos_m + rel_pos + mount_off_icrf,
         vel_ssb_m_s: host_ssb.vel_m_s + rel_vel + omega_icrf.cross(mount_off_icrf),
         r_enu_to_icrf,
@@ -191,6 +198,7 @@ fn evaluate_moving_platform_world_state(
         endpoint_id,
         is_surface_station: false,
         host_body,
+        ellipsoid,
         pos_ssb_m,
         vel_ssb_m_s,
         r_enu_to_icrf,
@@ -233,4 +241,64 @@ fn resolve_platform_mount_kinematics(
     } else {
         Ok((cg_pos_ssb, cg_vel_ssb, None))
     }
+}
+
+/// Checks the path against the DEM, in the fixed frame of the DEM's body at the instant
+/// the end standing on that body is evaluated.
+pub(super) fn append_terrain_occultation(
+    ctx: &EndpointPairCtx<'_>,
+    emit_epoch: TdbEpoch,
+    epoch: TdbEpoch,
+    src: &EndpointWorldState,
+    dst: &EndpointWorldState,
+    below_dem_horizon: impl FnOnce(NaifId) -> bool,
+    restrictions: &mut Vec<AccessRestrictionReason>,
+) -> Result<(), AccessAnalysisError> {
+    if let Some((dem, cfg)) = ctx.terrain_dem {
+        let body = dem.body();
+        let body_blocked = restrictions.iter().any(
+            |r| matches!(r, AccessRestrictionReason::OccultedByBody { body: b, .. } if *b == body),
+        );
+        if below_dem_horizon(body) || body_blocked {
+            return Ok(());
+        }
+        let at = if src.is_surface_station && src.host_body == body {
+            emit_epoch
+        } else {
+            epoch
+        };
+        let body_ssb = ctx
+            .ephemeris
+            .geometric_state_icrf(body, NaifId::SSB, at, DerivativeOrder::Position)
+            .map_err(|_| DataCoverageError::EphemerisOutOfCoverage {
+                body,
+                requested_epoch: at,
+            })?
+            .pos_m;
+        let rot = ctx.orientation.body_rotation(body, at).map_err(|_| {
+            DataCoverageError::OrientationOutOfCoverage {
+                body,
+                requested_epoch: at,
+            }
+        })?;
+        let p0_fixed = rot.r_icrf_to_fixed * (src.pos_ssb_m - body_ssb);
+        let p1_fixed = rot.r_icrf_to_fixed * (dst.pos_ssb_m - body_ssb);
+        let ellipsoid = if src.host_body == body {
+            src.ellipsoid
+        } else if dst.host_body == body {
+            dst.ellipsoid
+        } else {
+            match body {
+                NaifId::MARS => BodyEllipsoid::MARS_IAU,
+                NaifId::MOON => BodyEllipsoid::MOON_IAU,
+                _ => BodyEllipsoid::WGS84,
+            }
+        };
+        if let Some(terrain_occ) =
+            check_terrain_line_of_sight_fixed(at, p0_fixed, p1_fixed, ellipsoid, dem, cfg)?
+        {
+            restrictions.push(terrain_occ);
+        }
+    }
+    Ok(())
 }
