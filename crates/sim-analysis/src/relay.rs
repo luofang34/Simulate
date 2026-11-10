@@ -18,7 +18,10 @@ pub use sim_analysis_contract::{
 };
 
 use crate::{
-    access::{AccessAnalysisError, WindowSearchCompleteness, build_query_grid_epochs},
+    access::{
+        AccessAnalysisError, StationAccessReport, WindowSearchCompleteness,
+        append_environment_provenance, build_query_grid_epochs, evaluate_station_access,
+    },
     models::{
         AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, VehicleSensorModel,
     },
@@ -121,6 +124,13 @@ pub fn evaluate_endpoint_link_access(
     let mut provenance = Vec::new();
     collect_endpoint_provenance(&source, &mut provenance);
     collect_endpoint_provenance(&target, &mut provenance);
+    append_environment_provenance(
+        &mut provenance,
+        NaifId::EARTH,
+        query.query_interval,
+        ephemeris,
+        orientation,
+    );
 
     Ok(EndpointLinkReport {
         source_endpoint_id: source.endpoint_id(),
@@ -185,24 +195,49 @@ pub fn evaluate_geometric_relay_access<'a>(
         direct_ctx: direct_ctx.as_ref(),
         query,
     };
+    build_relay_report(
+        &relay_ctx,
+        &aircraft_for_satellite_hop,
+        &satellite_for_aircraft_hop,
+        &ground_station,
+        query,
+        ephemeris,
+        orientation,
+    )
+}
 
+fn build_relay_report(
+    relay_ctx: &RelayEvalCtx<'_>,
+    aircraft_for_satellite_hop: &AnalysisEndpoint<'_>,
+    satellite_for_aircraft_hop: &AnalysisEndpoint<'_>,
+    ground_station: &AnalysisEndpoint<'_>,
+    query: &AccessQuerySpec,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<GeometricRelayReport, AccessAnalysisError> {
     let epochs = build_query_grid_epochs(query.query_interval, query.sample_step_s)?;
     let (samples, hop1_samples, hop2_samples, direct_samples) =
-        sample_relay_grid(&relay_ctx, &epochs)?;
-
+        sample_relay_grid(relay_ctx, &epochs)?;
     let refine = query.boundary_time_tolerance_s < query.sample_step_s;
-    let relay_windows = extract_relay_windows(&relay_ctx, &samples, refine)?;
-    let hop1_windows = extract_pair_windows(&hop1_ctx, &hop1_samples, refine)?;
-    let hop2_windows = extract_pair_windows(&hop2_ctx, &hop2_samples, refine)?;
-    let direct_windows = if let Some(d_ctx) = &direct_ctx {
-        extract_pair_windows(d_ctx, &direct_samples, refine)?
-    } else {
-        Vec::new()
-    };
+    let relay_windows = extract_relay_windows(relay_ctx, &samples, refine)?;
+    let hop1_windows = extract_pair_windows(relay_ctx.hop1_ctx, &hop1_samples, refine)?;
+    let hop2_windows = extract_pair_windows(relay_ctx.hop2_ctx, &hop2_samples, refine)?;
+    let direct_windows = relay_ctx
+        .direct_ctx
+        .map(|d| extract_pair_windows(d, &direct_samples, refine))
+        .transpose()?
+        .unwrap_or_default();
 
     let mut provenance = Vec::new();
-    collect_endpoint_provenance(&aircraft_for_satellite_hop, &mut provenance);
-    collect_endpoint_provenance(&satellite_for_aircraft_hop, &mut provenance);
+    collect_endpoint_provenance(aircraft_for_satellite_hop, &mut provenance);
+    collect_endpoint_provenance(satellite_for_aircraft_hop, &mut provenance);
+    append_environment_provenance(
+        &mut provenance,
+        NaifId::EARTH,
+        query.query_interval,
+        ephemeris,
+        orientation,
+    );
 
     Ok(GeometricRelayReport {
         aircraft_endpoint_id: aircraft_for_satellite_hop.endpoint_id(),
@@ -259,4 +294,101 @@ const fn completeness_for_query(query: &AccessQuerySpec, refine: bool) -> Window
             sample_step_s: query.sample_step_s,
         }
     }
+}
+
+/// Multi-analysis suite evaluated over a single shared materialized vehicle trajectory
+/// (`TranslationalTrajectorySource` + `AttitudeTrajectorySource`), combining:
+/// 1. Omnidirectional ground-station visibility (`station_visibility`),
+/// 2. Directional vehicle sensor `FOV` + DEM link access (`sensor_fov_link`), and
+/// 3. Optional multi-hop satellite relay + direct link (`relay_access`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedTrajectoryAccessSuite {
+    /// Ground-station visibility report using an omnidirectional vehicle reference sensor.
+    pub station_visibility: StationAccessReport,
+    /// Two-endpoint link report enforcing the directional vehicle sensor `FOV` and optional DEM terrain LOS.
+    pub sensor_fov_link: EndpointLinkReport,
+    /// Optional two-hop `Aircraft <-> Satellite <-> Ground Station` relay report reusing the same trajectory.
+    pub relay_access: Option<GeometricRelayReport>,
+}
+
+/// Evaluates station visibility, directional sensor `FOV` link access, and optional satellite relay
+/// access over the **same** materialized platform trajectory without re-sampling or duplicating trajectory state.
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_shared_trajectory_access_suite<'a>(
+    endpoint_id: u32,
+    platform_label: &'a str,
+    host_body: NaifId,
+    ellipsoid: BodyEllipsoid,
+    trajectory: &'a dyn TranslationalTrajectorySource,
+    attitude: Option<&'a dyn AttitudeTrajectorySource>,
+    directional_sensor: &'a VehicleSensorModel,
+    station: &'a GroundStationModel,
+    station_altitude_spec: Option<&'a AltitudeSpec>,
+    relay_satellite: Option<(
+        AnalysisEndpoint<'a>,
+        AnalysisEndpoint<'a>,
+        &'a VehicleSensorModel,
+    )>,
+    occultation_env: &'a OccultationEnvironmentModel,
+    terrain_dem: Option<(&'a dyn TerrainElevationSource, &'a TerrainLosConfig)>,
+    query: &'a AccessQuerySpec,
+    ephemeris: &'a dyn EphemerisCatalog,
+    orientation: &'a dyn BodyOrientationCatalog,
+) -> Result<SharedTrajectoryAccessSuite, AccessAnalysisError> {
+    let omni_sensor = VehicleSensorModel::omnidirectional_at_cg(0, "Omni-Visibility-Ref");
+    let station_visibility = evaluate_station_access(
+        trajectory,
+        attitude,
+        station,
+        &omni_sensor,
+        occultation_env,
+        query,
+        ephemeris,
+        orientation,
+    )?;
+    let make_platform = |sensor: &'a VehicleSensorModel| AnalysisEndpoint::MovingPlatform {
+        endpoint_id,
+        label: platform_label,
+        host_body,
+        ellipsoid,
+        trajectory,
+        attitude,
+        sensor,
+        min_local_elevation_rad: None,
+    };
+    let platform_ep = make_platform(directional_sensor);
+    let station_ep = AnalysisEndpoint::SurfaceStation {
+        station,
+        altitude_spec: station_altitude_spec,
+    };
+    let sensor_fov_link = evaluate_endpoint_link_access(
+        platform_ep,
+        station_ep,
+        occultation_env,
+        terrain_dem,
+        query,
+        ephemeris,
+        orientation,
+    )?;
+    let relay_access = relay_satellite
+        .map(|(sat_to_air_ep, sat_to_gnd_ep, air_to_sat_sensor)| {
+            evaluate_geometric_relay_access(
+                make_platform(air_to_sat_sensor),
+                sat_to_air_ep,
+                sat_to_gnd_ep,
+                station_ep,
+                Some(platform_ep),
+                occultation_env,
+                terrain_dem,
+                query,
+                ephemeris,
+                orientation,
+            )
+        })
+        .transpose()?;
+    Ok(SharedTrajectoryAccessSuite {
+        station_visibility,
+        sensor_fov_link,
+        relay_access,
+    })
 }

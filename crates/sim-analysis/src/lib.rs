@@ -37,8 +37,9 @@ pub use models::{
 };
 pub use relay::{
     AnalysisEndpoint, EndpointLinkReport, EndpointLinkSample, GeometricRelayReport,
-    RelayAccessSample, RelayHopKind, RelayRestrictionEntry, VerificationScope,
-    evaluate_endpoint_link_access, evaluate_geometric_relay_access,
+    RelayAccessSample, RelayHopKind, RelayRestrictionEntry, SharedTrajectoryAccessSuite,
+    VerificationScope, evaluate_endpoint_link_access, evaluate_geometric_relay_access,
+    evaluate_shared_trajectory_access_suite,
 };
 pub use terrain::{
     AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid, TerrainElevationSource,

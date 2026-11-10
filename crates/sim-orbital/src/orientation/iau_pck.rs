@@ -207,6 +207,10 @@ impl BodyOrientationCatalog for IauPckCatalog {
         self.hash
     }
 
+    fn catalog_model_id(&self) -> &str {
+        "naif-iau-pck"
+    }
+
     fn coverage(&self, body: NaifId, min_grade: SurfaceNavGrade) -> Vec<TdbSpanNs> {
         let empty = crate::time::CoverageSet::empty();
         coverage_for_grade(&empty, self.contains_body(body), min_grade)
