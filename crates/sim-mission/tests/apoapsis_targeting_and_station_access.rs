@@ -355,6 +355,7 @@ fn mission_trajectory_product_plugs_directly_into_sim_analysis_station_access() 
         boundary_time_tolerance_s: 1.0e-3,
         min_range_m: None,
         max_range_m: Some(2_500_000.0),
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let access = evaluate_station_access(
         traj,

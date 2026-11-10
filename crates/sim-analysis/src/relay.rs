@@ -4,6 +4,7 @@
 
 mod evaluator;
 mod kinematics;
+mod light_time;
 mod windows;
 
 use sim_geo::BodyEllipsoid;
@@ -162,6 +163,9 @@ pub fn evaluate_geometric_relay_access<'a>(
     orientation: &'a dyn BodyOrientationCatalog,
 ) -> Result<GeometricRelayReport, AccessAnalysisError> {
     validate_query_and_terrain(query, terrain_dem)?;
+    if query.signal_time == crate::models::SignalTimeModel::LightTime {
+        return Err(crate::access::ModelNotApplicableReason::LightTimeRelayUnsupported.into());
+    }
     for ep in [
         &aircraft_for_satellite_hop,
         &satellite_for_aircraft_hop,

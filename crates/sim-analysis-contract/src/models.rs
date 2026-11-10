@@ -270,6 +270,19 @@ impl OccultationEnvironmentModel {
     }
 }
 
+/// When the two ends of a link are compared.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalTimeModel {
+    /// Both ends at the sample epoch, as if light crossed in no time. Right for links a
+    /// few light-milliseconds long.
+    #[default]
+    Geometric,
+    /// The source where it was when the signal left it, the target where it is when the
+    /// signal arrives at the sample epoch, and each occulting body where it is as the
+    /// signal passes. Across interplanetary distances the two ends are minutes apart.
+    LightTime,
+}
+
 /// Query specification for evaluating time-series link geometry and access intervals.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AccessQuerySpec {
@@ -284,4 +297,7 @@ pub struct AccessQuerySpec {
     pub min_range_m: Option<f64>,
     /// Optional maximum slant range constraint (`m`).
     pub max_range_m: Option<f64>,
+    /// When the two ends are compared; requests without it are geometric.
+    #[serde(default)]
+    pub signal_time: SignalTimeModel,
 }

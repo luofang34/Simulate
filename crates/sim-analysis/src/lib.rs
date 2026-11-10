@@ -29,11 +29,11 @@ pub use contract::{
 };
 pub use geometry::{
     LinkGeometryEvalError, LinkGeometrySample, MediumIntegratedSample, PropagationMediumQuery,
-    check_line_of_sight_occultation, compute_link_geometry_sample,
+    check_line_of_sight_occultation, check_signal_path_occultation, compute_link_geometry_sample,
 };
 pub use models::{
     AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, OccultingBodySpec,
-    OccultingShape, SensorFovModel, VehicleSensorModel,
+    OccultingShape, SensorFovModel, SignalTimeModel, VehicleSensorModel,
 };
 pub use relay::{
     AnalysisEndpoint, EndpointLinkReport, EndpointLinkSample, GeometricRelayReport,

@@ -73,7 +73,6 @@ fn build_leo_product(
         &CoastControlLaw,
     )
     .expect("leo propagation");
-
     let model_identity = DynamicalModelIdentity::SolarSystemEphemerisNBody {
         force_model_hash: force_model.content_hash(),
     };
@@ -186,6 +185,7 @@ fn orbital_and_aircraft_trajectories_reuse_identical_station_access_interface() 
         boundary_time_tolerance_s: 1.0e-3,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
 
     let orb_report = evaluate_station_access(
@@ -223,6 +223,7 @@ fn orbital_and_aircraft_trajectories_reuse_identical_station_access_interface() 
         boundary_time_tolerance_s: 0.1,
         min_range_m: None,
         max_range_m: Some(50_000.0),
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
 
     let aircraft_report = evaluate_station_access(
@@ -304,6 +305,7 @@ fn outcome_taxonomy_rejects_inapplicable_models_and_missing_coverage() {
         boundary_time_tolerance_s: 60.0,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let err_non_si = evaluate_station_access(
         &cr3bp_traj,
@@ -367,6 +369,7 @@ fn outcome_taxonomy_rejects_out_of_coverage_trajectory_and_attitude() {
         boundary_time_tolerance_s: 60.0,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let si_traj = build_antipodal_si_trajectory(t0, t1);
 
@@ -434,6 +437,7 @@ fn outcome_taxonomy_reports_restrictions_and_sampled_grid_completeness() {
         boundary_time_tolerance_s: 60.0,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let si_traj = build_antipodal_si_trajectory(t0, t1);
 
@@ -472,6 +476,7 @@ fn outcome_taxonomy_reports_restrictions_and_sampled_grid_completeness() {
         boundary_time_tolerance_s: 1.0,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let step_cap_err = evaluate_station_access(
         &long_traj,

@@ -186,13 +186,13 @@ fn brief_interior_occlusion_between_coarse_samples_splits_window_and_blocks_cont
         station: &station,
         altitude_spec: None,
     };
-
     let make_query = |tol_s: f64| AccessQuerySpec {
         query_interval: ValidEpochInterval::new(t0, t1),
         sample_step_s: 30.0,
         boundary_time_tolerance_s: tol_s,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let unrefined_rep = evaluate_endpoint_link_access(
         src_ep,
@@ -243,7 +243,6 @@ fn analytical_demo_catalogs_are_explicitly_marked_uncertified_in_provenance() {
         demo.max_supported_grade(NaifId::EARTH),
         Some(SurfaceNavGrade::ApproximateIau)
     );
-
     let t0 = TdbEpoch::new(840_000_000, 0);
     let t1 = t0.add_span(TickSpan::from_seconds_and_subsec_ticks(20, 0));
     let station = GroundStationModel::earth_wgs84(
@@ -288,6 +287,7 @@ fn analytical_demo_catalogs_are_explicitly_marked_uncertified_in_provenance() {
         boundary_time_tolerance_s: 1.0,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
 
     let demo_rep = sim_analysis::evaluate_station_access(
@@ -400,6 +400,7 @@ fn shared_materialized_trajectory_reused_across_visibility_fov_and_relay() {
         boundary_time_tolerance_s: 0.5,
         min_range_m: None,
         max_range_m: None,
+        signal_time: sim_analysis::SignalTimeModel::Geometric,
     };
     let occ_env = OccultationEnvironmentModel::earth_wgs84_and_moon();
     let suite = evaluate_shared_trajectory_access_suite(
