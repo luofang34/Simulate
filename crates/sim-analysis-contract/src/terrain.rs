@@ -146,11 +146,12 @@ impl DemElevationGrid {
         self.cells_m.get(idx).copied().flatten()
     }
 
-    /// Jezero crater basin and surrounding rim on [`NaifId::MARS`] (`14.5°..22.5° N`,
-    /// `73.5°..81.5° E`), with `floor_m` across the interior basin around the rover site
-    /// (`18.44° N, 77.45° E`) and `rim_m` along the surrounding crater walls.
+    /// A synthetic walled basin on [`NaifId::MARS`] around Jezero's coordinates
+    /// (`14.5°..22.5° N`, `73.5°..81.5° E`): one cell at `floor_m` at the rover site
+    /// (`18.44° N, 77.45° E`) inside a plateau at `rim_m`. It is a test shape for terrain
+    /// occlusion on Mars, not measured topography.
     #[must_use]
-    pub fn mars_jezero_crater(floor_m: f64, rim_m: f64) -> Self {
+    pub fn synthetic_mars_walled_basin(floor_m: f64, rim_m: f64) -> Self {
         let rows = 33_usize;
         let cols = 33_usize;
         let mut cells_m = Vec::with_capacity(rows * cols);
@@ -165,7 +166,7 @@ impl DemElevationGrid {
             r = r.wrapping_add(1);
         }
         Self {
-            dataset_id: "mars-jezero-mola-hirise-v1".to_owned(),
+            dataset_id: "synthetic-mars-walled-basin-v1".to_owned(),
             body: NaifId::MARS,
             lat_min_rad: 14.5_f64.to_radians(),
             lat_max_rad: 22.5_f64.to_radians(),

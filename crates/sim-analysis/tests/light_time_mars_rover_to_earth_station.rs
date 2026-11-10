@@ -294,8 +294,8 @@ fn a_martian_crater_rim_occults_low_elevation_links_and_shifts_downlink_edges_by
     use sim_analysis::{AccessRestrictionReason, DemElevationGrid};
 
     let link = Link::new();
-    let flat_dem = DemElevationGrid::mars_jezero_crater(0.0, 0.0);
-    let rim_dem = DemElevationGrid::mars_jezero_crater(0.0, 7_500.0);
+    let flat_dem = DemElevationGrid::synthetic_mars_walled_basin(0.0, 0.0);
+    let rim_dem = DemElevationGrid::synthetic_mars_walled_basin(0.0, 7_500.0);
     let flat_down = eval_mars_dem_link(&link, &flat_dem, true);
     let rim_down = eval_mars_dem_link(&link, &rim_dem, true);
     let rim_up = eval_mars_dem_link(&link, &rim_dem, false);
