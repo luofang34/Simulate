@@ -113,3 +113,26 @@ fn drawn_blades_follow_the_propeller_design_file() {
             < 0.002
     );
 }
+
+/// Metal parts reflect no more than their metal can: the chromium-plated gear legs stay
+/// at chromium's normal-incidence reflectance.
+#[test]
+fn chromium_plate_reflects_like_chromium() {
+    let prims = p38g_mesh_prims();
+    let leg = prims
+        .iter()
+        .find(|p| p.prim_path == "/P38g/Gear/NoseStrut")
+        .expect("nose strut");
+    assert!(leg.material.metallic > 0.9);
+    for (channel, chromium) in leg
+        .material
+        .diffuse_rgb
+        .into_iter()
+        .zip([0.549, 0.556, 0.554])
+    {
+        assert!(
+            (channel - chromium).abs() < 0.005,
+            "{channel} vs {chromium}"
+        );
+    }
+}

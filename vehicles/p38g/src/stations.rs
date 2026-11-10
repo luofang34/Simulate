@@ -75,7 +75,10 @@ pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.4
 pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.022, 0.032, 0.085], 0.06, 0.46);
 pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
 pub(crate) const STENCIL_YELLOW: P38Material = mat([0.88, 0.68, 0.10], 0.05, 0.48);
-pub(crate) const CHROME_OLEO: P38Material = mat([0.84, 0.86, 0.89], 0.92, 0.16);
+/// Chromium plate on the oleo pistons and hubs: chromium's normal-incidence reflectance
+/// (0.549, 0.556, 0.554 linear; Akenine-Möller, Haines and Hoffman, *Real-Time
+/// Rendering*, 4th ed., table 9.2).
+pub(crate) const CHROME_OLEO: P38Material = mat([0.549, 0.556, 0.554], 0.92, 0.16);
 pub(crate) const GUNMETAL: P38Material = mat([0.16, 0.17, 0.19], 0.82, 0.30);
 pub(crate) const BRASS_SHELL: P38Material = mat([0.74, 0.58, 0.22], 0.78, 0.32);
 pub(crate) const TURBO_STEEL: P38Material = mat([0.36, 0.31, 0.27], 0.78, 0.38);
@@ -83,6 +86,8 @@ pub(crate) const EXHAUST_RUST: P38Material = mat([0.30, 0.22, 0.18], 0.58, 0.54)
 pub(crate) const PROP_BLACK: P38Material = mat([0.03, 0.03, 0.032], 0.0, 0.55);
 pub(crate) const PROP_YELLOW: P38Material = mat([0.92, 0.74, 0.08], 0.08, 0.36);
 pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92);
+/// Primer inside the gear bays. Assumed yellow zinc chromate: no source says which
+/// primer Lockheed used in the P-38G's wheel wells.
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
 pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
 pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
