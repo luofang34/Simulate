@@ -9,6 +9,7 @@ use sim_spacetime::{SimEpoch, TimeScaleCatalog};
 use super::free_world::{FreeWorld, SolarSystem};
 use super::plant_block::PlantBlock;
 use super::sensors::{OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD};
+use super::space_world::SpaceWorld;
 use crate::error::AppSimError;
 use crate::sky_rig::wall_clock_utc_s;
 use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
@@ -48,6 +49,8 @@ pub(super) enum Mode {
         panel: Box<CockpitInstrumentPanel>,
     },
     Scenario(Box<ScenarioRun>),
+    /// Spaceflight on `Raketa`, from its launch pad.
+    Space(Box<SpaceWorld>),
 }
 
 impl Mode {
@@ -58,6 +61,7 @@ impl Mode {
         match self {
             Self::Scenario(run) => run.sim_epoch().clone(),
             Self::Free { world, .. } => world.epoch().clone(),
+            Self::Space(world) => world.epoch().clone(),
         }
     }
 
@@ -97,6 +101,20 @@ impl Mode {
         })
     }
 
+    /// `Raketa` on its pad, at the wall-clock second the flight begins.
+    pub(super) fn space(
+        surface: &WorldSurfaceHandle,
+        scales: &Arc<TimeScaleCatalog>,
+        solar: &SolarSystem,
+    ) -> Result<Self, AppSimError> {
+        let start = UtcTime::from_unix_seconds(wall_clock_utc_s().floor());
+        let epoch = SimEpoch::from_utc(start, Arc::clone(scales))?;
+        let ground_m = SpaceWorld::pad_ground_height_m(surface);
+        Ok(Self::Space(Box::new(SpaceWorld::on_pad(
+            epoch, solar, ground_m,
+        )?)))
+    }
+
     pub(super) fn scenario(profile: ScenarioProfile) -> Result<Self, AppSimError> {
         Ok(Self::Scenario(Box::new(ScenarioRun::continuous_pattern(
             profile,
@@ -108,6 +126,7 @@ impl Mode {
         match self {
             Self::Free { world, .. } => world.truth_state(),
             Self::Scenario(run) => run.vehicle(),
+            Self::Space(world) => world.vehicle(),
         }
     }
 
@@ -115,6 +134,7 @@ impl Mode {
         match self {
             Self::Free { world, .. } => world.period(),
             Self::Scenario(run) => run.period(),
+            Self::Space(_) => SpaceWorld::period(),
         }
     }
 
@@ -123,8 +143,14 @@ impl Mode {
         match self {
             Self::Free { world, .. } => world.physics_time(),
             Self::Scenario(run) => run.now(),
+            Self::Space(world) => world.now(),
         }
     }
+}
+
+/// The step a spaceflight advances by.
+pub(super) const fn space_period() -> TickSpan {
+    SpaceWorld::period()
 }
 
 /// Shows the cockpit panel `plant`'s state at `timestamp`.

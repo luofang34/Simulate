@@ -3,8 +3,8 @@
 //! surface, hand it to orbital propagation once it coasts above the
 //! atmosphere, and take it back when it comes down.
 //!
-//! Touchdown is not modelled here. A free vessel that reaches the reference
-//! ellipsoid stops the plant with [`RaketaPlantError::GroundImpact`].
+//! Touchdown is not modelled here. A free vessel that comes down to its
+//! ground height stops the plant with [`RaketaPlantError::GroundImpact`].
 
 use std::any::Any;
 use std::sync::Arc;
@@ -98,7 +98,7 @@ pub enum RaketaPlantError {
     /// The frame change to or from the body's fixed axes failed.
     #[error("Raketa frame change failed")]
     Frame(#[source] Box<UniverseError>),
-    /// The free vessel reached the reference ellipsoid.
+    /// The free vessel came down to its ground height.
     #[error("Raketa reached the surface at {height_m} m; touchdown is not modelled by this plant")]
     GroundImpact {
         /// Height of the centre of gravity above the ellipsoid, m.
@@ -119,6 +119,7 @@ pub struct RaketaPlant {
     command: RaketaCommand,
     fixed: VehicleState,
     q_inf_pa: f64,
+    ground_height_m: f64,
 }
 
 impl RaketaPlant {
@@ -149,7 +150,7 @@ impl RaketaPlant {
             DVec3::ZERO,
             environment.orientation.as_ref(),
         )?;
-        Self::assemble(
+        let mut built = Self::assemble(
             environment,
             epoch,
             start,
@@ -157,7 +158,9 @@ impl RaketaPlant {
             primary,
             plant,
             Some(pinned),
-        )
+        )?;
+        built.ground_height_m = site.height_m;
+        Ok(built)
     }
 
     /// Flying free from `state`, fixed to `body`, at `start` on `epoch`'s
@@ -212,9 +215,16 @@ impl RaketaPlant {
             command: RaketaCommand::default(),
             fixed,
             q_inf_pa: 0.0,
+            ground_height_m: 0.0,
         };
         built.refresh()?;
         Ok(built)
+    }
+
+    /// Sets the ellipsoidal height of the ground the vessel must stay above,
+    /// m: the pad's for a vessel built on one, else the ellipsoid.
+    pub const fn set_ground_height_m(&mut self, ground_height_m: f64) {
+        self.ground_height_m = ground_height_m;
     }
 
     /// Replaces the standing command; it flies from the next step.
@@ -313,7 +323,7 @@ impl RaketaPlant {
             .body
             .fixed_to_geodetic(self.fixed.position_ecef)
             .height_m;
-        if self.pinned.is_none() && height_m <= 0.0 {
+        if self.pinned.is_none() && height_m <= self.ground_height_m {
             return Err(RaketaPlantError::GroundImpact { height_m });
         }
         Ok(())

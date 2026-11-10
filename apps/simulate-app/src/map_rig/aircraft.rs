@@ -115,7 +115,7 @@ pub fn virtual_camera_role(spec: &VirtualCameraSpec) -> SlotCameraRole {
 }
 
 /// The ownship airframe for what is flying: the scenario's vehicle, else the free-flight
-/// plant's airframe, else the C172.
+/// plant's airframe, else the spaceflight's Raketa.
 pub const fn ownship_visual(
     profile: Option<ScenarioProfile>,
     vehicle: Option<FreeFlightVehicle>,
@@ -139,10 +139,10 @@ pub const fn ownship_visual(
             ),
             _,
         )
-        | (
-            None,
-            Some(FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::AviateFixedWingDirect) | None,
-        ) => OwnshipVisualKind::C172,
+        | (None, Some(FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::AviateFixedWingDirect)) => {
+            OwnshipVisualKind::C172
+        }
+        (None, None) => OwnshipVisualKind::Raketa,
         (None, Some(FreeFlightVehicle::JsbsimP38g)) => OwnshipVisualKind::P38g,
         (None, Some(FreeFlightVehicle::Kinematic)) => OwnshipVisualKind::FixedWingUav,
         (None, Some(FreeFlightVehicle::AviateX500Direct)) => OwnshipVisualKind::QuadrotorX500,

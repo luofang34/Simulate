@@ -46,7 +46,12 @@ pub fn title(
 ) -> String {
     let name = match flight.profile() {
         Some(profile) => profile.title(),
-        None => flight.free_vehicle().map_or("Free Flight", |v| v.title()),
+        None => match (flight.ascent_guidance(), flight.coasting_in_orbit()) {
+            (Some(true), _) => "Raketa (Ascent Guidance)",
+            (Some(false), Some(true)) => "Raketa (Coasting)",
+            (Some(false), _) => "Raketa (Manual)",
+            (None, _) => flight.free_vehicle().map_or("Free Flight", |v| v.title()),
+        },
     };
     let view_label = match viewport_mode {
         OperatorViewportMode::Cockpit => "OTW",

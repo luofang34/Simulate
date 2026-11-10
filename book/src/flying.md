@@ -20,6 +20,17 @@ directly:
 | Fixed-wing fly-by-wire | JSBSim C172 flown by Aviate's fixed-wing controller in-process | Bank and pitch attitude, throttle, rudder for heading |
 | Kinematic | Kinematic 6-DoF model | Direct |
 
+The hangar's Raketa starts a spaceflight instead. The rocket stands on Launch
+Complex 39A and ascent guidance flies it to a 185 km parking orbit, where
+guidance lets go and orbital propagation carries it. `M` takes it from
+guidance at any time. In your hands the throttle is main-engine thrust up to
+4 g, with unlimited propellant, and the stick swings the nose: forward and
+back tilt it away from and towards the chase view, the rudder across it.
+Touching the throttle or stick in orbit brings the vessel back to flight
+dynamics, and it returns to orbital propagation once it coasts above the
+atmosphere again. A spaceflight has no rewind history, and it ends with an
+error if the rocket comes back down to the ground.
+
 The two Aviate vehicles run a Tier 0 loop inside the app. See
 [Flying an External Autopilot](external-autopilots.md#tier-0-aviate-in-process).
 
@@ -56,7 +67,7 @@ Cockpit keys act once per press:
 | `F` / `G` | Flaps down / up one notch |
 | `Y` or `[` | Landing gear up/down (retractable gear) |
 | `O` | Landing light |
-| `M` | In a scenario, take manual control. In free flight, cycle the magnetos: both, left, right, off |
+| `M` | In a scenario or a spaceflight, take manual control. In free flight, cycle the magnetos: both, left, right, off |
 | `R` / `T` | Mixture richer / leaner |
 | `Q` | P-38G flap hold valve |
 | `I` | P-38G coolant and oil cooler flaps |

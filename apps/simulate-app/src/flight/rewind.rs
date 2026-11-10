@@ -69,6 +69,8 @@ impl FlightCheckpoint {
                 state: CheckpointState::Scenario(Box::new(run.snapshot())),
                 sensors: *sensors,
             }),
+            // A spaceflight keeps no rewind history.
+            Mode::Space(_) => None,
         }
     }
 

@@ -73,6 +73,8 @@ pub enum VehicleLaunch {
     Free(FreeFlightVehicle),
     /// A scripted scenario that flies this vehicle.
     Scenario(ScenarioProfile),
+    /// A spaceflight from the launch pad.
+    Space,
 }
 
 /// How flying one hangar airframe starts.
@@ -83,6 +85,8 @@ pub enum AirframeLaunch {
     Free(Vec<FreeFlightVehicle>),
     /// A scripted scenario that flies this airframe.
     Scenario(ScenarioProfile),
+    /// A spaceflight from the launch pad.
+    Space,
 }
 
 /// An airframe equals every launch it can start, so the flying launch finds its row.
@@ -91,6 +95,7 @@ impl PartialEq<VehicleLaunch> for AirframeLaunch {
         match (self, other) {
             (Self::Free(modes), VehicleLaunch::Free(vehicle)) => modes.contains(vehicle),
             (Self::Scenario(a), VehicleLaunch::Scenario(b)) => a == b,
+            (Self::Space, VehicleLaunch::Space) => true,
             _ => false,
         }
     }
@@ -127,7 +132,7 @@ impl VehicleDescriptor {
     pub fn modes(&self) -> &[FreeFlightVehicle] {
         match &self.launch {
             AirframeLaunch::Free(modes) => modes,
-            AirframeLaunch::Scenario(_) => &[],
+            AirframeLaunch::Scenario(_) | AirframeLaunch::Space => &[],
         }
     }
 
@@ -149,6 +154,7 @@ impl VehicleDescriptor {
         match &self.launch {
             AirframeLaunch::Free(_) => self.mode_or_default(mode).map(VehicleLaunch::Free),
             AirframeLaunch::Scenario(profile) => Some(VehicleLaunch::Scenario(*profile)),
+            AirframeLaunch::Space => Some(VehicleLaunch::Space),
         }
     }
 
@@ -233,7 +239,7 @@ impl VehicleDescriptor {
             role: "Spacecraft",
             cruise_kt: 0.0,
             mass_kg: 12_000.0,
-            launch: AirframeLaunch::Scenario(ScenarioProfile::Apollo11LunarLanding),
+            launch: AirframeLaunch::Space,
             model: HangarModel::Raketa,
         }
     }

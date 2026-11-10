@@ -62,7 +62,17 @@ impl SolarSystem {
         }))
     }
 
-    fn context(&self) -> OrbitalContext {
+    /// The same catalogs, as `Raketa`'s flight dynamics read them.
+    pub(super) fn raketa_environment(&self) -> sim_raketa::RaketaEnvironment {
+        sim_raketa::RaketaEnvironment {
+            ephemeris: Arc::clone(&self.ephemeris),
+            orientation: Arc::clone(&self.orientation),
+            force_model: self.force_model.clone(),
+        }
+    }
+
+    /// The solar system as a universe's orbital tier reads it.
+    pub(super) fn context(&self) -> OrbitalContext {
         OrbitalContext {
             ephemeris: Arc::clone(&self.ephemeris),
             orientation: Arc::clone(&self.orientation),

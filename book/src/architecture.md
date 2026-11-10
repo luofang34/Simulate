@@ -85,6 +85,9 @@ axes about a primary body, with a full solar-system force model. They meet in
   ownship's local plant in it, so stamped controls, sensor exposures and
   rewind checkpoints all sit on the clock other vessels share. An aircraft
   stays in the local tier. Scripted scenarios still step their own run.
+- A spaceflight is a `Universe` with a tier policy and `sim_raketa`'s
+  `RaketaPlant` as the ownship. It leaves the pad in flight dynamics, coasts
+  in orbital propagation, and is handed back whenever the pilot flies it.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the
   orbital stack, so `sim-universe` stays the only bridge.
 
