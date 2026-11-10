@@ -61,15 +61,15 @@ pub const HTAIL_Z: f32 = 0.4698;
 // Historical PBR material palette for P-38G-13-LO "Miss Virginia" (s/n 43-2264, White 147)
 /// ANA 613 Olive Drab No. 41: a dark, flat, brownish lacquer (dielectric).
 pub(crate) const OLIVE_DRAB: P38Material = mat([0.16, 0.165, 0.095], 0.0, 0.70);
-pub(crate) const ANTI_GLARE: P38Material = mat([0.075, 0.08, 0.05], 0.0, 0.9);
 /// ANA 603 Neutral Gray No. 43, the semi-flat underside lacquer.
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.30, 0.315, 0.33], 0.0, 0.62);
 pub(crate) const CANOPY_FRAME: P38Material = mat([0.21, 0.23, 0.15], 0.12, 0.62);
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.92, 0.92, 0.90], 0.05, 0.42);
-pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.07, 0.13, 0.28], 0.06, 0.46);
+/// Insignia Blue: a dark navy that prints near black on the period's
+/// orthochromatic film (the boom stars of 43-2239); approximate.
+pub(crate) const INSIGNIA_BLUE: P38Material = mat([0.022, 0.032, 0.085], 0.06, 0.46);
 pub(crate) const INSIGNIA_RED: P38Material = mat([0.68, 0.10, 0.10], 0.06, 0.44);
 pub(crate) const STENCIL_YELLOW: P38Material = mat([0.88, 0.68, 0.10], 0.05, 0.48);
-pub(crate) const NOSE_ART_RED: P38Material = mat([0.80, 0.14, 0.12], 0.08, 0.40);
 pub(crate) const CHROME_OLEO: P38Material = mat([0.84, 0.86, 0.89], 0.92, 0.16);
 pub(crate) const GUNMETAL: P38Material = mat([0.16, 0.17, 0.19], 0.82, 0.30);
 pub(crate) const BRASS_SHELL: P38Material = mat([0.74, 0.58, 0.22], 0.78, 0.32);

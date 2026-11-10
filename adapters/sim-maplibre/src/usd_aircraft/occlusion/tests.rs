@@ -12,6 +12,7 @@ fn part_from(triangles: &[[Vec3; 3]], normal: Vec3) -> UsdMeshPart {
             normal: normal.to_array(),
             uv: [0.0, 0.0],
             occlusion: 1.0,
+            tangent: crate::UsdMeshVertex::NO_TANGENT,
         })
         .collect::<Vec<_>>();
     UsdMeshPart {
@@ -23,6 +24,7 @@ fn part_from(triangles: &[[Vec3; 3]], normal: Vec3) -> UsdMeshPart {
         custom_hinge_axis: None,
         needle_channel: None,
         detail: crate::usd_aircraft::SurfaceDetail::default(),
+        surface: crate::usd_aircraft::PartSurface::Material,
         indices: (0..vertices.len() as u32).collect(),
         vertices,
     }

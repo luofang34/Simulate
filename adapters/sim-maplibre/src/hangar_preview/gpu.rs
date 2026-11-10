@@ -7,7 +7,7 @@ use wgpu::util::DeviceExt;
 use super::orbit::FRAME_BYTES;
 use crate::{
     MapAdapterError, UsdMeshVertex,
-    usd_pass::{DRAW_BYTES, DRAW_STRIDE, vertex},
+    usd_pass::{AssetTexturesGpu, DRAW_BYTES, DRAW_STRIDE, vertex},
 };
 
 const SHADER: &str = concat!(
@@ -80,9 +80,11 @@ pub(super) enum PipelineKind {
     Translucent,
 }
 
-/// Bind-group layout and the four pipelines of the studio shader.
+/// Bind-group layouts and the four pipelines of the studio shader.
 pub(super) struct Pipelines {
     pub(super) layout: wgpu::BindGroupLayout,
+    /// The previewed asset's textures, bound as group 1.
+    pub(super) textures: AssetTexturesGpu,
     pub(super) backdrop: wgpu::RenderPipeline,
     opaque: wgpu::RenderPipeline,
     opaque_double_sided: wgpu::RenderPipeline,
@@ -105,9 +107,10 @@ impl Pipelines {
             label: Some("hangar studio"),
             entries: &[uniform(0, false, FRAME_BYTES), uniform(1, true, DRAW_BYTES)],
         });
+        let textures = AssetTexturesGpu::new(device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("hangar studio"),
-            bind_group_layouts: &[Some(&layout)],
+            bind_group_layouts: &[Some(&layout), Some(&textures.layout)],
             immediate_size: 0,
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -121,6 +124,7 @@ impl Pipelines {
             opaque_double_sided: build(PipelineKind::OpaqueDoubleSided),
             translucent: build(PipelineKind::Translucent),
             layout,
+            textures,
         }
     }
 

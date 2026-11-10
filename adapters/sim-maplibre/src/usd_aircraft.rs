@@ -1,15 +1,10 @@
 //! Articulated OpenUSD aircraft asset composition (`openusd` + `openusd-schemas`),
 //! per-camera-role kinematic evaluation, and live `.usda` scene stage export.
 
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    io::{self, Cursor},
-    time::SystemTime,
-};
+use std::sync::Arc;
 
 use glam::{DMat4, DQuat, DVec3};
-use openusd::ar::{Asset, AssetBuffer, ResolvedPath, Resolver};
+use openusd::ar::AssetBuffer;
 use sim_core::AirframeArticulation;
 
 use crate::MapAdapterError;
@@ -19,14 +14,18 @@ mod finish;
 mod loader;
 mod occlusion;
 mod procedural;
+mod resolver;
 mod roles;
+mod skin;
 #[cfg(test)]
 mod tests;
 
 pub use export::{UsdCameraSample, UsdRunwaySample, UsdSceneExportInput, export_scene_usda};
 pub use finish::{SootStreak, SurfaceDetail};
+pub(crate) use resolver::EmbeddedUsdResolver;
 use roles::role_visible_to_camera;
 pub use roles::{PartRole, SlotCameraRole};
+pub use skin::{SkinFormat, SkinMap, SkinTextures};
 
 /// Decoded `UsdPreviewSurface` PBR material parameters for GPU shading.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +54,17 @@ impl Default for PbrMaterial {
     }
 }
 
+/// How a part's surface is coloured beyond its material.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PartSurface {
+    /// Its material alone.
+    #[default]
+    Material,
+    /// Painted by the asset's baked [`SkinTextures`], sampled through the
+    /// part's texture coordinates and tangents.
+    Skin,
+}
+
 /// Interleaved GPU-ready vertex extracted from a composed OpenUSD `UsdGeomMesh`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UsdMeshVertex {
@@ -67,6 +77,15 @@ pub struct UsdMeshVertex {
     /// Baked ambient occlusion: the cosine-weighted share of the vertex's sky hemisphere
     /// the airframe leaves open (`1.0` fully open), scaling only sky and environment light.
     pub occlusion: f32,
+    /// Prim-local unit tangent along increasing `u` of the part's texture
+    /// coordinates, `w` the bitangent's handedness (`±1`); only parts with a
+    /// textured skin read it.
+    pub tangent: [f32; 4],
+}
+
+impl UsdMeshVertex {
+    /// The tangent of a vertex whose part samples no tangent-space map.
+    pub const NO_TANGENT: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 }
 
 /// One articulated mesh part decoded from a composed OpenUSD aircraft stage.
@@ -89,6 +108,8 @@ pub struct UsdMeshPart {
     pub needle_channel: Option<usize>,
     /// Procedural paint finish: panel seams, weathering and soot.
     pub detail: SurfaceDetail,
+    /// What colours the surface beyond the material.
+    pub surface: PartSurface,
     /// Triangulated vertex buffer.
     pub vertices: Vec<UsdMeshVertex>,
     /// Triangle index buffer (`0..vertices.len()`).
@@ -127,6 +148,7 @@ pub struct UsdAircraftAsset {
     parts: Vec<UsdMeshPart>,
     radius_m: f32,
     lowest_z_m: f32,
+    skin: Option<Arc<SkinTextures>>,
 }
 
 impl UsdAircraftAsset {
@@ -155,7 +177,14 @@ impl UsdAircraftAsset {
             parts,
             radius_m,
             lowest_z_m,
+            skin: None,
         }
+    }
+
+    /// The baked skin its [`PartSurface::Skin`] parts sample.
+    #[must_use]
+    pub fn skin(&self) -> Option<&Arc<SkinTextures>> {
+        self.skin.as_ref()
     }
 
     /// An airframe whose vertices carry ambient occlusion baked from its own rest pose.
@@ -252,75 +281,6 @@ impl UsdAircraftAsset {
         }
         draws
     }
-}
-
-/// In-memory `openusd::ar::Resolver` serving embedded `.usdc` / `.usda` buffers on both
-/// native and `wasm32` targets without filesystem access.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct EmbeddedUsdResolver {
-    assets: BTreeMap<String, AssetBuffer>,
-}
-
-impl EmbeddedUsdResolver {
-    pub(crate) fn single(name: &str, bytes: AssetBuffer) -> Self {
-        Self {
-            assets: BTreeMap::from([(normalize_asset_key(name), bytes)]),
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn insert(&mut self, name: &str, bytes: AssetBuffer) {
-        self.assets.insert(normalize_asset_key(name), bytes);
-    }
-}
-
-impl Resolver for EmbeddedUsdResolver {
-    fn create_identifier(&self, asset_path: &str, _anchor: Option<&ResolvedPath>) -> String {
-        normalize_asset_key(asset_path)
-    }
-
-    fn resolve(&self, asset_path: &str) -> Option<ResolvedPath> {
-        let key = normalize_asset_key(asset_path);
-        self.assets
-            .contains_key(&key)
-            .then(|| ResolvedPath::new(key))
-    }
-
-    fn resolve_for_new_asset(&self, asset_path: &str) -> Option<ResolvedPath> {
-        Some(ResolvedPath::new(normalize_asset_key(asset_path)))
-    }
-
-    fn open_asset(&self, resolved_path: &ResolvedPath) -> io::Result<Box<dyn Asset>> {
-        let key = normalize_asset_key(&resolved_path.to_string_lossy());
-        let buffer = self
-            .assets
-            .get(&key)
-            .cloned()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, key))?;
-        Ok(Box::new(Cursor::new(buffer)))
-    }
-
-    fn in_memory_identifier<'a>(&self, asset_path: &'a str) -> Cow<'a, str> {
-        Cow::Owned(normalize_asset_key(asset_path))
-    }
-
-    fn get_modification_timestamp(
-        &self,
-        _path: &str,
-        _resolved: &ResolvedPath,
-    ) -> Option<SystemTime> {
-        None
-    }
-
-    fn identity(&self) -> String {
-        "sim-embedded-usd".to_owned()
-    }
-}
-
-fn normalize_asset_key(path: &str) -> String {
-    path.trim_start_matches("./")
-        .trim_start_matches('/')
-        .to_owned()
 }
 
 fn mount_vibration_matrix([rx, ry, rz]: [f64; 3]) -> DMat4 {

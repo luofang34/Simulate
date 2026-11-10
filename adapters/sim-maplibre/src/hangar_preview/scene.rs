@@ -10,8 +10,8 @@ use super::{
     orbit::{Bounds, StudioRig},
 };
 use crate::{
-    PartRole, SlotCameraRole, UsdAircraftAsset, UsdMeshPart, UsdPartDraw,
-    usd_pass::{DRAW_BYTES, DrawBlock},
+    PartRole, PartSurface, SlotCameraRole, UsdAircraftAsset, UsdMeshPart, UsdPartDraw,
+    usd_pass::{AssetTexturesGpu, DRAW_BYTES, DrawBlock, KIND_SKIN},
 };
 
 /// The uploaded asset: a private copy for per-frame articulation plus its GPU meshes.
@@ -19,12 +19,23 @@ pub(super) struct SceneAsset {
     pub(super) fingerprint: u64,
     pub(super) asset: UsdAircraftAsset,
     pub(super) meshes: Vec<Option<PartMesh>>,
+    /// The asset's skin, or blanks.
+    pub(super) textures: wgpu::BindGroup,
     pub(super) bounds: Bounds,
 }
 
 impl SceneAsset {
-    pub(super) fn upload(device: &wgpu::Device, asset: &UsdAircraftAsset) -> Self {
+    pub(super) fn upload(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        asset: &UsdAircraftAsset,
+        textures: &AssetTexturesGpu,
+    ) -> Self {
         Self {
+            textures: asset.skin().map_or_else(
+                || textures.blank.clone(),
+                |skin| textures.upload(device, queue, skin),
+            ),
             fingerprint: fingerprint(asset),
             asset: asset.clone(),
             meshes: asset
@@ -130,6 +141,8 @@ fn pack_part(part: &UsdMeshPart, draw: &UsdPartDraw, rig: &StudioRig) -> (bool, 
         }
     } else if translucent {
         1.0
+    } else if part.surface == PartSurface::Skin {
+        KIND_SKIN
     } else {
         0.0
     };

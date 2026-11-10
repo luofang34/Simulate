@@ -3,10 +3,11 @@
 //! parameter identification).
 
 use sim_pack::{
-    CalibrationReport, PITOT_STATIC_CALIBRATION_ASSET, PackError, PackageSource,
-    PitotStaticCalibration, build_ace_feedback_report, builtin_c172_package, builtin_c172_source,
-    default_design_trades, estimate_design_performance, evaluate_package,
-    identify_package_sensitivities, load_syspack_from_ace_vehicle_json, run_design_trade_study,
+    CALIBRATION_SUITE_ASSET, CalibrationReport, CalibrationSuite, PITOT_STATIC_CALIBRATION_ASSET,
+    PackError, PackageSource, PitotStaticCalibration, build_ace_feedback_report,
+    builtin_c172_package, builtin_c172_source, default_design_trades, estimate_design_performance,
+    evaluate_package, identify_package_sensitivities, load_syspack_from_ace_vehicle_json,
+    run_design_trade_study,
 };
 
 #[path = "support/c172_validation_record.rs"]
@@ -118,6 +119,33 @@ fn matches_the_validation_record(
     Ok(())
 }
 
+/// Every row that gives a CG is flown within 0.2 in of it, and the stall rows
+/// are at POH Figure 5-3's most-rearward CG.
+#[cfg(test)]
+fn flies_the_card_cg(report: &CalibrationReport) -> Result<(), Box<dyn std::error::Error>> {
+    let raw = builtin_c172_source().read_asset_bytes(CALIBRATION_SUITE_ASSET)?;
+    let card = CalibrationSuite::from_json_bytes(&raw)?;
+    assert!(card.stalls.iter().all(|s| s.cg_fs_in == Some(47.3)));
+    let stalls = card.stalls.iter().map(|s| s.cg_fs_in);
+    let takeoffs = card.takeoff_points.iter().map(|t| t.cg_fs_in);
+    let flown_stalls = report.stalls.iter().map(|s| (&s.label, s.flown_cg_fs_in));
+    let flown_takeoffs = report.takeoffs.iter().map(|t| (&t.label, t.flown_cg_fs_in));
+    for (card_cg, (label, flown)) in stalls
+        .chain(takeoffs)
+        .zip(flown_stalls.chain(flown_takeoffs))
+    {
+        let Some(card_cg) = card_cg else {
+            continue;
+        };
+        let flown = flown.ok_or("a row with a card CG reported none")?;
+        assert!(
+            (flown - card_cg).abs() <= 0.2,
+            "{label}: flown FS {flown:.2} against {card_cg}"
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn n642sp_c172_passes_reusable_closed_loop_calibration() -> Result<(), Box<dyn std::error::Error>> {
     let c172 = builtin_c172_package()?;
@@ -127,12 +155,10 @@ fn n642sp_c172_passes_reusable_closed_loop_calibration() -> Result<(), Box<dyn s
     // roll is graded only if the airplane leaves the runway at it.
     for takeoff in &report.takeoffs {
         let early = takeoff.sim_lift_off_kcas - takeoff.target_lift_off_kcas;
-        assert!(
-            early.abs() <= 1.0,
-            "{}: lift-off {early:+.1} kt",
-            takeoff.label
-        );
+        let check = format!("lift-off {}", takeoff.label);
+        graded(&check, early.abs() <= 1.0, &format!("{early:+.1} kt"));
     }
+    flies_the_card_cg(&report)?;
     let tail = report.tail_profile.as_ref().ok_or("missing N642SP tail")?;
     assert_eq!(tail.registration, "N642SP");
     assert_eq!(tail.serial_number, "172S8050");

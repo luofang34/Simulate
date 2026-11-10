@@ -7,10 +7,11 @@ use jsbsim::Fdm;
 
 use crate::PackError;
 use crate::calibration::cruise::{
-    apply_engine_overrides, capture_base_engine_tuning, configure_mass_and_overrides, fdm_err,
-    get_opt, restore_engine_tuning, set_if_exists,
+    BaseEngineTuning, apply_engine_overrides, capture_base_engine_tuning, fdm_err, get_opt,
+    restore_engine_tuning, set_if_exists,
 };
 use crate::calibration::engines::set_each_engine;
+use crate::calibration::loading::{CgTarget, load_point};
 use crate::calibration::mixture::{MixtureProcedure, set_mixture};
 use crate::calibration::results::TakeoffResult;
 use crate::calibration::schema::TakeoffBenchmark;
@@ -43,10 +44,45 @@ pub(super) fn solve_takeoff(
     tolerance_pct: f64,
     base_non_payload_lbs: f64,
     overrides: ParameterOverrides,
+    cg: Option<CgTarget<'_>>,
 ) -> Result<TakeoffResult, PackError> {
     let base = capture_base_engine_tuning(fdm)?;
-    configure_mass_and_overrides(fdm, bench.gross_mass_kg, base_non_payload_lbs, overrides)?;
+    let flown_cg_fs_in = load_point(
+        fdm,
+        bench.gross_mass_kg,
+        base_non_payload_lbs,
+        overrides,
+        cg,
+    )?;
     let rest_height_ft = rest_height_ft(fdm)?;
+    let (ground_roll_ft, total_ft, lift_off_kcas) =
+        fly_from_rest(fdm, bench, rest_height_ft, base, overrides)?;
+    restore_engine_tuning(fdm, base)?;
+
+    let within = |sim: f64, target: f64| (sim - target).abs() <= target * tolerance_pct / 100.0;
+    Ok(TakeoffResult {
+        label: bench.label.clone(),
+        pressure_alt_ft: bench.pressure_alt_ft,
+        sim_ground_roll_ft: ground_roll_ft,
+        target_ground_roll_ft: bench.target_ground_roll_ft,
+        sim_total_ft: total_ft,
+        target_total_ft: bench.target_total_50ft_ft,
+        sim_lift_off_kcas: lift_off_kcas,
+        target_lift_off_kcas: bench.lift_off_kcas,
+        flown_cg_fs_in,
+        passed: within(ground_roll_ft, bench.target_ground_roll_ft)
+            && within(total_ft, bench.target_total_50ft_ft),
+    })
+}
+
+/// One run from rest on the brakes to the obstacle.
+fn fly_from_rest(
+    fdm: &mut Fdm,
+    bench: &TakeoffBenchmark,
+    rest_height_ft: f64,
+    base: BaseEngineTuning,
+    overrides: ParameterOverrides,
+) -> Result<(f64, f64, f64), PackError> {
     for (prop, val) in [
         ("ic/terrain-elevation-ft", bench.pressure_alt_ft),
         ("ic/h-sl-ft", bench.pressure_alt_ft + rest_height_ft),
@@ -67,22 +103,7 @@ pub(super) fn solve_takeoff(
     fdm.run_ic().map_err(fdm_err)?;
     apply_engine_overrides(fdm, base, overrides)?;
     let mixture = settle_on_brakes(fdm, bench)?;
-    let (ground_roll_ft, total_ft, lift_off_kcas) = fly_takeoff(fdm, bench, mixture)?;
-    restore_engine_tuning(fdm, base)?;
-
-    let within = |sim: f64, target: f64| (sim - target).abs() <= target * tolerance_pct / 100.0;
-    Ok(TakeoffResult {
-        label: bench.label.clone(),
-        pressure_alt_ft: bench.pressure_alt_ft,
-        sim_ground_roll_ft: ground_roll_ft,
-        target_ground_roll_ft: bench.target_ground_roll_ft,
-        sim_total_ft: total_ft,
-        target_total_ft: bench.target_total_50ft_ft,
-        sim_lift_off_kcas: lift_off_kcas,
-        target_lift_off_kcas: bench.lift_off_kcas,
-        passed: within(ground_roll_ft, bench.target_ground_roll_ft)
-            && within(total_ft, bench.target_total_50ft_ft),
-    })
+    fly_takeoff(fdm, bench, mixture)
 }
 
 /// Height of the CG above the runway with the gear just touching, from the

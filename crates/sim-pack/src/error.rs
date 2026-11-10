@@ -94,6 +94,21 @@ pub enum PackError {
         /// Why it was refused.
         detail: String,
     },
+    /// A calibration point's centre of gravity lies outside what its payload
+    /// can reach on the model's loading stations.
+    #[error(
+        "{label}: CG FS {target_fs_in:.2} in is out of reach of the payload stations FS {lowest_fs_in:.2}-{highest_fs_in:.2} in"
+    )]
+    UnreachableCg {
+        /// The calibration point's label.
+        label: String,
+        /// The card's CG, fuselage station (`in`).
+        target_fs_in: f64,
+        /// The most forward loading station (`in`).
+        lowest_fs_in: f64,
+        /// The most aft loading station (`in`).
+        highest_fs_in: f64,
+    },
     /// Closed-loop FDM execution failed during calibration or sensitivity evaluation.
     #[error("closed-loop calibration run failed: {detail}")]
     CalibrationRun {

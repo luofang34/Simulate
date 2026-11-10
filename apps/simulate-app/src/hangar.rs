@@ -75,7 +75,7 @@ impl HangarRig {
         self.pass.ensure_size(device, size_px)?;
         if self.model != Some(model) {
             let asset = self.asset(model)?;
-            self.pass.set_asset(device, &asset)?;
+            self.pass.set_asset(device, queue, &asset)?;
             self.model = Some(model);
         }
         self.orbit.advance(elapsed_s);

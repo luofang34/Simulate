@@ -28,7 +28,6 @@ mod cockpit_controls;
 mod cockpit_interior;
 mod cockpit_opening;
 pub mod cockpit_reservation;
-mod decals;
 pub mod drawing;
 mod fillets;
 mod gear;
@@ -39,6 +38,7 @@ mod package;
 mod powerplant;
 mod radiators;
 mod role;
+mod skin;
 mod stations;
 #[cfg(test)]
 mod tests;
@@ -54,6 +54,7 @@ pub use gondola::{
 };
 pub use mesh::{NEEDLE_HANDS_PER_SLOT, P38Material, P38MeshPrim, P38MeshVertex, P38PartRole};
 pub use package::{P38UsdError, p38g_mesh_prims, p38g_package_source, p38g_usda};
+pub use skin::{MarkingKind, MarkingSite, P38Skin, P38SkinError, SkinPaint, SkinQuery};
 pub use stations::{
     AILERON_END_X, BOOM_STATIONS, BOOM_X, ELEVATOR_HINGE_Y, FIN_PROFILE, HTAIL_Z, OVERALL_HEIGHT_M,
     OVERALL_LENGTH_M, OVERALL_SPAN_M, PROP_BLADE_OFFSET_M, PROP_HUB_Y, PROP_HUB_Z, PROP_RADIUS_M,

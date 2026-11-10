@@ -26,6 +26,8 @@ pub struct TakeoffResult {
     pub sim_lift_off_kcas: f64,
     /// The benchmark's scheduled lift-off speed (`kt` CAS).
     pub target_lift_off_kcas: f64,
+    /// The CG flown, fuselage station (`in`), when the card gives one.
+    pub flown_cg_fs_in: Option<f64>,
     /// Whether both distances lie within `tolerances.takeoff_pct`.
     pub passed: bool,
 }
@@ -51,6 +53,8 @@ pub struct StallResult {
     pub target_kias: Option<f64>,
     /// Residual `sim_kias - target_kias` (`kt`), when both exist.
     pub residual_kias: Option<f64>,
+    /// The CG flown, fuselage station (`in`), when the card gives one.
+    pub flown_cg_fs_in: Option<f64>,
     /// Whether residuals lie within `tolerances.stall_kt`.
     pub passed: bool,
 }

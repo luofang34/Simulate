@@ -39,10 +39,15 @@ impl UsdAircraftAsset {
     /// Builds a Lockheed P-38G-13-LO Lightning (`"Miss Virginia"`, `s/n 43-2264`) from the
     /// standalone `sim-p38g` vehicle crate (`vehicles/p38g`).
     pub fn p38g() -> Result<Self, MapAdapterError> {
-        let parts = sim_p38g::p38g_mesh_prims()
+        let prims = sim_p38g::p38g_mesh_prims();
+        let skin = sim_p38g::P38Skin::new(&prims).map_err(|err| MapAdapterError::OpenUsd {
+            detail: format!("P-38G skin: {err}"),
+        })?;
+        let parts = prims
             .into_iter()
             .map(|prim| UsdMeshPart {
                 detail: p38_finish::detail(&prim.prim_path),
+                surface: crate::usd_aircraft::PartSurface::Material,
                 prim_path: prim.prim_path,
                 role: PartRole::from_token(prim.role.as_token()),
                 material: PbrMaterial {
@@ -64,12 +69,15 @@ impl UsdAircraftAsset {
                         normal: v.normal,
                         uv: v.uv,
                         occlusion: 1.0,
+                        tangent: crate::UsdMeshVertex::NO_TANGENT,
                     })
                     .collect(),
                 indices: prim.indices,
             })
             .collect();
-        assemble("p38g", parts)
+        let mut asset = assemble("p38g", parts)?;
+        p38_finish::finish(&mut asset, skin);
+        Ok(asset)
     }
 
     /// Builds a crewed lunar lander: faceted gold-kapton descent stage, ascent cabin, and
@@ -122,6 +130,7 @@ fn part(
         custom_hinge_axis: None,
         needle_channel: None,
         detail: SurfaceDetail::default(),
+        surface: crate::usd_aircraft::PartSurface::Material,
         vertices,
         indices,
     }

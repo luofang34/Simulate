@@ -371,26 +371,74 @@ fn p38g_panel_needles_turn_by_their_channel_angle() {
 }
 
 #[test]
-fn p38_skins_carry_seams_weathering_and_turbo_soot_and_other_parts_stay_plain() {
+fn p38_stressed_skin_is_painted_by_its_bake_and_the_c172_has_none() {
     let asset = crate::UsdAircraftAsset::p38g().unwrap();
+    let skin = asset.skin().expect("the P-38G bakes a skin");
+    assert_eq!(skin.albedo.size(), (4096, 4096));
+    assert_eq!(skin.orm.size(), (2048, 2048));
+    // The stated budget: albedo, normal and pack with mips under 160 MiB.
+    assert!(skin.byte_len() < 160 << 20, "{} bytes", skin.byte_len());
     let part = |path: &str| asset.parts().iter().find(|p| p.prim_path == path).unwrap();
-    let booms = part("/P38g/Booms/UpperOlive").detail;
-    assert!(booms.panel_pitch_m.iter().all(|&p| p > 0.0));
-    let soot = booms.soot.unwrap();
-    assert!((soot.lateral_m - sim_p38g::BOOM_X).abs() < 1e-6);
-    assert!(soot.station_m < 0.0 && soot.strength > 0.0);
-    let [[_, _, _, weathering], [lateral, ..]] = booms.uniform_rows();
-    assert_eq!((weathering, lateral), (1.0, sim_p38g::BOOM_X));
-    let lower = part("/P38g/Wing/LowerGray").detail;
-    assert!(lower.weathering < part("/P38g/Wing/UpperOlive").detail.weathering);
+    for path in [
+        "/P38g/Booms/UpperOlive",
+        "/P38g/Wing/LowerGray",
+        "/P38g/Gondola/UpperOlive",
+        "/P38g/Empennage/VerticalFins",
+    ] {
+        let skinned = part(path);
+        assert_eq!(skinned.surface, crate::PartSurface::Skin, "{path}");
+        assert_eq!(skinned.detail, crate::SurfaceDetail::default(), "{path}");
+        for v in &skinned.vertices {
+            assert!(
+                v.uv.iter().all(|c| (0.0..=1.0).contains(c)),
+                "{path} {:?}",
+                v.uv
+            );
+            let t = glam::Vec3::from_array([v.tangent[0], v.tangent[1], v.tangent[2]]);
+            assert!((t.length() - 1.0).abs() < 1e-3, "{path} tangent {t}");
+            assert!(t.dot(glam::Vec3::from(v.normal)).abs() < 1e-3, "{path}");
+        }
+    }
     assert_eq!(
-        part("/P38g/Canopy/Glazing").detail,
-        crate::SurfaceDetail::default()
+        part("/P38g/Canopy/Glazing").surface,
+        crate::PartSurface::Material
     );
-    let c172 = crate::UsdAircraftAsset::embedded_c172().unwrap();
     assert!(
-        c172.parts()
-            .iter()
-            .all(|p| p.detail == crate::SurfaceDetail::default())
+        crate::UsdAircraftAsset::embedded_c172()
+            .unwrap()
+            .skin()
+            .is_none()
     );
+}
+
+#[test]
+#[ignore = "writes the P-38G skin maps as PNGs into $SIMULATE_VERIFY_OUT"]
+fn write_p38_skin_maps() {
+    let Some(dir) = std::env::var_os("SIMULATE_VERIFY_OUT").map(std::path::PathBuf::from) else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let asset = crate::UsdAircraftAsset::p38g().unwrap();
+    let skin = asset.skin().unwrap();
+    for (name, map) in [
+        ("albedo", &skin.albedo),
+        ("normal", &skin.normal),
+        ("orm", &skin.orm),
+    ] {
+        let (w, h) = map.size();
+        let bytes = map.levels().first().unwrap();
+        let rgba: Vec<u8> = match map.format() {
+            crate::usd_aircraft::SkinFormat::Normal8 => bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .flat_map(|c| [c[0], c[1], 255, 255])
+                .collect(),
+            _ => bytes.clone(),
+        };
+        image::RgbaImage::from_raw(w, h, rgba)
+            .unwrap()
+            .save(dir.join(format!("p38_skin_{name}.png")))
+            .unwrap();
+    }
 }

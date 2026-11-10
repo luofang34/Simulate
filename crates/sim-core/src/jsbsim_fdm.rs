@@ -288,18 +288,29 @@ impl JsbsimFdmBlock {
     /// Trims the aircraft for steady level flight at its initial conditions
     /// and returns the flight controls that hold it, to feed every later step.
     /// The aircraft must sum `fcs/pitch-trim-cmd-norm` into its elevator, which
-    /// is where the pitch solution stays. On failure the aircraft is back at
-    /// its initial conditions.
+    /// is where the pitch solution stays. On failure the aircraft is back in
+    /// the state it had before the call, engines included: JSBSim's own fallback
+    /// re-runs the initial conditions, which leaves a running piston engine
+    /// stopped.
     pub fn trim_level_flight(&mut self) -> Result<ControlInputs, BlockError> {
+        let before = self.latest.clone();
         self.nodes
             .system
             .write_and_sync_gear(&mut self.fdm, self.latest.system)?;
         let trimmed = self.fdm.do_trim(TrimMode::Full).map(|_| ());
+        if let Err(error) = trimmed {
+            self.try_restore(&before)?;
+            // The gear still goes where the controls put it, as on success.
+            self.nodes
+                .system
+                .write_and_sync_gear(&mut self.fdm, self.latest.system)?;
+            self.capture(0.0)?;
+            return Err(fdm_error(error));
+        }
         self.nodes
             .system
             .sync_gear_pos(&mut self.fdm, self.latest.system)?;
         self.capture(0.0)?;
-        trimmed.map_err(fdm_error)?;
         Ok(ControlInputs {
             roll: self.fdm.read_node(self.nodes.aileron).map_err(fdm_error)?,
             pitch: -self.fdm.read_node(self.nodes.elevator).map_err(fdm_error)?,
