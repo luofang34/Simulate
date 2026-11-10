@@ -87,8 +87,12 @@ pub(crate) const TIRE_RUBBER: P38Material = mat([0.035, 0.035, 0.037], 0.0, 0.92
 pub(crate) const WHEEL_WELL_ZINC: P38Material = mat([0.46, 0.52, 0.26], 0.14, 0.58);
 pub(crate) const COCKPIT_GREEN: P38Material = mat([0.24, 0.32, 0.21], 0.10, 0.64);
 pub(crate) const PANEL_BLACK: P38Material = mat([0.08, 0.09, 0.10], 0.18, 0.52);
-pub(crate) const LEATHER_BROWN: P38Material = mat([0.34, 0.21, 0.12], 0.05, 0.72);
-pub(crate) const PILOT_SUIT: P38Material = mat([0.42, 0.36, 0.24], 0.04, 0.78);
+/// The pilot's khaki cotton flying suit (assumed: a 25 % khaki, matte cloth).
+pub(crate) const PILOT_SUIT: P38Material = mat([0.30, 0.24, 0.13], 0.0, 0.9);
+/// His leather flying helmet (assumed: dark russet leather, worn satin).
+pub(crate) const PILOT_HELMET: P38Material = mat([0.11, 0.065, 0.035], 0.0, 0.6);
+/// His inflatable life vest, yellow rubberised cotton dulled by use (assumed).
+pub(crate) const LIFE_VEST: P38Material = mat([0.50, 0.33, 0.045], 0.0, 0.85);
 
 pub(crate) const CANOPY_GLASS: P38Material = P38Material {
     diffuse_rgb: [0.64, 0.78, 0.84],
