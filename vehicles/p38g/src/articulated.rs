@@ -93,9 +93,10 @@ fn build_curtiss_propellers(prims: &mut Vec<P38MeshPrim>) {
 }
 
 fn build_propeller_discs(prims: &mut Vec<P38MeshPrim>) {
+    // The blur wears the blades' paint; a blur's emissive colour is its tip paint.
     let disc_mat = P38Material {
-        diffuse_rgb: [0.16, 0.17, 0.18],
-        emissive_rgb: [0.02, 0.02, 0.02],
+        diffuse_rgb: PROP_BLACK.diffuse_rgb,
+        emissive_rgb: PROP_YELLOW.diffuse_rgb,
         metallic: 0.15,
         roughness: 0.35,
         opacity: 0.22,

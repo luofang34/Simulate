@@ -8,6 +8,7 @@ use image::{Rgb, RgbImage, imageops};
 use super::Match;
 use super::render::{out_path, shot_error};
 use super::resection::PinholePose;
+use super::tone::{self, luma};
 use crate::error::AppSimError;
 
 /// A channel difference above this between the frames with and without the airframe
@@ -46,14 +47,16 @@ impl Framing {
     }
 }
 
-/// Writes `<id>_side.png`, `<id>_overlay.png` and `<id>_diff.png` for `m` into `dir`.
+/// Writes `<id>_side.png`, `<id>_overlay.png`, `<id>_diff.png` and the unmarked
+/// `<id>_model.png` for `m` into `dir`, and returns the airframe's tone in photo and model
+/// (see [`tone::compare`]).
 pub(super) fn write_comparisons(
     dir: &Path,
     m: &Match,
     framing: &Framing,
     photo: &RgbImage,
     [shown, hidden]: [&[u8]; 2],
-) -> Result<(), AppSimError> {
+) -> Result<serde_json::Value, AppSimError> {
     let [w, h] = framing.size_px;
     let photo = imageops::resize(photo, w, h, imageops::FilterType::Triangle);
     let model = crop(shown, framing);
@@ -70,6 +73,8 @@ pub(super) fn write_comparisons(
     // Closing fills the specks where the airframe happens to match what is behind it.
     let mask = morph(&morph(&raw, w, true), w, false);
     let marks = landmark_marks(m, framing.scale);
+    save(&model, &out_path(dir, &m.photo, "model"))?;
+    let tone = tone::compare(&photo, [&model, &empty], &mask, w, &m.photo.tone_patches);
 
     let mut side = RgbImage::new(w.saturating_mul(2), h);
     imageops::replace(&mut side, &photo, 0, 0);
@@ -113,7 +118,8 @@ pub(super) fn write_comparisons(
         };
     }
     outline(&mut diff, &mask, w);
-    save(&diff, &out_path(dir, &m.photo, "diff"))
+    save(&diff, &out_path(dir, &m.photo, "diff"))?;
+    Ok(tone)
 }
 
 /// `(measured, reprojected)` pixel of every landmark, scaled into the comparison frame.
@@ -156,13 +162,6 @@ fn morph(mask: &[bool], w: u32, grow: bool) -> Vec<bool> {
             }
         })
         .collect()
-}
-
-fn luma(p: Rgb<u8>) -> u8 {
-    let [r, g, b] = p.0.map(f64::from);
-    (0.299 * r + 0.587 * g + 0.114 * b)
-        .round()
-        .clamp(0.0, 255.0) as u8
 }
 
 fn blend(a: Rgb<u8>, b: Rgb<u8>, t: f64) -> Rgb<u8> {

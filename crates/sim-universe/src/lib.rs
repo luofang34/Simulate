@@ -15,6 +15,6 @@ mod universe;
 
 pub use error::UniverseError;
 pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
-pub use local::{CoastingRigidBody, LocalFactory, LocalPlant};
+pub use local::{CoastingRigidBody, LocalFactory, LocalPlant, OrbitalBody};
 pub use tiering::{AltitudeBand, TierChange, TierPolicy};
-pub use universe::{OrbitalContext, Tier, Universe};
+pub use universe::{OrbitalContext, Tier, Universe, UniverseCheckpoint};

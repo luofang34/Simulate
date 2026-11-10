@@ -216,6 +216,12 @@ impl MapLibreRig {
         &self.truth
     }
 
+    /// Sets the exposure time of the camera the outside scene is drawn for.
+    #[cfg(test)]
+    pub fn set_camera_shutter_s(&mut self, shutter_s: f64) {
+        self.truth.set_shutter_exposure_s(shutter_s);
+    }
+
     /// The preset's instrument maps.
     #[cfg(test)]
     #[must_use]

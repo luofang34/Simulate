@@ -16,6 +16,8 @@ mod scene;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) use gpu::SHADER as STUDIO_SHADER;
 pub use orbit::{HANGAR_AUTO_ROTATE_RAD_PER_S, HangarOrbit};
 
 /// Default preview size in physical pixels.

@@ -227,3 +227,81 @@ fn the_cockpit_interior_stays_inside_the_mould_line() {
     }
     assert!(outside.is_empty(), "{outside:#?}");
 }
+
+/// The glazing is split on the drawn frames into the panes that open: the hatch between
+/// the top bow and the hatch's aft frame, hinged across the ship on that frame's crown,
+/// with a window under each of its rails; together the panes are the whole canopy.
+#[test]
+fn the_glazing_is_split_into_its_panes_on_the_drawn_frames() {
+    let prims = prims();
+    let pane = |name: &str| stations(&prims, &format!("/P38g/Canopy/Glazing/{name}"));
+    let hatch = pane("Hatch");
+    near(
+        "hatch front",
+        min_by(&hatch, |p| p.y),
+        d::WINDSCREEN_TOP_FRAME_FS_IN,
+        0.05,
+    );
+    near(
+        "hatch aft",
+        max_by(&hatch, |p| p.y),
+        d::HATCH_AFT_FRAME_FS_IN,
+        0.05,
+    );
+    let hinged = prims
+        .iter()
+        .find(|p| p.prim_path == "/P38g/Canopy/Glazing/Hatch")
+        .expect("hatch");
+    assert_eq!(hinged.custom_hinge_axis, Some(glam::DVec3::X));
+    let pivot = hinged.rest_to_aircraft.w_axis.truncate().as_vec3();
+    near(
+        "hinge station",
+        y_to_fs(pivot.y),
+        d::HATCH_AFT_FRAME_FS_IN,
+        0.05,
+    );
+    assert!(pivot.x.abs() < 1e-6 && z_to_frl(pivot.z) > 38.0, "{pivot}");
+    // At the top bow each window's upper edge is the hatch's rail.
+    let at_bow = |points: Vec<Vec3>| -> Vec<Vec3> {
+        points
+            .into_iter()
+            .filter(|p| (p.y - d::WINDSCREEN_TOP_FRAME_FS_IN).abs() < 0.05)
+            .collect()
+    };
+    let (left, right) = (
+        at_bow(pane("SideWindowLeft")),
+        at_bow(pane("SideWindowRight")),
+    );
+    let rail = at_bow(hatch.clone());
+    near(
+        "port rail",
+        max_by(&left, |p| p.x),
+        min_by(&rail, |p| p.x),
+        0.01,
+    );
+    near(
+        "starboard rail",
+        min_by(&right, |p| p.x),
+        max_by(&rail, |p| p.x),
+        0.01,
+    );
+    near(
+        "windscreen aft",
+        max_by(&pane("Windscreen"), |p| p.y),
+        d::WINDSCREEN_TOP_FRAME_FS_IN,
+        0.05,
+    );
+    near(
+        "rear front",
+        min_by(&pane("Rear"), |p| p.y),
+        d::HATCH_AFT_FRAME_FS_IN,
+        0.05,
+    );
+    assert_eq!(
+        prims
+            .iter()
+            .filter(|p| p.prim_path.starts_with("/P38g/Canopy/Glazing/"))
+            .count(),
+        5
+    );
+}

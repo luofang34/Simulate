@@ -7,6 +7,9 @@ use sim_maplibre::MapAdapterError;
 use sim_render::RenderError;
 use sim_scenario::ScenarioError;
 use sim_spacetime::TimeError;
+use sim_universe::UniverseError;
+
+use crate::flight::SolarSystemError;
 
 /// Typed errors raised while initialising, stepping, or compositing the cockpit app.
 #[derive(Debug, thiserror::Error)]
@@ -50,6 +53,12 @@ pub enum AppSimError {
     /// The free-flight simulation session refused an input, a sensor, or a step.
     #[error("free-flight simulation session failed")]
     Session(#[source] Box<SessionError>),
+    /// The universe the flight's vessels share refused a step or a rewind.
+    #[error("the flight's universe failed")]
+    Universe(#[source] Box<UniverseError>),
+    /// The solar system the universe propagates in could not be set up.
+    #[error("the solar system could not be set up")]
+    SolarSystem(#[from] SolarSystemError),
     /// Manual control cannot take over the active scenario.
     #[error("manual control is unavailable in {scenario}: {detail}")]
     ManualControlUnavailable {

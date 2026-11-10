@@ -9,7 +9,7 @@ use std::f32::consts::FRAC_PI_2;
 
 use glam::Vec3;
 
-use crate::canopy::armor_glass_corners;
+use crate::canopy::{HATCH_RAIL_A, armor_glass_corners};
 use crate::drawing::{
     CANOPY_TAIL_FS_IN, HATCH_AFT_FRAME_FS_IN, WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN,
     fs_to_y,
@@ -20,8 +20,6 @@ use crate::stations::{CANOPY_FRAME, GUNMETAL};
 
 /// Arc angle of the windscreen quarter posts either side of the centre panel.
 const QUARTER_POST_A: f32 = 0.46;
-/// Arc angle of the hatch side rails above the wind-down side windows.
-const HATCH_RAIL_A: f32 = 1.0;
 /// Frame member radius: a 20 mm wide aluminium extrusion.
 const MEMBER_R: f32 = 0.010;
 /// How far inside the glass the member centreline sits.

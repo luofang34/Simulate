@@ -75,6 +75,16 @@ impl FlapSelector {
     }
 }
 
+/// How far the canopy's opening panes are open: the top hatch swung up on its
+/// hinge and the side windows wound down, each 0 (shut) to 1 (fully open).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CanopyOpening {
+    /// The top hatch.
+    pub hatch: f64,
+    /// The side windows `[left, right]`.
+    pub side_windows: [f64; 2],
+}
+
 /// The positions of the cockpit's controls as the pilot has set them, which the
 /// cockpit's levers, wheel and pedals are drawn at. These are the commands, not
 /// the surfaces: a stick-force-limited aileron lags the wheel that commands it.
@@ -98,6 +108,8 @@ pub struct CockpitControls {
     pub flap_selector: FlapSelector,
     /// Whether the landing-gear lever is down.
     pub gear_lever_down: bool,
+    /// The canopy's hatch and side windows as the pilot has left them.
+    pub canopy: CanopyOpening,
 }
 
 impl Default for CockpitControls {
@@ -112,6 +124,10 @@ impl Default for CockpitControls {
             trim_norm: [0.0; 3],
             flap_selector: FlapSelector::Up,
             gear_lever_down: true,
+            canopy: CanopyOpening {
+                hatch: 0.0,
+                side_windows: [0.0; 2],
+            },
         }
     }
 }

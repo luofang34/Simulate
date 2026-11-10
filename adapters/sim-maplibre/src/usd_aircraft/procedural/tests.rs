@@ -110,8 +110,9 @@ fn articulation_roles_are_tagged_on_each_builtin() {
         assert_eq!(count(&uav, role), 1, "{role:?}");
     }
     assert_eq!(count(&p38, PartRole::LandingLight), 1);
-    // The canopy, and the instruments' cover glass.
-    assert_eq!(count(&p38, PartRole::CabinGlass), 2);
+    // Windscreen, hatch, a window either side of it, the rear glazing, and the
+    // instruments' cover glass.
+    assert_eq!(count(&p38, PartRole::CabinGlass), 6);
     // The P-38's ailerons, elevator and flaps are olive drab over a neutral-gray
     // underside part that deflects with them.
     for role in [
@@ -128,8 +129,9 @@ fn articulation_roles_are_tagged_on_each_builtin() {
     for role in [PartRole::FlapLeft, PartRole::FlapRight] {
         assert_eq!(count(&p38, role), 4, "{role:?}");
     }
-    // The nose leg and the two main legs; each of the three bays has two doors.
-    assert_eq!(count(&p38, PartRole::GearStruts), 3);
+    // Each of the three legs is a painted strut and a chromed piston; each of the three
+    // bays has two doors.
+    assert_eq!(count(&p38, PartRole::GearStruts), 6);
     let doors = p38
         .parts()
         .iter()
@@ -397,7 +399,7 @@ fn p38_stressed_skin_is_painted_by_its_bake_and_the_c172_has_none() {
         }
     }
     assert_eq!(
-        part("/P38g/Canopy/Glazing").surface,
+        part("/P38g/Canopy/Glazing/Hatch").surface,
         crate::PartSurface::Material
     );
     assert!(
@@ -437,5 +439,55 @@ fn write_p38_skin_maps() {
             .unwrap()
             .save(dir.join(format!("p38_skin_{name}.png")))
             .unwrap();
+    }
+}
+
+/// The canopy opens as the P-38G's did: the top hatch swings up about its aft
+/// frame, lifting its forward edge clear, and each side window winds down past
+/// the sill, the other panes staying put.
+#[test]
+fn p38g_canopy_hatch_swings_up_and_side_windows_wind_down() {
+    let p38 = UsdAircraftAsset::p38g().unwrap();
+    let mut open = AirframeArticulation::default();
+    open.cockpit.canopy = sim_core::CanopyOpening {
+        hatch: 1.0,
+        side_windows: [1.0, 0.0],
+    };
+    // Where the vertex of `path` furthest along `toward` goes as the canopy opens.
+    let moved = |path: &str, toward: DVec3| {
+        let index = p38
+            .parts()
+            .iter()
+            .position(|p| p.prim_path == path)
+            .unwrap();
+        let vertex = p38.parts()[index]
+            .vertices
+            .iter()
+            .map(|v| Vec3::from_array(v.position).as_dvec3())
+            .max_by(|a, b| a.dot(toward).total_cmp(&b.dot(toward)))
+            .unwrap();
+        let at = |a: &AirframeArticulation| {
+            let draws = p38.evaluate_draws(a, SlotCameraRole::External);
+            let draw = draws.iter().find(|d| d.part_index == index).unwrap();
+            draw.part_to_aircraft.transform_point3(vertex)
+        };
+        (at(&AirframeArticulation::default()), at(&open))
+    };
+    let (shut, raised) = moved("/P38g/Canopy/Glazing/Hatch", DVec3::Y);
+    assert!(
+        raised.z > shut.z + 0.4 && raised.y < shut.y,
+        "{shut:?} -> {raised:?}"
+    );
+    let sill = f64::from(sim_p38g::canopy_sill_z(shut.y as f32));
+    let (top, wound) = moved("/P38g/Canopy/Glazing/SideWindowLeft", DVec3::Z);
+    assert!(
+        top.z > sill + 0.1 && wound.z < sill + 0.01,
+        "{top:?} -> {wound:?}"
+    );
+    // Its top edge ends out on the sill, not standing inside the cabin.
+    assert!(wound.x < top.x - 0.05 && (wound.y - top.y).abs() < 1e-9);
+    for fixed in ["SideWindowRight", "Windscreen", "Rear"] {
+        let (a, b) = moved(&format!("/P38g/Canopy/Glazing/{fixed}"), DVec3::Z);
+        assert!(a.abs_diff_eq(b, 1e-9), "{fixed}");
     }
 }

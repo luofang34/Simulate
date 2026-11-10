@@ -97,6 +97,7 @@ fn an_aircraft_ahead_lands_mid_screen_inside_the_reversed_depth_range() {
         daylight: 1.0,
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
     };
     let draws = pack_slot_draws(&library(asset), &[aircraft_at(&target, false)], None, &view);
     assert!(draws.len() > 10);
@@ -132,6 +133,7 @@ fn ownship_shows_only_its_nose_from_the_cockpit_and_nothing_from_the_belly() {
         daylight: 1.0,
         ownship_role: SlotCameraRole::CockpitInterior,
         slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
     };
     let own = [aircraft_at(&target, true)];
     let asset = library(asset);
@@ -155,6 +157,7 @@ fn ownship_draws_the_selected_airframe_and_traffic_keeps_the_scene_asset() {
         daylight: 1.0,
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
     };
     let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
     let own = [aircraft_at(&target, true)];
@@ -238,6 +241,7 @@ fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
         daylight: 1.0,
         ownship_role: SlotCameraRole::CockpitInterior,
         slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
     };
     let draws = pack_slot_draws(&library, &[], Some((key, &rwy)), &view);
     assert_eq!(draws.len(), 4);
@@ -304,6 +308,7 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
             daylight: 1.0,
             ownship_role: SlotCameraRole::CockpitInterior,
             slot: slot(0),
+            shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
         },
     );
     let deck_draw = draws
@@ -348,4 +353,27 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
         err_px < 0.25,
         "NZSP polar skiway far end {deck_far_mid:?} must register with Body::EARTH far_end {sphere_far_px:?} (<0.25 px, got {err_px:.3} px)"
     );
+}
+
+/// Both passes' composed WGSL parses and validates, so a shader mistake fails `cargo test`
+/// instead of the first frame on a GPU.
+#[test]
+fn the_aircraft_and_studio_shaders_validate() {
+    use wgpu::naga::{front::wgsl, valid};
+    let encoding = super::gpu::shader_source(wgpu::TextureFormat::Rgba8UnormSrgb);
+    let stored = super::gpu::shader_source(wgpu::TextureFormat::Rgba8Unorm);
+    // A target that stores what it is given must be handed encoded colour.
+    assert!(encoding.starts_with("const TARGET_ENCODES: bool = true;"));
+    assert!(stored.starts_with("const TARGET_ENCODES: bool = false;"));
+    for (name, source) in [
+        ("aircraft, sRGB target", encoding.as_str()),
+        ("aircraft, linear target", stored.as_str()),
+        ("studio", crate::hangar_preview::STUDIO_SHADER),
+    ] {
+        let module = wgsl::parse_str(source)
+            .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+        valid::Validator::new(valid::ValidationFlags::all(), valid::Capabilities::all())
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+    }
 }

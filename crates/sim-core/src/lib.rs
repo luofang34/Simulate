@@ -30,7 +30,7 @@ mod time;
 mod virtual_camera;
 mod visual_harness;
 
-pub use airframe::{AirframeLights, CockpitControls, FlapSelector, PropellerShaft};
+pub use airframe::{AirframeLights, CanopyOpening, CockpitControls, FlapSelector, PropellerShaft};
 pub use block::{Block, BlockError};
 pub use camera_sensor::{
     CAMERA_DEFAULT_PERIOD, CameraFrameCapture, CameraMount, CameraPoseEcef, CameraSensorBlock,

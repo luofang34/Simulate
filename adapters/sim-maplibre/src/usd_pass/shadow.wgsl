@@ -6,7 +6,7 @@ struct Shadow {
     clip_from_enu: mat4x4<f32>,
     // ENU to the light's orthographic clip volume (x, y in [-1, 1], depth in [0, 1])
     light_from_enu: mat4x4<f32>,
-    // xyz ground receiver centre in ENU, w darkening strength (0 without a receiver)
+    // xyz ground receiver centre in ENU, w how much of the shadow shows (0 without a receiver)
     ground_centre: vec4<f32>,
     // xyz half axis along the light's azimuth, w depth range of the light volume (m)
     ground_u: vec4<f32>,
@@ -105,6 +105,15 @@ fn vs_ground(@builtin(vertex_index) index: u32) -> GroundOut {
 @fragment
 fn fs_ground(in: GroundOut) -> @location(0) vec4<f32> {
     let edge = 1.0 - smoothstep(0.85, 1.0, max(abs(in.quad.x), abs(in.quad.y)));
-    let dark = (1.0 - sun_visibility(in.world, vec3<f32>(0.0), in.clip.xy)) * shadow.ground_centre.w * edge;
+    // Shaded ground keeps the sky's share of its light (`sky.ground.w`): a deep shadow
+    // under a high Sun, a faint one when the Sun is low and most light is the sky's.
+    let shaded = 1.0 - (1.0 - sun_visibility(in.world, vec3<f32>(0.0), in.clip.xy)) * shadow.ground_centre.w * edge;
+    var kept = mix(sky.ground.w, 1.0, shaded);
+    // The blend scales what the target holds: for a target that stores encoded colour,
+    // the share of light is taken through the display curve first.
+    if (!TARGET_ENCODES) {
+        kept = pow(kept, 1.0 / 2.2);
+    }
+    let dark = 1.0 - kept;
     return vec4<f32>(0.0, 0.0, 0.0, dark);
 }

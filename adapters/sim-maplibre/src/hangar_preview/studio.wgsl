@@ -58,7 +58,7 @@ const FILL_RGB: vec3<f32> = vec3<f32>(0.80, 0.85, 0.95);
 const EXPOSURE: f32 = 1.5;
 
 fn tonemap(c: vec3<f32>) -> vec4<f32> {
-    return vec4<f32>(filmic(c, EXPOSURE), 1.0);
+    return vec4<f32>(display(c, EXPOSURE), 1.0);
 }
 
 // Cyclorama radiance seen along `dir`: the graded wall above, the floor tone below.

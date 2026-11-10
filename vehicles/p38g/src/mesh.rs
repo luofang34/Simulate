@@ -411,7 +411,8 @@ impl MeshBuilder {
             self.push_vertex(
                 Vec3::new(c * radius, 0.0, s * radius),
                 Vec3::NEG_Y,
-                Vec2::new(1.0, a),
+                // The unit disc about the hub, which the propeller blur is drawn in.
+                Vec2::new(c, s),
             );
         }
         for i in 0..segs {

@@ -264,12 +264,29 @@ impl UsdAircraftAsset {
         self.parts.iter().map(|p| p.indices.len() / 3).sum()
     }
 
-    /// Evaluates articulated part transforms and camera-role visibility for one frame.
+    /// Evaluates articulated part transforms and camera-role visibility for one frame, as
+    /// seen by the eye or a display camera ([`Self::DISPLAY_SHUTTER_S`]).
     #[must_use]
     pub fn evaluate_draws(
         &self,
         articulation: &AirframeArticulation,
         camera_role: SlotCameraRole,
+    ) -> Vec<UsdPartDraw> {
+        self.evaluate_draws_exposed(articulation, camera_role, Self::DISPLAY_SHUTTER_S)
+    }
+
+    /// Exposure over which a turning propeller smears for the eye or a display camera.
+    pub const DISPLAY_SHUTTER_S: f64 = 1.0 / 60.0;
+
+    /// [`Self::evaluate_draws`] for a camera whose shutter stays open `shutter_s` seconds:
+    /// a short exposure leaves a turning propeller as separate blurred blades, a long one
+    /// as an even disc.
+    #[must_use]
+    pub fn evaluate_draws_exposed(
+        &self,
+        articulation: &AirframeArticulation,
+        camera_role: SlotCameraRole,
+        shutter_s: f64,
     ) -> Vec<UsdPartDraw> {
         let mount_vib = mount_vibration_matrix(articulation.engine_vibration_rad);
         let mut draws = Vec::with_capacity(self.parts.len());
@@ -294,7 +311,7 @@ impl UsdAircraftAsset {
                 continue;
             }
             let engine_idx = usize::from(part.prim_path.contains("PropRight"));
-            let prop_vis = articulation.propeller_visual_for_engine(engine_idx, 1.0 / 60.0);
+            let prop_vis = articulation.propeller_visual_for_engine(engine_idx, shutter_s);
             let beacon_emissive = (0.15 + 2.55 * articulation.lights.beacon_flash_norm) as f32;
             let land_emissive =
                 (0.08 + 3.20 * articulation.lights.landing_light_norm.clamp(0.0, 1.0)) as f32;
@@ -384,6 +401,10 @@ fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
             dials::moving_part_matrix(part, &art.instrument_needles)
         }
         PartRole::CockpitControl => controls::control_matrix(&part.control_joints, &art.cockpit),
+        // A canopy pane that opens: the hatch on its hinge, a window winding down.
+        PartRole::CabinGlass if !part.control_joints.is_empty() => {
+            controls::control_matrix(&part.control_joints, &art.cockpit)
+        }
         _ => articulate_auxiliary_part(part, art),
     }
 }
@@ -433,9 +454,10 @@ fn articulate_auxiliary_part(part: &UsdMeshPart, art: &AirframeArticulation) -> 
         DMat4::from_rotation_x(art.left_aileron_rad - tr)
     } else if path.contains("GearDoor") {
         // Doors are authored closed, flush with the skin, hinged along `y`; they hang
-        // open while the gear is down.
-        let open = part.custom_hinge_axis.map_or(1.0, |a| a.y.signum());
-        DMat4::from_rotation_y(open * art.gear_pos_norm.clamp(0.0, 1.0) * 1.45)
+        // open while the gear is down. The hinge axis's length is the signed angle a
+        // door opens through.
+        let open = part.custom_hinge_axis.map_or(1.45, |a| a.y);
+        DMat4::from_rotation_y(open * art.gear_pos_norm.clamp(0.0, 1.0))
     } else if path.contains("RudderTrimTab") {
         DMat4::from_rotation_z(-(art.rudder_rad - ty))
     } else {

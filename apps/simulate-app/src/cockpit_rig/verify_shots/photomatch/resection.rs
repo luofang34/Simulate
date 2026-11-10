@@ -203,7 +203,7 @@ fn refine(start: PinholePose, data: &[(DVec3, [f64; 2])], free_principal: bool) 
             for (i, row) in m.iter_mut().enumerate() {
                 row[i] += lambda * (row[i] + 1e-9);
             }
-            let Some(delta) = solve(m, jtr.clone()) else {
+            let Some(delta) = solve_linear(m, jtr.clone()) else {
                 lambda *= 10.0;
                 continue;
             };
@@ -235,7 +235,7 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 }
 
 /// Gaussian elimination with partial pivoting; `None` when singular.
-fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
+pub(super) fn solve_linear(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
     let n = b.len();
     for col in 0..n {
         let pivot = (col..n).max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))?;

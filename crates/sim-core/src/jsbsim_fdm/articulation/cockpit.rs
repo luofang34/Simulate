@@ -79,6 +79,7 @@ impl CockpitCommandNodes {
                 system.flap_valve_closed,
             ),
             gear_lever_down: rd(self.gear, 1.0)? > 0.5,
+            canopy: system.canopy,
         })
     }
 }

@@ -26,12 +26,17 @@ pub enum ControlChannel {
     FlapSelector,
     /// The landing-gear lever: 0 up, 1 down.
     GearLever,
+    /// The canopy's top hatch, 0 shut to 1 fully raised.
+    CanopyHatch,
+    /// A canopy side window, 0 shut to 1 wound fully down (`0` left, `1` right).
+    SideWindow(usize),
 }
 
 impl ControlChannel {
     /// The channel named by a `sim:control*:channel` token, if any.
     #[must_use]
     pub fn from_token(token: &str) -> Option<Self> {
+        // Left and right, of an engine's lever or a side window.
         let engine = |side: &str| match side {
             "left" => Some(0),
             "right" => Some(1),
@@ -55,6 +60,8 @@ impl ControlChannel {
             }),
             Some(("flap", "selector")) => Self::FlapSelector,
             Some(("gear", "lever")) => Self::GearLever,
+            Some(("canopy", "hatch")) => Self::CanopyHatch,
+            Some(("window", side)) => Self::SideWindow(engine(side)?),
             Some(_) => return None,
         })
     }
@@ -78,6 +85,8 @@ impl ControlChannel {
                 FlapSelector::Down => 3.0,
             },
             Self::GearLever => f64::from(u8::from(cockpit.gear_lever_down)),
+            Self::CanopyHatch => cockpit.canopy.hatch,
+            Self::SideWindow(i) => pick(&cockpit.canopy.side_windows, i),
         }
     }
 }

@@ -294,10 +294,11 @@ fn render_p38_cabin_looks(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
         pitch_deg: -10.0,
     };
     draw_p38_cockpit_view(h, back, sun, &dir.join("p38_19_cockpit_look_back.png"))?;
-    // From high over the left sill looking down and right across the cockpit,
-    // as Lockheed's negative Z-4972 does
-    // (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>),
-    // with about its 70 degree vertical field.
+    // From over the left sill looking down and right across the cockpit, the
+    // way Lockheed's negative Z-4972 looks in
+    // (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>).
+    // The viewpoint and field are chosen by eye; the photograph's camera is
+    // not solved.
     let z4972 = CockpitLook {
         eye_m: [-0.36, 0.20, -0.30],
         yaw_deg: 30.0,
@@ -308,8 +309,26 @@ fn render_p38_cabin_looks(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
         z4972,
         Some(70.0),
         sun,
-        &dir.join("p38_23_z4972_match.png"),
+        &dir.join("p38_23_over_left_sill.png"),
     )?;
+    // The same look with the canopy as the photograph has it: hatch raised,
+    // both side windows wound down.
+    let open = sim_core::CanopyOpening {
+        hatch: 1.0,
+        side_windows: [1.0; 2],
+    };
+    h.flight.update_system_controls(|sys| sys.canopy = open);
+    h.flight
+        .advance_by(0.05, ControlInputs::default(), SimTimeScale::RealTime)?;
+    draw_p38_view_with_fov(
+        h,
+        z4972,
+        Some(70.0),
+        sun,
+        &dir.join("p38_24_over_left_sill_canopy_open.png"),
+    )?;
+    h.flight
+        .update_system_controls(|sys| sys.canopy = sim_core::CanopyOpening::default());
     let controls = CockpitLook {
         eye_m: [0.16, 0.10, -0.02],
         yaw_deg: -18.0,

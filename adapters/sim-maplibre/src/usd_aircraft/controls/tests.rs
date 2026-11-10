@@ -27,10 +27,20 @@ fn every_authored_token_names_a_channel() {
         ("trim_rudder", ControlChannel::Trim(2)),
         ("flap_selector", ControlChannel::FlapSelector),
         ("gear_lever", ControlChannel::GearLever),
+        ("canopy_hatch", ControlChannel::CanopyHatch),
+        ("window_left", ControlChannel::SideWindow(0)),
+        ("window_right", ControlChannel::SideWindow(1)),
     ] {
         assert_eq!(ControlChannel::from_token(token), Some(channel), "{token}");
     }
-    for unknown in ["", "throttle_centre", "trim_flap", "gear", "pitch_left"] {
+    for unknown in [
+        "",
+        "throttle_centre",
+        "trim_flap",
+        "gear",
+        "pitch_left",
+        "window_top",
+    ] {
         assert_eq!(ControlChannel::from_token(unknown), None, "{unknown}");
     }
 }

@@ -35,8 +35,9 @@ const SPOKES: [f32; 2] = [5.32, 3.40];
 /// Where the arm leaves the top of the column, from the hub: forward of the
 /// ring a little above the hub, over the column's foot.
 const COLUMN_TOP_FROM_HUB: Vec3 = Vec3::new(0.0, 0.03, 0.05);
-/// Radius of the column tube: 23 px across in Z-4972 at about 1.2 m from its
-/// resected camera (`70°` field, 561 px focal length), so about 50 mm across.
+/// Radius of the column tube: about two thirds as wide as a 3-1/8 in bezel
+/// beside it in Z-4972, so about 50 mm across. The two are at different
+/// ranges from a camera that is not solved, so this is good to a third.
 const COLUMN_RADIUS: f32 = 0.025;
 /// Column pitch per unit of the pitch command, rad, back positive. Assumed: no
 /// source gives the travel; ±0.17 rad moves the hub about ±0.11 m fore and aft.

@@ -388,3 +388,37 @@ fn resolved_airspeed_envelope_matches_active_vehicle_and_omits_rotary_or_spacecr
         Some(Some(74.0))
     );
 }
+
+#[test]
+fn free_flight_runs_inside_a_universe_on_one_clock() {
+    let mut flight = Flight::new().expect("flight");
+    let _ = fly(&mut flight, 5.25);
+    let super::mode::Mode::Free { world, .. } = &flight.mode else {
+        panic!("a new flight is a free flight");
+    };
+    let session = world
+        .session()
+        .expect("an aircraft stays in the local tier");
+    assert_eq!(world.now(), session.now(), "universe and session clocks");
+    assert_eq!(world.physics_time(), flight.now());
+    assert_eq!(world.truth_state(), session.truth_state());
+    assert_eq!(
+        world.epoch().content_hash(),
+        flight.sim_epoch().content_hash()
+    );
+    let live = world.now();
+
+    assert!(flight.scrub_by_seconds(-3.0).expect("-3 s"));
+    let super::mode::Mode::Free { world, .. } = &flight.mode else {
+        panic!("scrubbing keeps the flight mode");
+    };
+    assert!(
+        world.now() < live,
+        "the universe went back with the session"
+    );
+    let lead = world.now().duration_since(flight.now());
+    assert!(
+        lead < world.period(),
+        "the universe is restored within one step of the ownship"
+    );
+}
