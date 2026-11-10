@@ -236,6 +236,14 @@ impl EphemerisCatalog for SpkEphemerisCatalog {
         self.hash
     }
 
+    fn catalog_model_id(&self) -> &str {
+        "naif-spk-chebyshev"
+    }
+
+    fn is_analytical_approximation(&self) -> bool {
+        false
+    }
+
     fn coverage(&self, target: NaifId, center: NaifId, _order: DerivativeOrder) -> Vec<TdbSpanNs> {
         let (Ok(t_eff), Ok(c_eff)) = (self.remap_body(target), self.remap_body(center)) else {
             return Vec::new();

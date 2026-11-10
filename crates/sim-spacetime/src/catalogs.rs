@@ -125,6 +125,17 @@ pub trait EphemerisCatalog: Send + Sync {
     /// SHA-256 content hash of the loaded segment collection, precedence order, and policies.
     fn content_hash(&self) -> ContentHash;
 
+    /// Human-readable model identifier for provenance reporting (e.g. `"naif-spk-chebyshev"`, `"analytical-demo"`).
+    fn catalog_model_id(&self) -> &str {
+        "custom-ephemeris"
+    }
+
+    /// Returns `true` when this catalog uses simplified analytical formulas rather than
+    /// certified numerical/SPK ephemeris kernels.
+    fn is_analytical_approximation(&self) -> bool {
+        false
+    }
+
     /// Exact disjoint valid `TDB` intervals for resolving `target` relative to `center` up to `order`.
     fn coverage(&self, target: NaifId, center: NaifId, order: DerivativeOrder) -> Vec<TdbSpanNs>;
 
@@ -255,6 +266,28 @@ pub enum OrientationError {
 pub trait BodyOrientationCatalog: Send + Sync {
     /// SHA-256 content hash of all loaded orientation kernels and policies.
     fn content_hash(&self) -> ContentHash;
+
+    /// Human-readable model identifier for provenance reporting (e.g. `"naif-stacked-bpc-iau"`, `"analytical-demo"`).
+    fn catalog_model_id(&self) -> &str {
+        "custom-orientation"
+    }
+
+    /// Highest certified [`SurfaceNavGrade`] provided by this catalog for `body`.
+    fn max_supported_grade(&self, body: NaifId) -> Option<SurfaceNavGrade> {
+        if !self
+            .coverage(body, SurfaceNavGrade::PrecisionGeodetic)
+            .is_empty()
+        {
+            Some(SurfaceNavGrade::PrecisionGeodetic)
+        } else if !self
+            .coverage(body, SurfaceNavGrade::ApproximateIau)
+            .is_empty()
+        {
+            Some(SurfaceNavGrade::ApproximateIau)
+        } else {
+            None
+        }
+    }
 
     /// Disjoint valid `TDB` intervals for `body` meeting or exceeding `min_grade`.
     fn coverage(&self, body: NaifId, min_grade: SurfaceNavGrade) -> Vec<TdbSpanNs>;

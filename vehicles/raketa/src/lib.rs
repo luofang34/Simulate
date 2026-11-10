@@ -7,9 +7,16 @@
 //!   and explicitly tagged staged phase demonstrations (`run_staged_phase_demonstration`).
 //! - A `sim_universe::LocalPlant` (`RaketaPlant`) that a `Universe` flies off the pad, hands to
 //!   orbital propagation above the atmosphere, and takes back on the way down.
+//!
+//! ## GNC Stack Alignment
+//! - **Plant physics (`vehicles/raketa`)**: Aerodynamics (`[0°, 180°]`), planetary atmosphere, mass/inertia, and USD articulation geometry stay in this crate.
+//! - **Outer-loop trajectory guidance (`Navigate`)**: `f64` orbital burn, CW rendezvous, entry corridor bank, and powered descent E-guidance live in `navigate-trajectory` and `navigate-guidance`, emitting `GuidanceSetpoint` (`ThrustVector`, `EntryBank`, `CartesianVelocity`).
+//! - **Mission intent & phase sequencing (`Pilotage`)**: Operational phase sequencing, authority leases, and receipts live in `pilotage-mission-core`.
+//! - **Inner-loop flight control & actuation (`Aviate`, `--features spacecraft`)**: 1 kHz `f32` SAS (`KillRot`, `HoldAttitude`, `DirectionLock`, `EntryBank`), RW + rotational/translational RCS allocation, `4.0G` proper-acceleration limiting, and `< 50 m` fin ground-lock live in `aviate-core::control::spacecraft` and `aviate-core::mixer::spacecraft`.
 
 mod aero_actuators;
 mod flight_plant;
+mod gnc_boundary;
 mod limiter;
 mod mission;
 mod usd_contract;
@@ -25,6 +32,11 @@ pub use aero_actuators::{
 pub use flight_plant::{
     RAKETA_BOUNDING_RADIUS_M, RAKETA_PLANT_PERIOD, RAKETA_SENSIBLE_AIR_Q_PA, RaketaCommand,
     RaketaEnvironment, RaketaPlant, RaketaPlantError,
+};
+pub use gnc_boundary::{
+    RAKETA_RCS_VEL_DEADBAND_M_S, RAKETA_RCS_VEL_KP_PER_S, RAKETA_RW_DUMP_THRESHOLD_FRAC,
+    RaketaInnerAllocation, RaketaOuterGuidanceSetpoint, allocate_rw_and_rotational_rcs_dump,
+    allocate_translational_rcs_unit,
 };
 pub use limiter::{
     ALERT_PROPER_ACCEL_EXCEEDANCE, ProperAccelLimiterInput, ProperAccelLimiterOutput,
