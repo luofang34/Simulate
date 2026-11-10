@@ -58,7 +58,7 @@ impl View {
     /// Parts the drawing does not show in this view, so they must not count against it.
     fn excludes(self, path: &str, role: P38PartRole) -> bool {
         // Propellers are lines or dashed discs, the landing gear is phantom, and the gun
-        // barrels, pitot mast and drop-tank pylons are not drawn as outline.
+        // barrels, pitot mast, bead sight post and drop-tank pylons are not drawn as outline.
         let hidden_everywhere = matches!(
             role,
             P38PartRole::PropellerBlades
@@ -72,6 +72,7 @@ impl View {
             "NoseArmament",
             "GunBlastTroughs",
             "PitotMast",
+            "BeadSight",
             "InnerPylons",
         ]
         .iter()

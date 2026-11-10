@@ -5,20 +5,23 @@
 //! control column's floor attachment and the side-console envelopes, so interior detail
 //! binds to them without altering the exterior airframe.
 //!
-//! Where each number comes from:
+//! Where each number comes from, in order of authority:
 //! - AN 01-75F-2 general arrangement ([`crate::drawing`]): the windscreen base and top
 //!   bow, the top hatch's frames, the sill line, the main beam.
-//! - AN 01-75FF-2 (P-38L-1 erection and maintenance instructions), figure 3, "Fuselage
-//!   Station Locations and Removable Panels": the fuselage's frame stations `0, 7 7/8,
-//!   19, 29, 36 7/8, 46 5/16, 63.616, 75, 87 3/4, 95, 105, 115, 126 3/32, 135, 145 9/16,
-//!   162 1/4, 175, 192 1/4, 206 3/8, 220, 236`. Station `126 3/32` is the general
-//!   arrangement's windscreen top bow and `236` its gondola tail, so the two sheets
-//!   share a frame; `95` and `105` are taken here for the pedals and the panel.
-//! - LeRoy Weber's P-38L-5-LO inboard profile (Superscale, 1958), a redraw that carries
-//!   Lockheed station numbers: which frame carries what (the instrument panel on the
-//!   frame behind the instrument access panels, pedal pivots at station 95), and the
-//!   seat-back armour, the two floor levels and the control column, read off a scan to
-//!   about `2 in`. Of an L, so each is a secondary reading.
+//! - T.O. 01-75FG-2 (Lightning I service instructions, 1942), same station datum: the
+//!   instrument panel at station 106, the armament compartment's aft bulkhead at
+//!   station 95, the gunsight arm 118, and the ring-and-bead sight (ring on the
+//!   windscreen frame at station 126, bead at station `97 3/8`, line of sight on
+//!   waterline 34.2, three inches to port). Stated for the Lightning I and taken for the
+//!   G; the waterline is taken as height above the fuselage reference line.
+//! - AN 01-75FF-2 (P-38L-1 erection and maintenance instructions): figure 3's fuselage
+//!   frame stations (`... 87 3/4, 95, 105, 115, 126 3/32, 135, 145 9/16, 162 1/4 ...
+//!   236`; `126 3/32` is the general arrangement's windscreen top bow and `236` its
+//!   gondola tail, so the sheets share a frame), and figure 367's armour arms: seat
+//!   bottom 138.0, seat back 147.5, plate behind the seat 156.0.
+//! - LeRoy Weber's P-38L-5-LO inboard profile (Superscale, 1958), a redraw read off a
+//!   scan to about `2 in`, only for what the manuals do not give: the two floor levels,
+//!   the control column's foot and the pedal pivots on the station 95 frame.
 //! - Derived here: the design eyepoint and the seat reference point (see
 //!   [`DESIGN_EYE_FS_IN`]).
 
@@ -26,20 +29,20 @@ use crate::drawing::{
     INCH_M, WINDSCREEN_BASE_FS_IN, WINDSCREEN_TOP_FRAME_FS_IN, frl_to_z, fs_to_y,
 };
 
-/// Rudder pedal pivots: fuselage frame station 95 (AN 01-75FF-2 figure 3; the Weber
-/// drawing puts the pedal pivots on it).
+/// Rudder pedal pivots: on the station 95 frame, the armament compartment's aft
+/// bulkhead (T.O. 01-75FG-2; the Weber drawing puts the pivots on it).
 pub const RUDDER_PEDAL_FS_IN: f32 = 95.0;
-/// Instrument panel frame: fuselage frame station 105 (AN 01-75FF-2 figure 3), the
-/// frame behind the instrument access panels in the deck; the board stands vertical on
-/// it, `5 in` aft of the windscreen base (the Weber drawing shows it at `106 ± 2`).
-pub const INSTRUMENT_PANEL_FS_IN: f32 = 105.0;
+/// Instrument panel board: station 106 (T.O. 01-75FG-2 section 11), an inch aft of the
+/// station 105 frame of AN 01-75FF-2 figure 3; it stands vertical on the Weber drawing.
+pub const INSTRUMENT_PANEL_FS_IN: f32 = 106.0;
 /// Control column's floor attachment, on the starboard side (secondary reading).
 pub const CONTROL_COLUMN_FS_IN: f32 = 116.0;
 /// Control column off the ship centreline, to starboard (secondary reading).
 pub const CONTROL_COLUMN_BL_IN: f32 = 10.6;
-/// Forward face of the seat-back armour plate, just ahead of the main beam (secondary
-/// reading; the general arrangement draws the hatch's aft frame at `FS 154.3`).
-pub const SEAT_ARMOUR_FS_IN: f32 = 155.0;
+/// Armour plate behind and above the seat, just ahead of the main beam (AN 01-75FF-2
+/// figure 367, arm 156.0; the general arrangement draws the hatch's aft frame at
+/// `FS 154.3`).
+pub const SEAT_ARMOUR_FS_IN: f32 = 156.0;
 /// Main beam: the `35 %` chord line (AN 01-75F-2 plan view).
 pub const MAIN_BEAM_FS_IN: f32 = 160.0;
 /// Floor above the fuselage reference line: ahead of the nose-wheel well and over the
@@ -49,12 +52,13 @@ pub const FLOOR_ABOVE_FRL_IN: (f32, f32) = (-9.0, -6.0);
 pub const FLOOR_STEP_FS_IN: (f32, f32) = (128.0, 134.0);
 /// Seat back recline from vertical (secondary reading of the seat detail), degrees.
 pub const SEAT_BACK_RECLINE_DEG: f32 = 15.0;
-/// Design eyepoint station: the head `2 in` ahead of a `3 in` headrest pad on the armour
+/// Design eyepoint station: the head `3 in` ahead of a `3 in` headrest pad on the armour
 /// plate, the eye `7 in` ahead of the back of the head. The top hatch's middle is
-/// `FS 140.2`.
-pub const DESIGN_EYE_FS_IN: f32 = SEAT_ARMOUR_FS_IN - 12.0;
+/// `FS 140.2`; the manuals' pilot arm is 138 and seat-back armour arm 147.5.
+pub const DESIGN_EYE_FS_IN: f32 = SEAT_ARMOUR_FS_IN - 13.0;
 /// Design eyepoint above the fuselage reference line: the canopy's inner top (`40.9 in`)
-/// less `4.4 in` from eye to crown, `0.5 in` of helmet and `2 in` of clearance.
+/// less `4.4 in` from eye to crown, `0.5 in` of helmet and `2 in` of clearance. The
+/// auxiliary sight's line on waterline 34.2 is the same height within `0.2 in`.
 pub const DESIGN_EYE_ABOVE_FRL_IN: f32 = 34.0;
 /// Seat reference point (seat back meets seat pan) relative to the eyepoint, `(aft,
 /// up)`: a `31.5 in` sitting eye height on the reclined back plus a `3 in` seat-pack
@@ -64,9 +68,19 @@ pub const SEAT_REFERENCE_FROM_EYE_IN: (f32, f32) = (0.5, -33.4);
 /// Top of the rectangular board above the fuselage reference line: as high as a
 /// `0.72 m` wide board fits inside the skin at its station.
 pub const PANEL_TOP_ABOVE_FRL_IN: f32 = 22.0;
-/// Gunsight behind the windscreen: station and height above the fuselage reference line
-/// (secondary reading of the L's sight).
-pub const GUNSIGHT_IN: (f32, f32) = (122.0, 29.0);
+/// Gunsight behind the windscreen: station (T.O. 01-75FG-2 arm 118) and height above
+/// the fuselage reference line (read off the Weber drawing's sight).
+pub const GUNSIGHT_IN: (f32, f32) = (118.0, 29.0);
+/// Auxiliary ring-and-bead sight (T.O. 01-75FG-2 section 11): the bead's station ahead
+/// of the windscreen, the ring's on the windscreen frame, the sight line's waterline and
+/// its offset to port, inches.
+pub const BEAD_SIGHT_FS_IN: f32 = 97.375;
+/// Station of the auxiliary sight's ring.
+pub const RING_SIGHT_FS_IN: f32 = 126.0;
+/// Waterline of the auxiliary sight's line, taken as height above the reference line.
+pub const AUX_SIGHT_LINE_ABOVE_FRL_IN: f32 = 34.2;
+/// The auxiliary sight line's offset to port of the ship centreline.
+pub const AUX_SIGHT_PORT_IN: f32 = 3.0;
 
 /// 3D rectangular mounting frame for an instrument panel or sub-stage attachment.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -86,7 +100,7 @@ pub struct PanelMountFrame {
 /// Fuselage station (`FS`) frame reservation inside the central gondola.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StationBulkheadSpec {
-    /// Lockheed fuselage station designation (e.g. `"FS 105"`).
+    /// Lockheed fuselage station designation (e.g. `"FS 106"`).
     pub station_name: &'static str,
     /// Station number in inches aft of the nose datum (`FS 0`).
     pub station_in: f32,
@@ -149,9 +163,9 @@ const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
         "Windscreen base on the sill line",
     ),
     frame(
-        "FS 105",
+        "FS 106",
         INSTRUMENT_PANEL_FS_IN,
-        "Instrument panel frame under the glare shield",
+        "Instrument panel board under the glare shield",
     ),
     frame(
         "FS 126",
@@ -159,9 +173,9 @@ const P38G_BULKHEADS: &[StationBulkheadSpec] = &[
         "Windscreen top bow and forward frame of the top hatch",
     ),
     frame(
-        "FS 155",
+        "FS 156",
         SEAT_ARMOUR_FS_IN,
-        "Seat-back armour plate under the hatch's aft frame",
+        "Armour plate behind the seat, under the hatch's aft frame",
     ),
     frame(
         "FS 160",
