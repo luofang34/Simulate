@@ -1,6 +1,7 @@
 //! Open landing-gear bays: a lower skin lofted with a rectangular opening, the bay's
 //! interior walls and ceiling behind it, and two doors that close the opening flush. The
-//! doors carry a hinge axis along the bay; the renderer swings them open with the gear.
+//! doors carry a hinge axis along the bay whose length is the angle they open through;
+//! the renderer swings them open with the gear.
 //!
 //! AN 01-75FF-2 (P-38L-1 erection and maintenance instructions) describes the main
 //! doors: "two doors, hinged to the lower channels of the forward boom, operate
@@ -11,8 +12,9 @@
 //! nose doors station 42 to 148 on the latter. Those agree with what the gear needs:
 //! the nose wheel hangs at station 54.9 and stows about station 133, and the main leg
 //! swings aft about its pivot at station `179 7/8` (stated) inside the forward boom,
-//! which ends at station 265 (stated). The openings' widths are assumed from the tyres
-//! they pass (27 in nose, 36 in main); AN 01-75F-2 does not draw the bays.
+//! which ends at station 265 (stated). The nose opening's width is fitted to the depth its
+//! doors hang in a photograph; the main openings' is assumed from the 36 in tyre.
+//! AN 01-75F-2 does not draw the bays.
 
 use glam::{DMat4, DVec3, Vec3};
 
@@ -193,9 +195,13 @@ fn door(
     let rest = DMat4::from_translation(pivot.as_dvec3());
     let mut prim = part(path, P38PartRole::CabinExterior, NEUTRAL_GRAY, rest, mesh);
     prim.double_sided = true;
-    // Opening swings the free edge down: about +y when the door reaches towards +x.
-    let sign = if free.x > pivot.x { 1.0 } else { -1.0 };
-    prim.custom_hinge_axis = Some(DVec3::new(0.0, sign, 0.0));
+    // Opening swings the free edge down until it hangs straight under the hinge, as the
+    // doors do in photographs: about +y when the door reaches towards +x. The axis
+    // carries that angle, radians, as its length.
+    let reach = free - pivot;
+    let hang = reach.x.abs().atan2((-reach.z).max(0.0));
+    let sign = if reach.x > 0.0 { 1.0 } else { -1.0 };
+    prim.custom_hinge_axis = Some(DVec3::new(0.0, f64::from(sign * hang), 0.0));
     prim
 }
 
@@ -204,7 +210,9 @@ fn door(
 pub(crate) const NOSE_BAY: Bay = Bay {
     fs: (42.0, 148.0),
     centre_x: 0.0,
-    half_width: 7.5 * 0.0254,
+    // Each door hangs about 15 in below the keel in the 339th FS photograph of 43-2239
+    // (to about 3 in), which the doors of an opening this wide do.
+    half_width: 11.5 * 0.0254,
     depth: 0.50,
 };
 

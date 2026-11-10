@@ -81,17 +81,20 @@ fn push_leg(
     }
 }
 
-/// Nose gear as the 339th FS photographs show it: a thick oleo cylinder, a chromed
-/// piston, a one-sided fork sweeping round the port side of the wheel to the axle,
-/// torque links and a shimmy damper, and a drag strut running up and aft into the bay.
+/// Nose gear, its parts as AN 01-75FF-2 figure 88 names them and its proportions as the
+/// 339th FS photographs show: a thick oleo cylinder, a chromed piston, a one-sided fork
+/// sweeping round the port side of the wheel to the axle, torque arms, the shimmy damper
+/// across the leg, and a pair of drag struts running up and aft into the bay.
 pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
     let radius = 0.5 * NOSE_TYRE_DIAMETER_IN * INCH_M;
     // The leg's trunnion is inside the bay, above the keel.
     let top = keel_z_at(0.0, NOSE_AXLE_Y) + 0.25;
     let pivot = Vec3::new(0.0, NOSE_AXLE_Y + 0.05, top);
     let axle = Vec3::new(0.0, NOSE_AXLE_Y, NOSE_AXLE_Z) - pivot;
-    let cylinder_end = Vec3::new(0.0, -0.01, 0.50 * axle.z);
-    let piston_end = Vec3::new(0.0, -0.02, axle.z + radius + 0.09);
+    // AN 01-75FF-2 figure 88 (nose landing gear): the cylinder is a little over half the
+    // leg, the piston short, and the fork takes the rest.
+    let cylinder_end = Vec3::new(0.0, -0.01, 0.55 * axle.z);
+    let piston_end = Vec3::new(0.0, -0.02, 0.66 * axle.z);
     let fork_x = -(NOSE_TYRE_HALF_WIDTH_M + 0.055);
     let mut painted = MeshBuilder::new();
     painted.tube(Vec3::ZERO, cylinder_end, 0.055, 0.055, 14);
@@ -120,22 +123,24 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
         10,
     );
     torque_links(&mut painted, cylinder_end, piston_end, 0.16);
-    // Shimmy damper ahead of the cylinder's lower end
+    // Shimmy damper: a cylinder lying across the leg at the oleo cylinder's lower end
     painted.tube(
-        cylinder_end + Vec3::new(0.0, 0.075, 0.02),
-        cylinder_end + Vec3::new(0.0, 0.075, 0.15),
-        0.028,
-        0.028,
+        cylinder_end + Vec3::new(-0.03, 0.07, 0.03),
+        cylinder_end + Vec3::new(0.17, 0.07, 0.03),
+        0.026,
+        0.026,
         10,
     );
-    // Drag strut
-    painted.tube(
-        Vec3::new(0.0, -0.04, 0.35 * axle.z),
-        Vec3::new(0.0, -0.60, 0.02),
-        0.022,
-        0.022,
-        10,
-    );
+    // The pair of drag struts running up and aft to the actuating cylinder
+    for x in [-0.05_f32, 0.05] {
+        painted.tube(
+            Vec3::new(x, -0.04, 0.38 * axle.z),
+            Vec3::new(x, -0.62, 0.02),
+            0.018,
+            0.018,
+            10,
+        );
+    }
     let mut piston = MeshBuilder::new();
     piston.tube(cylinder_end, piston_end, 0.036, 0.036, 14);
     push_leg(prims, "Nose", pivot, painted, piston);
@@ -152,7 +157,8 @@ pub(crate) fn build_nose_gear(prims: &mut Vec<P38MeshPrim>) {
 
 /// Main legs: each pivots at station `179 7/8` (T.O. 01-75FG-2) inside its boom and
 /// rakes forward to the axle; the wheel sits outboard of the leg on a stub axle, as the
-/// photographs show, with torque links and a drag strut running up and aft.
+/// photographs show, with the side strut, torque arms and drag strut of AN 01-75FF-2
+/// figure 79.
 pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
     const PIVOT_FS_IN: f32 = 179.875;
     for (name, w_name, w_role, side) in [
@@ -167,9 +173,18 @@ pub(crate) fn build_main_gear(prims: &mut Vec<P38MeshPrim>) {
             STRUT_TOP_Z,
         );
         let axle = Vec3::new(0.0, wheel.y - pivot.y, wheel.z - pivot.z);
-        let cylinder_end = 0.5 * axle;
+        // AN 01-75FF-2 figure 79 (main landing gear): the cylinder runs most of the leg,
+        // braced at its top by a side strut from the fulcrum's inboard end.
+        let cylinder_end = 0.62 * axle;
         let mut painted = MeshBuilder::new();
         painted.tube(Vec3::ZERO, cylinder_end, 0.066, 0.066, 14);
+        painted.tube(
+            Vec3::new(-side * 0.20, 0.0, 0.0),
+            0.40 * axle,
+            0.024,
+            0.024,
+            10,
+        );
         painted.tube(cylinder_end * 0.96, cylinder_end, 0.075, 0.075, 14);
         painted.tube(
             axle,

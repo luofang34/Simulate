@@ -164,3 +164,34 @@ fn the_legs_run_from_their_bays_to_their_axles() {
         }
     }
 }
+
+/// Open, each door hangs straight under its hinge: turned through the angle its hinge
+/// axis carries, its free edge is below the hinge line, not out to the side.
+#[test]
+fn open_doors_hang_under_their_hinges() {
+    let prims = p38g_mesh_prims();
+    let doors: Vec<&P38MeshPrim> = prims
+        .iter()
+        .filter(|p| p.prim_path.contains("/GearDoor"))
+        .collect();
+    assert_eq!(doors.len(), 6);
+    for door in doors {
+        let angle = door.custom_hinge_axis.expect("hinge").y;
+        let turn = glam::DMat4::from_rotation_y(angle);
+        // Vertices are authored about the hinge at the door's middle; the free edge there
+        // is the farthest from the hinge line.
+        let across = |p: &glam::DVec3| p.x.hypot(p.z);
+        let free = door
+            .vertices
+            .iter()
+            .map(|v| turn.transform_point3(Vec3::from(v.position).as_dvec3()))
+            .filter(|p| p.y.abs() < 0.2)
+            .max_by(|a, b| across(a).total_cmp(&across(b)))
+            .expect("door vertices");
+        assert!(
+            free.z < 0.0 && free.x.abs() < 0.35 * free.z.abs(),
+            "{} hangs to {free:.3}",
+            door.prim_path
+        );
+    }
+}
