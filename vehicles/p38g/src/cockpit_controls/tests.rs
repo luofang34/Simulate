@@ -63,6 +63,11 @@ fn the_wheel_rides_the_column_and_rolls_about_its_hub() {
     );
 }
 
+/// The front of the pilot's chest ahead of the design eye. Assumed: the contract
+/// seats the eye 7 in ahead of the seat's back line, and a chest about 10 in deep
+/// with a parachute harness then stands some 3 in ahead of the eye.
+const CHEST_AHEAD_OF_EYE_M: f32 = 0.075;
+
 /// At full forward column the rim stays clear of the panel board, and at full back
 /// it stays ahead of the pilot's chest.
 #[test]
@@ -90,7 +95,7 @@ fn the_wheel_clears_the_panel_and_the_pilot_at_full_travel() {
                     p.y
                 );
                 assert!(
-                    p.y > eye_y + 0.25,
+                    p.y > eye_y + CHEST_AHEAD_OF_EYE_M,
                     "{} comes back to y {} at {value}",
                     prim.prim_path,
                     p.y

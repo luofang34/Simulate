@@ -18,6 +18,8 @@ use crate::esc_menu::{HubTab, HubView, MenuInput, OverlayContent, SpawnMode};
 use crate::sky_rig::SkyFrame;
 use crate::vehicles::FreeFlightVehicle;
 
+mod photo_views;
+
 #[test]
 #[ignore = "writes 1280x720 P-38G third-person verification PNGs into $SIMULATE_VERIFY_OUT"]
 fn render_p38_third_person_verification_shots() -> Result<(), AppSimError> {
@@ -294,7 +296,7 @@ fn render_p38_cabin_looks(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
         pitch_deg: -10.0,
     };
     draw_p38_cockpit_view(h, back, sun, &dir.join("p38_19_cockpit_look_back.png"))?;
-    render_p38_looks_in_from_outside(h, dir, sun)?;
+    photo_views::render_p38_looks_in_from_outside(h, dir, sun)?;
     let controls = CockpitLook {
         eye_m: [0.16, 0.10, -0.02],
         yaw_deg: -18.0,
@@ -329,67 +331,6 @@ fn render_p38_cabin_looks(h: &mut VerifyHarness, dir: &Path) -> Result<(), AppSi
         pitch_deg: -20.0,
     };
     draw_p38_cockpit_view(h, gyros, sun, &dir.join("p38_22_gyro_group.png"))
-}
-
-/// The cockpit looked into from outside, as Lockheed's photographs look in:
-/// over the left sill with the canopy shut and open, then forward over the
-/// seat at the board.
-fn render_p38_looks_in_from_outside(
-    h: &mut VerifyHarness,
-    dir: &Path,
-    sun: DVec3,
-) -> Result<(), AppSimError> {
-    // From over the left sill looking down and right across the cockpit, the
-    // way Lockheed's negative Z-4972 looks in
-    // (<https://commons.wikimedia.org/wiki/File:Lockheed_P-38G_cockpit_looking_in_from_left_wing_061019-F-1234P-004.jpg>).
-    // The viewpoint and field are chosen by eye; the photograph's camera is
-    // not solved.
-    let z4972 = CockpitLook {
-        eye_m: [-0.36, 0.20, -0.30],
-        yaw_deg: 30.0,
-        pitch_deg: -36.0,
-    };
-    draw_p38_view_with_fov(
-        h,
-        z4972,
-        Some(70.0),
-        sun,
-        &dir.join("p38_23_over_left_sill.png"),
-    )?;
-    // The same look with the canopy as the photograph has it: hatch raised,
-    // both side windows wound down.
-    let open = sim_core::CanopyOpening {
-        hatch: 1.0,
-        side_windows: [1.0; 2],
-    };
-    h.flight.update_system_controls(|sys| sys.canopy = open);
-    h.flight
-        .advance_by(0.05, ControlInputs::default(), SimTimeScale::RealTime)?;
-    draw_p38_view_with_fov(
-        h,
-        z4972,
-        Some(70.0),
-        sun,
-        &dir.join("p38_24_over_left_sill_canopy_open.png"),
-    )?;
-    // Forward and down over the seat and wheel at the board, from where the
-    // camera of Lockheed's frontal photograph Z-4986 solves to (about 0.15 m
-    // uncertain fore and aft), with its field.
-    let over_the_seat = CockpitLook {
-        eye_m: [0.03, 0.37, -0.38],
-        yaw_deg: 0.0,
-        pitch_deg: -36.0,
-    };
-    draw_p38_view_with_fov(
-        h,
-        over_the_seat,
-        Some(37.0),
-        sun,
-        &dir.join("p38_25_over_the_seat_canopy_open.png"),
-    )?;
-    h.flight
-        .update_system_controls(|sys| sys.canopy = sim_core::CanopyOpening::default());
-    Ok(())
 }
 
 /// A seated view moved `eye_m` `[right, up, forward]` from the design eye and
