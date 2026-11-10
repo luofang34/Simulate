@@ -44,7 +44,8 @@ const UNDERSIDE_NZ: f32 = -0.25;
 
 /// The coat at a point of part `path` with outward normal `normal`.
 pub(crate) fn coat(path: &str, normal: Vec3) -> Coat {
-    if path.ends_with("LowerGray") {
+    if path.ends_with("LowerGray") || path.ends_with("Underside") || path.contains("ChinOilCooler")
+    {
         Coat::Gray
     } else if path.ends_with("UpperOlive")
         || path.ends_with("NoseUpperDeck")

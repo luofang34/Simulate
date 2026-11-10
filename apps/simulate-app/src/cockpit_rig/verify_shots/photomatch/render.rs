@@ -13,6 +13,7 @@ use sim_scenery::AerodromeId;
 use super::super::vehicle_views::capture_camera_lit;
 use super::super::{SHOT_SIZE, VerifyHarness};
 use super::compose::{Framing, write_comparisons};
+use super::landmarks::p38g_landmarks;
 use super::resection::PinholePose;
 use super::{Match, Photo, match_photo, photos};
 use crate::error::AppSimError;
@@ -22,6 +23,10 @@ use crate::vehicles::FreeFlightVehicle;
 /// Sun for a photo whose light gives no direction: high and over the camera's left
 /// shoulder, which shows shape without hard shadows.
 const DEFAULT_SUN_DEG: (f64, f64) = (-35.0, 55.0);
+/// Exposure the photo renders are taken with: 1/500 s, fitted to the arc of about 20°
+/// each blade smears over in photo 03 at the model's cruise propeller speed (the aerial
+/// and press cameras of the period offered 1/125 to 1/1000 s).
+const PHOTO_SHUTTER_S: f64 = 1.0 / 500.0;
 /// `50 ms` steps flown before a shot.
 const GEAR_SETTLE_STEPS: usize = 200;
 
@@ -54,7 +59,7 @@ fn render_photo_matches() -> Result<(), AppSimError> {
             tracing::warn!(file = %photo.file, "photo not found; skipped");
             continue;
         };
-        pose_aircraft(&mut h, &photo)?;
+        let parked = pose_aircraft(&mut h, &matched)?;
         let framing = Framing::new(&matched.solved.pose, photo.size_px, SHOT_SIZE);
         let shown = capture(&mut h, &matched, &framing, OperatorViewportMode::Chase)?;
         let hidden = capture(
@@ -63,14 +68,21 @@ fn render_photo_matches() -> Result<(), AppSimError> {
             &framing,
             OperatorViewportMode::SensorAperture,
         )?;
-        write_comparisons(
+        let tone = write_comparisons(
             &out,
             &matched,
             &framing,
             &image.to_rgb8(),
             [&shown, &hidden],
         )?;
-        summary.push(solution_json(&matched));
+        let mut solution = solution_json(&matched);
+        if let Some(fields) = solution.as_object_mut() {
+            fields.insert("tone_p05_p25_p50_p75_p95".to_owned(), tone);
+            fields.insert("parked".to_owned(), parked.into());
+            let above = eye_above_wheels_m(&matched.solved.pose);
+            fields.insert("eye_above_wheels_m".to_owned(), above.into());
+        }
+        summary.push(solution);
     }
     let doc = serde_json::to_string_pretty(&summary).map_err(|e| shot_error(&e))?;
     std::fs::write(out.join("solutions.json"), doc).map_err(|e| shot_error(&e))?;
@@ -84,13 +96,30 @@ pub(super) fn shot_error(e: &dyn std::fmt::Display) -> AppSimError {
     }
 }
 
-/// Flies the aircraft clear of the ground with its gear as photographed: a resected
-/// camera may sit a little below the parked airframe's wheels, inside drawn terrain.
-/// A ground photo's engines are cut and feathered so its blades stand still.
-fn pose_aircraft(h: &mut VerifyHarness, photo: &Photo) -> Result<(), AppSimError> {
+/// Lowest the camera of a ground photo may sit above the model's wheel plane and still
+/// be rendered with the aircraft parked: lower, and drawn terrain would cover the lens.
+const MIN_EYE_ABOVE_WHEELS_M: f64 = 0.25;
+
+/// Poses the aircraft as photographed and says whether it stands on the ground.
+///
+/// A ground photo is rendered standing on a runway, where the drawn ground and the
+/// ground its shadow falls on agree, so the shadow lies under it and the ground lights
+/// its underside, unless the resected camera sits at or below the
+/// model's wheel plane (the model's stance differs from the photographed aircraft's);
+/// then, as for a photo taken in flight, the aircraft is flown clear of the ground with
+/// its gear as photographed. A ground photo's propellers are feathered so its blades
+/// stand still.
+fn pose_aircraft(h: &mut VerifyHarness, matched: &Match) -> Result<bool, AppSimError> {
+    let photo = &matched.photo;
+    let parked = !photo.airborne
+        && eye_above_wheels_m(&matched.solved.pose).is_some_and(|m| m >= MIN_EYE_ABOVE_WHEELS_M);
+    let mode = if parked {
+        SpawnMode::Threshold
+    } else {
+        SpawnMode::ShortFinal
+    };
     if let Some(diag) = h.rig.supervisor().diagram(AerodromeId::NewarkKewr).cloned() {
-        h.flight
-            .spawn_at_aerodrome(&diag, 0, SpawnMode::ShortFinal)?;
+        h.flight.spawn_at_aerodrome(&diag, 0, mode)?;
     }
     let (gear_down, stopped) = (photo.gear_down, !photo.airborne);
     h.flight.update_system_controls(|sys| {
@@ -98,7 +127,7 @@ fn pose_aircraft(h: &mut VerifyHarness, photo: &Photo) -> Result<(), AppSimError
         sys.prop_feather = [stopped; 2];
     });
     let throttle = if stopped { 0.0 } else { 0.8 };
-    // Long enough for the gear to finish travelling.
+    // Long enough for the gear to finish travelling, or the parked airframe to settle.
     for _ in 0..GEAR_SETTLE_STEPS {
         h.flight.advance_by(
             0.05,
@@ -109,7 +138,17 @@ fn pose_aircraft(h: &mut VerifyHarness, photo: &Photo) -> Result<(), AppSimError
             SimTimeScale::RealTime,
         )?;
     }
-    Ok(())
+    Ok(parked)
+}
+
+/// Height of `pose`'s eye above the plane through the model's three wheel bottoms.
+fn eye_above_wheels_m(pose: &PinholePose) -> Option<f64> {
+    let marks = p38g_landmarks();
+    let wheel = |id: &str| marks.iter().find(|(m, _)| *m == id).map(|(_, p)| *p);
+    let (left, right, nose) = (wheel("wheel_l")?, wheel("wheel_r")?, wheel("nose_wheel")?);
+    let up = (right - left).cross(nose - left).try_normalize()?;
+    let up = if up.z < 0.0 { -up } else { up };
+    Some((pose.eye - left).dot(up))
 }
 
 /// The frame from the photo's camera, with the airframe drawn in `Chase` and hidden in
@@ -122,10 +161,20 @@ fn capture(
 ) -> Result<Vec<u8>, AppSimError> {
     h.rig.supervisor_mut().set_viewport_mode(mode);
     h.rig.supervisor_mut().set_virtual_camera_index(0);
+    // The maps exist once a first frame has been prepared; the shutter is set on each.
+    if let Some(maps) = h.rig.maps_mut() {
+        maps.set_camera_shutter_s(PHOTO_SHUTTER_S);
+    }
     let pose = matched.solved.pose;
     let fov_y_rad = framing.render_fov_y_rad;
     let camera = |h: &VerifyHarness| Some(photo_camera(h, &pose, fov_y_rad));
-    let sun = photo_sun(h, &pose, matched.photo.sun_deg.unwrap_or(DEFAULT_SUN_DEG));
+    let sun = match matched.photo.sun_airframe {
+        Some(to_sun) => {
+            let attitude = DMat3::from_quat(h.flight.display_vehicle_state().attitude);
+            (attitude * MESH_TO_FRD * to_sun).normalize_or(DVec3::Z)
+        }
+        None => photo_sun(h, &pose, matched.photo.sun_deg.unwrap_or(DEFAULT_SUN_DEG)),
+    };
     capture_camera_lit(h, camera, sun)
 }
 

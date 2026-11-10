@@ -16,8 +16,8 @@ use crate::gondola::{gondola_half_width_at, gondola_section};
 use crate::instrument_panel::instrument_panel_prims;
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
 use crate::stations::{
-    ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LEATHER_BROWN, PANEL_BLACK,
-    PILOT_SUIT, PROP_YELLOW,
+    ARMOR_GLASS, CHROME_OLEO, COCKPIT_GREEN, GUNMETAL, INSIGNIA_RED, LIFE_VEST, PANEL_BLACK,
+    PILOT_HELMET, PILOT_SUIT,
 };
 
 /// Clearance between interior parts and the mould line: skin and frame depth.
@@ -306,7 +306,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>, contract: &CockpitInt
     prims.push(fixed(
         "/P38g/CockpitInterior/PilotHelmet",
         P38PartRole::PilotFigure,
-        LEATHER_BROWN,
+        PILOT_HELMET,
         head,
     ));
 
@@ -320,7 +320,7 @@ fn build_seat_and_pilot_bust(prims: &mut Vec<P38MeshPrim>, contract: &CockpitInt
     prims.push(fixed(
         "/P38g/CockpitInterior/MaeWestVest",
         P38PartRole::PilotFigure,
-        PROP_YELLOW,
+        LIFE_VEST,
         vest,
     ));
 }

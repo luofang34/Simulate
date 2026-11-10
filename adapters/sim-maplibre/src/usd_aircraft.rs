@@ -226,12 +226,29 @@ impl UsdAircraftAsset {
         self.parts.iter().map(|p| p.indices.len() / 3).sum()
     }
 
-    /// Evaluates articulated part transforms and camera-role visibility for one frame.
+    /// Evaluates articulated part transforms and camera-role visibility for one frame, as
+    /// seen by the eye or a display camera ([`Self::DISPLAY_SHUTTER_S`]).
     #[must_use]
     pub fn evaluate_draws(
         &self,
         articulation: &AirframeArticulation,
         camera_role: SlotCameraRole,
+    ) -> Vec<UsdPartDraw> {
+        self.evaluate_draws_exposed(articulation, camera_role, Self::DISPLAY_SHUTTER_S)
+    }
+
+    /// Exposure over which a turning propeller smears for the eye or a display camera.
+    pub const DISPLAY_SHUTTER_S: f64 = 1.0 / 60.0;
+
+    /// [`Self::evaluate_draws`] for a camera whose shutter stays open `shutter_s` seconds:
+    /// a short exposure leaves a turning propeller as separate blurred blades, a long one
+    /// as an even disc.
+    #[must_use]
+    pub fn evaluate_draws_exposed(
+        &self,
+        articulation: &AirframeArticulation,
+        camera_role: SlotCameraRole,
+        shutter_s: f64,
     ) -> Vec<UsdPartDraw> {
         let mount_vib = mount_vibration_matrix(articulation.engine_vibration_rad);
         let mut draws = Vec::with_capacity(self.parts.len());
@@ -253,7 +270,7 @@ impl UsdAircraftAsset {
                 continue;
             }
             let engine_idx = usize::from(part.prim_path.contains("PropRight"));
-            let prop_vis = articulation.propeller_visual_for_engine(engine_idx, 1.0 / 60.0);
+            let prop_vis = articulation.propeller_visual_for_engine(engine_idx, shutter_s);
             let beacon_emissive = (0.15 + 2.55 * articulation.beacon_flash_norm) as f32;
             let land_emissive =
                 (0.08 + 3.20 * articulation.landing_light_norm.clamp(0.0, 1.0)) as f32;

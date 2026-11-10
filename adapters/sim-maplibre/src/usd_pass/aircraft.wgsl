@@ -62,8 +62,9 @@ fn vs(in: VertexIn) -> VertexOut {
     return out;
 }
 
-const SKY: vec3<f32> = vec3<f32>(0.42, 0.55, 0.72);
-const GROUND: vec3<f32> = vec3<f32>(0.20, 0.19, 0.16);
+// Exposure at a clear noon, metered as a photographer meters full Sun: an 18 % grey card
+// lit by beam and sky (radiance about 0.2 here) lands on the tone curve where it comes
+// out display mid-grey.
 const EXPOSURE: f32 = 1.5;
 
 fn shade(in: VertexOut, front: bool) -> vec3<f32> {
@@ -77,7 +78,6 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let v = normalize(-world);
     let l = normalize(draw.sun.xyz);
     let h = normalize(l + v);
-    let daylight = draw.sun.w;
     let metallic = finish.metallic;
     let roughness = finish.roughness;
     let albedo = finish.albedo;
@@ -87,28 +87,28 @@ fn shade(in: VertexOut, front: bool) -> vec3<f32> {
     let f = fresnel(f0, dot(h, v));
     let spec = f * ggx(max(dot(n, h), 0.0), roughness) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
     let diffuse = (vec3<f32>(1.0) - f) * (1.0 - metallic) * albedo / PI;
-    let sun = vec3<f32>(3.1, 2.95, 2.75) * daylight * sun_visibility(world, geometric, in.clip.xy);
-    // Sky above and sunlit ground below both light the airframe, so undersides never go black.
-    // Ground light comes mostly from sunlit ground; under the airframe that
-    // ground lies in its own shadow, so wells and bellies see less of it.
-    let ground_light = ground_bounce(world, in.clip.xy);
-    let hemi = mix(GROUND * 1.6 * ground_light, SKY * 1.15, n.z * 0.5 + 0.5) * (0.18 + 0.82 * daylight);
-    let r = reflect(-v, n);
-    let env = mix(GROUND * 1.35 * ground_light, SKY * 1.45, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.18 + 0.82 * daylight);
-    let gloss = 1.0 - roughness * 0.72;
-    let env_spec = env * fresnel(f0, n_dot_v) * gloss * (0.45 + 0.95 * metallic);
-    // Baked occlusion shuts out sky and bounce light; reflections fade less, since a glancing
-    // view still sees open sky past a junction.
+    let sun = sky.sun.rgb * sun_visibility(world, geometric, in.clip.xy);
+    // The sky dome and the sunlit ground fill the shade; their balance against the beam
+    // sets how dark a shaded side reads. Ground light comes mostly from sunlit ground;
+    // under the airframe that ground lies in its own shadow, so wells and bellies see
+    // less of it.
+    let ground_lit = ground_bounce(world, in.clip.xy);
+    let fill = sky_irradiance(n) + ground_irradiance(n, ground_lit);
+    let reflected = sky_reflection(reflect(-v, n), l, roughness, ground_lit);
+    // Fresnel of a rough surface's reflection of its surroundings (Fdez-Aguera's fit).
+    let env_f = f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(1.0 - n_dot_v, 5.0);
+    // Baked occlusion shuts out sky and ground light, less in a pale recess than a dark
+    // one; reflections go with it except at a glancing view of a smooth finish.
     let ao = finish.occlusion;
-    let specular_ao = mix(ao * ao, 1.0, 0.35);
-    let ambient = (hemi * albedo * (1.0 - 0.6 * metallic) + hemi * f0 * 0.25) * ao + env_spec * specular_ao;
+    let diffuse_ao = multi_bounce(ao, albedo * (1.0 - metallic));
+    let specular_ao = specular_occlusion(n_dot_v, ao, roughness);
+    let ambient = fill * (vec3<f32>(1.0) - env_f) * (1.0 - metallic) * albedo / PI * diffuse_ao + reflected * env_f * specular_ao;
     return (diffuse + spec * min(n_dot_l * 4.0, 1.0)) * sun * n_dot_l + ambient + draw.emissive.rgb;
 }
 
 // Share of the ground light reaching `world` from the ground straight below
 // it: 1 in flight, or where that ground is sunlit; down to the sky-lit
 // share where ownship's shadow covers it.
-const SHADED_GROUND: f32 = 0.3;
 
 fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
     if (shadow.ground_centre.w <= 0.0) {
@@ -116,61 +116,115 @@ fn ground_bounce(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
     }
     let below = vec3<f32>(world.xy, shadow.ground_centre.z);
     let lit = sun_visibility(below, vec3<f32>(0.0), pixel);
-    return mix(SHADED_GROUND, 1.0, lit);
+    return mix(sky.ground.w, 1.0, lit);
 }
 
 @fragment
 fn fs_opaque(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let color = shade(in, front);
-    return vec4<f32>(filmic(color, EXPOSURE), 1.0);
+    return vec4<f32>(display(color, EXPOSURE * sky.sun.w), 1.0);
 }
 
+// Share of the light crossing a pane that its material's opacity absorbs: clean acrylic
+// passes about 92 %, and the opacity an airframe gives its glazing (0.3 for a canopy)
+// scales the tint of thicker or laminated panes (assumed).
+const GLASS_ABSORPTION: f32 = 0.4;
+// Share of the absorbed light dust, crazing and scratches scatter back (assumed).
+const GLASS_HAZE: f32 = 0.5;
+
+// A pane of glazing over whatever is drawn behind it: what it mirrors and scatters is
+// added, what it reflects away or absorbs is taken from the background.
 fn glass(in: VertexOut, front: bool) -> vec4<f32> {
     var n = normalize(in.normal);
     if (!front) {
         n = -n;
     }
     let v = normalize(-in.world);
-    let r = reflect(-v, n);
-    let sky = mix(GROUND, SKY * 1.4, clamp(r.z * 0.5 + 0.5, 0.0, 1.0)) * (0.2 + 0.8 * draw.sun.w);
-    let f = 0.04 + 0.96 * pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 5.0);
-    let tint = draw.base_color.rgb * 0.25;
-    let alpha = clamp(draw.base_color.a + f * 0.6, 0.0, 0.92);
-    let rgb = filmic(mix(tint, sky, clamp(f * 1.6 + 0.25, 0.0, 1.0)), EXPOSURE);
-    return vec4<f32>(rgb * alpha, alpha);
+    let l = normalize(draw.sun.xyz);
+    let n_dot_v = clamp(abs(dot(n, v)), 0.0, 1.0);
+    // One air-glass surface (n = 1.5), then the pane's two with the bounces between.
+    let surface = 0.04 + 0.96 * pow(1.0 - n_dot_v, 5.0);
+    let pane = 2.0 * surface / (1.0 + surface);
+    let absorbed = draw.base_color.a * GLASS_ABSORPTION;
+    var radiance = draw.base_color.rgb * absorbed * GLASS_HAZE * (sky_irradiance(n) + ground_irradiance(n, 1.0)) / PI;
+    var reflected = 0.0;
+    // Seen from outside the pane mirrors the sky and glints in the Sun; seen from inside,
+    // through the far side of a canopy, it mirrors the dark cockpit.
+    if (front) {
+        reflected = pane;
+        radiance += sky_reflection(reflect(-v, n), l, draw.params.x, 1.0) * pane;
+        let h = normalize(l + v);
+        let n_dot_l = max(dot(n, l), 0.0);
+        let glint = ggx(max(dot(n, h), 0.0), max(draw.params.x, 0.05)) * 0.25 / max(n_dot_v * max(n_dot_l, 0.001), 0.05);
+        let f_h = 0.04 + 0.96 * pow(1.0 - clamp(dot(h, v), 0.0, 1.0), 5.0);
+        radiance += sky.sun.rgb * sun_visibility(in.world, n, in.clip.xy) * glint * f_h * n_dot_l;
+    }
+    let alpha = 1.0 - (1.0 - reflected) * (1.0 - absorbed);
+    return vec4<f32>(display(radiance, EXPOSURE * sky.sun.w), alpha);
 }
 
-fn propeller_disc(in: VertexOut) -> vec4<f32> {
+// Peak of the opacity an articulation gives a propeller's blur (`disc_opacity` of
+// `sim_core::PropellerVisualState`): its share of that peak is how far the solid blades
+// have given way to their blur.
+const DISC_PEAK_OPACITY: f32 = 0.34;
+// Widest chord of a blade as a share of its radius, and the radius shares its root and
+// yellow tip reach (assumed: a paddle blade of the period, 10 in wide on a 5 ft 9 in
+// radius, tipped 4 in).
+const BLADE_CHORD: f32 = 0.145;
+const BLADE_ROOT: f32 = 0.14;
+const BLADE_TIP_PAINT: f32 = 0.94;
+
+// Chord of a blade at radius share `x`, as a share of the radius: a shank widening to the
+// broadest section near mid-span, then narrowing to a rounded tip.
+fn blade_chord(x: f32) -> f32 {
+    let shank = smoothstep(BLADE_ROOT, 0.45, x);
+    let tip = sqrt(max(1.0 - pow(max(x - 0.55, 0.0) / 0.45, 2.0), 0.0));
+    return BLADE_CHORD * (0.45 + 0.55 * shank) * tip;
+}
+
+// A turning propeller as a camera records it: each point of the disc is covered by a
+// blade for the share of the exposure the blade takes to cross it. A short exposure or a
+// slow propeller leaves separate ghost blades; a long one an even disc, denser toward
+// the hub where the blades are wide for their circle, thinning to nothing at the tips.
+fn propeller_disc(in: VertexOut, front: bool) -> vec4<f32> {
     // The disc's texture coordinates span the unit disc about the hub.
     let uv = in.uv;
     let r = length(uv);
-    if (r > 1.0 || r < 0.12) {
+    if (r > 1.0 || r < BLADE_ROOT) {
         discard;
     }
-    // Blade density peaks mid-span and fades at the spinner and the tips.
-    let radial = smoothstep(0.12, 0.22, r) * (1.0 - smoothstep(0.86, 0.99, r)) * (0.55 + 0.45 * sin(r * PI));
-    // Two or three blades smeared over the shutter interval.
     let blades = select(2.0, 3.0, draw.params.w > 2.5);
+    // Angle a blade's chord spans at this radius, and the angle it sweeps while the
+    // shutter is open.
+    let width = blade_chord(r) / r;
+    let sweep = max(draw.params.z, 0.02);
     let theta = atan2(uv.y, uv.x) - draw.params.y;
-    let blur = max(draw.params.z, 0.05);
-    let wedge = pow(0.5 + 0.5 * cos(blades * theta), 1.0 + 6.0 / (1.0 + blur * 4.0));
-    let tip = smoothstep(0.945, 0.962, r) * (1.0 - smoothstep(0.986, 0.998, r));
-    let base = draw.base_color.a;
-    // `base` is the disc's peak opacity (the articulation's `disc_opacity`).
-    let blade_alpha = base * radial * (0.30 + 0.70 * wedge);
-    let tip_alpha = base * tip * (0.45 + 0.55 * wedge) * 0.48;
-    let blade_rgb = draw.base_color.rgb * (0.4 + 0.6 * draw.sun.w);
-    let raw_tip = select(vec3<f32>(0.86, 0.88, 0.90), draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
-    let tip_rgb = raw_tip * (0.4 + 0.6 * draw.sun.w);
-    let alpha = clamp(blade_alpha + tip_alpha, 0.0, 0.34);
-    let rgb = (blade_rgb * blade_alpha + tip_rgb * tip_alpha);
-    return vec4<f32>(rgb, alpha);
+    let spacing = 2.0 * PI / blades;
+    var covered = 0.0;
+    for (var i = -1; i <= 1; i++) {
+        // Nearest blade and its neighbours: a sweep wider than the spacing overlaps them.
+        let d = abs(theta - spacing * (round(theta / spacing) + f32(i)));
+        covered += clamp(0.5 * (width + sweep) - d, 0.0, min(width, sweep));
+    }
+    let presence = clamp(draw.base_color.a / DISC_PEAK_OPACITY, 0.0, 1.0);
+    let alpha = clamp(covered / sweep, 0.0, 1.0) * presence;
+    // The blur is lit as the blades' flat faces are: by the Sun, sky and ground on the
+    // side of the disc that faces the viewer.
+    var n = normalize(in.normal);
+    if (!front) {
+        n = -n;
+    }
+    let tip_paint = select(draw.base_color.rgb, draw.emissive.rgb, length(draw.emissive.rgb) > 0.05);
+    let paint = mix(draw.base_color.rgb, tip_paint, smoothstep(BLADE_TIP_PAINT - 0.005, BLADE_TIP_PAINT + 0.005, r));
+    let light = sky.sun.rgb * max(dot(n, normalize(draw.sun.xyz)), 0.0) + sky_irradiance(n) + ground_irradiance(n, 1.0);
+    let rgb = display(paint * light / PI, EXPOSURE * sky.sun.w);
+    return vec4<f32>(rgb * alpha, alpha);
 }
 
 @fragment
 fn fs_translucent(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     if (draw.params.w > 1.5) {
-        return propeller_disc(in);
+        return propeller_disc(in, front);
     }
     return glass(in, front);
 }

@@ -93,7 +93,8 @@ impl P38Skin {
     }
 
     /// Whether the part at `path` is painted by the skin: the stressed skin
-    /// of the gondola, booms, wing and tail, their moving surfaces, and the
+    /// of the gondola, booms, wing and tail, their moving surfaces, the
+    /// radiator and oil-cooler housings faired into them, and the
     /// spinners (painted, not bare, on the 339th's G-13s: USMC
     /// 127-GR-8-72001).
     #[must_use]
@@ -110,6 +111,8 @@ impl P38Skin {
             "Gondola/UpperOlive" | "Gondola/LowerGray" | "Gondola/NoseUpperDeck"
         ) || path.starts_with("Gondola/NoseBay/GearDoor")
             || path.starts_with("Booms/")
+            || path.starts_with("Powerplant/RadiatorScoops")
+            || path.starts_with("Powerplant/ChinOilCooler")
             || (path.starts_with("Wing/") && path != "Wing/PitotMast")
             || path.starts_with("Empennage/")
             || path.ends_with("/SpinnerBase")

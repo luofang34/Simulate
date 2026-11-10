@@ -33,6 +33,7 @@ mod library;
 mod node;
 mod shadow;
 mod skiway;
+mod sky;
 #[cfg(test)]
 mod tests;
 mod textures;
@@ -42,6 +43,7 @@ pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
 pub use library::{OwnshipVisualKind, StructuralDatum};
 pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
+pub(crate) use sky::SkyLight;
 pub(crate) use textures::AssetTexturesGpu;
 #[cfg(test)]
 pub(crate) use textures::first_fitting_level;
@@ -87,10 +89,11 @@ pub(crate) struct PackedDraw {
 
 /// One slot's aircraft this frame: its draws, opaque before translucent and far before
 /// near, and ownship's sun shadow.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct SlotScene {
     pub(crate) draws: Vec<PackedDraw>,
     pub(crate) shadow: Option<ShadowFrame>,
+    pub(crate) sky: SkyLight,
 }
 
 /// Every slot's aircraft scene this frame.
@@ -132,6 +135,8 @@ pub(crate) struct AircraftSlotView<'a> {
     pub(crate) daylight: f32,
     pub(crate) ownship_role: SlotCameraRole,
     pub(crate) slot: ViewSlotId,
+    /// Exposure time of the camera drawing the slot, seconds (propeller blur).
+    pub(crate) shutter_s: f64,
 }
 
 /// Packs every visible aircraft part of `aircraft` (plus any polar skiway) for one slot;
@@ -184,7 +189,8 @@ pub(crate) fn pack_slot_draws(
         } else {
             SlotCameraRole::External
         };
-        for part_draw in asset.evaluate_draws(&instance.articulation, role) {
+        for part_draw in asset.evaluate_draws_exposed(&instance.articulation, role, view.shutter_s)
+        {
             let Some(part) = asset.parts().get(part_draw.part_index) else {
                 continue;
             };

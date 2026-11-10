@@ -34,8 +34,8 @@ use crate::{
     ConformalFrameStamp, DynamicEntity3D, MapAdapterError, SlotCameraRole, UsdAircraftAsset,
     entity_depth_probes, supply_catalog_dem_synchronously,
     usd_pass::{
-        AircraftLibrary, AircraftSlotView, PolarSkiwayKey, SharedAircraftLibrary, SlotDraws,
-        SlotScene, UsdScene3dPlugin, ownship_shadow, pack_slot_draws, sun_in_anchor_enu,
+        AircraftLibrary, AircraftSlotView, PolarSkiwayKey, SharedAircraftLibrary, SkyLight,
+        SlotDraws, SlotScene, UsdScene3dPlugin, ownship_shadow, pack_slot_draws, sun_in_anchor_enu,
     },
 };
 
@@ -121,6 +121,7 @@ pub struct TruthSceneMap {
     aircraft_library: SharedAircraftLibrary,
     aircraft_draws: SlotDraws,
     sun_ecef: DVec3,
+    shutter_s: f64,
     pixel_ratio: Option<f64>,
 }
 
@@ -199,6 +200,7 @@ impl TruthSceneMap {
             aircraft_library,
             aircraft_draws,
             sun_ecef: DVec3::Z,
+            shutter_s: UsdAircraftAsset::DISPLAY_SHUTTER_S,
             pixel_ratio: None,
         })
     }
@@ -271,6 +273,12 @@ impl TruthSceneMap {
         self.runtime.with_runtime_context(|| {
             crate::supply_catalog_ortho_synchronously(&mut self.map, scenery, "ortho")
         })
+    }
+
+    /// Sets the exposure time of the camera the scene is drawn for, which a turning
+    /// propeller smears over; the eye's by default.
+    pub fn set_shutter_exposure_s(&mut self, shutter_s: f64) {
+        self.shutter_s = shutter_s;
     }
 
     /// Updates the ECEF solar direction driving globe daylight, twilight, and atmosphere.
@@ -443,7 +451,11 @@ impl TruthSceneMap {
             .map_or(SlotCameraRole::External, |(_, role)| *role);
         let (sun_enu, daylight) = sun_in_anchor_enu(stamp, self.sun_ecef);
         let Ok(mut library) = self.aircraft_library.try_borrow_mut() else {
-            return SlotScene::default();
+            return SlotScene {
+                draws: Vec::new(),
+                shadow: None,
+                sky: SkyLight::new(sun_enu, daylight),
+            };
         };
         let polar_skiway = frame
             .polar_runway
@@ -460,10 +472,12 @@ impl TruthSceneMap {
             daylight,
             ownship_role,
             slot,
+            shutter_s: self.shutter_s,
         };
         SlotScene {
             draws: pack_slot_draws(&library, frame.aircraft, polar_skiway, &view),
             shadow: ownship_shadow(&library, frame.aircraft, &view),
+            sky: SkyLight::new(sun_enu, daylight),
         }
     }
 
