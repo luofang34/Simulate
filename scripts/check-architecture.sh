@@ -2,7 +2,8 @@
 # Architectural boundary, dependency DAG, export hygiene, and domain-naming gate:
 #   1. Enforces Cargo dependency DAG: sim-spacetime, sim-orbital, sim-analysis, and sim-mission
 #      must never pull in sim-core, jsbsim, sim-scenery, flightbag, sim-render, wgpu,
-#      navigate-*, or hifitime, and must respect the strict DAG
+#      hifitime, or Navigate's filter, visual and sky crates (its SPK reader in
+#      navigate-astrodynamics is the one shared ephemeris reader), and must respect the strict DAG
 #      sim-spacetime -> {sim-orbital, sim-analysis} -> sim-mission, and sim-core reaches
 #      the orbital stack only through sim-universe.
 #   2. Verifies cross-repo path dependencies in root Cargo.toml carry explicit `version`
