@@ -19,9 +19,8 @@ use crate::{
     terrain::{AltitudeSpec, DemElevationGrid, TerrainLosConfig},
 };
 
-/// Schema version of [`AnalysisRequestArtifact`] and [`AnalysisResultArtifact`]. Version 2
-/// carries [`AccessQuerySpec::signal_time`] and the per-sample light time it produces; no
-/// other version is read.
+/// Schema version of [`AnalysisRequestArtifact`] and [`AnalysisResultArtifact`]; no other
+/// version is read. Version 2 states how a link's two ends are timed.
 pub const ANALYSIS_CONTRACT_SCHEMA_VERSION: u32 = 2;
 
 /// Identifies the immutable planning design revision that produced an [`AnalysisRequestArtifact`].
