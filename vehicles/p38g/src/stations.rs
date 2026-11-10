@@ -69,6 +69,11 @@ pub(crate) const OLIVE_DRAB: P38Material = mat([0.089, 0.078, 0.047], 0.0, 0.70)
 pub(crate) const NEUTRAL_GRAY: P38Material = mat([0.175, 0.19, 0.205], 0.0, 0.62);
 /// The canopy's frames, painted with the airframe: olive drab over their metal.
 pub(crate) const CANOPY_FRAME: P38Material = mat(OLIVE_DRAB.diffuse_rgb, 0.12, 0.62);
+/// The canopy frames' and cockpit sills' faces toward the cockpit: a light paint, as
+/// Lockheed's cockpit photographs of the P-38F and G show the framing inside against
+/// the olive drab outside. Assumed: a pale grey-green of about 30 % reflectance; the
+/// finish specification was not found, and the photographs are black and white.
+pub(crate) const CANOPY_FRAME_INTERIOR: P38Material = mat([0.29, 0.32, 0.25], 0.0, 0.6);
 /// Insignia White, some months in the sun and dust: about 78 % (assumed; fresh white
 /// lacquer reflects 85 to 90 %).
 pub(crate) const INSIGNIA_WHITE: P38Material = mat([0.78, 0.78, 0.75], 0.0, 0.5);

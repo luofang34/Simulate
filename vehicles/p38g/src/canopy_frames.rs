@@ -16,7 +16,7 @@ use crate::drawing::{
 };
 use crate::gondola::{canopy_point, canopy_sill_z};
 use crate::mesh::{MeshBuilder, P38MeshPrim, P38PartRole, fixed, part};
-use crate::stations::{CANOPY_FRAME, GUNMETAL};
+use crate::stations::{CANOPY_FRAME, CANOPY_FRAME_INTERIOR, GUNMETAL};
 
 /// Arc angle of the windscreen quarter posts either side of the centre panel.
 const QUARTER_POST_A: f32 = 0.46;
@@ -112,7 +112,7 @@ pub(crate) fn canopy_frame_prims() -> Vec<P38MeshPrim> {
         fixed(
             "/P38g/Canopy/InteriorFrames",
             P38PartRole::CabinExterior,
-            CANOPY_FRAME,
+            CANOPY_FRAME_INTERIOR,
             frames,
         ),
         hatch,

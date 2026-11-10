@@ -13,7 +13,7 @@ use crate::gondola::{
     GONDOLA_SECTIONS, GondolaSection, gondola_point, opening_edge_theta, section_y,
 };
 use crate::mesh::{Inside, MeshBuilder, P38MeshPrim, P38PartRole, fixed};
-use crate::stations::{CANOPY_FRAME, OLIVE_DRAB};
+use crate::stations::{CANOPY_FRAME_INTERIOR, OLIVE_DRAB};
 
 const ARC_STEPS: usize = 20;
 const UPPER_HALF_ARC: f32 = 0.54 * PI;
@@ -74,7 +74,7 @@ pub(crate) fn upper_gondola_skin(prims: &mut Vec<P38MeshPrim>) {
     let mut rails = fixed(
         "/P38g/Gondola/CockpitSillRails",
         P38PartRole::CabinExterior,
-        CANOPY_FRAME,
+        CANOPY_FRAME_INTERIOR,
         sills,
     );
     rails.double_sided = true;
