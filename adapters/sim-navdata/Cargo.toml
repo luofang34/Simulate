@@ -21,6 +21,7 @@ wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
     "Blob",
     "DomException",
+    "EventTarget",
     "File",
     "FileSystemDirectoryHandle",
     "FileSystemFileHandle",
