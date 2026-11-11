@@ -4,8 +4,11 @@
 //! the exact non-rotating accelerating-frame origin defect $\delta\mathbf{a}_{\text{origin},P}(t)$
 //! so reconstructed barycentric trajectories remain invariant to coordinate origin $P$.
 
+mod far_field;
 mod frames;
 pub mod harmonics;
+#[cfg(test)]
+mod tests;
 
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
@@ -20,6 +23,7 @@ use crate::{
     time::TdbEpoch,
 };
 
+pub use far_field::{HARMONIC_FAR_FIELD_ACCEL_M_S2, harmonic_reach_m};
 pub use harmonics::{HarmonicFieldEval, evaluate_spherical_harmonics_fixed};
 
 /// How primary-frame origin acceleration $\ddot{\mathbf{x}}_P(t)$ relates to the force model.
@@ -116,12 +120,17 @@ pub struct ForceModel {
     harmonic_bodies: Vec<NaifId>,
     dynamical_mode: DynamicalMode,
     max_harmonic_degree: u32,
+    /// Harmonic fields weaker than this (`m/s²`) are skipped; see [`harmonic_reach_m`].
+    harmonic_far_field_accel_m_s2: f64,
+    /// Reach of each of `harmonic_bodies`' fields (`m`), in the same order.
+    harmonic_reach_m: Vec<f64>,
     constants: GravityConstantsCatalog,
     hash: ContentHash,
 }
 
 impl ForceModel {
-    /// Validates disjoint hierarchy and constructs a hashed [`ForceModel`].
+    /// Validates disjoint hierarchy and constructs a hashed [`ForceModel`] that skips
+    /// harmonic fields weaker than [`HARMONIC_FAR_FIELD_ACCEL_M_S2`].
     pub fn new(
         constants: GravityConstantsCatalog,
         attracting_bodies: Vec<NaifId>,
@@ -139,21 +148,55 @@ impl ForceModel {
             let _ = constants.require_mu(hb)?;
         }
 
-        let hash = compute_force_hash(
-            &constants,
-            &sorted_attr,
-            &sorted_harm,
-            dynamical_mode,
-            max_harmonic_degree,
-        );
-        Ok(Self {
+        let model = Self {
             attracting_bodies: sorted_attr,
             harmonic_bodies: sorted_harm,
             dynamical_mode,
             max_harmonic_degree,
+            harmonic_far_field_accel_m_s2: 0.0,
+            harmonic_reach_m: Vec::new(),
             constants,
-            hash,
-        })
+            hash: ContentHash([0; 32]),
+        };
+        Ok(model.with_harmonic_far_field_accel_m_s2(HARMONIC_FAR_FIELD_ACCEL_M_S2))
+    }
+
+    /// This model skipping harmonic fields weaker than `accel_m_s2` (`m/s²`) beyond
+    /// each body's [`harmonic_reach_m`]; zero evaluates every field everywhere.
+    #[must_use]
+    pub fn with_harmonic_far_field_accel_m_s2(mut self, accel_m_s2: f64) -> Self {
+        self.harmonic_far_field_accel_m_s2 = accel_m_s2;
+        self.harmonic_reach_m = self
+            .harmonic_bodies
+            .iter()
+            .map(|&hb| {
+                self.constants.get(hb).map_or(f64::INFINITY, |spec| {
+                    harmonic_reach_m(spec, self.max_harmonic_degree, accel_m_s2)
+                })
+            })
+            .collect();
+        self.hash = compute_force_hash(&self);
+        self
+    }
+
+    /// Acceleration (`m/s²`) below which a harmonic field is skipped.
+    #[must_use]
+    pub const fn harmonic_far_field_accel_m_s2(&self) -> f64 {
+        self.harmonic_far_field_accel_m_s2
+    }
+
+    /// Distance from `body`'s centre (`m`) beyond which its harmonic field is skipped;
+    /// `None` when `body` is not a harmonic body of this model.
+    #[must_use]
+    pub fn harmonic_reach_of_m(&self, body: NaifId) -> Option<f64> {
+        let index = self.harmonic_bodies.binary_search(&body).ok()?;
+        self.harmonic_reach_m.get(index).copied()
+    }
+
+    /// Whether `body`'s harmonic field is skipped at `offset_m` from its centre.
+    fn beyond_harmonic_reach(&self, body: NaifId, offset_m: DVec3) -> bool {
+        self.harmonic_reach_of_m(body)
+            .is_some_and(|reach| offset_m.length_squared() > reach * reach)
     }
 
     /// Standard solar-system force model (`Sun`, `Mercury..Saturn` barycenters, `Earth`, `Moon`,
@@ -336,6 +379,9 @@ impl ForceModel {
                     .pos_m;
                 pos_rel_m - s_hb
             };
+            if self.beyond_harmonic_reach(hb, rel_to_hb_icrf) {
+                continue;
+            }
             let rot = orientation.body_rotation(hb, epoch)?;
             let pos_fixed = rot.r_icrf_to_fixed * rel_to_hb_icrf;
             let filtered: Vec<_> = spec
@@ -356,27 +402,25 @@ impl ForceModel {
     }
 }
 
-fn compute_force_hash(
-    constants: &GravityConstantsCatalog,
-    attracting: &[NaifId],
-    harmonics: &[NaifId],
-    mode: DynamicalMode,
-    max_deg: u32,
-) -> ContentHash {
-    let mut h = DomainHasher::new(b"sim-orbital:force-model:v1");
-    h.write_bytes(&constants.content_hash().0);
-    h.write_u8(match mode {
+/// Hashes everything that shapes the dynamics, the far-field threshold included: it
+/// decides which fields a trajectory far from a body is flown with, so two models
+/// that differ only in it fly different trajectories and must not share a hash.
+fn compute_force_hash(model: &ForceModel) -> ContentHash {
+    let mut h = DomainHasher::new(b"sim-orbital:force-model:v2");
+    h.write_bytes(&model.constants.content_hash().0);
+    h.write_u8(match model.dynamical_mode {
         DynamicalMode::PrescribedEphemeris => 1,
         DynamicalMode::SelfConsistentNBody => 2,
     });
-    h.write_u64(u64::from(max_deg));
-    h.write_u64(attracting.len() as u64);
-    for id in attracting {
+    h.write_u64(u64::from(model.max_harmonic_degree));
+    h.write_u64(model.attracting_bodies.len() as u64);
+    for id in &model.attracting_bodies {
         h.write_i32(id.0);
     }
-    h.write_u64(harmonics.len() as u64);
-    for id in harmonics {
+    h.write_u64(model.harmonic_bodies.len() as u64);
+    for id in &model.harmonic_bodies {
         h.write_i32(id.0);
     }
+    h.write_f64_canonical(model.harmonic_far_field_accel_m_s2);
     h.finish()
 }
