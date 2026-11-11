@@ -48,15 +48,44 @@ pub struct C172Setup {
     pub seed: u64,
 }
 
+/// Standard gravity, m/s², for stating accelerometer biases in g.
+const STANDARD_GRAVITY_M_S2: f64 = 9.806_65;
+/// Accelerometer turn-on bias left after calibration, 1-sigma per axis:
+/// 5 mg. An assumed value, not a measured one: a level calibration on the
+/// ground takes out most of the part's 20 mg initial offset, and this is
+/// what such a calibration typically leaves.
+const CALIBRATED_ACCEL_BIAS_G: f64 = 5e-3;
+
+/// How far the C172's accelerometers were calibrated before flight.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AccelCalibration {
+    /// Calibrated: a 5 mg 1-sigma turn-on bias, the assumed residual.
+    #[default]
+    Calibrated,
+    /// Uncalibrated, as shipped: the part's 20 mg 1-sigma initial offset.
+    /// A stress configuration.
+    Uncalibrated20Mg,
+}
+
+/// [`c172_sensor_suite_with`] with calibrated accelerometers.
+pub fn c172_sensor_suite(decimal_year: f64, seed: u64) -> SensorSuiteSpec {
+    c172_sensor_suite_with(decimal_year, seed, AccelCalibration::Calibrated)
+}
+
 /// The C172's devices at the flight controller's cycle: inertial every
 /// cycle, air data at 25 Hz, magnetometer at 50 Hz, receiver at 10 Hz.
 ///
 /// The error figures are typical of the device classes, not measured on an
-/// aeroplane: a consumer MEMS inertial unit, pressure sensors with a few
-/// pascals of noise over a slowly wandering bias, a magnetometer with an
-/// uncalibrated half-microtesla hard-iron residue, and a single-frequency
-/// receiver in open sky. The declared local magnetic anomaly is zero.
-pub fn c172_sensor_suite(decimal_year: f64, seed: u64) -> SensorSuiteSpec {
+/// aeroplane: a consumer MEMS inertial unit whose accelerometer bias is as
+/// `calibration` says, pressure sensors with a few pascals of noise over a
+/// slowly wandering bias, a magnetometer with an uncalibrated
+/// half-microtesla hard-iron residue, and a single-frequency receiver in
+/// open sky. The declared local magnetic anomaly is zero.
+pub fn c172_sensor_suite_with(
+    decimal_year: f64,
+    seed: u64,
+    calibration: AccelCalibration,
+) -> SensorSuiteSpec {
     let pressure = |white_sigma_pa, sigma| PressureErrorSpec {
         white_sigma_pa,
         bias: GaussMarkov {
@@ -64,8 +93,12 @@ pub fn c172_sensor_suite(decimal_year: f64, seed: u64) -> SensorSuiteSpec {
             sigma,
         },
     };
+    let mut imu = ImuGrade::ConsumerMems.spec();
+    if calibration == AccelCalibration::Calibrated {
+        imu.accel.bias.sigma = CALIBRATED_ACCEL_BIAS_G * STANDARD_GRAVITY_M_S2;
+    }
     SensorSuiteSpec {
-        imu: ImuGrade::ConsumerMems.spec(),
+        imu,
         static_port: pressure(3.0, 20.0),
         pitot: Some((pressure(3.0, 10.0), DVec3::X)),
         magnetometer: MagnetometerSpec {

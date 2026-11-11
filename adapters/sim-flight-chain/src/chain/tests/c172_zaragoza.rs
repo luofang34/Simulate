@@ -2,7 +2,7 @@
 //! near Zaragoza, on the flight controller's own estimate.
 
 use sim_atmosphere::StandardAtmosphere;
-use sim_geo::UtcTime;
+use sim_geo::{UtcTime, egm96_undulation_m};
 
 use super::*;
 use crate::{C172Setup, C172Vehicle, SharedAir, c172_sensor_suite, c172_vehicle};
@@ -15,20 +15,33 @@ const FIXES: [(f64, f64); 5] = [
     (41.80, -1.00),
     (41.74, -1.05),
 ];
-/// Height of the route above the ellipsoid, metres.
-const ROUTE_HEIGHT_M: f64 = 2000.0;
+/// Height of the route and the start above mean sea level, metres.
+const ROUTE_MSL_M: f64 = 2000.0;
+/// Where the aeroplane starts, degrees north and east, heading east.
+const START: (f64, f64) = (41.70, -1.07);
+const START_HEADING_DEG: f64 = 90.0;
 const INDICATED_M_S: f64 = 55.0;
 /// True airspeed that reads 55 m/s indicated at the route height in the
 /// standard atmosphere.
 const TRUE_M_S: f64 = 60.7;
 /// 2026-06-15 12:04 UTC.
 const START_UNIX_S: f64 = 1_781_525_040.0;
-/// How far short of the first fix the aeroplane starts, on the first leg
-/// extended backwards, metres.
-const START_SHORT_M: f64 = 400.0;
 
+/// Height above the ellipsoid of the route at a point: the link states
+/// mean sea level, and the chain flies ellipsoidal heights.
+fn ellipsoidal_m(lat_deg: f64, lon_deg: f64) -> f64 {
+    ROUTE_MSL_M + egm96_undulation_m(lat_deg.to_radians(), lon_deg.to_radians())
+}
+
+/// The route height at the start, metres above the ellipsoid.
+fn route_height_m() -> f64 {
+    ellipsoidal_m(START.0, START.1)
+}
+
+/// The declared start, which is also the mission anchor and the flight
+/// controller's origin.
 fn anchor() -> Geodetic {
-    Geodetic::from_degrees(FIXES[0].0, FIXES[0].1, 250.0)
+    Geodetic::from_degrees(START.0, START.1, route_height_m())
 }
 
 /// North and east of the anchor, metres, in its tangent plane.
@@ -43,28 +56,16 @@ fn fix_north_east(index: usize) -> (f64, f64) {
     north_east(geodetic_to_ecef(&Geodetic::from_degrees(
         lat,
         lon,
-        ROUTE_HEIGHT_M,
+        ellipsoidal_m(lat, lon),
     )))
 }
 
 fn zaragoza_chain(seed: u64) -> FlightChain<C172Vehicle> {
-    let (north, east) = fix_north_east(1);
-    let heading_rad = east.atan2(north);
-    let frame = LocalFrame::at(&anchor());
-    let back = DVec3::new(
-        -START_SHORT_M * heading_rad.cos(),
-        -START_SHORT_M * heading_rad.sin(),
-        0.0,
-    );
-    let over = ecef_to_geodetic(geodetic_to_ecef(&anchor()) + frame.ned_to_ecef() * back);
     let setup = C172Setup {
         vehicle: VEHICLE,
         origin: anchor(),
-        position: Geodetic {
-            height_m: ROUTE_HEIGHT_M,
-            ..over
-        },
-        heading_rad,
+        position: anchor(),
+        heading_rad: START_HEADING_DEG.to_radians(),
         speed_m_s: TRUE_M_S,
         utc: UtcTime::from_unix_seconds(START_UNIX_S),
         decimal_year: 2026.45,
@@ -80,7 +81,7 @@ fn zaragoza_chain(seed: u64) -> FlightChain<C172Vehicle> {
             .map(|&(lat_deg, lon_deg)| RouteFix {
                 lat_deg,
                 lon_deg,
-                altitude_m: ROUTE_HEIGHT_M,
+                altitude_m: ellipsoidal_m(lat_deg, lon_deg),
             })
             .collect(),
         capture_radius_m: 2.0 * INDICATED_M_S,
@@ -284,13 +285,58 @@ fn assert_turns_and_legs(samples: &[Sample], events: &[(f64, MissionEvent)], don
     }
 }
 
+/// The flight's numbers, for the run's log.
+fn summarise(samples: &[Sample], events: &[(f64, MissionEvent)], done_s: f64) {
+    let legs: Vec<_> = (1..FIXES.len())
+        .map(|to| (to, leg_start(events, to)))
+        .collect();
+    let commanded = || samples.iter().filter(|s| s.state == MissionState::Enroute);
+    let heights = span(commanded().map(|s| s.ellipsoidal_m - route_height_m()));
+    let roll = span(commanded().map(|s| s.roll_deg));
+    let attitude = span(
+        samples
+            .iter()
+            .map(|s| s.attitude_error_deg)
+            .filter(|v| !v.is_nan()),
+    );
+    let position = span(
+        samples
+            .iter()
+            .map(|s| s.position_error_m)
+            .filter(|v| !v.is_nan()),
+    );
+    let settled_xtk: Vec<_> = (2..FIXES.len())
+        .filter_map(|to| {
+            let start = leg_start(events, to)?;
+            let end = leg_start(events, to + 1).unwrap_or(done_s);
+            let held = samples
+                .iter()
+                .filter(|s| s.t_s >= start + 60.0 && s.t_s < end)
+                .map(|s| right_of_leg_m(s, to).abs());
+            Some((to, held.fold(0.0, f64::max)))
+        })
+        .collect();
+    tracing::info!(
+        done_s,
+        ?legs,
+        ?heights,
+        ?roll,
+        ?attitude,
+        ?position,
+        ?settled_xtk,
+        "zaragoza route flown"
+    );
+}
+
 /// Eighteen simulated minutes; about two wall minutes unoptimised.
 #[test]
 #[ignore = "the long acceptance flight; run it by name"]
 fn pilotage_mission_flies_the_c172_around_the_zaragoza_route() {
+    tracing_subscriber::fmt().with_test_writer().try_init().ok();
     let mut chain = zaragoza_chain(1);
     let (samples, events) = fly_route(&mut chain, 180.0);
     let done_s = at_event(&events, |e| matches!(e, MissionEvent::MissionComplete)).unwrap();
+    summarise(&samples, &events, done_s);
     for to in 1..FIXES.len() {
         assert!(
             leg_start(&events, to).is_some(),
@@ -313,7 +359,7 @@ fn pilotage_mission_flies_the_c172_around_the_zaragoza_route() {
     assert!(commanded().all(|s| s.mode == ControlMode::VelocityControl));
     let (low, high) = span(commanded().map(|s| s.ellipsoidal_m));
     assert!(
-        low > ROUTE_HEIGHT_M - 10.0 && high < ROUTE_HEIGHT_M + 10.0,
+        low > route_height_m() - 10.0 && high < route_height_m() + 10.0,
         "{low} to {high} m above the ellipsoid"
     );
     let estimated = || samples.iter().filter(|s| !s.attitude_error_deg.is_nan());

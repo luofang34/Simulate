@@ -8,6 +8,7 @@ use super::*;
 use crate::{C172_RATE_HZ as RATE_HZ, C172Board, C172Setup, SharedAir, VehicleId};
 use crate::{c172_board, c172_sensor_suite};
 
+mod c172_stress;
 mod c172_subjects;
 
 /// Height of the start above the board's origin, metres.
