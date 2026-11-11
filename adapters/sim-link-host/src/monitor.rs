@@ -10,6 +10,7 @@
 mod camera;
 mod pacer;
 mod replay;
+mod thinning;
 mod trace;
 mod words;
 
@@ -27,6 +28,7 @@ pub use pacer::{
     StepState, run_slice,
 };
 pub use replay::Replay;
+pub use thinning::SAMPLES_KEPT;
 pub use trace::{Column, SetTrace, TracePoint};
 pub use words::{
     clock_words, event_words, pace_words, sensor_words, state_words, status_words, terrain_words,
@@ -75,7 +77,7 @@ pub struct MeansSwitch {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Monitor {
     traces: Vec<SetTrace>,
-    truth: Vec<(f64, (f64, f64))>,
+    truth: thinning::Thinned<(f64, (f64, f64))>,
     waypoints: Vec<(String, (f64, f64))>,
     camera: CameraLog,
     sensors: BTreeMap<String, SensorStates>,
@@ -130,7 +132,7 @@ impl Monitor {
                 self.sim_time_s = self.sim_time_s.max(sample.t_s);
                 self.sensors.insert(sample.set.clone(), sample.sensors);
                 let truth = (sample.truth.lat_deg, sample.truth.lon_deg);
-                if self.truth.last().is_none_or(|(t_s, _)| sample.t_s > *t_s) {
+                if self.truth.latest().is_none_or(|(t_s, _)| sample.t_s > *t_s) {
                     self.truth.push((sample.t_s, truth));
                 }
                 if let Some(trace) = self.traces.iter_mut().find(|t| t.name == sample.set) {
@@ -160,7 +162,7 @@ impl Monitor {
     /// TRUTH: the simulator's latitude and longitude over route time,
     /// degrees, one point per sampled instant.
     pub fn truth(&self) -> &[(f64, (f64, f64))] {
-        &self.truth
+        self.truth.items()
     }
 
     /// The route's waypoints in fly order, latitude and longitude in

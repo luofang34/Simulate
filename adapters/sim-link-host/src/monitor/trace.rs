@@ -37,7 +37,7 @@ pub struct SetTrace {
     pub name: String,
     /// Its means.
     pub means: Vec<NavMeans>,
-    points: Vec<TracePoint>,
+    points: super::thinning::Thinned<TracePoint>,
 }
 
 impl SetTrace {
@@ -46,31 +46,37 @@ impl SetTrace {
         Self {
             name: set.name,
             means: set.means,
-            points: Vec::new(),
+            points: super::thinning::Thinned::new(larger_error),
         }
     }
 
     /// Adds a sample. One older than the last is dropped: the stream is in
-    /// route-time order, and the columns rely on it.
+    /// route-time order, and the columns rely on it. A long run's samples are
+    /// thinned to [`super::SAMPLES_KEPT`].
     pub fn push(&mut self, point: TracePoint) {
-        if self.points.last().is_none_or(|last| point.t_s >= last.t_s) {
+        if self
+            .points
+            .latest()
+            .is_none_or(|last| point.t_s >= last.t_s)
+        {
             self.points.push(point);
         }
     }
 
     /// The samples.
     pub fn points(&self) -> &[TracePoint] {
-        &self.points
+        self.points.items()
     }
 
     /// The latest sample.
     pub fn latest(&self) -> Option<&TracePoint> {
-        self.points.last()
+        self.points.latest()
     }
 
     /// The largest error so far, metres.
     pub fn max_error_m(&self) -> Option<f64> {
         self.points
+            .items()
             .iter()
             .map(|point| point.horizontal_error_m)
             .reduce(f64::max)
@@ -86,8 +92,11 @@ impl SetTrace {
             return columns;
         }
         let last = count.saturating_sub(1);
-        let start = self.points.partition_point(|point| point.t_s < t0_s);
-        let in_range = self.points.get(start..).unwrap_or_default();
+        let start = self
+            .points
+            .items()
+            .partition_point(|point| point.t_s < t0_s);
+        let in_range = self.points.items().get(start..).unwrap_or_default();
         for point in in_range.iter().take_while(|point| point.t_s <= t1_s) {
             let at = ((point.t_s - t0_s) / span * count as f64).floor() as usize;
             let Some(column) = columns.get_mut(at.min(last)) else {
@@ -111,5 +120,15 @@ impl SetTrace {
             });
         }
         columns
+    }
+}
+
+/// Of two neighbouring samples, the one further from the truth: thinning a
+/// trace never hides a peak of its error.
+fn larger_error(a: TracePoint, b: TracePoint) -> TracePoint {
+    if b.horizontal_error_m > a.horizontal_error_m {
+        b
+    } else {
+        a
     }
 }

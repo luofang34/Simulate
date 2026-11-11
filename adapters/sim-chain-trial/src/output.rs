@@ -88,3 +88,14 @@ pub struct FrameRequest {
     /// The Sun's elevation at the eye, degrees.
     pub sun_elevation_deg: f64,
 }
+
+/// What a chain trial's log keeps; it grows with the flight's length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Retained {
+    /// Navigation steps logged.
+    pub steps: usize,
+    /// Terrain-camera frames logged.
+    pub terrain_frames: usize,
+    /// Pixel bytes those frames still hold: only frames some set has yet to take.
+    pub terrain_pixel_bytes: usize,
+}
