@@ -6,6 +6,7 @@
 mod app;
 mod avionics;
 mod camera_view;
+mod chain_avionics;
 mod cockpit_rig;
 mod controls;
 mod environment;

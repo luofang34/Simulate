@@ -171,6 +171,16 @@ impl FreeFlightPlant {
         }
     }
 
+    /// The flight controller's account of its last cycle and the estimate the displays
+    /// hold, when flying the real chain.
+    #[must_use]
+    pub fn chain_avionics(&self) -> Option<(sim_flight_chain::FcAvionics, VehicleState)> {
+        match self {
+            Self::C172Mission(rig) => Some((rig.avionics(), rig.held_estimate())),
+            _ => None,
+        }
+    }
+
     /// Pilotage's mission phase and each navigation set's standing, when flying the real
     /// chain.
     #[must_use]
