@@ -61,8 +61,12 @@ impl ForceModel {
                 epoch,
                 DerivativeOrder::Velocity,
             )?;
+            let offset = pos_bary_icrf_m - st.pos_m;
+            if self.beyond_harmonic_reach(hb, offset) {
+                continue;
+            }
             let rot = orientation.body_rotation(hb, epoch)?;
-            let pos_fixed = rot.r_icrf_to_fixed * (pos_bary_icrf_m - st.pos_m);
+            let pos_fixed = rot.r_icrf_to_fixed * offset;
             let filtered: Vec<_> = spec
                 .harmonics
                 .iter()
