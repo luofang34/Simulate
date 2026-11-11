@@ -12,20 +12,13 @@
 use glam::DVec3;
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::GnssReceiver;
-use sim_render::StarCameraConfig;
 
 use crate::trial::devices::{StaticPort, receiver};
-use crate::trial::record::{Logged, SensorLog, period_steps, star_scene};
+use crate::trial::live_stars::LiveStarCamera;
+use crate::trial::record::{Logged, SensorLog, period_steps};
 use crate::trial::route::step_seconds;
-use crate::trial::stars::{StarScene, exposure_steps, render_frame, star_camera_config};
 use crate::trial::{TrialError, TrialRequest};
 use crate::{SimulatedImu, Truth};
-
-struct LiveStars {
-    scene: StarScene,
-    config: StarCameraConfig,
-    length: usize,
-}
 
 /// Every sensor of a request, sensing a flight step by step into a log.
 pub(super) struct LiveSensors {
@@ -34,22 +27,15 @@ pub(super) struct LiveSensors {
     gnss_period: usize,
     baro: StaticPort,
     baro_period: usize,
-    stars: Option<LiveStars>,
+    stars: Option<LiveStarCamera>,
 }
 
 impl LiveSensors {
     /// The request's sensors, rendering star frames only when `stars`.
     pub(super) fn new(request: &TrialRequest, stars: bool) -> Result<Self, TrialError> {
-        let live_stars = if stars {
-            let scene = star_scene(request)?;
-            let config = star_camera_config();
-            Some(LiveStars {
-                length: exposure_steps(&config, scene.step_hz)?,
-                scene,
-                config,
-            })
-        } else {
-            None
+        let live_stars = match stars {
+            true => Some(LiveStarCamera::new(request)?),
+            false => None,
         };
         Ok(Self {
             imu: SimulatedImu::new(request.imu_grade.grade().spec(), request.seeds.imu)?,
@@ -98,17 +84,7 @@ impl LiveSensors {
             log.baro.push(Logged { step, reading });
         }
         if let Some(stars) = &self.stars {
-            let period = stars.scene.period_steps.max(1);
-            if step >= 1 && (step - 1).is_multiple_of(period) {
-                log.star_mid_steps.push(step + stars.length / 2);
-            }
-            if let Some(open) = step.checked_sub(stars.length)
-                && open >= 1
-                && (open - 1).is_multiple_of(period)
-            {
-                let frame = render_frame(truth, &stars.scene, &stars.config, open, stars.length)?;
-                log.stars.push(frame);
-            }
+            stars.sense(truth, step, log, |_| true)?;
         }
         Ok(rate)
     }

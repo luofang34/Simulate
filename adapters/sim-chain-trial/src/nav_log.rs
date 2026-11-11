@@ -10,14 +10,15 @@
 use glam::DVec3;
 use sim_core::{SimInstant, TickSpan, VehicleState};
 use sim_devices::{AirDataSample, DeviceSamples, GnssReading, InertialIncrement};
-use sim_navigate::AlignmentFix;
 use sim_navigate::trial::{Logged, SensorLog, step_span};
+use sim_navigate::{AlignmentFix, Truth};
 
 /// The log the sets replay, grown cycle by cycle, with truth at each step.
 pub(crate) struct NavLog {
     pub(crate) log: SensorLog,
-    /// The true state at each logged step: scoring and drawing only.
-    pub(crate) truth: Vec<VehicleState>,
+    /// The true state at each logged step: scoring, drawing, and the star
+    /// camera's physics only.
+    pub(crate) truth: Vec<Truth<(SimInstant, VehicleState)>>,
     step_ticks: u128,
     pending_imu: InertialIncrement,
     pending_gnss: Vec<Logged<GnssReading>>,
@@ -38,7 +39,7 @@ impl NavLog {
                 star_mid_steps: Vec::new(),
                 terrain: Vec::new(),
             },
-            truth: vec![start],
+            truth: vec![Truth::new((SimInstant::START, start))],
             step_ticks: step_span().ticks_u128(),
             pending_imu: empty_increment(),
             pending_gnss: Vec::new(),
@@ -68,10 +69,10 @@ impl NavLog {
             let fraction = boundary.saturating_sub(from.ticks_u128()) as f64 / span as f64;
             add(&mut self.pending_imu, &scaled(&increment, fraction));
             self.log.imu.push(self.pending_imu);
-            self.log
-                .instants
-                .push(SimInstant::from_ticks_u128(boundary));
-            self.truth.push(interpolate(before, after, fraction));
+            let at = SimInstant::from_ticks_u128(boundary);
+            self.log.instants.push(at);
+            self.truth
+                .push(Truth::new((at, interpolate(before, after, fraction))));
             self.pending_imu = scaled(&increment, 1.0 - fraction);
             Some(next)
         } else {
