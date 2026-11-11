@@ -143,13 +143,16 @@ impl TrackMap {
                     .iter()
                     .flat_map(|t| t.points().iter().map(|p| p.estimate_deg)),
             );
-        let needed = MapView::around(points, MARGIN)?;
+        // The view must hold the points, not their margin: a track along the
+        // route's edge passes it by metres, which must not grow the map.
+        let bare = MapView::around(points, 0.0)?;
+        let needed = grow(bare, MARGIN);
         let aspect = *self.aspect.get_or_insert_with(|| {
             ((needed.y1 - needed.y0) / (needed.x1 - needed.x0)).clamp(ASPECT.0, ASPECT.1)
         });
         let width_changed = self.drawn.as_ref().is_some_and(|d| d.width != width);
         let view = match self.view {
-            Some(view) if view.holds(&needed) => {
+            Some(view) if view.holds(&bare) => {
                 if !width_changed {
                     return Some(view);
                 }

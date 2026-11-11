@@ -202,6 +202,9 @@ fn the_map_view_projects_and_keeps_its_shape() {
     let view = MapView::around([(41.7, -1.05), (41.8, -0.8)], 0.1).unwrap();
     let wide = view.with_aspect(0.25);
     assert!(wide.holds(&view));
+    // A box already of the shape is the same box, so it holds itself.
+    let ratio = (view.y1 - view.y0) / (view.x1 - view.x0);
+    assert!(view.with_aspect(ratio).holds(&view));
     let ratio = (wide.y1 - wide.y0) / (wide.x1 - wide.x0);
     assert!((ratio - 0.25).abs() < 1e-9, "{ratio}");
     let (px, py) = wide.pixel((41.8, -0.8), 800.0, 200.0);

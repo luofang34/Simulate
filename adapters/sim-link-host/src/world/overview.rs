@@ -79,20 +79,25 @@ impl MapView {
     }
 
     /// This box grown about its centre to `height / width` of
-    /// `aspect`, so a canvas of that shape shows it unstretched.
+    /// `aspect`, so a canvas of that shape shows it unstretched. Only the
+    /// short side moves, and only outward: a box already of the shape keeps
+    /// its edges exactly, so it still holds what it held.
     pub fn with_aspect(self, aspect: f64) -> Self {
         let (w, h) = (self.x1 - self.x0, self.y1 - self.y0);
-        let (cx, cy) = ((self.x0 + self.x1) / 2.0, (self.y0 + self.y1) / 2.0);
-        let (w, h) = if h / w > aspect {
-            (h / aspect, h)
+        if h / w > aspect {
+            let grow = (h / aspect - w).max(0.0) / 2.0;
+            Self {
+                x0: self.x0 - grow,
+                x1: self.x1 + grow,
+                ..self
+            }
         } else {
-            (w, w * aspect)
-        };
-        Self {
-            x0: cx - w / 2.0,
-            y0: cy - h / 2.0,
-            x1: cx + w / 2.0,
-            y1: cy + h / 2.0,
+            let grow = (w * aspect - h).max(0.0) / 2.0;
+            Self {
+                y0: self.y0 - grow,
+                y1: self.y1 + grow,
+                ..self
+            }
         }
     }
 
