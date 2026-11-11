@@ -8,10 +8,6 @@
 //! [`MissionHost`] flies a route on it with Pilotage's mission engine.
 //! [`FlightChain`] is the two together. The C172 flies this way;
 //! [`AviateX500Vehicle`] is the X500 on Aviate's own sensor synthesis.
-//!
-//! Native only: Pilotage's MAVLink crate does not build for the browser.
-
-#![cfg(not(target_arch = "wasm32"))]
 
 mod airframe;
 mod aviate_vehicle;

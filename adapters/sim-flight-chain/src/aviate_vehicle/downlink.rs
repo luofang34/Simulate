@@ -3,7 +3,7 @@
 //! discipline, and its sampling builds the samples the host reads.
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pilotage_adapter_api::TelemetrySample;
 use pilotage_mavlink::codec::{FcMessage, FrameSource, parse_datagram};
@@ -17,6 +17,7 @@ use pilotage_mavlink::{LinkState, ResetPolicy};
 use pilotage_protocol::VehicleId;
 use pilotage_timing::SimTick;
 use sim_core::SimInstant;
+use web_time::Instant;
 
 /// Source-clock lag admitted between the attitude and position streams,
 /// which Aviate publishes at different rates.

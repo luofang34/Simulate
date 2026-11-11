@@ -8,9 +8,7 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# The chain is native only: Pilotage's MAVLink crate brings a socket
-# runtime that does not build for the browser.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[dependencies]
 aviate-core = { workspace = true }
 aviate-hal-io = { workspace = true }
 glam = { workspace = true }
@@ -29,4 +27,5 @@ sim-geo = { workspace = true }
 sim-pack = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+web-time = { workspace = true }
 world-core = { workspace = true }

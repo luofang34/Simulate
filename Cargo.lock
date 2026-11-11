@@ -5373,6 +5373,7 @@ dependencies = [
  "sim-pack",
  "thiserror 2.0.21",
  "tracing",
+ "web-time",
  "world-core",
 ]
 
