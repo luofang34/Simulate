@@ -48,7 +48,7 @@ fn start() -> Geodetic {
     Geodetic::from_degrees(START.0, START.1, ellipsoidal_m(START.0, START.1))
 }
 
-fn route() -> ChainRoute {
+fn route(plan_loaded_at_s: f64) -> ChainRoute {
     ChainRoute {
         fixes: FIXES
             .iter()
@@ -65,7 +65,7 @@ fn route() -> ChainRoute {
         ownship: OwnshipFeed::FlightController,
         class: VehicleClass::FixedWing,
         airframe: crate::c172_pilotage_airframe().unwrap(),
-        plan_loaded_at_s: PLAN_LOADED_AT_S,
+        plan_loaded_at_s,
         utc: UtcTime::from_unix_seconds(START_UNIX_S),
     }
 }
@@ -86,7 +86,7 @@ fn c172(seed: u64) -> C172Board {
 }
 
 fn chain(seed: u64) -> HostChain<C172Airframe, FixedWingController, FixedWingMixer> {
-    HostChain::new(c172(seed), &route()).unwrap()
+    HostChain::new(c172(seed), &route(PLAN_LOADED_AT_S)).unwrap()
 }
 
 /// When each step of getting under way happened, seconds into the run.
@@ -221,6 +221,21 @@ fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
         "the arm was never confirmed"
     );
     assert_eq!(run.last_state, Some(MissionState::Enroute));
+}
+
+/// The plan handed over at power-up: the host core must wait for the
+/// flight controller to come up before it gives up on the arm.
+#[test]
+#[ignore = "Pilotage's host core gives up on the arm before the flight controller is ready"]
+fn a_plan_loaded_at_power_up_arms_once_the_flight_controller_is_ready() {
+    let mut chain = HostChain::new(c172(1), &route(0.0)).unwrap();
+    let run = fly(&mut chain, 30.0);
+    tracing::info!(timeline = ?run.timeline, events = ?run.events);
+    assert!(
+        run.timeline.arm_confirmed.is_some(),
+        "the arm was never confirmed"
+    );
+    assert_ne!(run.last_state, Some(MissionState::Failed));
 }
 
 #[test]
