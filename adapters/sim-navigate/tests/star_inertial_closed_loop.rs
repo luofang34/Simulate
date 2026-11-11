@@ -207,6 +207,7 @@ fn fly(
             velocity_cov: fix.velocity_cov,
             attitude_cov: fix.attitude_cov,
             at: now(start),
+            imu_bias_prior: None,
         })
         .unwrap();
     assert!(imu.sense(start, &initial).unwrap().is_none());

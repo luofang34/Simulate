@@ -4,7 +4,7 @@ use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use pilotage_mavlink::codec::parse_datagram;
 use pilotage_mission::{MissionEvent, MissionState};
-use sim_atmosphere::StandardAtmosphere;
+use sim_atmosphere::GeoidStandardAtmosphere;
 use sim_geo::{Geodetic, egm96_undulation_m};
 
 use super::*;
@@ -83,7 +83,12 @@ fn c172(seed: u64) -> C172Board {
         seed,
     };
     let suite = c172_sensor_suite(setup.decimal_year, seed);
-    c172_board(&setup, &suite, SharedAir::new(StandardAtmosphere)).unwrap()
+    c172_board(
+        &setup,
+        &suite,
+        SharedAir::new(GeoidStandardAtmosphere::new()),
+    )
+    .unwrap()
 }
 
 fn chain(seed: u64) -> HostChain<C172Airframe, FixedWingController, FixedWingMixer> {

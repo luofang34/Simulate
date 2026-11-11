@@ -4,7 +4,7 @@
 
 use glam::DVec3;
 use sha2::{Digest, Sha256};
-use sim_atmosphere::{StandardAtmosphere, geometric_to_geopotential_m, isa_at_geopotential};
+use sim_atmosphere::{AtmosphereField, GeoidStandardAtmosphere};
 use sim_core::VehicleState;
 use sim_flight_chain::{
     C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
@@ -66,7 +66,7 @@ pub(super) fn chain(
     spec: &ChainTrialSpec,
     resolved: &Resolved,
 ) -> Result<C172Chain, ChainTrialError> {
-    let true_m_s = true_airspeed_m_s(spec.start.indicated_m_s, &resolved.start)?;
+    let true_m_s = true_airspeed_m_s(spec.start.indicated_m_s, &resolved.start, resolved.utc)?;
     let decimal_year = 1970.0 + resolved.utc.unix_seconds() / SECONDS_PER_YEAR;
     let seed = resolved.request.seeds.imu;
     let setup = C172Setup {
@@ -80,9 +80,10 @@ pub(super) fn chain(
         seed,
     };
     let suite = c172_sensor_suite_with(decimal_year, seed, spec.calibration.calibration());
-    // The trial's air: the standard atmosphere entered at the ellipsoidal
-    // height, the same air the navigation trial's devices and JSBSim fly in.
-    let air = SharedAir::new(StandardAtmosphere);
+    // The trial's air: the standard atmosphere entered at mean sea level,
+    // the air the navigation trial's devices sense and its navigators read
+    // their altimeters in.
+    let air = SharedAir::new(GeoidStandardAtmosphere::new());
     let board = c172_board(&setup, &suite, air)?;
     let route = ChainRoute {
         fixes: resolved
@@ -113,11 +114,16 @@ pub(super) fn chain(
 
 /// The true airspeed that reads `indicated_m_s` at `start` in the standard
 /// atmosphere, the air the aeroplane starts in.
-fn true_airspeed_m_s(indicated_m_s: f64, start: &Geodetic) -> Result<f64, ChainTrialError> {
-    let geopotential = geometric_to_geopotential_m(start.height_m);
-    let air = isa_at_geopotential(geopotential).map_err(|error| ChainTrialError::Invalid {
-        detail: format!("no standard air at the start: {error}"),
-    })?;
+fn true_airspeed_m_s(
+    indicated_m_s: f64,
+    start: &Geodetic,
+    utc: UtcTime,
+) -> Result<f64, ChainTrialError> {
+    let air = GeoidStandardAtmosphere::new()
+        .sample(start, utc)
+        .map_err(|error| ChainTrialError::Invalid {
+            detail: format!("no standard air at the start: {error}"),
+        })?;
     Ok(indicated_m_s * (ISA_RHO0_KG_M3 / air.density_kg_m3).sqrt())
 }
 

@@ -1,7 +1,7 @@
 use aviate_core::control::{Command, CommandSource, Setpoint};
 use aviate_core::types::{Meters, MetersPerSecond};
 use glam::DVec3;
-use sim_atmosphere::StandardAtmosphere;
+use sim_atmosphere::GeoidStandardAtmosphere;
 use sim_geo::{LocalFrame, UtcTime, ecef_to_geodetic};
 
 use super::*;
@@ -40,7 +40,7 @@ fn c172(seed: u64) -> C172Board {
     c172_board(
         &c172_setup(seed),
         &suite,
-        SharedAir::new(StandardAtmosphere),
+        SharedAir::new(GeoidStandardAtmosphere::new()),
     )
     .unwrap()
 }

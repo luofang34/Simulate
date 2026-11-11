@@ -145,8 +145,10 @@ fn a_silent_receiver_leaves_the_c172_flying_wings_level() {
         CRUISE_M_S,
         START_HEIGHT_M,
     );
+    // Without a position the controller drops to holding its barometric
+    // height, wings level.
     let tail = settled(&denied);
-    assert!(tail.iter().all(|p| p.mode == ControlMode::Attitude));
+    assert!(tail.iter().all(|p| p.mode == ControlMode::AltitudeHold));
     assert!(tail.iter().all(|p| p.roll_rad.abs() < 0.15));
     // Airspeed is held on pitch from the pitot alone.
     assert!(
