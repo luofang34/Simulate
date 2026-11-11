@@ -250,3 +250,55 @@ fn the_navigators_declare_the_inertial_unit_the_devices_simulate() {
         assert_eq!(declared, simulated, "{calibration:?}");
     }
 }
+
+#[test]
+fn pilotages_sequencing_reaches_the_progress_stream() {
+    let mut trial = ChainTrial::new(&spec(None), &DirectoryStores).unwrap();
+    let outputs = advanced(trial.step_until(60.0).unwrap());
+    let sequenced: Vec<_> = outputs
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            ProgressRecord::Event(e) => match &e.kind {
+                EventKind::WaypointSequenced {
+                    waypoint_index,
+                    ident,
+                    plan_complete,
+                } => Some((e.t_s, *waypoint_index, ident.clone(), *plan_complete)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sequenced.len(), 1, "{sequenced:?}");
+    let (t_s, index, ident, complete) = sequenced[0].clone();
+    assert_eq!((index, ident.as_str(), complete), (0, "WP0", false));
+    assert!((20.0..35.0).contains(&t_s), "sequenced at {t_s} s");
+}
+
+/// About sixteen simulated minutes.
+#[test]
+#[ignore = "the whole route; run it by name"]
+fn the_last_fix_sequenced_completes_the_plan() {
+    let mut route = spec(None);
+    route.request.sensor_sets.truncate(1);
+    let mut trial = ChainTrial::new(&route, &DirectoryStores).unwrap();
+    let outputs = advanced(trial.step_until(1_000.0).unwrap());
+    let complete: Vec<_> = outputs
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            ProgressRecord::Event(e) => match &e.kind {
+                EventKind::WaypointSequenced {
+                    waypoint_index,
+                    plan_complete: true,
+                    ..
+                } => Some((e.t_s, *waypoint_index)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(complete.len(), 1, "{complete:?}");
+    assert_eq!(complete[0].1, FIXES.len() - 1);
+}

@@ -2,7 +2,7 @@
 
 use navigate_contract::NavigationSolution;
 use sim_core::VehicleState;
-use sim_flight_chain::{HostEvent, MISSION_CLOCK};
+use sim_flight_chain::{HostEvent, MISSION_CLOCK, MissionEvent};
 use sim_geo::{Geodetic, geodetic_to_ecef};
 use sim_navigate::trial::{
     EventKind, EventRecord, GuidanceSource, PROGRESS_SCHEMA, ProgressRecord, ProgressRoute,
@@ -22,6 +22,8 @@ const OUTAGE_REASON: &str = "device out of service";
 pub(super) struct Recorder {
     started: Option<StartedRecord>,
     last_phase: Option<String>,
+    /// The plan's waypoint identifiers, in fly order.
+    idents: Vec<String>,
 }
 
 impl Recorder {
@@ -69,6 +71,7 @@ impl Recorder {
                 guidance: GuidanceSource::Estimate,
             }),
             last_phase: None,
+            idents: request.waypoints.iter().map(|w| w.ident.clone()).collect(),
         }
     }
 
@@ -97,6 +100,39 @@ impl Recorder {
                 .map(|(_, event)| format!("{event:?}"))
                 .collect(),
         })
+    }
+}
+
+impl Recorder {
+    /// The waypoints Pilotage's mission sequenced among `events`, as the
+    /// trial reports them: a leg advancing to fix `n` sequences fix `n − 1`,
+    /// and the last fix sequenced completes the plan.
+    pub(super) fn sequenced(
+        &self,
+        events: &[(sim_core::SimInstant, HostEvent)],
+    ) -> Vec<ProgressRecord> {
+        let last = self.idents.len().saturating_sub(1);
+        events
+            .iter()
+            .filter_map(|(at, event)| {
+                let (waypoint_index, plan_complete) = match event {
+                    HostEvent::Mission(MissionEvent::LegAdvanced { to_index, .. }) => {
+                        (to_index.checked_sub(1)?, false)
+                    }
+                    HostEvent::Mission(MissionEvent::LastWaypointSequenced { .. }) => (last, true),
+                    _ => return None,
+                };
+                Some(ProgressRecord::Event(EventRecord {
+                    t_s: at.duration_since(sim_core::SimInstant::START).as_seconds(),
+                    set: None,
+                    kind: EventKind::WaypointSequenced {
+                        waypoint_index,
+                        ident: self.idents.get(waypoint_index).cloned().unwrap_or_default(),
+                        plan_complete,
+                    },
+                }))
+            })
+            .collect()
     }
 }
 
