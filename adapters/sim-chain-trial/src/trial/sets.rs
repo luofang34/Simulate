@@ -115,14 +115,14 @@ pub(super) fn solution_sample(
         },
         horizontal_error_m: comparison.horizontal_error_m,
         vertical_error_m: comparison.vertical_error_m,
-        sigma_horizontal_m: (pn + pe).sqrt(),
+        sigma_horizontal_m: Some((pn + pe).sqrt()),
         cross_track_true_m: None,
         sensors,
     }))
 }
 
 /// The flight controller's estimate against `truth`. Aviate states no
-/// covariance through this entry, so its sigma reads zero.
+/// covariance through this entry, so the sample carries no sigma.
 pub(super) fn flight_controller_sample(
     t_s: f64,
     truth: &VehicleState,
@@ -138,7 +138,7 @@ pub(super) fn flight_controller_sample(
         estimate: position_of(estimate),
         horizontal_error_m: error.x.hypot(error.y),
         vertical_error_m: -error.z,
-        sigma_horizontal_m: 0.0,
+        sigma_horizontal_m: None,
         cross_track_true_m: None,
         sensors,
     })

@@ -41,11 +41,11 @@ const SIMULATED: [(&str, &str); 8] = [
     ),
     (
         "gnss",
-        "position-domain receiver, not a pseudorange or constellation model: true antenna position (at the centre of gravity) plus white noise plus a first-order Gauss-Markov error, true velocity plus white noise; the declared covariance is the marginal white plus correlated variance, and the filter has no state for the correlated part",
+        "sim_devices::GnssReceiver, a position-domain receiver, not a pseudorange or constellation model: true antenna position (at the centre of gravity) plus white noise plus a first-order Gauss-Markov error, true velocity plus white noise; the declared covariance is the marginal white plus correlated variance, and the filter has no state for the correlated part",
     ),
     (
         "barometric altimeter",
-        "ellipsoidal height plus a first-order Gauss-Markov bias plus white noise, the error the filter's barometric bias state models with the same statistics; the BMP390 device model is not used because it quantises pressure without noise or bias",
+        "sim_devices::PitotStatic static port in the ICAO standard atmosphere entered at ellipsoidal height, in still air with no weather: true static pressure plus a first-order Gauss-Markov offset plus white noise, in pascals; the navigator's host reads it as standard-atmosphere pressure altitude and declares the pressure statistics to the filter's barometric bias state through the standard pressure gradient at the first waypoint's height",
     ),
     (
         "star camera",

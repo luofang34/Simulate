@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use sim_devices::ImuGrade;
+use sim_devices::{GnssErrorSpec, ImuGrade};
 
 use super::TrialError;
 use super::availability::{AvailabilitySchedule, SensorKind};
@@ -234,48 +234,58 @@ pub struct GnssSpec {
     pub velocity_sigma_m_s: f64,
 }
 
+impl GnssSpec {
+    /// Horizontal 1-sigma of the simulated position error, metres: the root
+    /// sum of both horizontal axes' white and correlated variances.
+    pub fn horizontal_sigma_m(&self) -> f64 {
+        (2.0 * (self.horizontal_white_sigma_m.powi(2) + self.horizontal_correlated_sigma_m.powi(2)))
+            .sqrt()
+    }
+}
+
 impl Default for GnssSpec {
-    /// A single-frequency code receiver in open sky: decimetre-level
-    /// receiver noise under metre-level slowly varying ionosphere, orbit and
-    /// clock residuals, and centimetre-per-second Doppler velocity.
+    /// The device's open-sky receiver ([`GnssErrorSpec::OPEN_SKY`]) fixing
+    /// once a second.
     fn default() -> Self {
+        let open_sky = GnssErrorSpec::OPEN_SKY;
         Self {
             rate_hz: 1.0,
-            horizontal_white_sigma_m: 0.6,
-            vertical_white_sigma_m: 1.0,
-            horizontal_correlated_sigma_m: 1.2,
-            vertical_correlated_sigma_m: 2.0,
-            correlation_time_s: 300.0,
-            velocity_sigma_m_s: 0.05,
+            horizontal_white_sigma_m: open_sky.horizontal_white_sigma_m,
+            vertical_white_sigma_m: open_sky.vertical_white_sigma_m,
+            horizontal_correlated_sigma_m: open_sky.horizontal_correlated_sigma_m,
+            vertical_correlated_sigma_m: open_sky.vertical_correlated_sigma_m,
+            correlation_time_s: open_sky.correlation_time_s,
+            velocity_sigma_m_s: open_sky.velocity_sigma_m_s,
         }
     }
 }
 
-/// A barometric altimeter: ellipsoidal height plus white noise plus a
-/// first-order Gauss–Markov bias, the error the filter's barometric bias
-/// state models.
+/// The static port the barometric altimeter reads: a pressure sensor with
+/// white noise over a first-order Gauss–Markov offset. The navigator's host
+/// reads its pressure as standard-atmosphere pressure altitude.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BaroSpec {
-    /// Reading rate, Hz; it must divide the 120 Hz simulation rate.
+    /// Sample rate, Hz; it must divide the 120 Hz simulation rate.
     pub rate_hz: f64,
-    /// White noise, metres.
-    pub white_sigma_m: f64,
-    /// Bias, metres.
-    pub bias_sigma_m: f64,
-    /// Correlation time of the bias, seconds.
+    /// White noise of one sample, pascals.
+    pub white_sigma_pa: f64,
+    /// Slowly varying offset, pascals.
+    pub bias_sigma_pa: f64,
+    /// Correlation time of the offset, seconds.
     pub bias_correlation_time_s: f64,
 }
 
 impl Default for BaroSpec {
-    /// Decimetre noise and the metres of slowly drifting bias that weather
-    /// and the static-port error leave in pressure altitude.
+    /// A few pascals of noise over a slowly wandering offset of tens of
+    /// pascals, typical of the device class: about 0.3 m and 2 m of
+    /// pressure altitude at 1000 m.
     fn default() -> Self {
         Self {
             rate_hz: 5.0,
-            white_sigma_m: 0.3,
-            bias_sigma_m: 3.0,
-            bias_correlation_time_s: 3_600.0,
+            white_sigma_pa: 3.0,
+            bias_sigma_pa: 20.0,
+            bias_correlation_time_s: 600.0,
         }
     }
 }

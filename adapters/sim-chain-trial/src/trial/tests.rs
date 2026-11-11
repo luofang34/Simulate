@@ -150,9 +150,9 @@ fn the_sets_navigate_on_the_flight_controllers_devices() {
 fn a_switch_flies_the_same_as_the_outage_the_spec_states() {
     let mut switched = ChainTrial::new(&spec(None), &DirectoryStores).unwrap();
     let mut first = advanced(switched.step_until(20.0).unwrap());
-    switched.set_sensor(SensorKind::Gnss, false);
+    assert_eq!(switched.set_sensor(SensorKind::Gnss, false), 20.0);
     first.extend(advanced(switched.step_until(30.0).unwrap()));
-    switched.set_sensor(SensorKind::Gnss, true);
+    assert_eq!(switched.set_sensor(SensorKind::Gnss, true), 30.0);
     first.extend(advanced(switched.step_until(40.0).unwrap()));
 
     let mut stated = spec(None);
@@ -212,4 +212,20 @@ fn a_frame_is_asked_for_at_mid_exposure_and_awaited_at_readout() {
     };
     assert_eq!(next.index, 2);
     assert_eq!(trial.nav.log.terrain.len(), 1);
+}
+
+#[test]
+fn a_set_on_the_stars_gets_the_star_cameras_frames() {
+    let mut stars = spec(None);
+    stars.request.sensor_sets.push(set(
+        "ins.stars",
+        &[NavMeans::DeadReckoning, NavMeans::Celestial],
+    ));
+    let mut trial = ChainTrial::new(&stars, &DirectoryStores).unwrap();
+    let outputs = advanced(trial.step_until(10.0).unwrap());
+    assert!(!trial.nav.log.stars.is_empty(), "no star frame was taken");
+    assert!(
+        samples_of(&outputs, "ins.stars").all(|s| s.sensors.stars != SensorState::NotInSet),
+        "the set has the camera"
+    );
 }

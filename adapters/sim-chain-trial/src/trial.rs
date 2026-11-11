@@ -11,7 +11,10 @@ use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use sim_core::SimInstant;
 use sim_flight_chain::{C172Airframe, DeviceOutages, HostChain};
-use sim_navigate::trial::{MapStores, SensorKind, TerrainExposer, replay_set_with_stores};
+use sim_navigate::NavMeans;
+use sim_navigate::trial::{
+    LiveStarCamera, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
+};
 
 use crate::nav_log::NavLog;
 use crate::{
@@ -39,6 +42,8 @@ pub struct ChainTrial {
     steering: Option<usize>,
     outages: Vec<DeviceOutage>,
     camera: Option<HostCamera>,
+    /// The star camera, when a set navigates on the stars.
+    stars: Option<LiveStarCamera>,
     announced: Option<FrameRequest>,
     progress_steps: usize,
     pending: Outputs,
@@ -53,7 +58,7 @@ impl ChainTrial {
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
         let alignment = setup::alignment(&resolved.request, &start);
-        let nav = NavLog::new(start, alignment, resolved.undulation_m);
+        let nav = NavLog::new(start, alignment);
         let request = &resolved.request;
         let sets = request
             .sensor_sets
@@ -86,6 +91,14 @@ impl ChainTrial {
             }
             None => None,
         };
+        let stars = match request
+            .sensor_sets
+            .iter()
+            .any(|set| set.means.contains(&NavMeans::Celestial))
+        {
+            true => Some(LiveStarCamera::new(request)?),
+            false => None,
+        };
         let step_s = sim_navigate::trial::step_span().as_seconds();
         let progress_steps = (request.output.progress_period_s / step_s).round().max(1.0) as usize;
         Ok(Self {
@@ -96,6 +109,7 @@ impl ChainTrial {
             steering,
             outages: spec.outages.clone(),
             camera,
+            stars,
             announced: None,
             progress_steps,
             pending: Outputs::default(),
@@ -140,9 +154,10 @@ impl ChainTrial {
     }
 
     /// Takes `sensor`'s device out of service, or returns it, from the next
-    /// cycle on. It is recorded as an outage beginning or ending then, the
-    /// same as an outage the spec states.
-    pub fn set_sensor(&mut self, sensor: SensorKind, on: bool) {
+    /// cycle on, and returns that cycle's route time, seconds: a whole
+    /// number of cycles. It is recorded as an outage beginning or ending
+    /// then, the same as an outage the spec states.
+    pub fn set_sensor(&mut self, sensor: SensorKind, on: bool) -> f64 {
         let at_s = self.now_s();
         let open = self
             .outages
@@ -157,6 +172,7 @@ impl ChainTrial {
             }),
             _ => {}
         }
+        at_s
     }
 
     /// The outages so far, those the spec stated and those switched.
@@ -226,8 +242,7 @@ impl ChainTrial {
             .nav
             .truth
             .get(step)
-            .copied()
-            .unwrap_or(self.chain.true_state());
+            .map_or(self.chain.true_state(), |sample| sample.get().1);
         let camera_out = self
             .outages
             .iter()
@@ -236,6 +251,16 @@ impl ChainTrial {
             && let Some(request) = camera.expose(step, instant, &truth, camera_out)?
         {
             self.announced = Some(request);
+        }
+        if let Some(stars) = &self.stars {
+            let step_s = sim_navigate::trial::step_span().as_seconds();
+            let outages = &self.outages;
+            let in_service = |open: usize| {
+                !outages
+                    .iter()
+                    .any(|o| o.sensor == SensorKind::Stars && o.covers_up_to(open as f64 * step_s))
+            };
+            stars.sense(&self.nav.truth, step, &mut self.nav.log, in_service)?;
         }
         for slot in &mut self.sets {
             slot.run.advance_to(&self.nav.log, step)?;

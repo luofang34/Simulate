@@ -17,7 +17,7 @@ fn line(record: &ProgressRecord) -> String {
 #[test]
 fn started_and_finished_lines_are_pinned() {
     let started = ProgressRecord::Started(StartedRecord {
-        schema: 1,
+        schema: 2,
         request_sha256: "ab".into(),
         epoch_utc: "2026-03-20T02:00:00Z".into(),
         route: ProgressRoute {
@@ -37,7 +37,7 @@ fn started_and_finished_lines_are_pinned() {
     });
     assert_eq!(
         line(&started),
-        r#"{"type":"started","schema":1,"request_sha256":"ab","epoch_utc":"2026-03-20T02:00:00Z","route":{"waypoints":[{"ident":"W0","lat_deg":39.0,"lon_deg":-75.5,"altitude_m":300.0}],"planned_duration_s":60.0},"sets":[{"name":"ins+gnss","means":["dead_reckoning","gnss"]}],"guidance":"estimate"}"#
+        r#"{"type":"started","schema":2,"request_sha256":"ab","epoch_utc":"2026-03-20T02:00:00Z","route":{"waypoints":[{"ident":"W0","lat_deg":39.0,"lon_deg":-75.5,"altitude_m":300.0}],"planned_duration_s":60.0},"sets":[{"name":"ins+gnss","means":["dead_reckoning","gnss"]}],"guidance":"estimate"}"#
     );
     let finished = ProgressRecord::Finished(FinishedRecord {
         result_path: None,
@@ -63,7 +63,7 @@ fn sample_lines_are_pinned() {
         estimate: at(1.5),
         horizontal_error_m: 5.0,
         vertical_error_m: 6.0,
-        sigma_horizontal_m: 7.0,
+        sigma_horizontal_m: Some(7.0),
         cross_track_true_m: None,
         sensors: SensorStates {
             gnss: SensorState::ScheduledUnavailable,
