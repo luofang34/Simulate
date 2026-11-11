@@ -94,7 +94,9 @@ pub fn shown_layout(
 #[must_use]
 pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
     match vehicle {
-        FreeFlightVehicle::AviateX500Direct => VehicleClass::Multirotor,
+        FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission => {
+            VehicleClass::Multirotor
+        }
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::JsbsimP38g
         | FreeFlightVehicle::AviateFixedWingDirect
@@ -108,7 +110,7 @@ pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
 #[must_use]
 pub const fn trim_throttle(vehicle: FreeFlightVehicle, on_ground: bool) -> f64 {
     match (vehicle, on_ground) {
-        (FreeFlightVehicle::AviateX500Direct, _) => 0.5,
+        (FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission, _) => 0.5,
         (FreeFlightVehicle::AviateFixedWingDirect, _) | (_, false) => 0.65,
         (_, true) => 0.0,
     }

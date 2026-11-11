@@ -1,0 +1,276 @@
+//! A flight controller's board under Pilotage's own vehicle host.
+//!
+//! Pilotage's embeddable host core holds the mission, the session engine
+//! and the Aviate adapter. This chain gives it the simulation's time and
+//! moves the MAVLink bytes between it and the board, the way a radio or a
+//! serial line moves them on the vehicle. Nothing between the two is
+//! Simulate's: the core encodes every command and reads every report.
+
+#[cfg(test)]
+mod tests;
+
+use aviate_core::control::{ControlMode, VehicleController};
+use aviate_core::mixer::Mixer;
+use navigate_contract::{GeodeticPosition, MonotonicNanos, NavigationSolution};
+use pilotage_adapter_api::SourceIncarnation;
+use pilotage_adapter_aviate::{AviateAirframe, EmbeddedIncarnations};
+use pilotage_host_core::{HostCore, HostCoreConfig, HostEvent, HostStatus, MISSION_CLOCK};
+use pilotage_mavlink::link::LinkConfig;
+use pilotage_mission::{
+    MissionConfig, MissionLimits, OwnshipSource, PlannedWaypoint, WaypointPlan, WaypointPlanRecord,
+};
+use pilotage_protocol::VehicleClass;
+use sim_core::{SimInstant, VehicleState};
+use sim_geo::UtcTime;
+
+use crate::{Airframe, ChainError, HostedBoard, OwnshipFeed, RouteFix};
+
+/// Bytes the flight controller's transmit ring holds: one read empties it,
+/// so no frame is split across two datagrams.
+const TRANSMIT_RING_BYTES: usize = 8_192;
+const NANOS_PER_SECOND: f64 = 1.0e9;
+
+/// A route and how the host's mission flies it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChainRoute {
+    /// The route's fixes in fly order, heights above the ellipsoid.
+    pub fixes: Vec<RouteFix>,
+    /// Along-track speed asked of guidance, m/s.
+    pub cruise_mps: f64,
+    /// Climb rate toward a fix above the vehicle, m/s.
+    pub climb_rate_mps: f64,
+    /// Greatest horizontal speed the vehicle may be asked for, m/s.
+    pub max_horizontal_mps: f64,
+    /// Whose navigation the mission flies on.
+    pub ownship: OwnshipFeed,
+    /// The vehicle's class, which decides how the plan ends.
+    pub class: VehicleClass,
+    /// What the flight controller flies, as Pilotage's adapter bounds its
+    /// demands.
+    pub airframe: AviateAirframe,
+    /// The civil time the run starts at, which fixes the magnetic field.
+    pub utc: UtcTime,
+}
+
+/// What crossed the link between the host and the flight controller.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LinkCounters {
+    /// Frames the host sent toward the flight controller.
+    pub frames_to_fc: u64,
+    /// Command bytes the flight controller's receive ring had no room for.
+    pub refused_bytes_to_fc: u64,
+    /// Datagrams read from the flight controller's transmit ring.
+    pub datagrams_from_fc: u64,
+    /// Bytes read from it.
+    pub bytes_from_fc: u64,
+}
+
+/// Pilotage's host core and the board it commands.
+pub struct HostChain<A, C, M>
+where
+    C: VehicleController,
+    M: Mixer,
+{
+    board: HostedBoard<A, C, M>,
+    /// On the heap: the core carries the mission engine by value.
+    core: Box<HostCore>,
+    record: WaypointPlanRecord,
+    next_wake: MonotonicNanos,
+    transmit: Vec<u8>,
+    transmit_len: usize,
+    events: Vec<(SimInstant, HostEvent)>,
+    counters: LinkCounters,
+}
+
+impl<A, C, M> HostChain<A, C, M>
+where
+    A: Airframe,
+    C: VehicleController,
+    M: Mixer,
+{
+    /// `board` under a host core flying `route`. The mission anchor is the
+    /// board's origin, where its flight controller measures from and
+    /// where the embedding host placed the vehicle.
+    pub fn new(board: HostedBoard<A, C, M>, route: &ChainRoute) -> Result<Self, ChainError> {
+        let host = |source| ChainError::Host(Box::new(source));
+        let config = host_config(&board, route)?;
+        // The core counts time from this instant and reads no clock; any
+        // instant serves, and the run depends on none.
+        let mut core = HostCore::new(config, web_time::Instant::now()).map_err(host)?;
+        let record = core.load_mission(waypoint_plan(route)).map_err(host)?;
+        Ok(Self {
+            board,
+            core: Box::new(core),
+            record,
+            next_wake: MonotonicNanos::from_nanos(0),
+            transmit: vec![0; TRANSMIT_RING_BYTES],
+            transmit_len: 0,
+            events: Vec::new(),
+            counters: LinkCounters::default(),
+        })
+    }
+
+    /// One cycle of the flight controller. The host runs what fell due up
+    /// to now first, its commands reach the controller's receive ring, the
+    /// controller and airframe step, and what the controller transmitted
+    /// in the cycle reaches the host at the cycle's end.
+    pub fn advance_tick(&mut self) -> Result<(), ChainError> {
+        let now = self.host_now();
+        if now >= self.next_wake {
+            self.next_wake = self
+                .core
+                .tick(now)
+                .map_err(|source| ChainError::Host(Box::new(source)))?
+                .at;
+            let at = self.board.now();
+            self.events
+                .extend(self.core.drain_events().into_iter().map(|e| (at, e)));
+        }
+        for frame in self.core.drain_uplink() {
+            let accepted = self.board.uplink(&frame);
+            let refused = frame.len().saturating_sub(accepted) as u64;
+            self.counters.frames_to_fc = self.counters.frames_to_fc.wrapping_add(1);
+            self.counters.refused_bytes_to_fc =
+                self.counters.refused_bytes_to_fc.wrapping_add(refused);
+        }
+        self.board.step()?;
+        self.transmit_len = self.board.downlink(&mut self.transmit);
+        if let Some(datagram) = self.transmit.get(..self.transmit_len)
+            && !datagram.is_empty()
+        {
+            let now = self.host_now();
+            // The board has one serial link: its reports and its answers to
+            // commands travel together, and each side of the host takes what
+            // is addressed to it.
+            self.core.on_downlink(datagram, now);
+            self.core.on_uplink_reply(datagram, now);
+            self.counters.datagrams_from_fc = self.counters.datagrams_from_fc.wrapping_add(1);
+            self.counters.bytes_from_fc = self
+                .counters
+                .bytes_from_fc
+                .wrapping_add(datagram.len() as u64);
+        }
+        Ok(())
+    }
+
+    /// Hands an onboard navigator's solution to the mission, which flies
+    /// it when its ownship is the navigator.
+    pub fn offer_navigation(&mut self, solution: &NavigationSolution) {
+        let now = self.host_now();
+        self.core.on_onboard_solution(solution, now);
+    }
+
+    /// The events the host reported since the last call, each with the
+    /// instant of the tick that reported it.
+    pub fn drain_events(&mut self) -> Vec<(SimInstant, HostEvent)> {
+        core::mem::take(&mut self.events)
+    }
+
+    /// Where the host stands after its last tick.
+    pub fn status(&self) -> &HostStatus {
+        self.core.status()
+    }
+
+    /// The record of the loaded plan: its waypoints and identity.
+    pub const fn record(&self) -> &WaypointPlanRecord {
+        &self.record
+    }
+
+    /// What crossed the link so far.
+    pub const fn counters(&self) -> LinkCounters {
+        self.counters
+    }
+
+    /// What the flight controller transmitted in the last cycle.
+    pub fn last_downlink(&self) -> &[u8] {
+        self.transmit.get(..self.transmit_len).unwrap_or_default()
+    }
+
+    /// The board and its airframe.
+    pub const fn board(&self) -> &HostedBoard<A, C, M> {
+        &self.board
+    }
+
+    /// The board, to reach its devices.
+    pub const fn board_mut(&mut self) -> &mut HostedBoard<A, C, M> {
+        &mut self.board
+    }
+
+    /// The instant the vehicle state describes.
+    pub const fn now(&self) -> SimInstant {
+        self.board.now()
+    }
+
+    /// The true vehicle state, for scoring and drawing.
+    pub fn true_state(&self) -> VehicleState {
+        self.board.true_state()
+    }
+
+    /// The control mode the flight controller flew on its last cycle.
+    pub fn flight_mode(&self) -> ControlMode {
+        self.board.flight_mode()
+    }
+
+    /// The simulation's time on the host's clock, which starts with the run.
+    fn host_now(&self) -> MonotonicNanos {
+        let elapsed_s = self
+            .board
+            .now()
+            .duration_since(SimInstant::START)
+            .as_seconds();
+        MonotonicNanos::from_nanos((elapsed_s * NANOS_PER_SECOND).round() as u64)
+    }
+}
+
+/// The host's configuration for `board` flying `route`.
+fn host_config<A, C, M>(
+    board: &HostedBoard<A, C, M>,
+    route: &ChainRoute,
+) -> Result<HostCoreConfig, ChainError>
+where
+    A: Airframe,
+    C: VehicleController,
+    M: Mixer,
+{
+    let origin = board.origin();
+    let anchor = GeodeticPosition::new(origin.lat_rad, origin.lon_rad, origin.height_m);
+    let mut mission = MissionConfig::new(String::new(), anchor, MISSION_CLOCK);
+    // A vehicle that starts at the first fix's height climbs nowhere.
+    mission.cruise_height_m = route
+        .fixes
+        .first()
+        .map_or(0.0, |fix| (fix.altitude_m - origin.height_m).max(0.0));
+    mission.cruise_mps = route.cruise_mps;
+    mission.climb_rate_mps = route.climb_rate_mps;
+    mission.limits = MissionLimits {
+        max_horizontal_mps: route.max_horizontal_mps,
+        max_vertical_mps: route.climb_rate_mps,
+        ..MissionLimits::default()
+    };
+    mission.vehicle_class = route.class;
+    mission.ownship_source = match route.ownship {
+        OwnshipFeed::FlightController => OwnshipSource::vehicle_estimate(),
+        OwnshipFeed::Navigator => OwnshipSource::onboard_navigation(),
+    };
+    Ok(HostCoreConfig {
+        link: LinkConfig::simulator(),
+        airframe: route.airframe.clone(),
+        fc_origin_height_m: Some(origin.height_m),
+        incarnations: EmbeddedIncarnations {
+            estimate: SourceIncarnation::new([1; 16]),
+            fc_state: SourceIncarnation::new([2; 16]),
+        },
+        mission,
+        magnetic_epoch_unix_s: route.utc.unix_seconds().round() as i64,
+    })
+}
+
+fn waypoint_plan(route: &ChainRoute) -> WaypointPlan {
+    WaypointPlan::new(
+        route
+            .fixes
+            .iter()
+            .map(|fix| PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m))
+            .collect(),
+    )
+}

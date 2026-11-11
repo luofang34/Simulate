@@ -25,6 +25,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "aerocontext-core"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e733a8983bf1bbe492df4f67b5e5211e507beda67b4bdd17ea9fe0008352ccf9"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "aerocontext-navdata"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7393fd2c21f87675ab644d4b4e31bc07b22cbe47ee27732b0a6fdd960631288b"
+dependencies = [
+ "aerocontext-core",
+ "chrono",
+ "hex",
+ "postcard",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "aerocontext-planning"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1715f4920a935d73d439575f09d3b6d92549fd3ee715022ac674bd36787247f9"
+dependencies = [
+ "aerocontext-core",
+ "chrono",
+ "quick-xml",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -247,9 +289,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "aviate-airframe-fixed-wing"
+version = "0.1.3"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
+dependencies = [
+ "aviate-core",
+]
+
+[[package]]
 name = "aviate-core"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
 dependencies = [
  "bitflags 2.13.2",
  "libm",
@@ -258,7 +308,7 @@ dependencies = [
 [[package]]
 name = "aviate-hal-io"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
 dependencies = [
  "aviate-core",
  "embedded-hal",
@@ -268,7 +318,7 @@ dependencies = [
 [[package]]
 name = "aviate-link"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -278,12 +328,12 @@ dependencies = [
 [[package]]
 name = "aviate-xil-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
 
 [[package]]
 name = "aviate-xil-direct"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
+source = "git+https://github.com/luofang34/Aviate?rev=d9f8d5b7809f168f9e8546f6aa5f04de414c8f10#d9f8d5b7809f168f9e8546f6aa5f04de414c8f10"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -558,6 +608,15 @@ name = "cint"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a0e87cdf78571d9fbeff16861c37a006cd718d2433dc6d5b80beaae367d899a"
+
+[[package]]
+name = "cobs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
+dependencies = [
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "codespan-reporting"
@@ -989,6 +1048,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
+name = "embedded-io"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
 name = "env_filter"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1024,7 +1095,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1066,7 +1137,7 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 
 [[package]]
 name = "flate2"
@@ -3060,7 +3131,7 @@ dependencies = [
 [[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3071,7 +3142,7 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3082,7 +3153,7 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3095,7 +3166,7 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -3103,7 +3174,7 @@ dependencies = [
 [[package]]
 name = "navigate-data"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3116,7 +3187,7 @@ dependencies = [
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3128,7 +3199,7 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
@@ -3137,7 +3208,7 @@ dependencies = [
 [[package]]
 name = "navigate-guidance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3151,7 +3222,7 @@ dependencies = [
 [[package]]
 name = "navigate-onboard"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "image",
  "nalgebra",
@@ -3174,7 +3245,7 @@ dependencies = [
 [[package]]
 name = "navigate-route"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3184,7 +3255,7 @@ dependencies = [
 [[package]]
 name = "navigate-startrack"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3197,7 +3268,7 @@ dependencies = [
 [[package]]
 name = "navigate-trajectory"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3209,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "navigate-visual"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "image",
  "nalgebra",
@@ -3226,7 +3297,7 @@ dependencies = [
 [[package]]
 name = "navigate-visual-render"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "bytemuck",
  "futures-channel",
@@ -3289,7 +3360,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3867,7 +3938,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -3882,9 +3953,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilotage-adapter-aviate"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "pilotage-adapter-api",
+ "pilotage-control-feel",
+ "pilotage-flight-uplink",
+ "pilotage-geo",
+ "pilotage-mavlink",
+ "pilotage-protocol",
+ "pilotage-timing",
+ "thiserror 2.0.21",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 dependencies = [
  "serde",
  "serde_json",
@@ -3893,14 +3981,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilotage-authority"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "pilotage-protocol",
+ "pilotage-timing",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3910,9 +4008,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilotage-control-feel"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pilotage-flight-uplink"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "pilotage-control-feel",
+ "pilotage-mavlink",
+ "tracing",
+]
+
+[[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3922,14 +4041,91 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilotage-host-core"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "aerocontext-core",
+ "navigate-contract",
+ "pilotage-adapter-api",
+ "pilotage-adapter-aviate",
+ "pilotage-geo",
+ "pilotage-mavlink",
+ "pilotage-mission",
+ "pilotage-protocol",
+ "pilotage-session",
+ "pilotage-timing",
+ "pilotage-world",
+ "prost",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+
+[[package]]
+name = "pilotage-mavlink"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "pilotage-adapter-api",
+ "pilotage-geo",
+ "pilotage-mavlink-framing",
+ "pilotage-protocol",
+ "pilotage-timing",
+ "thiserror 2.0.21",
+ "tracing",
+ "turret-core",
+ "turret-mavlink",
+ "web-time",
+]
+
+[[package]]
+name = "pilotage-mavlink-framing"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+
+[[package]]
+name = "pilotage-mission"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "aerocontext-core",
+ "aerocontext-navdata",
+ "aerocontext-planning",
+ "chrono",
+ "navigate-contract",
+ "navigate-fusion",
+ "navigate-geodesy",
+ "navigate-guidance",
+ "navigate-route",
+ "pilotage-mission-core",
+ "pilotage-protocol",
+ "prost",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pilotage-mission-core"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -3940,9 +4136,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilotage-session"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "pilotage-adapter-api",
+ "pilotage-authority",
+ "pilotage-protocol",
+ "pilotage-timing",
+]
+
+[[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+
+[[package]]
+name = "pilotage-world"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Pilotage?rev=02982d26959a48b5c0ce0e1fc073f1b22c13891f#02982d26959a48b5c0ce0e1fc073f1b22c13891f"
+dependencies = [
+ "libm",
+ "pilotage-geo",
+ "thiserror 2.0.21",
+ "world-atmosphere",
+ "world-core",
+ "world-geomag",
+]
 
 [[package]]
 name = "pin-project"
@@ -4034,6 +4254,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10ab3eb7f3becc3a1cbc4f2c6f20267996cfc1a6467a873763411b136a122715"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "postcard"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6764c3b5dd454e283a30e6dfe78e9b31096d9e32036b5d1eaac7a6119ccb9a24"
+dependencies = [
+ "cobs",
+ "embedded-io 0.4.0",
+ "embedded-io 0.6.1",
+ "serde",
 ]
 
 [[package]]
@@ -4226,7 +4458,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4638,7 +4870,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4984,6 +5216,7 @@ dependencies = [
 name = "sim-aviate"
 version = "0.1.0"
 dependencies = [
+ "aviate-airframe-fixed-wing",
  "aviate-core",
  "aviate-hal-io",
  "aviate-xil-contract",
@@ -4992,10 +5225,31 @@ dependencies = [
  "mbd-core",
  "sim-atmosphere",
  "sim-core",
+ "sim-devices",
  "sim-geo",
  "thiserror 2.0.21",
  "web-time",
  "world-core",
+]
+
+[[package]]
+name = "sim-chain-trial"
+version = "0.1.0"
+dependencies = [
+ "aviate-core",
+ "glam 0.33.12",
+ "navigate-contract",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-atmosphere",
+ "sim-core",
+ "sim-devices",
+ "sim-flight-chain",
+ "sim-geo",
+ "sim-navigate",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -5018,10 +5272,43 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "mbd-core",
+ "sim-atmosphere",
  "sim-core",
  "sim-geo",
  "sim-spacetime",
  "thiserror 2.0.21",
+ "world-core",
+ "world-geomag",
+]
+
+[[package]]
+name = "sim-flight-chain"
+version = "0.1.0"
+dependencies = [
+ "aviate-core",
+ "aviate-hal-io",
+ "glam 0.33.12",
+ "mbd-core",
+ "navigate-contract",
+ "pilotage-adapter-api",
+ "pilotage-adapter-aviate",
+ "pilotage-control-feel",
+ "pilotage-host-core",
+ "pilotage-mavlink",
+ "pilotage-mission",
+ "pilotage-protocol",
+ "pilotage-timing",
+ "sim-atmosphere",
+ "sim-aviate",
+ "sim-core",
+ "sim-devices",
+ "sim-geo",
+ "sim-pack",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+ "web-time",
+ "world-core",
 ]
 
 [[package]]
@@ -5261,17 +5548,11 @@ dependencies = [
  "glam 0.33.12",
  "indicate-frames",
  "mbd-core",
- "pilotage-adapter-api",
  "pilotage-aircraft",
  "pilotage-calibration-id",
  "pilotage-camera-calibration",
- "pilotage-geo",
- "pilotage-protocol",
- "pilotage-timing",
  "serde_json",
- "sim-atmosphere",
  "sim-core",
- "sim-devices",
  "sim-geo",
  "sim-pack",
  "sim-render",
@@ -5458,6 +5739,7 @@ dependencies = [
  "sim-atmosphere",
  "sim-aviate",
  "sim-core",
+ "sim-flight-chain",
  "sim-geo",
  "sim-indicate",
  "sim-input",
@@ -5768,7 +6050,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.6",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6158,6 +6440,14 @@ version = "0.1.0"
 source = "git+https://github.com/luofang34/Turret?rev=30f6ba9725200724245819680cc50a970e99965b#30f6ba9725200724245819680cc50a970e99965b"
 dependencies = [
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "turret-mavlink"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Turret?rev=30f6ba9725200724245819680cc50a970e99965b#30f6ba9725200724245819680cc50a970e99965b"
+dependencies = [
+ "turret-core",
 ]
 
 [[package]]
@@ -6736,7 +7026,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

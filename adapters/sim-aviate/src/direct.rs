@@ -17,14 +17,15 @@ use glam::{DQuat, DVec3};
 use sim_core::{
     EndpointError, ExternalEndpoint, SimInstant, StampedResponse, TICKS_PER_SECOND, VehicleState,
 };
+use sim_devices::DeviceSamples;
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use world_core::{DecimalYear, GeodeticPosition};
 
 use crate::{AviateBridgeError, AviateStimulus, DirectInitStage};
 
 pub use kernels::{
-    DirectFixedWingKernel, DirectX500Kernel, PassthroughFixedWingMixer,
-    build_direct_fixed_wing_kernel, build_direct_x500_kernel, direct_fixed_wing_controls,
+    DirectFixedWingKernel, DirectX500Kernel, build_direct_fixed_wing_kernel,
+    build_direct_x500_kernel, direct_fixed_wing_controls,
 };
 
 const TICKS_PER_MICROSECOND: u64 = TICKS_PER_SECOND / 1_000_000;
@@ -52,6 +53,18 @@ impl NedWorld {
             frame,
             ned_from_ecef,
         }
+    }
+
+    /// The local tangent frame at the origin.
+    #[must_use]
+    pub const fn frame(&self) -> &LocalFrame {
+        &self.frame
+    }
+
+    /// The origin in ECEF, metres.
+    #[must_use]
+    pub const fn origin_ecef(&self) -> DVec3 {
+        self.origin_ecef
     }
 
     /// Converts the anchor origin into `world_core::GeodeticPosition`.
@@ -314,6 +327,22 @@ where
                 .truth_from_site(time_us, self.reset_generation, next_step, stimulus)?;
         self.sim_step = next_step;
         Ok(self.board.step_truth(&truth))
+    }
+
+    /// Steps the flight controller on what the vehicle's devices sampled at
+    /// `at`. The first call of a world generation only sets the board's
+    /// time base.
+    pub fn step_sensors(
+        &mut self,
+        at: SimInstant,
+        samples: &DeviceSamples,
+    ) -> Result<DirectActuatorCmd, AviateBridgeError> {
+        let time_us = micros_since_start(at)?;
+        self.sim_step = self.sim_step.wrapping_add(1);
+        let sensors = self
+            .world
+            .host_sensors(time_us, self.reset_generation, samples);
+        Ok(self.board.step_sensors(&sensors))
     }
 
     /// Resets the flight controller onto a fresh `kernel` and increments `reset_generation`.

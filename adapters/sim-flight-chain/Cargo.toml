@@ -1,0 +1,37 @@
+[package]
+name = "sim-flight-chain"
+description = "Flies a Simulate X500 through the vehicle's own control chain: Pilotage commands the Aviate flight controller over its MAVLink subset"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aviate-core = { workspace = true }
+aviate-hal-io = { workspace = true }
+glam = { workspace = true }
+mbd-core = { workspace = true }
+navigate-contract = { workspace = true }
+pilotage-adapter-api = { workspace = true }
+pilotage-adapter-aviate = { workspace = true }
+pilotage-control-feel = { workspace = true }
+pilotage-host-core = { workspace = true }
+pilotage-mavlink = { workspace = true }
+pilotage-mission = { workspace = true }
+pilotage-protocol = { workspace = true }
+pilotage-timing = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-aviate = { workspace = true }
+sim-core = { workspace = true }
+sim-devices = { workspace = true }
+sim-geo = { workspace = true }
+sim-pack = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+web-time = { workspace = true }
+world-core = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

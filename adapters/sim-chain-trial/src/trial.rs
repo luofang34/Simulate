@@ -1,0 +1,288 @@
+//! The chain trial, stepped one flight-controller cycle at a time.
+
+mod camera;
+mod records;
+mod sets;
+mod setup;
+#[cfg(test)]
+mod tests;
+
+use aviate_core::control::fixed_wing::FixedWingController;
+use aviate_core::mixer::fixed_wing::FixedWingMixer;
+use sim_core::SimInstant;
+use sim_flight_chain::{C172Airframe, DeviceOutages, HostChain};
+use sim_navigate::trial::{MapStores, SensorKind, TerrainExposer, replay_set_with_stores};
+
+use crate::nav_log::NavLog;
+use crate::{
+    ChainTrialError, ChainTrialSpec, DeviceOutage, FrameRequest, Outputs, Steering, StepOutcome,
+};
+use camera::HostCamera;
+use sets::{SetSlot, has_sensor};
+
+pub use sets::FLIGHT_CONTROLLER_SET;
+
+/// The C172 under Pilotage's host core.
+type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
+
+/// A navigation trial flown by the vehicle's own control chain.
+///
+/// Pilotage's host core flies the C172 through Aviate, steering on the
+/// navigation the spec names, while every Navigate set navigates on the
+/// same devices the flight controller reads. The host steps it one
+/// flight-controller cycle at a time, or up to a route time, and renders
+/// the terrain camera's frames when asked.
+pub struct ChainTrial {
+    chain: Box<C172Chain>,
+    nav: NavLog,
+    sets: Vec<SetSlot>,
+    steering: Option<usize>,
+    outages: Vec<DeviceOutage>,
+    camera: Option<HostCamera>,
+    announced: Option<FrameRequest>,
+    progress_steps: usize,
+    pending: Outputs,
+    records: records::Recorder,
+}
+
+impl ChainTrial {
+    /// The trial of `spec`, its onboard packages read from `stores`: the
+    /// aeroplane trimmed at the start, every set aligned, nothing flown.
+    pub fn new(spec: &ChainTrialSpec, stores: &dyn MapStores) -> Result<Self, ChainTrialError> {
+        let resolved = setup::resolve(spec)?;
+        let chain = setup::chain(spec, &resolved)?;
+        let start = chain.true_state();
+        let alignment = setup::alignment(&resolved.request, &start);
+        let nav = NavLog::new(start, alignment, resolved.undulation_m);
+        let request = &resolved.request;
+        let sets = request
+            .sensor_sets
+            .iter()
+            .map(|set| {
+                let run = replay_set_with_stores(request, set, &nav.log, stores)?;
+                Ok(SetSlot::new(set.name.clone(), run, |kind| {
+                    has_sensor(&set.means, kind)
+                }))
+            })
+            .collect::<Result<Vec<_>, ChainTrialError>>()?;
+        let steering = match &spec.steering {
+            Steering::FlightController => None,
+            Steering::Set(name) => Some(
+                sets.iter()
+                    .position(|slot| &slot.name == name)
+                    .ok_or_else(|| ChainTrialError::Invalid {
+                        detail: format!("no set `{name}` to steer on"),
+                    })?,
+            ),
+        };
+        let camera = match request.terrain_camera {
+            Some(camera) => {
+                let seed = request.seeds.terrain_camera.unwrap_or(request.seeds.imu);
+                Some(HostCamera::new(TerrainExposer::new(
+                    camera,
+                    seed,
+                    resolved.utc,
+                )?)?)
+            }
+            None => None,
+        };
+        let step_s = sim_navigate::trial::step_span().as_seconds();
+        let progress_steps = (request.output.progress_period_s / step_s).round().max(1.0) as usize;
+        Ok(Self {
+            records: records::Recorder::new(request, &resolved.digest, spec),
+            chain: Box::new(chain),
+            nav,
+            sets,
+            steering,
+            outages: spec.outages.clone(),
+            camera,
+            announced: None,
+            progress_steps,
+            pending: Outputs::default(),
+        })
+    }
+
+    /// Route time, seconds.
+    pub fn now_s(&self) -> f64 {
+        seconds(self.chain.now())
+    }
+
+    /// One flight-controller cycle, unless a frame must come first.
+    pub fn step(&mut self) -> Result<StepOutcome, ChainTrialError> {
+        if let Some(started) = self.records.start() {
+            self.pending.records.push(started);
+        }
+        let next = self.nav.last_step().wrapping_add(1);
+        if let Some(request) = self.camera.as_ref().and_then(|c| c.blocking(next)) {
+            return Ok(StepOutcome::FrameWanted(request, self.take_outputs()));
+        }
+        self.cycle()?;
+        if let Some(request) = self.announced.take() {
+            return Ok(StepOutcome::FrameWanted(request, self.take_outputs()));
+        }
+        Ok(StepOutcome::Advanced(self.take_outputs()))
+    }
+
+    /// Cycles until route time `until_s`, or until a frame is wanted, with
+    /// everything that happened on the way.
+    pub fn step_until(&mut self, until_s: f64) -> Result<StepOutcome, ChainTrialError> {
+        let mut outputs = Outputs::default();
+        while self.now_s() < until_s {
+            match self.step()? {
+                StepOutcome::Advanced(more) => outputs.extend(more),
+                StepOutcome::FrameWanted(request, more) => {
+                    outputs.extend(more);
+                    return Ok(StepOutcome::FrameWanted(request, outputs));
+                }
+            }
+        }
+        Ok(StepOutcome::Advanced(outputs))
+    }
+
+    /// Takes `sensor`'s device out of service, or returns it, from the next
+    /// cycle on. It is recorded as an outage beginning or ending then, the
+    /// same as an outage the spec states.
+    pub fn set_sensor(&mut self, sensor: SensorKind, on: bool) {
+        let at_s = self.now_s();
+        let open = self
+            .outages
+            .iter_mut()
+            .find(|o| o.sensor == sensor && o.end_s.is_none());
+        match (open, on) {
+            (Some(outage), true) => outage.end_s = Some(at_s),
+            (None, false) => self.outages.push(DeviceOutage {
+                sensor,
+                start_s: at_s,
+                end_s: None,
+            }),
+            _ => {}
+        }
+    }
+
+    /// The outages so far, those the spec stated and those switched.
+    pub fn outages(&self) -> &[DeviceOutage] {
+        &self.outages
+    }
+
+    /// The host's grey image for exposure `index`: exactly width × height
+    /// bytes, row-major, top row first.
+    pub fn deliver_frame(&mut self, index: u64, luma: &[u8]) -> Result<(), ChainTrialError> {
+        let camera = self
+            .camera
+            .as_mut()
+            .ok_or(ChainTrialError::UnexpectedFrame { index })?;
+        let frame = camera.develop(index, luma)?;
+        self.nav.log.terrain.push(frame);
+        Ok(())
+    }
+
+    fn take_outputs(&mut self) -> Outputs {
+        core::mem::take(&mut self.pending)
+    }
+
+    /// One cycle of the chain, and the navigation step it completed.
+    fn cycle(&mut self) -> Result<(), ChainTrialError> {
+        let t_s = self.now_s();
+        let out = |kind| {
+            self.outages
+                .iter()
+                .any(|o| o.sensor == kind && o.contains(t_s))
+        };
+        self.chain.board_mut().set_outages(DeviceOutages {
+            gnss: out(SensorKind::Gnss),
+            air_data: out(SensorKind::Baro),
+        });
+        let from = self.chain.now();
+        let before = self.chain.true_state();
+        self.chain.advance_tick()?;
+        let after = self.chain.true_state();
+        let samples = *self.chain.board().last_samples();
+        let completed = self
+            .nav
+            .on_cycle((from, self.chain.now()), (&before, &after), &samples);
+        if let Some(step) = completed {
+            self.navigate(step)?;
+        }
+        let events = self.chain.drain_events();
+        let phase = self.chain.status().mission_state.map(|s| format!("{s:?}"));
+        if let Some(update) = self.records.mission(self.now_s(), phase, &events) {
+            self.pending.mission.push(update);
+        }
+        Ok(())
+    }
+
+    /// Navigation step `step`: the camera, every set, the steering, and the
+    /// records due.
+    fn navigate(&mut self, step: usize) -> Result<(), ChainTrialError> {
+        let t_s = self.nav.seconds(step);
+        let instant = self
+            .nav
+            .log
+            .instants
+            .get(step)
+            .copied()
+            .unwrap_or(SimInstant::START);
+        let truth = self
+            .nav
+            .truth
+            .get(step)
+            .copied()
+            .unwrap_or(self.chain.true_state());
+        let camera_out = self
+            .outages
+            .iter()
+            .any(|o| o.sensor == SensorKind::TerrainCamera && o.covers_up_to(t_s));
+        if let Some(camera) = self.camera.as_mut()
+            && let Some(request) = camera.expose(step, instant, &truth, camera_out)?
+        {
+            self.announced = Some(request);
+        }
+        for slot in &mut self.sets {
+            slot.run.advance_to(&self.nav.log, step)?;
+        }
+        if let Some(slot) = self.steering.and_then(|index| self.sets.get_mut(index))
+            && let Some(solution) = slot.run.solution(&self.nav.log)?
+        {
+            let solution = records::on_mission_clock(solution.get());
+            self.chain.offer_navigation(&solution);
+        }
+        // Before the first step nothing was out, so an outage from the
+        // start begins at the first step.
+        let previous_s = match step {
+            1 => f64::NEG_INFINITY,
+            _ => self.nav.seconds(step.saturating_sub(1)),
+        };
+        self.pending.records.extend(records::availability(
+            &self.sets,
+            &self.outages,
+            (previous_s, t_s),
+        ));
+        for slot in &mut self.sets {
+            if let Some(fixes) = slot.changed_fixes() {
+                self.pending.terrain_fixes.push((slot.name.clone(), fixes));
+            }
+        }
+        if step.is_multiple_of(self.progress_steps) {
+            // The flight controller's estimate is of the cycle's end, so it
+            // meets the truth of that instant.
+            let controller = self
+                .chain
+                .board()
+                .estimated_state()
+                .map(|estimate| (self.chain.true_state(), estimate));
+            let samples = records::samples(
+                (t_s, &truth),
+                &mut self.sets,
+                &self.nav.log,
+                controller.as_ref(),
+                &self.outages,
+            )?;
+            self.pending.records.extend(samples);
+        }
+        Ok(())
+    }
+}
+
+fn seconds(at: SimInstant) -> f64 {
+    at.duration_since(SimInstant::START).as_seconds()
+}

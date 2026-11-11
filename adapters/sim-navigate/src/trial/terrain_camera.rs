@@ -276,33 +276,56 @@ pub struct TerrainFrame {
     pub truth: Truth<TerrainFrameTruth>,
 }
 
-/// The terrain camera over a simulated world.
+/// One exposure the camera is about to make: where it looks from, how,
+/// and when. A host that renders the world itself takes this, renders the
+/// grey image, and hands it to [`TerrainExposer::develop`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TerrainExposure {
+    /// The frame's index in the run, from 1; it seeds the frame's noise.
+    pub index: u64,
+    /// The step at the middle of the exposure.
+    pub mid_step: usize,
+    /// The step at which the frame is read out and delivered.
+    pub end_step: usize,
+    /// The instant of `mid_step`.
+    pub mid: SimInstant,
+    /// The camera's true optical centre, ECEF metres.
+    pub eye_ecef: DVec3,
+    /// The camera's true axes (right, up, back) into ECEF.
+    pub camera_to_ecef: DQuat,
+    /// The Sun's elevation at the eye, degrees.
+    pub sun_elevation_deg: f64,
+    /// The pinhole intrinsics to render with.
+    pub intrinsics: SensorIntrinsics,
+}
+
+/// The camera without the world: it places exposures and turns a rendered
+/// grey image into the sensor's frame through its radiometric response and
+/// noise. Whoever renders, the frame depends only on the image.
 #[derive(Debug, Clone)]
-pub struct TerrainCamera {
-    world: Arc<CatalogScenery>,
+pub struct TerrainExposer {
     spec: TerrainCameraSpec,
     mount: CameraMount,
     seed: u64,
     start: UtcTime,
 }
 
-impl TerrainCamera {
-    /// A camera of `spec` seeing `world`, its noise drawn from `seed`, on a
-    /// run whose first instant is `start`.
-    pub fn new(
-        world: Arc<CatalogScenery>,
-        spec: TerrainCameraSpec,
-        seed: u64,
-        start: UtcTime,
-    ) -> Result<Self, TrialError> {
+impl TerrainExposer {
+    /// A camera of `spec`, its noise drawn from `seed`, on a run whose
+    /// first instant is `start`.
+    pub fn new(spec: TerrainCameraSpec, seed: u64, start: UtcTime) -> Result<Self, TrialError> {
         spec.validate()?;
         Ok(Self {
             mount: spec.camera_mount(),
-            world,
             spec,
             seed,
             start,
         })
+    }
+
+    /// The camera's description.
+    pub const fn spec(&self) -> &TerrainCameraSpec {
+        &self.spec
     }
 
     /// The mid-exposure and readout steps of every frame along a flight of
@@ -315,6 +338,110 @@ impl TerrainCamera {
             .map(|mid| (mid, mid.wrapping_add(half)))
             .filter(|(_, end)| *end < len)
             .collect())
+    }
+
+    /// Exposure `index` (from 1), with the vehicle truly in `state` at the
+    /// middle of the exposure.
+    pub fn exposure(
+        &self,
+        index: u64,
+        (mid_step, end_step): (usize, usize),
+        mid: SimInstant,
+        state: &VehicleState,
+    ) -> Result<TerrainExposure, TrialError> {
+        let pose = self.mount.pose(state, DVec3::ZERO);
+        let (eye_ecef, camera_to_ecef) = (pose.position_ecef, pose.orientation);
+        let sun = sun_direction_ecef(self.start, mid, eye_ecef)?;
+        let up = LocalFrame::at(&ecef_to_geodetic(eye_ecef)).up();
+        Ok(TerrainExposure {
+            index,
+            mid_step,
+            end_step,
+            mid,
+            eye_ecef,
+            camera_to_ecef,
+            sun_elevation_deg: sun.dot(up).clamp(-1.0, 1.0).asin().to_degrees(),
+            intrinsics: self.spec.intrinsics(),
+        })
+    }
+
+    /// The frame `exposure` yields from `luma`, the scene's grey image of
+    /// exactly width × height bytes, row-major, top row first.
+    pub fn develop(
+        &self,
+        exposure: &TerrainExposure,
+        luma: &[u8],
+    ) -> Result<TerrainFrame, TrialError> {
+        let size = (self.spec.width, self.spec.height);
+        let expected = (size.0 as usize).saturating_mul(size.1 as usize);
+        if luma.len() != expected {
+            return Err(TrialError::InvalidRequest {
+                field: "terrain frame",
+                detail: format!(
+                    "{} bytes for a {}x{} image of {expected}",
+                    luma.len(),
+                    size.0,
+                    size.1
+                ),
+            });
+        }
+        let lit = exposure.sun_elevation_deg >= self.spec.min_sun_elevation_deg;
+        let mut noise =
+            WhiteNoise::from_seed(self.seed ^ exposure.index.wrapping_mul(FRAME_SEED_STRIDE));
+        let r = self.spec.radiometry;
+        let pixels = luma
+            .iter()
+            .map(|luma| {
+                let scene = if lit {
+                    r.gain * 255.0 * (f64::from(*luma) / 255.0).powf(r.gamma)
+                } else {
+                    0.0
+                };
+                let counts = scene + r.offset_dn + noise.next_gaussian() * r.noise_dn;
+                counts.round().clamp(0.0, 255.0) as u8
+            })
+            .collect();
+        Ok(TerrainFrame {
+            mid_step: exposure.mid_step,
+            end_step: exposure.end_step,
+            mid: exposure.mid,
+            size,
+            pixels,
+            truth: Truth::new(TerrainFrameTruth {
+                eye_ecef: exposure.eye_ecef,
+                camera_to_ecef: exposure.camera_to_ecef,
+                sun_elevation_deg: exposure.sun_elevation_deg,
+            }),
+        })
+    }
+}
+
+/// The terrain camera over a simulated world.
+#[derive(Debug, Clone)]
+pub struct TerrainCamera {
+    world: Arc<CatalogScenery>,
+    exposer: TerrainExposer,
+}
+
+impl TerrainCamera {
+    /// A camera of `spec` seeing `world`, its noise drawn from `seed`, on a
+    /// run whose first instant is `start`.
+    pub fn new(
+        world: Arc<CatalogScenery>,
+        spec: TerrainCameraSpec,
+        seed: u64,
+        start: UtcTime,
+    ) -> Result<Self, TrialError> {
+        Ok(Self {
+            world,
+            exposer: TerrainExposer::new(spec, seed, start)?,
+        })
+    }
+
+    /// The mid-exposure and readout steps of every frame along a flight of
+    /// `len` steps; see [`TerrainExposer::schedule`].
+    pub fn schedule(&self, len: usize) -> Result<Vec<(usize, usize)>, TrialError> {
+        self.exposer.schedule(len)
     }
 
     /// Every frame along `truth`, each rendered at the true pose of its
@@ -334,55 +461,24 @@ impl TerrainCamera {
     }
 
     /// Frame `index` (from 1), with the vehicle truly in `state` at the
-    /// middle of the exposure.
+    /// middle of the exposure, rendered from the world here.
     pub fn capture(
         &self,
         index: u64,
-        (mid_step, end_step): (usize, usize),
+        steps: (usize, usize),
         mid: SimInstant,
         state: &VehicleState,
     ) -> Result<TerrainFrame, TrialError> {
-        let pose = self.mount.pose(state, DVec3::ZERO);
-        let (eye_ecef, camera_to_ecef) = (pose.position_ecef, pose.orientation);
-        let sun = sun_direction_ecef(self.start, mid, eye_ecef)?;
-        let up = LocalFrame::at(&ecef_to_geodetic(eye_ecef)).up();
-        let sun_elevation_deg = sun.dot(up).clamp(-1.0, 1.0).asin().to_degrees();
-        let lit = sun_elevation_deg >= self.spec.min_sun_elevation_deg;
+        let exposure = self.exposer.exposure(index, steps, mid, state)?;
         let rendered = render_luma_view(
             &self.world,
-            eye_ecef,
-            camera_to_ecef,
-            &self.spec.intrinsics(),
+            exposure.eye_ecef,
+            exposure.camera_to_ecef,
+            &exposure.intrinsics,
         )
         .map_err(|error| TrialError::Maps {
             what: format!("world render: {error}"),
         })?;
-        let mut noise = WhiteNoise::from_seed(self.seed ^ index.wrapping_mul(FRAME_SEED_STRIDE));
-        let r = self.spec.radiometry;
-        let pixels = rendered
-            .pixels()
-            .iter()
-            .map(|luma| {
-                let scene = if lit {
-                    r.gain * 255.0 * (f64::from(*luma) / 255.0).powf(r.gamma)
-                } else {
-                    0.0
-                };
-                let counts = scene + r.offset_dn + noise.next_gaussian() * r.noise_dn;
-                counts.round().clamp(0.0, 255.0) as u8
-            })
-            .collect();
-        Ok(TerrainFrame {
-            mid_step,
-            end_step,
-            mid,
-            size: (self.spec.width, self.spec.height),
-            pixels,
-            truth: Truth::new(TerrainFrameTruth {
-                eye_ecef,
-                camera_to_ecef,
-                sun_elevation_deg,
-            }),
-        })
+        self.exposer.develop(&exposure, rendered.pixels())
     }
 }

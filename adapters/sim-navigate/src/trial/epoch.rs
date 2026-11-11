@@ -4,7 +4,7 @@ use super::TrialError;
 
 /// Parses `YYYY-MM-DDTHH:MM:SS[.fff]Z` as UTC. Leap seconds are not
 /// accepted: a trial epoch is an input instant, not a timestamp to replay.
-pub(super) fn parse_utc(text: &str) -> Result<UtcTime, TrialError> {
+pub fn parse_utc(text: &str) -> Result<UtcTime, TrialError> {
     let invalid = || TrialError::InvalidRequest {
         field: "epoch_utc",
         detail: format!("`{text}` is not YYYY-MM-DDTHH:MM:SSZ"),

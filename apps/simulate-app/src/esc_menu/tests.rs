@@ -283,6 +283,7 @@ fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
         FreeFlightVehicle::AviateFixedWingDirect,
         FreeFlightVehicle::Kinematic,
         FreeFlightVehicle::AviateX500Direct,
+        FreeFlightVehicle::X500Mission,
     ] {
         let index = catalog.airframe_of(plant).expect("plant has an airframe");
         let airframe = catalog.vehicles.get(index).expect("airframe");

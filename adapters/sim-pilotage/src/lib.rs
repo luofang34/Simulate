@@ -1,27 +1,22 @@
-//! Bridge between Simulate and Pilotage's remote-operations platform.
+//! Bridge between Simulate and Pilotage's remote-operations platform: the
+//! parts of a vehicle package Pilotage's own domains describe.
 //!
-//! [`SimulateVehicleAdapter`] flies a [`sim_core::KinematicModel`] or
-//! [`sim_core::JsbsimFdmBlock`] behind Pilotage's
-//! [`pilotage_adapter_api::VehicleAdapter`]. [`package_camera_calibration`]
-//! turns a package camera into a hash-verifiable
-//! [`pilotage_camera_calibration::CameraCalibration`]. [`aircraft_profile`],
-//! [`package_loading`], and [`apply_loading`] carry a vehicle package to and
-//! from a [`pilotage_aircraft::AircraftProfile`].
+//! [`package_camera_calibration`] turns a package camera into a
+//! hash-verifiable [`pilotage_camera_calibration::CameraCalibration`].
+//! [`aircraft_profile`], [`package_loading`], and [`apply_loading`] carry a
+//! vehicle package to and from a [`pilotage_aircraft::AircraftProfile`].
+//! [`video_bridge`] serves rendered camera frames to Pilotage's video
+//! sidecar.
 //!
-//! The adapter's avionics group is a noise model standing in for a flight
-//! controller's estimator, so it is never simulator truth, which goes out
-//! separately as [`pilotage_adapter_api::SimTruthSample`].
+//! Flying a vehicle for Pilotage is not here: a flight controller and its
+//! estimator stand between Pilotage and an airframe, and `sim-flight-chain`
+//! hosts the real ones.
 
-mod adapter;
 mod calibration;
 mod error;
 mod profile;
 pub mod video_bridge;
 
-pub use adapter::{
-    AdapterCheckpoint, MOTION_SCOPE, PackageStart, SimulateAdapterConfig, SimulateVehicleAdapter,
-    vehicle_class,
-};
 pub use calibration::{CalibratedCamera, CalibrationLifecycle, package_camera_calibration};
 pub use error::PilotageBridgeError;
 pub use profile::{

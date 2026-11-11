@@ -58,7 +58,7 @@ pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
         FreeFlightVehicle::JsbsimP38g => {
             CameraMount::oblique(p38g_eye_frd_m(), 0.0, -2.5_f64.to_radians(), 0.0)
         }
-        FreeFlightVehicle::AviateX500Direct => {
+        FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }
     }
@@ -98,7 +98,7 @@ pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
         )
         | None => svs_nose_mount(),
         Some(FreeFlightVehicle::JsbsimP38g) => CameraMount::forward_nose(p38g_eye_frd_m()),
-        Some(FreeFlightVehicle::AviateX500Direct) => {
+        Some(FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission) => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }
     }
