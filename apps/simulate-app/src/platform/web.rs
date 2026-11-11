@@ -14,7 +14,12 @@ use progress_surface::ProgressSurface;
 
 /// Starts the app; the browser drives the event loop from here on.
 pub fn run() {
-    console_error_panic_hook::set_once();
+    // A panic ends the wasm instance; the console alone would leave a
+    // visitor looking at a frozen page.
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        ProgressSurface::of_page().fail("Simulate stopped: internal error", &info.to_string());
+    }));
     // Every event reaches the console, so the default of all levels would
     // write out each of JSBSim's per-step trace events.
     tracing_wasm::set_as_global_default_with_config(
