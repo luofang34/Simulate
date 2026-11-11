@@ -17,13 +17,14 @@ mod tests;
 /// of a link lasts thirty years.
 pub const UNTIL_END_S: f64 = 1.0e9;
 
-/// The terrain camera a link without `cam` gets when a set is visual: the
-/// camera of the reference runs, 800 by 600 pixels, 67.4 degrees across,
-/// looking straight down, one frame a second. It stands in for a camera the
-/// vehicle definition will state.
+/// The terrain camera a link without `cam` gets when a set is visual: 400
+/// by 300 pixels, 67.4 degrees across, looking straight down, one frame a
+/// second. Half the reference runs' resolution keeps a navigator frame
+/// affordable in a browser tab; a link asks for more with `cam`. It stands
+/// in for a camera the vehicle definition will state.
 pub const VEHICLE_CAMERA: CameraGeometry = CameraGeometry {
-    width_px: 800,
-    height_px: 600,
+    width_px: 400,
+    height_px: 300,
     horizontal_fov_deg: 67.4,
     depression_deg: 90.0,
     rate_hz: 1.0,

@@ -70,7 +70,7 @@ fn the_plan_says_what_the_link_asks_for() {
     assert_eq!(
         texts(&lines, "Camera"),
         [
-            "800 x 600 pixels, 67.4° across, looking straight down, 1 frame a second (the vehicle's own)"
+            "400 x 300 pixels, 67.4° across, looking straight down, 1 frame a second (the vehicle's own)"
         ]
     );
     let stated = self::lines(&DAY.replace("&go=1", "&cam=1600x1200,90,45.5,2&go=1"));
