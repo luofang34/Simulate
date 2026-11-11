@@ -38,7 +38,7 @@ pub struct CockpitRig {
     pixel_ratio: f64,
     show_instruments: bool,
     show_conformal_hud: bool,
-    avionics_sourced: bool,
+    sources: layout::FlightSources,
     surface: WorldSurfaceHandle,
 }
 
@@ -103,7 +103,7 @@ impl CockpitRig {
             pixel_ratio: 1.0,
             show_instruments: true,
             show_conformal_hud: true,
-            avionics_sourced: true,
+            sources: layout::FlightSources::default(),
             surface,
         })
     }
@@ -130,17 +130,15 @@ impl CockpitRig {
         self.maps.as_mut()
     }
 
-    /// The EFB's chrome as shown over `world` this frame, when the EFB is shown: on
-    /// Earth, with the dock up, outside the full-window chart, on a map preset.
+    /// The EFB's chrome over `world` this frame, when shown: on Earth with the dock up,
+    /// outside the full-window chart and a link's page, on a map preset.
     #[must_use]
     pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
         let shown = world.body() == BodyEllipsoid::WGS84
             && self.show_instruments
+            && !self.sources.page
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
-        let maps = self.maps.as_ref().filter(|_| shown)?;
-        if !maps.efb_ready() {
-            return None;
-        }
+        let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
         Some(EfbChrome::new(self.surface_size, &maps.efb_status()?))
     }
 
@@ -312,11 +310,10 @@ impl CockpitRig {
         } else {
             (false, false, None, None)
         };
-
-        self.avionics_sourced = flight.onboard_avionics_shown();
+        self.sources = layout::FlightSources::of(flight);
         let show_hud = self.show_conformal_hud
             && viewport_mode == OperatorViewportMode::Cockpit
-            && self.avionics_sourced;
+            && self.sources.avionics;
         let traffic = if show_hud {
             self.supervisor.belief_entities(ViewSlotMask::ALL)
         } else {
@@ -328,7 +325,6 @@ impl CockpitRig {
             self.active_landing_runway(earth, profile)
         };
         let dock_panel_px = self.dock_panel_px(earth, viewport_mode);
-        let datum = self.supervisor.vertical_datum();
         let hud = show_hud.then(|| {
             layout::hud_view(
                 self.surface_size,
@@ -337,7 +333,7 @@ impl CockpitRig {
                 camera,
                 &truth_vehicle,
                 &traffic,
-                datum,
+                self.supervisor.vertical_datum(),
             )
         });
         let guidance = self
@@ -364,7 +360,6 @@ impl CockpitRig {
                 airspeed_envelope: flight.resolved_airspeed_envelope(),
             },
         )?;
-
         let full_map_covered = map_sphere_active && self.full_window_map_view().is_some();
         Ok(!full_map_covered)
     }
@@ -420,7 +415,7 @@ impl CockpitRig {
     }
 
     fn dock_panel_px(&self, earth: bool, mode: OperatorViewportMode) -> Option<[u32; 2]> {
-        if !self.show_instruments || !self.avionics_sourced {
+        if !self.show_instruments || !self.sources.avionics {
             return None;
         }
         let has_dock_chart = earth
@@ -459,7 +454,7 @@ impl CockpitRig {
         {
             quads.push(OverlayQuad::vector_overlay(ViewportRect::FULL, hud));
         }
-        if !self.show_instruments || !self.avionics_sourced {
+        if !self.show_instruments || !self.sources.avionics {
             return quads;
         }
         let maps = self.maps.as_ref().filter(|_| earth);

@@ -148,6 +148,12 @@ impl Flight {
         Some((feed.latest().route_s() - super::seconds(self.now())).max(0.0))
     }
 
+    /// Whether this flight shows a link's page's flight instead of flying its own.
+    #[must_use]
+    pub const fn shows_page(&self) -> bool {
+        self.page.is_some()
+    }
+
     /// Whether the onboard instruments have a source to draw. A page's flight draws its
     /// flight controller's own account, which the C172 mission's displays read; nothing
     /// else in a page has an onboard source, and the app's sensors over the page's truth

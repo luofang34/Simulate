@@ -81,7 +81,10 @@ impl FlightApp {
                 (
                     sup.viewport_mode(),
                     Some(sup.active_virtual_camera(profile).title),
-                    earth.then(|| sup.effective_airport_code(profile)),
+                    // A link's page flies its own route; the app's default aerodrome is
+                    // not on it.
+                    (earth && !self.flight.shows_page())
+                        .then(|| sup.effective_airport_code(profile)),
                     sup.time_scale(),
                 )
             },

@@ -8,7 +8,8 @@ use std::fmt::Display;
 
 use sim_link::SimulationLink;
 use sim_link_host::{
-    Clock, FlightStepper, Monitor, Pacer, SLICE_BUDGET_S, SwitchLog, pace_words, run_slice,
+    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SwitchLog, pace_words,
+    run_slice,
 };
 use sim_navigate::trial::SensorKind;
 use tracing::{info, warn};
@@ -79,16 +80,93 @@ fn apply_switches<F: FlightStepper>(flight: &mut F, before: &Controls, now: &Con
     }
 }
 
+/// What share of the page's frames the flight loop itself takes, measured
+/// over a few seconds: the rest goes to the page's other drawing, such as
+/// the world view, which slows the pace without the flight costing more.
+#[derive(Debug, Default)]
+struct FrameShare {
+    frame_started_s: Option<f64>,
+    own_s: f64,
+    wall_s: f64,
+    others: Option<f64>,
+}
+
+/// Wall time a share is measured over, seconds.
+const SHARE_WINDOW_S: f64 = 3.0;
+
+impl FrameShare {
+    /// A frame began at `now_s`.
+    fn frame(&mut self, now_s: f64) {
+        if let Some(last) = self.frame_started_s.replace(now_s) {
+            self.wall_s += (now_s - last).max(0.0);
+        }
+        if self.wall_s >= SHARE_WINDOW_S {
+            self.others = Some((1.0 - self.own_s / self.wall_s).clamp(0.0, 1.0));
+            (self.own_s, self.wall_s) = (0.0, 0.0);
+        }
+    }
+
+    /// The loop's own work this frame ended at `now_s`.
+    fn own_until(&mut self, now_s: f64) {
+        if let Some(started) = self.frame_started_s {
+            self.own_s += (now_s - started).max(0.0);
+        }
+    }
+
+    /// The pace words for the page's other drawing, named `others`, when it
+    /// takes most of the frames.
+    fn words(&self, others: &str) -> Option<String> {
+        let share = self.others.filter(|share| *share > 0.5)?;
+        Some(format!(
+            "{others} takes {:.0} % of the page's time, which slows the pace",
+            share * 100.0
+        ))
+    }
+}
+
+/// The status line: `note`, then why the pace is held, if it is.
+fn status_note(note: &str, pacer: &Pacer, share: &FrameShare, others: Option<&str>) -> String {
+    let mut words: Vec<String> = pacer.limit().iter().map(pace_words).collect();
+    words.extend(others.and_then(|others| share.words(others)));
+    if words.is_empty() {
+        return note.to_owned();
+    }
+    format!("{note}{}. ", words.join("; "))
+}
+
+/// Steps `flight` for one slice toward the pace and hands the monitor what
+/// it produced. Returns whether the flight goes on, and whether anything
+/// the page shows changed.
+fn slice<F>(
+    flight: &mut F,
+    (clock, pacer): (&PageClock, &mut Pacer),
+    monitor: &mut Monitor,
+    out: &mut Vec<MonitorFeed>,
+) -> Result<(bool, bool), F::Error>
+where
+    F: FlightStepper,
+{
+    let target_s = pacer.frame(clock.now_s(), flight.sim_time_s());
+    let slice = run_slice(flight, clock, SLICE_BUDGET_S, target_s, out)?;
+    let held = pacer.limit();
+    pacer.observe(&slice, flight.take_camera_wall_s());
+    let fed = !out.is_empty();
+    for feed in out.drain(..) {
+        monitor.apply(feed);
+    }
+    Ok((!slice.finished, fed || pacer.limit() != held))
+}
+
 /// Flies `flight` with `view` showing it, for as long as the page is open.
 /// `note` heads the status line: what is flying. With `link`, the view
 /// offers the link of the run as flown. `publish` sees the flight after
-/// every slice, for other views of it.
+/// every slice, for `others`, the page's other views of it.
 pub async fn fly<F>(
     mut view: MonitorView,
     mut flight: F,
-    note: &str,
-    link: Option<&SimulationLink>,
+    (note, link): (&str, Option<&SimulationLink>),
     publish: &mut dyn FnMut(&F, &Monitor),
+    others: Option<&str>,
 ) where
     F: FlightStepper,
     F::Error: Display,
@@ -98,7 +176,7 @@ pub async fn fly<F>(
     if let Some(link) = link {
         view.show_run_link(run_url(link, &outages).as_deref());
     }
-    let mut monitor = Monitor::default();
+    let (mut monitor, mut share) = (Monitor::default(), FrameShare::default());
     let mut controls = view.controls();
     let mut pacer = Pacer::new(controls.speed);
     let mut out = Vec::new();
@@ -106,6 +184,7 @@ pub async fn fly<F>(
     let started_s = clock.now_s();
     loop {
         animation_frame().await;
+        share.frame(clock.now_s());
         let now = view.controls();
         if now != controls {
             if flying {
@@ -118,19 +197,14 @@ pub async fn fly<F>(
             dirty = true;
         }
         if flying {
-            let target_s = pacer.frame(clock.now_s(), flight.sim_time_s());
-            let sliced = run_slice(&mut flight, &clock, SLICE_BUDGET_S, target_s, &mut out);
-            if let Ok(slice) = &sliced {
-                let held = pacer.limit();
-                pacer.observe(slice, flight.take_camera_wall_s());
-                dirty |= pacer.limit() != held;
-            }
-            match sliced {
-                Ok(slice) if slice.finished => {
-                    flying = false;
-                    info!(wall_s = clock.now_s() - started_s, "the flight has ended");
+            match slice(&mut flight, (&clock, &mut pacer), &mut monitor, &mut out) {
+                Ok((goes_on, changed)) => {
+                    flying = goes_on;
+                    dirty |= changed || !goes_on;
+                    if !goes_on {
+                        info!(wall_s = clock.now_s() - started_s, "the flight has ended");
+                    }
                 }
-                Ok(_) => {}
                 Err(error) => {
                     warn!(%error, "the flight failed");
                     view.section().refuse(
@@ -143,10 +217,6 @@ pub async fn fly<F>(
                     return;
                 }
             }
-            dirty |= !out.is_empty();
-            for feed in out.drain(..) {
-                monitor.apply(feed);
-            }
             publish(&flight, &monitor);
             let flown = flight.outages();
             if flown != outages {
@@ -157,12 +227,13 @@ pub async fn fly<F>(
             }
         }
         if dirty {
-            let note = match pacer.limit() {
-                Some(limit) => format!("{note}{}. ", pace_words(&limit)),
-                None => note.to_owned(),
-            };
-            view.draw(&monitor, &controls, &note);
+            view.draw(
+                &monitor,
+                &controls,
+                &status_note(note, &pacer, &share, others),
+            );
             dirty = false;
         }
+        share.own_until(clock.now_s());
     }
 }

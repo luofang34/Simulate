@@ -158,5 +158,6 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             ));
         }
     };
-    fly(view, flight, NOTE, Some(&plan.link), &mut publish).await;
+    let others = feed.as_ref().map(|_| "the world view");
+    fly(view, flight, (NOTE, Some(&plan.link)), &mut publish, others).await;
 }

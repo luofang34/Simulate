@@ -14,6 +14,35 @@ use crate::avionics::{ConformalSurface, HudView};
 use crate::map_rig::{AvionicsPreset, MapLibreRig, ScenerySource};
 use crate::world_surface::WorldSurfaceHandle;
 
+/// Where the flight's displays get what they draw this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FlightSources {
+    /// Whether the onboard instruments have a source to draw.
+    pub avionics: bool,
+    /// Whether the flight is a link's page's, whose route the app's own aerodrome and
+    /// moving map do not show.
+    pub page: bool,
+}
+
+impl Default for FlightSources {
+    fn default() -> Self {
+        Self {
+            avionics: true,
+            page: false,
+        }
+    }
+}
+
+impl FlightSources {
+    /// The sources of `flight` now.
+    pub(super) fn of(flight: &crate::flight::Flight) -> Self {
+        Self {
+            avionics: flight.onboard_avionics_shown(),
+            page: flight.shows_page(),
+        }
+    }
+}
+
 /// Attempts to create [`MapLibreRig`], logging and returning `None` on initialization failure.
 pub(super) fn try_build_maps(
     host_gpu: HostGpu,
