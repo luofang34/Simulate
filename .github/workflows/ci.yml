@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Incremental artifacts are useless across runs and would bloat the cache.
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    # A cold build compiles the workspace in debug, release and wasm32.
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Debug, release and wasm32 builds of the workspace and its git siblings
+      # outgrow the runner's default free space.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      # libudev for gilrs gamepads; wayland and xkbcommon for winit.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libwayland-dev libxkbcommon-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install trunk and mdbook
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" trunk
+          curl -sSfL https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" mdbook
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Pull requests restore main's cache but do not write their own,
+          # which would evict it within the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The runner has no GPU. GPU tests run on a software Vulkan adapter if
+      # the image provides one, and return early when `HeadlessGpu::new()`
+      # finds no adapter.
+      - name: Full gate
+        run: scripts/ci.sh

@@ -1,7 +1,10 @@
 //! Planetary orientation and time-scale contract verification: tiered planetary orientations (`ITRF93`,
 //! `MOON_ME`, `MOON_PA`, `IAU_MARS`), NAIF `SPKEZR` golden vector, and `TimeScaleCatalog` expiration policies.
 
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use glam::DVec3;
 use sim_geo::UtcTime;
@@ -79,7 +82,7 @@ fn orientation_grades_policies_and_angular_velocity_derivatives_verified() {
 }
 
 #[test]
-fn moon_pa_vs_iau_offset_and_optional_naif_golden_spkezr_verified() {
+fn moon_me_vs_iau_moon_offset_within_naif_documented_bound() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
     let iau = IauPckCatalog::from_pck_bytes(BuiltinSolarSystem2026_2028::PCK00011_TPC_BYTES)
         .expect("iau");
@@ -99,16 +102,21 @@ fn moon_pa_vs_iau_offset_and_optional_naif_golden_spkezr_verified() {
         diff_arcsec < 25.0,
         "unexpectedly large MOON_ME vs IAU_MOON angle: {diff_arcsec} arcsec"
     );
+}
 
-    // Optional check against full NASA NAIF source kernels in scratch (when present locally):
-    let scratch_dir = Path::new(
-        "/Users/fangluo/.gemini/antigravity/brain/0e879125-f0db-4777-aa49-58b098b418dc/scratch/naif_kernels",
+// The full NAIF kernels are not in the repository; this checks the lunar ME and
+// PA frames against NAIF's published spkezr example when they are supplied.
+#[test]
+#[ignore = "needs SIM_NAIF_KERNEL_DIR with NAIF de440s.bsp and moon_pa_de440_200625.bpc"]
+fn moon_me_and_pa_match_naif_spkezr_golden_vector() {
+    let dir = PathBuf::from(std::env::var("SIM_NAIF_KERNEL_DIR").expect("SIM_NAIF_KERNEL_DIR"));
+    let iau = IauPckCatalog::from_pck_bytes(BuiltinSolarSystem2026_2028::PCK00011_TPC_BYTES)
+        .expect("iau");
+    verify_naif_spkezr_golden_vector(
+        &dir.join("de440s.bsp"),
+        &dir.join("moon_pa_de440_200625.bpc"),
+        &iau,
     );
-    let de440_path = scratch_dir.join("de440s.bsp");
-    let moon_bpc_path = scratch_dir.join("moon_pa_de440_200625.bpc");
-    if de440_path.exists() && moon_bpc_path.exists() {
-        verify_naif_spkezr_golden_vector(&de440_path, &moon_bpc_path, &iau);
-    }
 }
 
 #[cfg(test)]

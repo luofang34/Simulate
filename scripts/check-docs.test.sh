@@ -11,7 +11,7 @@ repo="$scratch/repo"
 clean_repo() {
     rm -rf "$repo"
     mkdir -p "$repo/apps/ironbird/src" "$repo/crates/sim-x/src/inner" "$repo/book/src"
-    printf '[workspace]\nmembers = ["apps/ironbird", "crates/sim-x"]\n\n[workspace.metadata.external_sources]\nAviate = { path = "../Aviate" }\n' \
+    printf '[workspace]\nmembers = ["apps/ironbird", "crates/sim-x"]\n\n[workspace.dependencies]\naviate-core = { git = "https://github.com/luofang34/Aviate", rev = "r" }\n' \
         > "$repo/Cargo.toml"
     printf '[package]\nname = "ironbird"\n' > "$repo/apps/ironbird/Cargo.toml"
     printf '[package]\nname = "sim-x"\n' > "$repo/crates/sim-x/Cargo.toml"
@@ -82,7 +82,7 @@ expect_reject "missing bare file" 'no file in the tree matches `gone.rs`' \
     append "$readme" 'See `gone.rs`.'
 expect_reject "path in a code block" 'path `apps/ironbird/missing` does not exist' \
     append "$readme" $'```sh\nls apps/ironbird/missing\n```'
-expect_reject "unknown sibling" 'is not a sibling checkout' \
+expect_reject "unknown sibling" 'is not a sibling repository' \
     append "$readme" 'Clone `../Simulate/vehicles`.'
 expect_reject "broken chapter link" 'link target `gone.md` does not exist' \
     append "$repo/book/src/intro.md" 'See [gone](gone.md).'
