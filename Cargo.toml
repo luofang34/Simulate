@@ -15,6 +15,7 @@ members = [
     "crates/sim-devices",
     "crates/sim-geo",
     "crates/sim-input",
+    "crates/sim-link",
     "crates/sim-mission",
     "crates/sim-orbital",
     "crates/sim-pack",
@@ -53,6 +54,7 @@ sim-devices = { path = "crates/sim-devices" }
 sim-geo = { path = "crates/sim-geo" }
 sim-indicate = { path = "adapters/sim-indicate" }
 sim-input = { path = "crates/sim-input" }
+sim-link = { path = "crates/sim-link" }
 sim-maplibre = { path = "adapters/sim-maplibre" }
 sim-mission = { path = "crates/sim-mission" }
 sim-navigate = { path = "adapters/sim-navigate" }

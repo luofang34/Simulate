@@ -1,0 +1,12 @@
+[package]
+name = "sim-link"
+description = "The shareable simulation link: one URL fragment that fully describes a navigation simulation, decoded and encoded with typed refusals"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }

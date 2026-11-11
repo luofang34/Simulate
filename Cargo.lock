@@ -5070,6 +5070,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-link"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sim-maplibre"
 version = "0.1.0"
 dependencies = [
