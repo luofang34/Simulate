@@ -13,8 +13,12 @@
 //! - [`package_route_msl`] and [`package_camera`] say what the map package
 //!   is planned for, and [`package_plan_lines`], [`progress_words`] and
 //!   [`sealed_lines`] word its plan, its progress and its result.
+//! - [`Monitor`] is what the page shows while the link flies, fed by the
+//!   flight; [`run_slice`] and [`Pacer`] step a [`FlightStepper`] in slices
+//!   a page can draw between, and [`Replay`] flies a recorded run again.
 
 mod error;
+mod monitor;
 mod package;
 mod request;
 mod summary;
@@ -24,6 +28,11 @@ mod wording;
 mod tests;
 
 pub use error::HostError;
+pub use monitor::{
+    Clock, Column, EVENTS_KEPT, FlightStepper, MAX_FRAME_S, MeansSwitch, Monitor, MonitorFeed,
+    Pacer, Replay, SLICE_BUDGET_S, SetTrace, Slice, StepState, TracePoint, clock_words,
+    event_words, run_slice, sensor_words, state_words, status_words, terrain_words,
+};
 pub use package::{
     BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,
     package_plan_lines, package_route_msl, progress_words, sealed_lines,

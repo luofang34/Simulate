@@ -30,4 +30,13 @@ pub enum HostError {
         /// The ephemeris's refusal.
         detail: String,
     },
+    /// A line of a recorded progress stream is not a progress record.
+    #[error("line {line} of the recorded progress stream: {source}")]
+    Replay {
+        /// The line, counted from one.
+        line: usize,
+        /// The trial library's refusal of the line.
+        #[source]
+        source: TrialError,
+    },
 }
