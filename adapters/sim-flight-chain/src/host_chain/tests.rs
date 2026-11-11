@@ -164,7 +164,7 @@ fn fly(
 
 /// Ninety simulated seconds from the link's start.
 #[test]
-#[ignore = "Pilotage's host core admits no estimate from Aviate: it wants the attitude and the receiver fix under one stamp"]
+#[ignore = "Aviate's board reports itself a quadrotor, so Pilotage's fixed-wing adapter refuses the arm"]
 fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
