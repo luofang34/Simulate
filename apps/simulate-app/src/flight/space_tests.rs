@@ -348,8 +348,7 @@ fn jwst_alone() -> super::space_world::JwstAlone {
     let epoch =
         sim_spacetime::SimEpoch::builtin_from_utc(sim_geo::UtcTime::from_unix_seconds(start_utc_s))
             .expect("epoch");
-    let hour = sim_core::TickSpan::from_seconds_and_subsec_ticks(3_600, 0);
-    super::space_world::JwstAlone::new(&epoch, &solar, hour).expect("JWST_L2 universe")
+    super::space_world::JwstAlone::new(&epoch, &solar).expect("JWST_L2 universe")
 }
 
 fn in_jwst_box(offset: DVec3) -> bool {

@@ -308,3 +308,84 @@ fn dynamic_pressure_and_ground_contact_block_promotion_and_trigger_demotion() {
     assert_eq!(universe.tier(VesselId(2)).unwrap(), Tier::Local);
     assert!(universe.take_tier_changes().is_empty());
 }
+
+/// Flies the dipping orbit in the orbital tier from the start, on the game's one-minute
+/// quantum, alone or with a second vessel a kilometre beside it, and returns when the
+/// first vessel was handed to flight dynamics.
+fn demotion_on_a_minute_quantum(escorted: bool) -> SimInstant {
+    let epoch = epoch();
+    let context = super::OrbitalContext {
+        quantum: TickSpan::from_seconds_and_subsec_ticks(60, 0),
+        ..solar_system_context()
+    };
+    let mut universe =
+        Universe::new(epoch.clone(), context).with_tier_policy(TierPolicy::standard());
+    let orbit = dipping_orbit();
+    let spin = DVec3::Z * BodyEllipsoid::WGS84.omega_rad_s;
+    let state = sim_orbital::ContinuousPlantState {
+        primary_body: sim_orbital::NaifId::EARTH,
+        pos_rel_icrf_m: orbit.position_ecef,
+        vel_rel_icrf_m_s: orbit.velocity_ecef + spin.cross(orbit.position_ecef),
+        q_body_to_icrf: DQuat::IDENTITY,
+        omega_body_rad_s: DVec3::ZERO,
+        propellant_mass_kg: 0.0,
+        h_rw_body_nms: DVec3::ZERO,
+    };
+    let config = sim_orbital::VesselConfig {
+        mass_model: sim_orbital::MassPropertiesModel::diagonal(
+            500.0,
+            [200.0, 300.0, 250.0],
+            [0.0; 3],
+        ),
+        propellant_mode: sim_orbital::PropellantMode::InfiniteConstantMass,
+        rw_mode: sim_orbital::ReactionWheelMode::ConserveMomentum {
+            h_max_nms: 0.0,
+            tau_max_nm: 0.0,
+        },
+        tolerances: sim_orbital::Dop853Tolerances::default(),
+        bounding_radius_m: 2.0,
+        auto_soi_switch: true,
+    };
+    universe
+        .insert_orbital(VesselId(1), config, state, factory())
+        .unwrap();
+    if escorted {
+        let beside = sim_orbital::ContinuousPlantState {
+            pos_rel_icrf_m: state.pos_rel_icrf_m + DVec3::new(0.0, 0.0, 1_000.0),
+            ..state
+        };
+        universe
+            .insert_orbital(VesselId(2), config, beside, factory())
+            .unwrap();
+    }
+    let mut t = SimInstant::START;
+    while t < seconds(3_000) {
+        t = t.advanced(TickSpan::from_seconds_and_subsec_ticks(300, 0));
+        universe.advance_to(t).unwrap();
+    }
+    universe
+        .take_tier_changes()
+        .into_iter()
+        .find(|change| change.vessel == VesselId(1) && change.to == Tier::Local)
+        .map(|change| change.at)
+        .unwrap()
+}
+
+#[test]
+fn a_deorbiting_vessel_comes_down_when_it_did_on_quantum_segments() {
+    let alone = demotion_on_a_minute_quantum(false);
+    let escorted = demotion_on_a_minute_quantum(true);
+    let gap = if alone > escorted {
+        alone.duration_since(escorted)
+    } else {
+        escorted.duration_since(alone)
+    };
+    assert!(
+        alone > seconds(1_500) && alone < seconds(2_700),
+        "{alone:?}"
+    );
+    assert!(
+        gap <= TickSpan::from_seconds_and_subsec_ticks(60, 0),
+        "demoted at {alone:?} alone and {escorted:?} on quantum segments"
+    );
+}

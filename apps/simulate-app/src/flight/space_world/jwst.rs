@@ -144,10 +144,6 @@ impl SpaceWorld {
 
 /// The observatory alone in a universe of its own, as the flight builds it, with its
 /// keeper: a year of it can be flown without the pilot's vessel stepping beside it.
-///
-/// The orbital tier ends each speculative segment on its quantum grid; a coarser grid
-/// than the flight's changes only where the integrator restarts, not the forces it
-/// integrates, and lets a year be flown in a test.
 #[cfg(test)]
 pub(in crate::flight) struct JwstAlone {
     pub(in crate::flight) universe: Universe,
@@ -159,13 +155,8 @@ impl JwstAlone {
     pub(in crate::flight) fn new(
         epoch: &SimEpoch,
         solar: &SolarSystem,
-        quantum: TickSpan,
     ) -> Result<Self, AppSimError> {
-        let context = sim_universe::OrbitalContext {
-            quantum,
-            ..solar.context()
-        };
-        let mut universe = Universe::new(epoch.clone(), context);
+        let mut universe = Universe::new(epoch.clone(), solar.context());
         let keeper = spawn_jwst_l2(&mut universe, epoch, solar, &solar.raketa_environment())?;
         Ok(Self { universe, keeper })
     }
