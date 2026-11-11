@@ -8,9 +8,11 @@
 use std::collections::BTreeMap;
 
 use glam::DVec3;
-use sim_chain_trial::{ChainTrial, StepOutcome, first_link};
-use sim_core::{AirframeArticulation, EngineStatus, TICKS_PER_SECOND, TickSpan, VehicleState};
-use sim_flight_chain::C172_RATE_HZ;
+use sim_chain_trial::{ChainTrial, StepOutcome, TruthSnapshot, first_link};
+use sim_core::{
+    AirframeArticulation, EngineStatus, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
+};
+use sim_flight_chain::{C172_RATE_HZ, FcAvionics};
 use sim_navigate::trial::{DirectoryStores, ProgressRecord, parse_utc};
 use tracing::info;
 
@@ -18,7 +20,7 @@ use crate::error::AppSimError;
 
 mod page;
 
-pub use page::{ChainSnapshot, PageFeed};
+pub use page::{PageFeed, PageSnapshot};
 
 /// One navigation set's latest standing against truth.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,10 +44,13 @@ enum Source {
 pub struct ChainRig {
     source: Source,
     /// The chain as last stepped or published.
-    seen: ChainSnapshot,
+    seen: PageSnapshot,
     standings: BTreeMap<String, SetStanding>,
     /// The link's epoch, Unix seconds: the flight's civil time at its start.
     epoch_utc_s: f64,
+    /// The flight controller's last usable estimate, or the declared start before its
+    /// first: what the displays hold while the estimator grades its estimate unusable.
+    held_estimate: VehicleState,
 }
 
 /// The C172 at the first link's start, its plan about to be handed to Pilotage.
@@ -55,18 +60,15 @@ pub(super) fn build_chain_rig() -> Result<ChainRig, AppSimError> {
         .map_err(sim_chain_trial::ChainTrialError::from)?
         .unix_seconds();
     let trial = ChainTrial::new(&spec, &DirectoryStores)?;
-    Ok(ChainRig {
-        seen: ChainSnapshot::of(&trial, None),
-        source: Source::Own(Box::new(trial)),
-        standings: BTreeMap::new(),
-        epoch_utc_s,
-    })
+    Ok(ChainRig::from_trial(Box::new(trial), epoch_utc_s))
 }
 
 /// The C172 a link's page flies, drawn from `feed`.
 pub(super) fn page_chain_rig(feed: PageFeed) -> ChainRig {
+    let seen = feed.latest();
     ChainRig {
-        seen: feed.latest(),
+        held_estimate: seen.avionics.estimate.unwrap_or(seen.truth.state),
+        seen,
         epoch_utc_s: feed.epoch_utc_s(),
         source: Source::Page(feed),
         standings: BTreeMap::new(),
@@ -74,6 +76,34 @@ pub(super) fn page_chain_rig(feed: PageFeed) -> ChainRig {
 }
 
 impl ChainRig {
+    /// The vehicle flown by `trial`, which a host built and may keep stepping through
+    /// this rig, at the link epoch `epoch_utc_s` (Unix seconds). The trial starts at its
+    /// declared start, which the displays hold until the flight controller's first
+    /// estimate.
+    #[must_use]
+    pub fn from_trial(trial: Box<ChainTrial>, epoch_utc_s: f64) -> Self {
+        let seen = PageSnapshot::of(&trial, None);
+        Self {
+            held_estimate: seen.avionics.estimate.unwrap_or(seen.truth.state),
+            seen,
+            source: Source::Own(trial),
+            standings: BTreeMap::new(),
+            epoch_utc_s,
+        }
+    }
+
+    /// The flight controller's account of its last cycle.
+    #[must_use]
+    pub const fn avionics(&self) -> FcAvionics {
+        self.seen.avionics
+    }
+
+    /// The estimate the displays draw: the flight controller's, or the last one it gave.
+    #[must_use]
+    pub const fn held_estimate(&self) -> VehicleState {
+        self.held_estimate
+    }
+
     /// One cycle of the flight controller.
     pub(super) const fn period(&self) -> TickSpan {
         TickSpan::from_ticks(TICKS_PER_SECOND / C172_RATE_HZ)
@@ -86,27 +116,27 @@ impl ChainRig {
 
     /// The true vehicle state.
     pub(super) const fn state(&self) -> VehicleState {
-        self.seen.state
+        self.seen.truth.state
     }
 
     /// The true specific force in body forward-right-down axes, m/s².
     pub(super) const fn specific_force_frd_m_s2(&self) -> DVec3 {
-        self.seen.specific_force_frd_m_s2
+        self.seen.truth.specific_force_body_m_s2
     }
 
     /// The flight model's engine.
     pub(super) const fn engine_status(&self) -> EngineStatus {
-        self.seen.engine
+        self.seen.truth.engine
     }
 
     /// The flight model's surfaces, gear and propeller.
     pub(super) const fn articulation(&self) -> AirframeArticulation {
-        self.seen.articulation
+        self.seen.truth.articulation
     }
 
-    /// Whether the flight controller is armed.
+    /// Whether the flight controller is armed, in its own word.
     pub(super) const fn armed(&self) -> bool {
-        self.seen.armed
+        self.seen.avionics.armed
     }
 
     /// Pilotage's mission phase, in its own words.
@@ -123,39 +153,59 @@ impl ChainRig {
     /// One flight-controller cycle of the app's own trial, and its reports; for a page's
     /// flight, the page's latest snapshot.
     pub(super) fn step(&mut self) -> Result<(), AppSimError> {
-        let trial = match &mut self.source {
-            Source::Own(trial) => trial,
-            Source::Page(feed) => {
-                self.seen = feed.latest();
-                return Ok(());
+        match &mut self.source {
+            Source::Own(trial) => {
+                let phase = self.seen.phase.take();
+                let (seen, standings) = step_own(trial, phase)?;
+                self.seen = seen;
+                self.standings.extend(standings);
             }
-        };
-        // The desktop trial has no terrain camera, so no frame is ever asked for.
-        let outputs = match trial.step()? {
-            StepOutcome::Advanced(outputs) | StepOutcome::FrameWanted(_, outputs) => outputs,
-        };
-        let mut phase = self.seen.phase.take();
-        for update in outputs.mission {
-            for event in &update.events {
-                info!(at_s = update.t_s, event, "Pilotage mission");
-            }
-            if update.phase != phase {
-                info!(at_s = update.t_s, phase = ?update.phase, "mission phase");
-                phase = update.phase;
-            }
+            Source::Page(feed) => self.seen = feed.latest(),
         }
-        self.seen = ChainSnapshot::of(trial, phase);
-        for record in outputs.records {
-            if let ProgressRecord::Sample(sample) = record {
-                self.standings.insert(
-                    sample.set,
-                    SetStanding {
-                        horizontal_error_m: sample.horizontal_error_m,
-                        sigma_horizontal_m: sample.sigma_horizontal_m,
-                    },
-                );
-            }
+        if let Some(estimate) = self.seen.avionics.estimate {
+            self.held_estimate = estimate;
         }
         Ok(())
     }
+}
+
+/// Route time of `truth`, seconds.
+pub(crate) fn route_s(truth: &TruthSnapshot) -> f64 {
+    truth.at.duration_since(SimInstant::START).as_seconds()
+}
+
+/// One cycle of `trial` from mission `phase`: the chain after it and the sets' standings
+/// it reported.
+fn step_own(
+    trial: &mut ChainTrial,
+    mut phase: Option<String>,
+) -> Result<(PageSnapshot, Vec<(String, SetStanding)>), AppSimError> {
+    // The desktop trial has no terrain camera, so no frame is ever asked for.
+    let outputs = match trial.step()? {
+        StepOutcome::Advanced(outputs) | StepOutcome::FrameWanted(_, outputs) => outputs,
+    };
+    for update in outputs.mission {
+        for event in &update.events {
+            info!(at_s = update.t_s, event, "Pilotage mission");
+        }
+        if update.phase != phase {
+            info!(at_s = update.t_s, phase = ?update.phase, "mission phase");
+            phase = update.phase;
+        }
+    }
+    let standings = outputs
+        .records
+        .into_iter()
+        .filter_map(|record| match record {
+            ProgressRecord::Sample(sample) => Some((
+                sample.set,
+                SetStanding {
+                    horizontal_error_m: sample.horizontal_error_m,
+                    sigma_horizontal_m: sample.sigma_horizontal_m,
+                },
+            )),
+            _ => None,
+        })
+        .collect();
+    Ok((PageSnapshot::of(trial, phase), standings))
 }

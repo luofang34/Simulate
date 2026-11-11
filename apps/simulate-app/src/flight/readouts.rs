@@ -4,7 +4,7 @@
 use std::sync::OnceLock;
 
 use glam::DVec3;
-use sim_core::{AirframeArticulation, EngineStatus, SystemControls};
+use sim_core::{AirframeArticulation, EngineStatus, SystemControls, VehicleState};
 use sim_pack::{
     AirspeedEnvelope, LoadedSyspack, PitotStaticCalibration, ResolvedAirspeedEnvelope,
     builtin_c172_package, builtin_p38g_package,
@@ -261,6 +261,16 @@ impl Flight {
                 .and_then(|session| session.block().plant().aviate_armed()),
             Mode::Scenario(_) | Mode::Space(_) => None,
         }
+    }
+
+    /// The flight controller's account and the estimate the displays hold, when the
+    /// free vehicle flies the real control chain.
+    #[must_use]
+    pub fn chain_avionics(&self) -> Option<(sim_flight_chain::FcAvionics, VehicleState)> {
+        let Mode::Free { world, .. } = &self.mode else {
+            return None;
+        };
+        world.session()?.block().plant().chain_avionics()
     }
 
     /// Pilotage's mission phase and each navigation set's standing, when the free

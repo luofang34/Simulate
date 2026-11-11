@@ -257,7 +257,10 @@ fn global_airport_spawns_register_its_runways_and_line_up() {
 /// and a restart keeps it.
 #[test]
 fn the_c172_mission_flies_at_its_links_epoch() {
-    const LINK_EPOCH_UNIX_S: f64 = 1_781_525_040.0;
+    let link = sim_chain_trial::first_link().expect("the first link");
+    let epoch_s = sim_navigate::trial::parse_utc(&link.request.epoch_utc)
+        .expect("the link's epoch")
+        .unix_seconds();
     let mut flight = Flight::new().expect("flight");
     flight
         .select_vehicle(FreeFlightVehicle::C172Mission)
@@ -269,7 +272,33 @@ fn the_c172_mission_flies_at_its_links_epoch() {
             .expect("a civil start")
             .unix_seconds()
     };
-    assert_eq!(start(&flight), LINK_EPOCH_UNIX_S);
+    assert_eq!(start(&flight), epoch_s);
     flight.restart().expect("restart");
-    assert_eq!(start(&flight), LINK_EPOCH_UNIX_S);
+    assert_eq!(start(&flight), epoch_s);
+}
+
+/// The mission's displays read its flight controller's account, never the airframe:
+/// the navigation solution they draw is the controller's estimate, and the air data
+/// state no altimeter setting.
+#[test]
+fn the_c172_missions_displays_read_its_flight_controller() {
+    let mut flight = Flight::new().expect("flight");
+    flight
+        .select_vehicle(FreeFlightVehicle::C172Mission)
+        .expect("the mission");
+    // Past the arming, when the controller starts flying on its air data.
+    for _ in 0..40 {
+        flight
+            .advance_by(0.1, ControlInputs::default(), SimTimeScale::RealTime)
+            .expect("advance");
+    }
+    let (avionics, held) = flight.chain_avionics().expect("the real chain");
+    assert!(avionics.armed);
+    assert_eq!(avionics.estimate, Some(held));
+    let onboard = flight.onboard_sensors();
+    assert_eq!(onboard.estimated_vehicle, held);
+    assert_ne!(onboard.estimated_vehicle, flight.vehicle_state());
+    let air = onboard.air_data.expect("the controller's air data");
+    assert_eq!(air.value.altimeter_setting_hpa, None);
+    assert_eq!(flight.estimated_vehicle_state(), held);
 }

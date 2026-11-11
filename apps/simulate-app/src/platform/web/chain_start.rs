@@ -17,7 +17,7 @@ use super::flight_run::{PageClock, fly};
 use super::monitor_view::MonitorView;
 use super::package_run::LinkPlan;
 use super::section::{Section, append};
-use crate::vehicles::{ChainSnapshot, PageFeed};
+use crate::vehicles::{PageFeed, PageSnapshot};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 
@@ -129,7 +129,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
     let feed = match parse_utc(&plan.request.trial.epoch_utc) {
         Ok(epoch) => Some(PageFeed::new(
             epoch.unix_seconds(),
-            ChainSnapshot::of(&trial, None),
+            PageSnapshot::of(&trial, None),
         )),
         Err(error) => {
             warn!(%error, "the link's epoch does not parse; no world view");
@@ -152,7 +152,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
     let flight = ChainFlight::new(trial, world, PageClock::of_page());
     let mut publish = |flight: &ChainFlight<PageClock>, monitor: &Monitor| {
         if let Some(feed) = &feed {
-            feed.publish(ChainSnapshot::of(
+            feed.publish(PageSnapshot::of(
                 flight.trial(),
                 monitor.phase().map(str::to_owned),
             ));

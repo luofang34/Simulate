@@ -10,6 +10,7 @@ use crate::{c172_board, c172_sensor_suite};
 
 mod c172_stress;
 mod c172_subjects;
+mod frame_moves;
 
 /// Height of the start above the board's origin, metres.
 const START_HEIGHT_M: f64 = 600.0;

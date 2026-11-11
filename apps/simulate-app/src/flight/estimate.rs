@@ -12,6 +12,7 @@ use sim_indicate::AirDataReading;
 use sim_scenario::ScenarioProfile;
 
 use super::Flight;
+use crate::chain_avionics;
 use crate::sensor_bus::{
     OnboardSensorBus, SensorErrors, SensorRealism, sensed_cockpit, sensed_specific_force,
 };
@@ -78,6 +79,9 @@ impl Flight {
     /// [`SensorRealism::Ideal`].
     #[must_use]
     pub fn estimated_vehicle_state(&self) -> VehicleState {
+        if let Some((_, held)) = self.chain_avionics() {
+            return held;
+        }
         let truth = self.vehicle_state();
         let body = self.world().body();
         self.sensor_errors(false)
@@ -89,6 +93,9 @@ impl Flight {
     /// window yet keeps the estimator's offset from truth.
     #[must_use]
     pub fn display_estimated_vehicle_state(&self) -> VehicleState {
+        if let Some((_, held)) = self.chain_avionics() {
+            return held;
+        }
         let truth = self.display_vehicle_state();
         let body = self.world().body();
         self.sensor_errors(true)
@@ -98,8 +105,17 @@ impl Flight {
     /// Every onboard reading for the current display frame.
     #[must_use]
     pub fn onboard_sensors(&self) -> OnboardSensorSnapshot {
-        let truth = self.display_vehicle_state();
         let cockpit = self.cockpit();
+        // On the real chain the flight controller's own account is the onboard reading.
+        if let Some((avionics, held)) = self.chain_avionics() {
+            return OnboardSensorSnapshot {
+                estimated_vehicle: held,
+                air_data: chain_avionics::air_data_reading(&avionics),
+                cockpit: sensed_cockpit(cockpit, &held),
+                specific_force_frd_m_s2: avionics.specific_force_body_m_s2,
+            };
+        }
+        let truth = self.display_vehicle_state();
         let force = self.specific_force_frd_m_s2();
         let Some(errors) = self.sensor_errors(true) else {
             return OnboardSensorSnapshot {

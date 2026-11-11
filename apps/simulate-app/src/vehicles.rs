@@ -19,7 +19,7 @@ mod structural;
 mod tests;
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub use chain_rig::ChainSnapshot;
+pub use chain_rig::PageSnapshot;
 pub use chain_rig::{PageFeed, SetStanding};
 pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
@@ -175,6 +175,16 @@ impl FreeFlightPlant {
     pub fn stated_epoch_utc_s(&self) -> Option<f64> {
         match self {
             Self::C172Mission(rig) => Some(rig.epoch_utc_s()),
+            _ => None,
+        }
+    }
+
+    /// The flight controller's account of its last cycle and the estimate the displays
+    /// hold, when flying the real chain.
+    #[must_use]
+    pub fn chain_avionics(&self) -> Option<(sim_flight_chain::FcAvionics, VehicleState)> {
+        match self {
+            Self::C172Mission(rig) => Some((rig.avionics(), rig.held_estimate())),
             _ => None,
         }
     }

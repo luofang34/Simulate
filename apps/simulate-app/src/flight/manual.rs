@@ -145,15 +145,16 @@ impl Flight {
     /// this clock follow the route.
     pub(super) fn page_due_s(&self) -> Option<f64> {
         let feed = self.page.as_ref()?;
-        Some((feed.latest().route_s - super::seconds(self.now())).max(0.0))
+        Some((feed.latest().route_s() - super::seconds(self.now())).max(0.0))
     }
 
-    /// Whether the onboard instruments have a source to draw: a page's flight states none
-    /// of its flight controller's own yet, and the app's sensors over the page's truth are
-    /// not that flight controller.
+    /// Whether the onboard instruments have a source to draw. A page's flight draws its
+    /// flight controller's own account, which the C172 mission's displays read; nothing
+    /// else in a page has an onboard source, and the app's sensors over the page's truth
+    /// are not one.
     #[must_use]
     pub fn onboard_avionics_shown(&self) -> bool {
-        self.page.is_none()
+        self.page.is_none() || self.chain_avionics().is_some()
     }
 
     /// Draws the C172 a link's page flies, from what the page publishes on `feed`: the

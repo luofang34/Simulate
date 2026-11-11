@@ -14,6 +14,7 @@ use sim_indicate::{
 use sim_scenario::PatternLeg;
 use sim_scenery::LandingRunwayGeometry;
 
+use crate::chain_avionics;
 use crate::flight::Flight;
 use crate::vehicles::FreeFlightVehicle;
 
@@ -75,6 +76,11 @@ impl StandInPilotageHost {
         }
         self.seen_discontinuity = Some(discontinuity);
         self.sequence = self.sequence.wrapping_add(1);
+        // On the real chain Pilotage is the host: the panel shows what the flight
+        // controller executes of its demands.
+        if let Some((avionics, held)) = flight.chain_avionics() {
+            return chain_avionics::guidance(&avionics, &held, self.source_epoch);
+        }
         let body = flight.world().body();
         let est_geo = body.fixed_to_geodetic(flight.estimated_vehicle_state().position_ecef);
         let undulation_m = if body == BodyEllipsoid::WGS84 {
@@ -181,12 +187,6 @@ fn autopilot_summary(flight: &Flight) -> AutopilotModeSummary {
         (Some(FreeFlightVehicle::AviateX500Direct), Some(engaged)) => AutopilotModeSummary {
             lateral: ident("POS HOLD"),
             vertical: ident("ALT HOLD"),
-            armed_approach: false,
-            engaged,
-        },
-        (Some(FreeFlightVehicle::C172Mission), Some(engaged)) => AutopilotModeSummary {
-            lateral: ident("MSN"),
-            vertical: ident("VEL"),
             armed_approach: false,
             engaged,
         },

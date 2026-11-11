@@ -1,6 +1,7 @@
 //! The chain trial, stepped one flight-controller cycle at a time.
 
 mod camera;
+mod feed;
 mod records;
 mod sets;
 mod setup;
@@ -10,7 +11,7 @@ mod tests;
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use sim_core::SimInstant;
-use sim_flight_chain::{C172Airframe, DeviceOutages, HostChain};
+use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     LiveStarCamera, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
@@ -23,6 +24,7 @@ use crate::{
 use camera::HostCamera;
 use sets::{SetSlot, has_sensor};
 
+pub use feed::TruthSnapshot;
 pub use sets::FLIGHT_CONTROLLER_SET;
 
 /// The C172 under Pilotage's host core.
@@ -48,6 +50,7 @@ pub struct ChainTrial {
     progress_steps: usize,
     pending: Outputs,
     records: records::Recorder,
+    feed: Option<feed::FeedClock>,
 }
 
 impl ChainTrial {
@@ -113,6 +116,7 @@ impl ChainTrial {
             announced: None,
             progress_steps,
             pending: Outputs::default(),
+            feed: None,
         })
     }
 
@@ -120,6 +124,28 @@ impl ChainTrial {
     /// Pilotage's host, for drawing and readouts.
     pub fn chain(&self) -> &C172Chain {
         &self.chain
+    }
+
+    /// The flight controller's account of its last cycle: what the
+    /// aeroplane's own displays may show.
+    pub fn avionics(&self) -> FcAvionics {
+        feed::avionics(&self.chain)
+    }
+
+    /// The true aeroplane now, for drawing the world outside it only.
+    pub fn truth(&self) -> TruthSnapshot {
+        feed::truth(&self.chain)
+    }
+
+    /// From the next cycle on, every output carries the flight
+    /// controller's account and the truth `rate_hz` times a second of route
+    /// time, or never with `None`. A sample falls at the end of the first
+    /// cycle at or past each due instant.
+    pub fn set_feed_rate_hz(&mut self, rate_hz: Option<f64>) -> Result<(), ChainTrialError> {
+        self.feed = rate_hz
+            .map(|hz| feed::FeedClock::new(hz, self.chain.now()))
+            .transpose()?;
+        Ok(())
     }
 
     /// Route time, seconds.
@@ -218,6 +244,10 @@ impl ChainTrial {
         let before = self.chain.true_state();
         self.chain.advance_tick()?;
         let after = self.chain.true_state();
+        if self.feed.as_mut().is_some_and(|f| f.due(self.chain.now())) {
+            self.pending.avionics.push(feed::avionics(&self.chain));
+            self.pending.truth.push(feed::truth(&self.chain));
+        }
         let samples = *self.chain.board().last_samples();
         let completed = self
             .nav

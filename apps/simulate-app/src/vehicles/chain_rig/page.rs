@@ -1,65 +1,55 @@
-//! The chain flown by a link's page and shown by the app: the page owns the
-//! one trial and steps it at its own pace; the app only draws what the page
-//! last published. The outside world is drawn at the true state, which is
-//! what the world looks like; no onboard consumer reads it from here.
+//! The chain flown by a link's page and shown by the app: the page owns the one trial and
+//! steps it at its own pace; the app only draws what the page last published. The world
+//! outside is drawn at the truth; the displays read the flight controller's account only.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use glam::DVec3;
-use sim_chain_trial::ChainTrial;
-use sim_core::{AirframeArticulation, EngineStatus, VehicleState};
+use sim_chain_trial::{ChainTrial, TruthSnapshot};
+use sim_flight_chain::FcAvionics;
 
-/// The chain at one instant of the page's flight.
+/// The chain at one instant: the truth for the world outside, the flight controller's
+/// account for the displays, and Pilotage's mission phase.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ChainSnapshot {
-    /// Route time, seconds.
-    pub route_s: f64,
-    /// TRUTH: the vehicle's true state.
-    pub state: VehicleState,
-    /// TRUTH: the specific force in body forward-right-down axes, m/s².
-    pub specific_force_frd_m_s2: DVec3,
-    /// The flight model's engine.
-    pub engine: EngineStatus,
-    /// The flight model's surfaces, gear and propeller.
-    pub articulation: AirframeArticulation,
-    /// Whether the flight controller is armed.
-    pub armed: bool,
+pub struct PageSnapshot {
+    /// TRUTH: the true aeroplane, for drawing the world outside it only.
+    pub truth: TruthSnapshot,
+    /// The flight controller's account of its last cycle.
+    pub avionics: FcAvionics,
     /// Pilotage's mission phase, in its own words.
     pub phase: Option<String>,
 }
 
-impl ChainSnapshot {
+impl PageSnapshot {
     /// The chain of `trial` now, in mission `phase`.
     #[must_use]
     pub fn of(trial: &ChainTrial, phase: Option<String>) -> Self {
-        let chain = trial.chain();
-        let board = chain.board();
         Self {
-            route_s: trial.now_s(),
-            state: chain.true_state(),
-            specific_force_frd_m_s2: board.airframe().specific_force_body_m_s2(),
-            engine: board.airframe().fdm().engine_status(),
-            articulation: board.airframe().fdm().articulation(),
-            armed: board.controller().is_armed(),
+            truth: trial.truth(),
+            avionics: trial.avionics(),
             phase,
         }
     }
+
+    /// Route time, seconds.
+    #[must_use]
+    pub fn route_s(&self) -> f64 {
+        super::route_s(&self.truth)
+    }
 }
 
-/// What the page publishes and the app reads: the latest snapshot of the
-/// page's flight, and the civil time the flight starts at.
+/// What the page publishes and the app reads: the latest snapshot of the page's flight,
+/// and the civil time the flight starts at.
 #[derive(Debug, Clone)]
 pub struct PageFeed {
-    latest: Arc<Mutex<ChainSnapshot>>,
+    latest: Arc<Mutex<PageSnapshot>>,
     epoch_utc_s: f64,
 }
 
 impl PageFeed {
-    /// A feed of a flight starting at `epoch_utc_s`, Unix seconds, from
-    /// `first`.
+    /// A feed of a flight starting at `epoch_utc_s`, Unix seconds, from `first`.
     #[cfg(any(target_arch = "wasm32", test))]
     #[must_use]
-    pub fn new(epoch_utc_s: f64, first: ChainSnapshot) -> Self {
+    pub fn new(epoch_utc_s: f64, first: PageSnapshot) -> Self {
         Self {
             latest: Arc::new(Mutex::new(first)),
             epoch_utc_s,
@@ -68,13 +58,13 @@ impl PageFeed {
 
     /// Replaces the latest snapshot.
     #[cfg(any(target_arch = "wasm32", test))]
-    pub fn publish(&self, snapshot: ChainSnapshot) {
+    pub fn publish(&self, snapshot: PageSnapshot) {
         *self.latest.lock().unwrap_or_else(PoisonError::into_inner) = snapshot;
     }
 
     /// The latest snapshot.
     #[must_use]
-    pub fn latest(&self) -> ChainSnapshot {
+    pub fn latest(&self) -> PageSnapshot {
         self.latest
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
