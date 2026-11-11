@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
+use sim_flight_chain::FcAvionics;
 use sim_navigate::trial::ProgressRecord;
+
+use crate::TruthSnapshot;
 
 /// How a step ended.
 #[derive(Debug, Clone, PartialEq)]
@@ -24,12 +27,22 @@ pub struct Outputs {
     pub mission: Vec<MissionUpdate>,
     /// Each set's terrain camera fixes so far, when they changed.
     pub terrain_fixes: Vec<(String, BTreeMap<String, u64>)>,
+    /// The flight controller's account at the feed rate the host asked
+    /// for, in order; empty unless it asked.
+    pub avionics: Vec<FcAvionics>,
+    /// The truth at the same instants as [`Self::avionics`], for the world
+    /// outside the aeroplane only.
+    pub truth: Vec<TruthSnapshot>,
 }
 
 impl Outputs {
     /// Whether nothing happened.
     pub fn is_empty(&self) -> bool {
-        self.records.is_empty() && self.mission.is_empty() && self.terrain_fixes.is_empty()
+        self.records.is_empty()
+            && self.mission.is_empty()
+            && self.terrain_fixes.is_empty()
+            && self.avionics.is_empty()
+            && self.truth.is_empty()
     }
 
     /// Appends `later` to these.
@@ -37,6 +50,8 @@ impl Outputs {
         self.records.extend(later.records);
         self.mission.extend(later.mission);
         self.terrain_fixes.extend(later.terrain_fixes);
+        self.avionics.extend(later.avionics);
+        self.truth.extend(later.truth);
     }
 }
 

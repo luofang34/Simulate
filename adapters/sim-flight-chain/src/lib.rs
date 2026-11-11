@@ -8,6 +8,7 @@
 //! core exchange. The C172 flies this way.
 
 mod airframe;
+mod avionics;
 mod c172_airframe;
 mod c172_vehicle;
 mod error;
@@ -15,6 +16,7 @@ mod host_chain;
 mod hosted_board;
 
 pub use airframe::{Airframe, SharedAir};
+pub use avionics::{FcAirData, FcAvionics, FcTargets};
 pub use c172_airframe::{C172Airframe, C172Start};
 pub use c172_vehicle::{
     AccelCalibration, C172_PLANNING_BANK_DEG, C172_RATE_HZ, C172Board, C172Setup, c172_board,

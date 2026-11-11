@@ -9,7 +9,8 @@
 //! at a time or up to a route time, switches devices in and out of
 //! service, and renders the terrain camera's frames when asked; the trial
 //! reports the navigation trial's progress records, Pilotage's mission in
-//! its own words, and each set's terrain-camera fixes.
+//! its own words, each set's terrain-camera fixes, and at a rate the host
+//! asks for the flight controller's account beside the truth.
 
 mod error;
 mod first_link;
@@ -22,4 +23,4 @@ pub use error::ChainTrialError;
 pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, StepOutcome};
 pub use spec::{CalibrationName, ChainTrialSpec, DeviceOutage, StartSpec, Steering};
-pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET};
+pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET, TruthSnapshot};

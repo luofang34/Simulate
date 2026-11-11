@@ -302,3 +302,30 @@ fn the_last_fix_sequenced_completes_the_plan() {
     assert_eq!(complete.len(), 1, "{complete:?}");
     assert_eq!(complete[0].1, FIXES.len() - 1);
 }
+
+/// The feed carries the flight controller's account and the truth on the
+/// same instants at the rate asked for, and nothing before it is asked.
+#[test]
+fn the_feed_keeps_its_rate_and_its_two_sides_apart() {
+    let mut trial = ChainTrial::new(&spec(None), &DirectoryStores).unwrap();
+    let quiet = advanced(trial.step_until(0.5).unwrap());
+    assert!(quiet.avionics.is_empty() && quiet.truth.is_empty());
+    trial.set_feed_rate_hz(Some(30.0)).unwrap();
+    assert!(trial.set_feed_rate_hz(Some(0.0)).is_err());
+    let fed = advanced(trial.step_until(2.5).unwrap());
+    assert!(
+        (59..=61).contains(&fed.avionics.len()),
+        "{}",
+        fed.avionics.len()
+    );
+    assert_eq!(fed.avionics.len(), fed.truth.len());
+    for (avionics, truth) in fed.avionics.iter().zip(&fed.truth) {
+        assert_eq!(avionics.at, truth.at);
+    }
+    let last = fed.avionics.last().unwrap();
+    assert!(last.estimate.is_some() && last.air.is_some());
+    trial.set_feed_rate_hz(None).unwrap();
+    let after = advanced(trial.step_until(3.0).unwrap());
+    assert!(after.avionics.is_empty());
+    assert_eq!(trial.truth().at, trial.avionics().at);
+}
