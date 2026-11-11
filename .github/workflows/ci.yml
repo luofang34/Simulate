@@ -29,11 +29,12 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      # libudev for gilrs gamepads; wayland and xkbcommon for winit.
+      # libudev for gilrs gamepads; wayland and xkbcommon for winit; protoc for
+      # maplibre's glyph protocol build script.
       - name: Install system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev libwayland-dev libxkbcommon-dev pkg-config
+          sudo apt-get install -y libudev-dev libwayland-dev libxkbcommon-dev pkg-config protobuf-compiler
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
