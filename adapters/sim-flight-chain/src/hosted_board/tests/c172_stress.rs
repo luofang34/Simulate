@@ -14,7 +14,7 @@ use aviate_core::math::{Quaternion, Vector3};
 use aviate_core::types::NormalizedThrust;
 
 use super::*;
-use crate::{AccelCalibration, c172_sensor_suite_with};
+use crate::{AccelCalibration, DeviceOutages, c172_sensor_suite_with};
 
 /// The accelerometer bias of the unit that crashed, m/s², body axes.
 const CRASH_ACCEL_BIAS_M_S2: DVec3 = DVec3::new(-0.578, -0.224, -0.360);
@@ -26,6 +26,24 @@ const TURN_DEG: f64 = 200.0;
 const TURN_THROTTLE_ADDED: f64 = 0.15;
 /// How long after arming the case is watched, seconds.
 const WATCH_S: f64 = 60.0;
+
+/// How long the flight controller may take to become ready, seconds.
+const BOOT_LIMIT_S: f64 = 10.0;
+
+/// Boots and arms the board; false when it was not ready in `limit_s`.
+fn boot_and_arm_within(board: &mut C172Board, limit_s: f64) -> bool {
+    let mut steps = 0_u64;
+    while !board.controller().is_ready() {
+        if steps as f64 >= limit_s * RATE_HZ as f64 {
+            return false;
+        }
+        board.step().unwrap();
+        steps = steps.wrapping_add(1);
+    }
+    board.send_command(SystemCommand::Arm);
+    board.step().unwrap();
+    board.controller().is_armed()
+}
 
 /// What the case showed.
 #[derive(Debug, Default)]
@@ -128,7 +146,9 @@ fn turn_on_arming(board: &mut C172Board) -> Watched {
         pitch_deg(start.attitude, start.position_ecef).to_radians(),
         board.airframe().trim().throttle,
     );
-    boot_and_arm(board);
+    if !boot_and_arm_within(board, BOOT_LIMIT_S) {
+        return Watched::default();
+    }
     let start_course = probe(board).course_rad;
     let mut watched = Watched {
         lowest_m: f64::INFINITY,
@@ -173,12 +193,9 @@ fn turn_on_arming(board: &mut C172Board) -> Watched {
     watched
 }
 
-/// The crash case: the turn must stay a turn, and the estimate must keep
-/// its attitude through it.
-#[test]
-#[ignore = "stress case; run it by name. Aviate d9f8d5b's filter loses its attitude in it"]
-fn the_crash_bias_survives_a_steep_turn_on_arming() {
-    tracing_subscriber::fmt().with_test_writer().try_init().ok();
+/// The crash case's board: seed 21's suite with the crashed unit's
+/// accelerometer bias, the receiver silent from the start when `no_gnss`.
+fn crash_board(no_gnss: bool) -> C172Board {
     let seed = 21;
     let suite = c172_sensor_suite_with(2026.5, seed, AccelCalibration::Uncalibrated20Mg);
     let mut board = c172_board(
@@ -191,8 +208,14 @@ fn the_crash_bias_survives_a_steep_turn_on_arming() {
         .suite_mut()
         .imu_mut()
         .set_accel_bias_m_s2(CRASH_ACCEL_BIAS_M_S2);
-    let watched = turn_on_arming(&mut board);
-    tracing::info!(?watched, "steep turn on arming");
+    board.set_outages(DeviceOutages {
+        gnss: no_gnss,
+        air_data: false,
+    });
+    board
+}
+
+fn assert_survived(watched: &Watched) {
     assert!(watched.rolled_out_s.is_some(), "the turn never came round");
     assert!(
         watched.lowest_m > START_HEIGHT_M - 150.0,
@@ -205,4 +228,26 @@ fn the_crash_bias_survives_a_steep_turn_on_arming() {
         watched.worst_attitude_error_deg,
         watched.worst_at_s
     );
+}
+
+/// The crash case: the turn must stay a turn, and the estimate must keep
+/// its attitude through it.
+#[test]
+#[ignore = "stress case; run it by name. Aviate d9f8d5b's filter loses its attitude in it"]
+fn the_crash_bias_survives_a_steep_turn_on_arming() {
+    tracing_subscriber::fmt().with_test_writer().try_init().ok();
+    let watched = turn_on_arming(&mut crash_board(false));
+    tracing::info!(?watched, "steep turn on arming");
+    assert_survived(&watched);
+}
+
+/// The crash case with the receiver silent from power-up: the flight
+/// controller must come up and fly the turn on its inertial and air data.
+#[test]
+#[ignore = "stress case; run it by name. Aviate d9f8d5b needs a fix to become ready"]
+fn the_crash_bias_survives_a_steep_turn_on_arming_without_gnss() {
+    tracing_subscriber::fmt().with_test_writer().try_init().ok();
+    let watched = turn_on_arming(&mut crash_board(true));
+    tracing::info!(?watched, "steep turn on arming without GNSS");
+    assert_survived(&watched);
 }
