@@ -8,6 +8,10 @@ use winit::window::{Window, WindowAttributes};
 
 use crate::app::{AppEvent, FlightApp, GpuReady};
 
+mod progress_surface;
+
+use progress_surface::ProgressSurface;
+
 /// Starts the app; the browser drives the event loop from here on.
 pub fn run() {
     console_error_panic_hook::set_once();
@@ -18,10 +22,12 @@ pub fn run() {
             .set_max_level(Level::INFO)
             .build(),
     );
+    ProgressSurface::of_page().phase("Starting the simulator");
     let event_loop = match EventLoop::<AppEvent>::with_user_event().build() {
         Ok(event_loop) => event_loop,
         Err(err) => {
             error!(%err, "creating the event loop failed");
+            report_failure("creating the event loop failed", &err);
             return;
         }
     };
@@ -29,10 +35,28 @@ pub fn run() {
         Ok(app) => app,
         Err(err) => {
             error!(%err, "starting the flight simulation failed");
+            report_failure("starting the flight simulation failed", &err);
             return;
         }
     };
     event_loop.spawn_app(app);
+}
+
+/// Removes the page's progress surface: the app has its first frame to draw.
+pub fn startup_done() {
+    ProgressSurface::of_page().dismiss();
+}
+
+/// Puts a failure on the page, where a visitor without the console sees it.
+pub fn report_failure(what: &str, err: &dyn std::error::Error) {
+    let mut detail = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        detail.push('\n');
+        detail.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    ProgressSurface::of_page().fail(&format!("Simulate stopped: {what}"), &detail);
 }
 
 /// Shows `title` on the page's tab: winit's own title only labels the canvas.

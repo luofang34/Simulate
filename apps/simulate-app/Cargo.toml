@@ -56,4 +56,4 @@ tracing-subscriber = { workspace = true }
 console_error_panic_hook = { workspace = true }
 tracing-wasm = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["Document", "Window"] }
+web-sys = { workspace = true, features = ["Document", "Element", "Window"] }

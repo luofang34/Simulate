@@ -54,6 +54,12 @@ pub fn run() -> ExitCode {
     }
 }
 
+/// The app has its first frame to draw; the desktop window needs no word of it.
+pub fn startup_done() {}
+
+/// A failure the log already carries; the desktop has no other place for it.
+pub fn report_failure(_what: &str, _err: &dyn std::error::Error) {}
+
 /// Shows `title` on the window.
 pub fn set_title(window: &Window, title: &str) {
     window.set_title(title);

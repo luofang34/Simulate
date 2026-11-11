@@ -5,10 +5,12 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
+#[cfg(any(target_arch = "wasm32", test))]
+mod surface_ids;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{run, set_title, spawn_renderer, window_attributes};
+pub use native::{report_failure, run, set_title, spawn_renderer, startup_done, window_attributes};
 #[cfg(target_arch = "wasm32")]
-pub use web::{run, set_title, spawn_renderer, window_attributes};
+pub use web::{report_failure, run, set_title, spawn_renderer, startup_done, window_attributes};

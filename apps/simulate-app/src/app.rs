@@ -163,6 +163,7 @@ impl FlightApp {
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, what: &str, err: &dyn std::error::Error) {
         error!(error = %err, source = ?err.source(), "{what}");
+        platform::report_failure(what, err);
         self.failed = true;
         event_loop.exit();
     }
@@ -199,6 +200,7 @@ impl FlightApp {
                     .inspect_err(|err| tracing::warn!(error = %err, "hangar preview unavailable"))
                     .ok();
                 info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
+                platform::startup_done();
                 self.cockpit_rig = Some(rig);
                 self.apply_vehicle_overlays();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
