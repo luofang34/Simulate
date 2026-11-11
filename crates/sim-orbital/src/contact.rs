@@ -182,12 +182,61 @@ pub struct ContactStepOutput {
     pub state: ContinuousPlantState,
     /// Updated bristle and pinned-rest state.
     pub contact: VesselContactState,
-    /// Minimum foot ground clearance observed on the final substep (`m`, negative = compressed).
+    /// Foot ground clearance at the end of the interval (`m`, negative = compressed); zero when the
+    /// vessel is pinned at rest.
     pub min_foot_clearance_m: f64,
     /// Peak proper acceleration (`|(F_contact + F_thrust + F_aero)/m|`) experienced (`m/s^2`).
     pub peak_proper_accel_m_s2: f64,
     /// Accumulated idealization/exceedance flags.
     pub audit: PropagationAudit,
+}
+
+/// Effective gravity (`m/s^2`, body-fixed frame) at a pinned vessel's position: the body's
+/// gravitation minus the centripetal term of the rotating frame. A vessel at rest on the
+/// surface feels this as its proper acceleration with opposite sign.
+fn pinned_effective_gravity_fixed(
+    pinned: &PinnedSurfaceState,
+    propellant_mass_kg: f64,
+    h_rw_body_nms: DVec3,
+    epoch: TdbEpoch,
+    force_model: &ForceModel,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<DVec3, GravityError> {
+    let plant =
+        pinned.to_icrf_plant_state(epoch, propellant_mass_kg, h_rw_body_nms, orientation)?;
+    let rot = orientation.body_rotation(pinned.body, epoch)?;
+    let g_icrf = force_model.relative_gravitational_accel_icrf(
+        pinned.body,
+        plant.pos_rel_icrf_m,
+        epoch,
+        ephemeris,
+        orientation,
+    )?;
+    let p_fixed = DVec3::from_array(pinned.pos_fixed_m);
+    let om = rot.omega_body_rad_s;
+    Ok(rot.r_icrf_to_fixed * g_icrf - om.cross(om.cross(p_fixed)))
+}
+
+/// Proper acceleration magnitude (`m/s^2`) of a vessel at rest on the surface at `epoch`.
+fn pinned_rest_proper_accel(
+    pinned: &PinnedSurfaceState,
+    plant: &ContinuousPlantState,
+    epoch: TdbEpoch,
+    force_model: &ForceModel,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<f64, GravityError> {
+    let g_eff = pinned_effective_gravity_fixed(
+        pinned,
+        plant.propellant_mass_kg,
+        plant.h_rw_body_nms,
+        epoch,
+        force_model,
+        ephemeris,
+        orientation,
+    )?;
+    Ok(g_eff.length())
 }
 
 /// Evaluates whether a `PinnedSurfaceRest` vessel remains in static load equilibrium at `epoch`
@@ -207,17 +256,16 @@ pub fn verify_pinned_static_equilibrium(
 ) -> Result<bool, GravityError> {
     let plant =
         pinned.to_icrf_plant_state(epoch, propellant_mass_kg, h_rw_body_nms, orientation)?;
-    let rot = orientation.body_rotation(pinned.body, epoch)?;
-    let g_icrf = force_model.relative_gravitational_accel_icrf(
-        pinned.body,
-        plant.pos_rel_icrf_m,
+    let p_fixed = DVec3::from_array(pinned.pos_fixed_m);
+    let g_eff_fixed = pinned_effective_gravity_fixed(
+        pinned,
+        propellant_mass_kg,
+        h_rw_body_nms,
         epoch,
+        force_model,
         ephemeris,
         orientation,
     )?;
-    let p_fixed = DVec3::from_array(pinned.pos_fixed_m);
-    let om = rot.omega_body_rad_s;
-    let g_eff_fixed = rot.r_icrf_to_fixed * g_icrf - om.cross(om.cross(p_fixed));
 
     let wrench = control.evaluate_stage(0.0, epoch, &plant);
     let f_ctrl_body = wrench.main_thrust_body_n + wrench.rcs_force_body_n + wrench.env_force_body_n;
@@ -276,11 +324,20 @@ pub fn integrate_contact_interval(
                 initial.h_rw_body_nms,
                 orientation,
             )?;
+            let rest_accel = pinned_rest_proper_accel(
+                &pinned,
+                initial,
+                start_epoch,
+                force_model,
+                ephemeris,
+                orientation,
+            )?;
+            // A pinned pose is the settled surface-contact pose, so the feet touch the ground.
             return Ok(ContactStepOutput {
                 state: st,
                 contact,
                 min_foot_clearance_m: 0.0,
-                peak_proper_accel_m_s2: 9.81,
+                peak_proper_accel_m_s2: rest_accel,
                 audit: PropagationAudit::default(),
             });
         }
@@ -361,6 +418,18 @@ fn run_contact_substeps(
                 state.h_rw_body_nms,
                 orientation,
             )?;
+            // The pinned remainder of the interval is at rest on the surface: zero clearance
+            // and the body's surface proper acceleration.
+            min_clear = min_clear.min(0.0);
+            let rest_accel = pinned_rest_proper_accel(
+                &pinned,
+                &state,
+                end_epoch,
+                force_model,
+                ephemeris,
+                orientation,
+            )?;
+            peak_prop = peak_prop.max(rest_accel);
             break;
         }
         step = step.wrapping_add(1);
