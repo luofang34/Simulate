@@ -150,9 +150,9 @@ fn the_sets_navigate_on_the_flight_controllers_devices() {
 fn a_switch_flies_the_same_as_the_outage_the_spec_states() {
     let mut switched = ChainTrial::new(&spec(None), &DirectoryStores).unwrap();
     let mut first = advanced(switched.step_until(20.0).unwrap());
-    switched.set_sensor(SensorKind::Gnss, false);
+    assert_eq!(switched.set_sensor(SensorKind::Gnss, false), 20.0);
     first.extend(advanced(switched.step_until(30.0).unwrap()));
-    switched.set_sensor(SensorKind::Gnss, true);
+    assert_eq!(switched.set_sensor(SensorKind::Gnss, true), 30.0);
     first.extend(advanced(switched.step_until(40.0).unwrap()));
 
     let mut stated = spec(None);

@@ -140,9 +140,10 @@ impl ChainTrial {
     }
 
     /// Takes `sensor`'s device out of service, or returns it, from the next
-    /// cycle on. It is recorded as an outage beginning or ending then, the
-    /// same as an outage the spec states.
-    pub fn set_sensor(&mut self, sensor: SensorKind, on: bool) {
+    /// cycle on, and returns that cycle's route time, seconds: a whole
+    /// number of cycles. It is recorded as an outage beginning or ending
+    /// then, the same as an outage the spec states.
+    pub fn set_sensor(&mut self, sensor: SensorKind, on: bool) -> f64 {
         let at_s = self.now_s();
         let open = self
             .outages
@@ -157,6 +158,7 @@ impl ChainTrial {
             }),
             _ => {}
         }
+        at_s
     }
 
     /// The outages so far, those the spec stated and those switched.
