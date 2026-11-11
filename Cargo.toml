@@ -7,6 +7,7 @@ members = [
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
     "apps/ironbird",
+    "apps/nav-trial",
     "apps/simulate-app",
     "crates/sim-analysis",
     "crates/sim-analysis-contract",
@@ -102,6 +103,8 @@ navigate-celestial = { git = "https://github.com/luofang34/Navigate", rev = "9cf
 navigate-contract = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
 navigate-fusion = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
 navigate-geodesy = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
+navigate-guidance = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
+navigate-route = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
 navigate-startrack = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
 navigate-visual = { git = "https://github.com/luofang34/Navigate", rev = "9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c" }
 pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "458407c92308888bd21714edc4a5da3f94131482" }

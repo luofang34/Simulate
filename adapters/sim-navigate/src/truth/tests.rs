@@ -97,3 +97,15 @@ fn attitude_errors_split_into_tilt_and_heading_in_sigmas() {
 fn solution_without_attitude(position: &Geodetic) -> NavigationSolution {
     solution(position, 2.0)
 }
+
+/// A large horizontal miss at the right height is no vertical error: the
+/// tangent plane's curvature drop, d²/2R, about 785 m at 100 km, must not
+/// leak into the vertical score.
+#[test]
+fn a_horizontal_miss_does_not_read_as_a_vertical_error() {
+    let estimate = Geodetic::from_degrees(39.0, -75.0, 1_000.0);
+    let truth = geodetic_to_ecef(&Geodetic::from_degrees(39.9, -75.0, 1_000.0));
+    let comparison = compare_with_truth(&solution(&estimate, 1.0), truth).unwrap();
+    assert!(comparison.horizontal_error_m > 99_000.0, "{comparison:?}");
+    assert!(comparison.vertical_error_m < 1e-6, "{comparison:?}");
+}

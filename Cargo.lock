@@ -1304,7 +1304,7 @@ version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "777d18aa0f12f8b285331cd867133ee14422b3f023f6d388034c47d43e28786a"
 dependencies = [
- "approx 0.5.1",
+ "approx 0.4.0",
  "num-traits",
  "rayon",
  "rstar 0.10.0",
@@ -3046,6 +3046,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nav-trial"
+version = "0.1.0"
+dependencies = [
+ "sim-navigate",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
 source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
@@ -3110,6 +3121,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-guidance"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
+ "navigate-route",
+ "navigate-trajectory",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-route"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "navigate-contract",
+ "navigate-geodesy",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-startrack"
 version = "0.1.0"
 source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
@@ -3119,6 +3154,18 @@ dependencies = [
  "navigate-celestial",
  "navigate-contract",
  "navigate-fusion",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-trajectory"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
  "thiserror 2.0.21",
 ]
 
@@ -5026,8 +5073,12 @@ dependencies = [
  "navigate-contract",
  "navigate-fusion",
  "navigate-geodesy",
+ "navigate-guidance",
+ "navigate-route",
  "navigate-startrack",
  "navigate-visual",
+ "serde",
+ "serde_json",
  "sha2 0.11.1",
  "sim-core",
  "sim-devices",

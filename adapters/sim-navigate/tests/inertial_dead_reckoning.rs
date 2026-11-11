@@ -31,6 +31,10 @@ const FINE_ALIGNMENT: [f64; 3] = [0.1, 0.01, 2e-5];
 type Truth = Vec<(SimInstant, VehicleState)>;
 
 #[cfg(test)]
+#[path = "trial_support/consistency.rs"]
+mod consistency;
+
+#[cfg(test)]
 fn init_tracing() {
     tracing_subscriber::fmt().with_test_writer().try_init().ok();
 }
@@ -225,7 +229,7 @@ fn grade_ensemble(truth: &Truth, alignment: [f64; 3], label: &str) -> [(f64, f64
             "60 s cruise, unaided"
         );
         assert!(
-            (0.5..=8.0).contains(&mean_nees),
+            consistency::DEAD_RECKONING_NEES.contains(&mean_nees),
             "{grade:?} mean NEES {mean_nees}"
         );
         (rms_final_m, mean_nees)

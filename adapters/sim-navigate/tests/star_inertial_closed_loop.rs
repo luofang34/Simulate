@@ -15,31 +15,24 @@
 //! accelerometer bias or the alignment's own position and velocity error
 //! drives still grows.
 
-use glam::{DQuat, DVec3};
-use nalgebra::{Quaternion, UnitQuaternion};
-use navigate_camera::{CameraMount as NavigateMount, ImagerModel};
-use navigate_contract::{NavigationSolution, SourceEpoch, SourceId, WrappingSequence};
-use navigate_fusion::IngestOutcome;
-use navigate_startrack::{
-    AttitudePrior, IdentifyConfig, IdentifyMode, PairCatalogue, SolveConfig, StarTracker,
-    TrackerConfig, identify_stars, line_of_sight_observations, solve_attitude,
-};
+use glam::DVec3;
+use navigate_contract::SourceId;
+use navigate_startrack::PairCatalogue;
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::ImuGrade;
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_geo::UtcTime;
+use sim_navigate::trial::{
+    StarExposure, StarFrame, StarScene, StarSighting, StarSky, pair_table, render_star_frames,
+};
 use sim_navigate::{
     InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth,
-    compare_attitude_with_truth, compare_with_truth, imager_model, inertial_config, navigate_mount,
-    solution_position_ecef,
+    compare_attitude_with_truth, compare_with_truth, inertial_config,
 };
-use sim_render::StarCameraConfig;
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
 
 #[cfg(test)]
-#[path = "star_inertial_closed_loop/scene.rs"]
-mod scene;
-#[cfg(test)]
-use scene::{Exposure, StarFrame, pair_table, sim_mount, star_frames};
+#[path = "trial_support/consistency.rs"]
+mod consistency;
 
 /// 2026-03-20T02:00:00Z, a night over the Delaware corridor.
 const START_UNIX_S: f64 = 1_773_972_000.0;
@@ -50,12 +43,6 @@ const STEP_HZ: f64 = 120.0;
 const STAR_PERIOD_STEPS: usize = 120;
 /// Simulation steps between scores: 10 Hz.
 const SCORE_PERIOD_STEPS: usize = 12;
-const SKY_FAINTEST_V: f64 = 6.5;
-const CATALOGUE_FAINTEST_V: f64 = 6.0;
-/// Faintest star of the lost-in-space pair table: brighter than the
-/// catalogue, so the stars a pyramid is built from are ones the camera
-/// detects reliably.
-const LIS_FAINTEST_V: f64 = 5.5;
 /// Camera-to-body alignment knowledge, radians RMS, added to each sighting.
 const MOUNT_ALIGNMENT_RAD: f64 = 2.0e-5;
 /// Streak below which every frame must solve. The roof camera's 12 mm,
@@ -88,24 +75,6 @@ fn flight(profile: ScenarioProfile) -> Vec<Truth<(SimInstant, VehicleState)>> {
         truth.push(Truth::new((run.now(), run.vehicle())));
     }
     truth
-}
-
-/// The navigator's own attitude belief, as an identification prior: its
-/// published body-to-NED attitude carried into ECEF at its own position, and
-/// the RMS of its published attitude covariance.
-#[cfg(test)]
-fn own_prior(solution: &NavigationSolution) -> AttitudePrior {
-    let attitude = solution.attitude.unwrap();
-    let body_to_ned = DQuat::from_xyzw(attitude.x, attitude.y, attitude.z, attitude.w);
-    let frame = LocalFrame::at(&ecef_to_geodetic(solution_position_ecef(solution)));
-    let ecef = DQuat::from_mat3(&frame.ned_to_ecef()) * body_to_ned;
-    let (xx, yy, zz) = solution.attitude_cov.unwrap().diagonal();
-    AttitudePrior {
-        ecef_from_body: UnitQuaternion::from_quaternion(Quaternion::new(
-            ecef.w, ecef.x, ecef.y, ecef.z,
-        )),
-        sigma_rad: (xx + yy + zz).sqrt(),
-    }
 }
 
 #[cfg(test)]
@@ -143,99 +112,32 @@ impl Flown {
     }
 }
 
-/// The navigator side of the star camera: the declared camera models, the
-/// lost-in-space table, the prior held from mid-exposure until the image is
-/// read out, and Navigate's tracker, which chooses between that prior and
-/// lost-in-space.
+/// Navigate's tracker on one frame, through the trial's star sighting,
+/// with the frame's scene truth kept for the bookkeeping.
 #[cfg(test)]
-struct StarSighting<'a> {
-    imager: ImagerModel,
-    mount: NavigateMount,
-    pairs: &'a PairCatalogue,
-    next: WrappingSequence,
-    held_prior: Option<AttitudePrior>,
-    tracker: StarTracker,
-}
-
-#[cfg(test)]
-impl<'a> StarSighting<'a> {
-    fn new(pairs: &'a PairCatalogue) -> Self {
-        let (mount, cg_body_m) = sim_mount();
-        Self {
-            imager: imager_model(&StarCameraConfig::star_tracker_1024().intrinsics).unwrap(),
-            mount: navigate_mount(&mount, cg_body_m),
-            pairs,
-            next: WrappingSequence::new(0),
-            held_prior: None,
-            tracker: StarTracker::new(TrackerConfig::default()).unwrap(),
-        }
+fn aid(
+    sighting: &mut StarSighting<'_>,
+    frame: &StarFrame,
+    navigator: &mut InertialNavigator,
+    now: SimInstant,
+    flown: &mut Flown,
+) {
+    let first = flown.frames_solved + flown.frames_unsolved == 0;
+    let outcome = sighting.aid(&frame.image, navigator, now).unwrap();
+    flown.lost_in_space_tried += u64::from(outcome.lost_in_space);
+    let streak_px = frame.truth.get().streak_px;
+    if !outcome.solved {
+        flown.frames_unsolved += 1;
+        let shortest = flown.shortest_unsolved_streak_px.get_or_insert(streak_px);
+        *shortest = shortest.min(streak_px);
+        return;
     }
-
-    /// At mid-exposure: the navigator's own attitude belief. The tracker
-    /// uses it only while it holds a lock and the belief is narrow.
-    fn hold_prior(&mut self, navigator: &mut InertialNavigator, at: SimInstant) {
-        self.held_prior = Some(own_prior(&navigator.solution(at).unwrap().unwrap()));
-    }
-
-    /// At readout: sights `frame` in the mode the tracker chooses, and offers
-    /// every line of sight stamped at mid-exposure.
-    fn aid(
-        &mut self,
-        frame: &StarFrame,
-        navigator: &mut InertialNavigator,
-        now: SimInstant,
-        flown: &mut Flown,
-    ) {
-        let first = flown.frames_solved + flown.frames_unsolved == 0;
-        let mode = self.tracker.mode(self.held_prior.take(), self.pairs);
-        let lost = matches!(mode, IdentifyMode::LostInSpace(_));
-        flown.lost_in_space_tried += u64::from(lost);
-        let solved = identify_stars(
-            &frame.centroids,
-            &self.imager,
-            &self.mount,
-            mode,
-            &frame.catalogue,
-            &IdentifyConfig::default(),
-        )
-        .and_then(|matches| {
-            solve_attitude(
-                &matches,
-                &frame.centroids,
-                &self.imager,
-                &self.mount,
-                &frame.catalogue,
-                &SolveConfig::default(),
-            )
-        });
-        let streak_px = *frame.streak_px.get();
-        self.tracker.record(solved.is_ok());
-        let Ok(sighting) = solved else {
-            flown.frames_unsolved += 1;
-            let shortest = flown.shortest_unsolved_streak_px.get_or_insert(streak_px);
-            *shortest = shortest.min(streak_px);
-            return;
-        };
-        flown.longest_solved_streak_px = flown.longest_solved_streak_px.max(streak_px);
-        flown.frames_solved += 1;
-        flown.lost_in_space_solved += u64::from(lost);
-        flown.first_frame_solved |= first;
-        let clock = MasterClockBridge::default();
-        let stamp = clock
-            .stamp(STAR_SOURCE, SourceEpoch::new(0), self.next, frame.mid)
-            .unwrap();
-        let frame_id = navigator.filter().frame();
-        let mount_variance = MOUNT_ALIGNMENT_RAD.powi(2);
-        let observations =
-            line_of_sight_observations(&sighting, stamp, frame_id, mount_variance).unwrap();
-        for observation in &observations {
-            self.next = self.next.next();
-            match navigator.observe(observation, now).unwrap() {
-                IngestOutcome::Accepted => flown.admitted += 1,
-                IngestOutcome::Rejected(_) => flown.refused += 1,
-            }
-        }
-    }
+    flown.longest_solved_streak_px = flown.longest_solved_streak_px.max(streak_px);
+    flown.frames_solved += 1;
+    flown.lost_in_space_solved += u64::from(outcome.lost_in_space);
+    flown.first_frame_solved |= first;
+    flown.admitted += outcome.accepted;
+    flown.refused += outcome.rejected.len() as u64;
 }
 
 /// Flies `truth` on `grade`, star-aided from `frames` when given.
@@ -255,7 +157,9 @@ fn fly(
         .unwrap();
     assert!(imu.sense(start, &initial).unwrap().is_none());
     let (frames, pairs) = frames.map_or((&[][..], None), |(f, p)| (f, Some(p)));
-    let mut tracker = pairs.map(StarSighting::new);
+    let start = UtcTime::from_unix_seconds(START_UNIX_S);
+    let mut tracker = pairs
+        .map(|pairs| StarSighting::new(pairs, start, STAR_SOURCE, MOUNT_ALIGNMENT_RAD).unwrap());
     let mut opening = frames.iter().peekable();
     let mut reading = frames.iter().peekable();
     let mut flown = Flown::default();
@@ -264,11 +168,14 @@ fn fly(
         let increment = imu.sense(at, &vehicle).unwrap().unwrap();
         navigator.ingest(&increment, at).unwrap();
         if let Some(tracker) = tracker.as_mut() {
-            if opening.next_if(|frame| frame.mid_step == step).is_some() {
-                tracker.hold_prior(&mut navigator, at);
+            if opening
+                .next_if(|frame| frame.image.mid_step == step)
+                .is_some()
+            {
+                tracker.hold_prior(&mut navigator, at).unwrap();
             }
-            if let Some(frame) = reading.next_if(|frame| frame.end_step == step) {
-                tracker.aid(frame, &mut navigator, at, &mut flown);
+            if let Some(frame) = reading.next_if(|frame| frame.image.end_step == step) {
+                aid(tracker, frame, &mut navigator, at, &mut flown);
             }
         }
         if step % SCORE_PERIOD_STEPS == 0 || step == truth.len() - 1 {
@@ -326,9 +233,17 @@ fn log(profile: ScenarioProfile, grade: ImuGrade, means: &str, flown: &Flown) {
 /// Flies `profile` with and without stars on each grade and checks what the
 /// stars can bound; returns the star-aided runs.
 #[cfg(test)]
-fn compare(profile: ScenarioProfile, exposure: Exposure, pairs: &PairCatalogue) -> Vec<Flown> {
+fn compare(profile: ScenarioProfile, exposure: StarExposure, pairs: &PairCatalogue) -> Vec<Flown> {
     let truth = flight(profile);
-    let frames = star_frames(&truth, exposure);
+    let scene = StarScene {
+        start: UtcTime::from_unix_seconds(START_UNIX_S),
+        step_hz: STEP_HZ,
+        period_steps: STAR_PERIOD_STEPS,
+        exposure,
+        sky: StarSky::Fixed,
+        seed: 7,
+    };
+    let frames = render_star_frames(&truth, &scene).unwrap();
     let mut aided_runs = Vec::new();
     for grade in [ImuGrade::Tactical, ImuGrade::ConsumerMems] {
         let unaided = fly(&truth, grade, None);
@@ -352,11 +267,14 @@ fn compare(profile: ScenarioProfile, exposure: Exposure, pairs: &PairCatalogue) 
                 .is_none_or(|streak| streak > ASSURED_STREAK_PX),
             "{aided:?}"
         );
-        assert!(aided.final_attitude_rad < 1e-3, "{aided:?}");
+        assert!(
+            aided.final_attitude_rad < consistency::STAR_ATTITUDE_RAD,
+            "{aided:?}"
+        );
         assert!(aided.final_attitude_rad < unaided.final_attitude_rad);
         for flown in [&unaided, &aided] {
             assert!(
-                (0.3..=10.0).contains(&flown.mean_position_nees()),
+                consistency::MANOEUVRE_NEES.contains(&flown.mean_position_nees()),
                 "{flown:?}"
             );
             assert!(
@@ -374,8 +292,8 @@ fn stars_bound_attitude_through_the_aggressive_bank() {
     init_tracing();
     let aided = compare(
         ScenarioProfile::CorridorAggressiveBank,
-        Exposure::Moving,
-        &pair_table(),
+        StarExposure::Moving,
+        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
     );
     // The bank turns the camera fast enough to smear most frames away.
     assert!(aided.iter().all(|flown| flown.frames_unsolved > 0));
@@ -394,8 +312,8 @@ fn a_frozen_exposure_solves_every_frame_of_the_bank() {
     init_tracing();
     let aided = compare(
         ScenarioProfile::CorridorAggressiveBank,
-        Exposure::Frozen,
-        &pair_table(),
+        StarExposure::Frozen,
+        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
     );
     assert!(aided.iter().all(|flown| flown.frames_unsolved == 0));
 }
@@ -405,7 +323,7 @@ fn stars_bound_attitude_in_cruise() {
     init_tracing();
     compare(
         ScenarioProfile::CorridorNominalCruise,
-        Exposure::Moving,
-        &pair_table(),
+        StarExposure::Moving,
+        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
     );
 }

@@ -90,7 +90,8 @@ pub fn compare_with_truth(
 
 /// Scores a position with its north-east-down covariance against the true
 /// position, and returns the truth's offset from the estimate in the
-/// estimate's north-east-down axes beside the scores.
+/// estimate's north-east-down axes beside the scores: north and east in the
+/// estimate's tangent plane, down as the ellipsoidal height difference.
 pub(crate) fn compare_position_with_truth(
     position: GeodeticPosition,
     position_cov: &SymmetricCov3,
@@ -104,7 +105,12 @@ pub(crate) fn compare_position_with_truth(
         truth.lon_rad,
         truth.height_m,
     ));
-    let error = Vector3::new(offset.north_m, offset.east_m, offset.down_m);
+    // The tangent plane's down offset includes the Earth's curvature under a
+    // horizontal miss, d²/2R: 785 m at 100 km. Height is compared on the
+    // ellipsoid instead, so a large horizontal error does not read as a
+    // vertical one.
+    let down_m = position.altitude_m - truth.height_m;
+    let error = Vector3::new(offset.north_m, offset.east_m, down_m);
     let [xx, xy, xz, yy, yz, zz] = position_cov.upper_triangle();
     let covariance = Matrix3::new(xx, xy, xz, xy, yy, yz, xz, yz, zz);
     let weighted = covariance
@@ -115,7 +121,7 @@ pub(crate) fn compare_position_with_truth(
         error,
         TruthComparison {
             horizontal_error_m: offset.north_m.hypot(offset.east_m),
-            vertical_error_m: offset.down_m.abs(),
+            vertical_error_m: down_m.abs(),
             position_nees: error.dot(&weighted),
         },
     ))

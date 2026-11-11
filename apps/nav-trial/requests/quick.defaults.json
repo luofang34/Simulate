@@ -1,0 +1,19 @@
+{
+  "vehicle": { "max_climb_m_s": 8.0 },
+  "stars": { "period_s": 10.0 },
+  "availability": [
+    {
+      "name": "gnss-jammed",
+      "sensor": "gnss",
+      "unavailable": [{ "start_s": 30.0, "end_s": 60.0, "reason": "jamming" }]
+    }
+  ],
+  "sensor_sets": [
+    { "name": "ins+baro", "means": ["dead_reckoning", "barometric"] },
+    {
+      "name": "ins+baro+gnss",
+      "means": ["dead_reckoning", "barometric", "gnss"],
+      "availability": { "gnss": "gnss-jammed" }
+    }
+  ]
+}
