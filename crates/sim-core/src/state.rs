@@ -1,5 +1,8 @@
 use glam::{DMat3, DQuat, DVec3};
-use sim_geo::{Geodetic, LocalFrame, geodetic_to_ecef};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, geodetic_to_ecef};
+
+#[cfg(test)]
+mod tests;
 
 /// Rigid-body vehicle state in `f64` ECEF.
 ///
@@ -32,6 +35,13 @@ impl VehicleState {
             attitude: DQuat::from_mat3(&DMat3::from_cols(forward, right, down)).normalize(),
             angular_rate_body: DVec3::ZERO,
         }
+    }
+
+    /// The angular rate a gyroscope fixed to the body senses on `body`, body
+    /// axes, rad/s: [`Self::angular_rate_body`] is relative to the turning
+    /// body, and an inertial sensor adds the body's own spin.
+    pub fn inertial_rate_body(&self, body: &BodyEllipsoid) -> DVec3 {
+        self.angular_rate_body + self.attitude.inverse() * (DVec3::Z * body.omega_rad_s)
     }
 
     /// The body forward axis in ECEF.

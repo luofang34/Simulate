@@ -1,3 +1,5 @@
+use sim_geo::BodyEllipsoid;
+
 use crate::{XilError, XilStimulus};
 
 /// Wire size of Betaflight SITL's `fdm_packet` (`18 * sizeof(double) = 144` bytes).
@@ -51,7 +53,8 @@ impl BetaflightPacketClock {
 pub struct BetaflightFdmPacket {
     /// Monotonic simulation timestamp (`s`).
     pub timestamp_s: f64,
-    /// Body FRD angular velocity `[roll, pitch, yaw]` (`rad/s`).
+    /// Body FRD angular velocity `[roll, pitch, yaw]` (`rad/s`) relative to
+    /// inertial space, as the gyroscopes sense it.
     pub imu_angular_velocity_rpy: [f64; 3],
     /// Negated FLU specific force `[x, y, z]` (`m/s²`).
     pub imu_linear_acceleration_xyz: [f64; 3],
@@ -74,7 +77,7 @@ impl BetaflightFdmPacket {
             });
         }
         let ned = stimulus.ned_kinematics()?;
-        let w = stimulus.vehicle.angular_rate_body;
+        let w = stimulus.vehicle.inertial_rate_body(&BodyEllipsoid::WGS84);
         let f = stimulus.specific_force_body_m_s2;
         let q = ned.attitude_frd_to_ned;
         let v_enu = ned.velocity_enu_m_s;

@@ -35,6 +35,7 @@ const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(1_000_000));
 /// [`DirectXilBoard`] truth synthesis.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NedWorld {
+    body: BodyEllipsoid,
     origin: Geodetic,
     origin_ecef: DVec3,
     frame: LocalFrame,
@@ -48,6 +49,7 @@ impl NedWorld {
         let frame = LocalFrame::at(origin);
         let ned_from_ecef = DQuat::from_mat3(&frame.ned_to_ecef().transpose()).normalize();
         Self {
+            body: *body,
             origin: *origin,
             origin_ecef: body.geodetic_to_fixed(origin),
             frame,
@@ -101,7 +103,8 @@ impl NedWorld {
             .ecef_to_ned_vector(vehicle.position_ecef - self.origin_ecef);
         let vel_ned = self.frame.ecef_to_ned_vector(vehicle.velocity_ecef);
         let q = (self.ned_from_ecef * vehicle.attitude).normalize();
-        let w = vehicle.angular_rate_body;
+        // The gyroscopes sense the rate relative to inertial space.
+        let w = vehicle.inertial_rate_body(&self.body);
         let f = specific_force_frd_m_s2;
 
         Ok(DirectTruthSample {

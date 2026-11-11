@@ -213,3 +213,18 @@ fn recorded_samples_alone_reproduce_the_actuator_commands() {
         assert_eq!(command.outputs, flown.outputs, "step {step}");
     }
 }
+
+/// The C172's gyroscopes sense its rate relative to inertial space: the flight
+/// model's rate over the Earth plus the Earth's spin, `Ω` in all and `Ω·sin φ`
+/// about the local vertical.
+#[test]
+fn the_c172s_gyroscopes_sense_the_earths_spin() {
+    let board = c172(1);
+    let sensed = board.airframe().sensed().unwrap();
+    let spin = sensed.angular_rate_body_rad_s - sensed.vehicle.angular_rate_body;
+    let omega = sim_geo::BodyEllipsoid::WGS84.omega_rad_s;
+    assert!((spin.length() - omega).abs() < 1e-15, "{spin}");
+    let position = ecef_to_geodetic(sensed.vehicle.position_ecef);
+    let vertical = (sensed.vehicle.attitude * spin).dot(LocalFrame::at(&position).up());
+    assert!((vertical - omega * position.lat_rad.sin()).abs() < 1e-12);
+}

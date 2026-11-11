@@ -133,7 +133,8 @@ fn true_airspeed_m_s(
 /// a ground calibration of `devices`' inertial unit.
 ///
 /// The aeroplane starts in the air, but its crew ran the engine up at rest
-/// first: the gyroscopes' mean rate over that minute is their turn-on bias,
+/// first: the gyroscopes' mean rate over that minute, less the Earth's spin
+/// at the surveyed start and the magnetic heading, is their turn-on bias,
 /// which no set could otherwise learn before it turned the heading away.
 /// One calibration of the one unit serves every set.
 pub(super) fn alignment(
@@ -148,10 +149,7 @@ pub(super) fn alignment(
         seed: request.seeds.alignment,
     }
     .measure(start);
-    let calibration = GroundCalibration {
-        window_s: GroundCalibration::WINDOW_S,
-        seed: request.seeds.alignment,
-    };
+    let calibration = GroundCalibration::at_rest(request.seeds.alignment);
     fix.imu_bias_prior = calibration.prior(&devices.spec().imu, devices.imu().gyro_bias_rad_s());
     fix
 }
