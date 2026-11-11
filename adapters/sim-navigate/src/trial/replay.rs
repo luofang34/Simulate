@@ -4,6 +4,9 @@
 //! log and the navigator's own solution are all a replay sees.
 
 mod tally;
+mod terrain;
+
+use std::collections::BTreeMap;
 
 use navigate_contract::{MonotonicNanos, NavigationSolution, SourceId};
 use navigate_fusion::RejectionReason;
@@ -17,7 +20,9 @@ use tally::{Reading, sensor_state};
 
 use super::TrialError;
 use super::availability::{ScheduledInterval, SensorKind, SensorState, SetAvailability};
-use super::onboard::{BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE};
+use super::onboard::{
+    BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, baro_altitude_data, gnss_fix_data,
+};
 use super::route::{STEP_HZ, step_seconds};
 use super::stars::{exposure_steps, star_camera_config};
 use crate::{AblationSet, Estimate, MasterClockBridge, NavMeans};
@@ -44,6 +49,11 @@ pub struct SetRun {
     next_opening: usize,
     next_reading: usize,
     star_half_exposure_steps: usize,
+    next_terrain: usize,
+    terrain_fixes: BTreeMap<String, u64>,
+    /// Wall-clock seconds the navigator spent on terrain frames, and the
+    /// frames; for the log only, never a result.
+    terrain_wall: (f64, u64, f64),
     records: Vec<AcceptanceRecord>,
     ledger: Ledger,
     stars: StarAvailability,
@@ -61,6 +71,9 @@ impl Clone for SetRun {
             next_opening: self.next_opening,
             next_reading: self.next_reading,
             star_half_exposure_steps: self.star_half_exposure_steps,
+            next_terrain: self.next_terrain,
+            terrain_fixes: self.terrain_fixes.clone(),
+            terrain_wall: self.terrain_wall,
             records: Vec::new(),
             ledger: self.ledger.clone(),
             stars: self.stars,
@@ -114,6 +127,9 @@ impl SetRun {
             next_opening: 0,
             next_reading: 0,
             star_half_exposure_steps,
+            next_terrain: 0,
+            terrain_fixes: BTreeMap::new(),
+            terrain_wall: (0.0, 0, 0.0),
             records: Vec::new(),
             ledger,
             stars: StarAvailability::default(),
@@ -185,6 +201,7 @@ impl SetRun {
             self.ingest(IMU_SOURCE, (now, now), data)?;
             self.step = step;
             self.stars_at(log, step, now)?;
+            self.terrain_at(log, step, now)?;
             self.gnss_at(log, step, now)?;
             self.baro_at(log, step, now)?;
         }
@@ -305,14 +322,7 @@ impl SetRun {
                     .record(SensorKind::Gnss, window, &Reading::Withheld);
                 continue;
             }
-            let fix = logged.reading;
-            let data = SensorData::GnssFix {
-                position: fix.position,
-                velocity: Some(fix.velocity),
-                position_cov: Some(fix.position_cov),
-                velocity_cov: Some(fix.velocity_cov),
-            };
-            self.ingest(GNSS_SOURCE, (now, now), data)?;
+            self.ingest(GNSS_SOURCE, (now, now), gnss_fix_data(&logged.reading))?;
             let verdicts = verdicts(&self.records);
             self.ledger
                 .record(SensorKind::Gnss, window, &Reading::Offered(&verdicts));
@@ -342,9 +352,18 @@ impl SetRun {
                     .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
-            let data = SensorData::BaroAltitude {
-                altitude_m: logged.reading.altitude_m,
-            };
+            // The undulation only needs the host's position to kilometres,
+            // so a navigator without a solution falls back on where it was
+            // aligned rather than losing the sample.
+            let position = self
+                .navigator
+                .solution(now)
+                .map_or(log.alignment.position, |s| s.position);
+            let data = baro_altitude_data(
+                &logged.reading,
+                position.latitude_rad,
+                position.longitude_rad,
+            )?;
             self.ingest(BARO_SOURCE, (now, now), data)?;
             let verdicts = verdicts(&self.records);
             self.ledger

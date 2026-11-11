@@ -78,10 +78,17 @@ pub fn schedule(name: &str, sensor: SensorKind, start_s: f64, end_s: f64) -> Ava
         sensor,
         unavailable: vec![UnavailableInterval {
             start_s,
-            end_s,
+            end_s: Some(end_s),
             reason: None,
         }],
     }
+}
+
+/// A schedule withholding `sensor` from `start_s` to the end of the flight.
+pub fn schedule_from(name: &str, sensor: SensorKind, start_s: f64) -> AvailabilitySchedule {
+    let mut schedule = schedule(name, sensor, start_s, start_s);
+    schedule.unavailable[0].end_s = None;
+    schedule
 }
 
 /// The [`GNSS_JAMMED`] schedule over `start_s` to `end_s`.
@@ -136,8 +143,11 @@ pub fn request(
             gnss: 0x6E55,
             baro: 0xBA20,
             star_camera: 7,
+            terrain_camera: None,
         },
         output: OutputSpec::default(),
         termination: None,
+        terrain_camera: None,
+        maps: None,
     }
 }

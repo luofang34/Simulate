@@ -116,7 +116,7 @@ fn schedules_must_exist_match_their_sensor_and_name_one_set_means() {
         TrialError::InvalidSchedule { .. }
     ));
     let mut request = route_request(Some(declared));
-    request.availability[0].unavailable[0].end_s = 5.0;
+    request.availability[0].unavailable[0].end_s = Some(5.0);
     assert!(matches!(
         refusal(&request),
         TrialError::InvalidSchedule { .. }
@@ -138,4 +138,91 @@ fn an_epoch_outside_the_ephemeris_is_refused_when_stars_fly() {
         .sensor_sets
         .retain(|set| !set.name.contains("stars"));
     request.validate().unwrap();
+}
+
+#[test]
+fn the_terrain_camera_and_maps_are_checked_as_stated() {
+    use crate::trial::{
+        AssumedAccuracy, CameraBand, MapsSpec, OnboardMapSpec, PackageRef, TerrainCameraSpec,
+    };
+    let camera: TerrainCameraSpec = serde_json::from_str(
+        r#"{ "band": "visible", "width": 800, "height": 600,
+             "fx_px": 600.0, "fy_px": 600.0, "cx_px": 399.5, "cy_px": 299.5,
+             "mount": { "offset_body_m": [1.2, 0.0, 0.4], "roll_deg": 0.0, "pitch_deg": -90.0, "yaw_deg": 0.0 },
+             "period_s": 1.0, "exposure_s": 0.004,
+             "radiometry": { "gain": 1.0, "offset_dn": 0.0, "gamma": 1.0, "noise_dn": 2.0 },
+             "min_sun_elevation_deg": 5.0 }"#,
+    )
+    .unwrap();
+    let mut request = route_request(None);
+    request.terrain_camera = Some(camera);
+    request.validate().unwrap();
+    let mut lwir = request.clone();
+    if let Some(camera) = lwir.terrain_camera.as_mut() {
+        camera.band = CameraBand::Lwir;
+    }
+    assert!(lwir.validate().is_err());
+    let package = PackageRef {
+        store: "store".into(),
+        package: "0".repeat(64),
+    };
+    request.maps = Some(MapsSpec {
+        onboard: OnboardMapSpec {
+            store: package.store.clone(),
+            package: package.package.clone(),
+            assumed_accuracy: Some(AssumedAccuracy {
+                horizontal_m: -1.0,
+                vertical_m: 2.0,
+            }),
+            max_match_pixels: None,
+        },
+        world: package,
+        geoid: None,
+    });
+    assert!(matches!(
+        refusal(&request),
+        TrialError::InvalidRequest {
+            field: "maps.onboard.assumed_accuracy",
+            ..
+        }
+    ));
+    let text = request.to_json().unwrap();
+    assert_eq!(TrialRequest::from_json(&text).unwrap(), request);
+}
+
+#[test]
+fn a_visual_set_needs_a_camera_maps_and_a_seed() {
+    let mut request = route_request(None);
+    request.sensor_sets[0].means.push(crate::NavMeans::Visual);
+    assert!(matches!(
+        refusal(&request),
+        TrialError::InvalidRequest {
+            field: "terrain_camera",
+            ..
+        }
+    ));
+}
+
+/// The master-seed derivation is fixed: SplitMix64 from the master, in the
+/// documented sensor order. Its first output from 0 is the published
+/// SplitMix64 test value.
+#[test]
+fn every_seed_derives_from_the_master_in_a_fixed_order() {
+    use crate::trial::SeedSpec;
+    let seeds = SeedSpec::from_master(0);
+    assert_eq!(seeds.imu, 0xE220_A839_7B1D_CDAF);
+    assert_eq!(seeds, SeedSpec::from_master(0));
+    let other = SeedSpec::from_master(1);
+    assert_ne!(other.imu, seeds.imu);
+    let all = [
+        seeds.imu,
+        seeds.alignment,
+        seeds.gnss,
+        seeds.baro,
+        seeds.star_camera,
+    ];
+    for (i, a) in all.iter().enumerate() {
+        assert!(all.iter().skip(i + 1).all(|b| b != a));
+    }
+    assert!(seeds.terrain_camera.is_some());
 }

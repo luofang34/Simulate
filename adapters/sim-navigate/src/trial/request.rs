@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use sim_devices::ImuGrade;
+use sim_devices::{GnssErrorSpec, ImuGrade};
 
 use super::TrialError;
 use super::availability::{AvailabilitySchedule, SensorKind};
+use super::maps::MapsSpec;
+use super::terrain_camera::TerrainCameraSpec;
 use crate::{AblationSet, NavMeans};
 
 #[cfg(test)]
@@ -51,6 +53,13 @@ pub struct TrialRequest {
     /// When a closed-loop flight ends abnormally; absent takes the defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub termination: Option<TerminationSpec>,
+    /// The terrain camera; required when any set takes the `visual` means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_camera: Option<TerrainCameraSpec>,
+    /// The onboard and world map packages; required with the terrain
+    /// camera.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maps: Option<MapsSpec>,
 }
 
 /// The rules that end a closed-loop flight abnormally, each judged on the
@@ -225,48 +234,58 @@ pub struct GnssSpec {
     pub velocity_sigma_m_s: f64,
 }
 
+impl GnssSpec {
+    /// Horizontal 1-sigma of the simulated position error, metres: the root
+    /// sum of both horizontal axes' white and correlated variances.
+    pub fn horizontal_sigma_m(&self) -> f64 {
+        (2.0 * (self.horizontal_white_sigma_m.powi(2) + self.horizontal_correlated_sigma_m.powi(2)))
+            .sqrt()
+    }
+}
+
 impl Default for GnssSpec {
-    /// A single-frequency code receiver in open sky: decimetre-level
-    /// receiver noise under metre-level slowly varying ionosphere, orbit and
-    /// clock residuals, and centimetre-per-second Doppler velocity.
+    /// The device's open-sky receiver ([`GnssErrorSpec::OPEN_SKY`]) fixing
+    /// once a second.
     fn default() -> Self {
+        let open_sky = GnssErrorSpec::OPEN_SKY;
         Self {
             rate_hz: 1.0,
-            horizontal_white_sigma_m: 0.6,
-            vertical_white_sigma_m: 1.0,
-            horizontal_correlated_sigma_m: 1.2,
-            vertical_correlated_sigma_m: 2.0,
-            correlation_time_s: 300.0,
-            velocity_sigma_m_s: 0.05,
+            horizontal_white_sigma_m: open_sky.horizontal_white_sigma_m,
+            vertical_white_sigma_m: open_sky.vertical_white_sigma_m,
+            horizontal_correlated_sigma_m: open_sky.horizontal_correlated_sigma_m,
+            vertical_correlated_sigma_m: open_sky.vertical_correlated_sigma_m,
+            correlation_time_s: open_sky.correlation_time_s,
+            velocity_sigma_m_s: open_sky.velocity_sigma_m_s,
         }
     }
 }
 
-/// A barometric altimeter: ellipsoidal height plus white noise plus a
-/// first-order Gauss–Markov bias, the error the filter's barometric bias
-/// state models.
+/// The static port the barometric altimeter reads: a pressure sensor with
+/// white noise over a first-order Gauss–Markov offset. The navigator's host
+/// reads its pressure as standard-atmosphere pressure altitude.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BaroSpec {
-    /// Reading rate, Hz; it must divide the 120 Hz simulation rate.
+    /// Sample rate, Hz; it must divide the 120 Hz simulation rate.
     pub rate_hz: f64,
-    /// White noise, metres.
-    pub white_sigma_m: f64,
-    /// Bias, metres.
-    pub bias_sigma_m: f64,
-    /// Correlation time of the bias, seconds.
+    /// White noise of one sample, pascals.
+    pub white_sigma_pa: f64,
+    /// Slowly varying offset, pascals.
+    pub bias_sigma_pa: f64,
+    /// Correlation time of the offset, seconds.
     pub bias_correlation_time_s: f64,
 }
 
 impl Default for BaroSpec {
-    /// Decimetre noise and the metres of slowly drifting bias that weather
-    /// and the static-port error leave in pressure altitude.
+    /// A few pascals of noise over a slowly wandering offset of tens of
+    /// pascals, typical of the device class: about 0.3 m and 2 m of
+    /// pressure altitude at 1000 m.
     fn default() -> Self {
         Self {
             rate_hz: 5.0,
-            white_sigma_m: 0.3,
-            bias_sigma_m: 3.0,
-            bias_correlation_time_s: 3_600.0,
+            white_sigma_pa: 3.0,
+            bias_sigma_pa: 20.0,
+            bias_correlation_time_s: 600.0,
         }
     }
 }
@@ -329,6 +348,36 @@ pub struct SeedSpec {
     pub baro: u64,
     /// Star camera noise.
     pub star_camera: u64,
+    /// Terrain camera noise; required with the terrain camera.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_camera: Option<u64>,
+}
+
+impl SeedSpec {
+    /// Every sensor's seed from one master seed: the successive outputs of
+    /// SplitMix64 (Steele, Lea and Flood, "Fast splittable pseudorandom
+    /// number generators", OOPSLA 2014) started at `master`, taken in the
+    /// order IMU, alignment, GNSS, barometer, star camera, terrain camera.
+    /// The order is part of the contract: the same master gives the same
+    /// seeds, and so the same noise, in every host.
+    pub fn from_master(master: u64) -> Self {
+        let mut state = master;
+        let mut next = || {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
+        Self {
+            imu: next(),
+            alignment: next(),
+            gnss: next(),
+            baro: next(),
+            star_camera: next(),
+            terrain_camera: Some(next()),
+        }
+    }
 }
 
 /// How densely the result and the progress stream sample the run.
@@ -380,11 +429,12 @@ impl Default for OutputSpec {
 }
 
 /// The means this trial can simulate.
-const SIMULATED_MEANS: [NavMeans; 4] = [
+const SIMULATED_MEANS: [NavMeans; 5] = [
     NavMeans::DeadReckoning,
     NavMeans::Barometric,
     NavMeans::Gnss,
     NavMeans::Celestial,
+    NavMeans::Visual,
 ];
 
 impl TrialRequest {

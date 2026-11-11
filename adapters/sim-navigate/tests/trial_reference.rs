@@ -13,8 +13,8 @@
 use std::sync::OnceLock;
 
 use sim_navigate::trial::{
-    ImuGradeName, ProgressRecord, RecordedTrial, SetReport, TrialReport, TrialRequest, evaluate,
-    record_trial, run_trial_with_progress,
+    ImuGradeName, ProgressRecord, RecordedTrial, SetReport, TrialReport, TrialRequest,
+    evaluate_blocking, record_trial_blocking, run_trial_with_progress_blocking,
 };
 
 #[cfg(test)]
@@ -50,10 +50,10 @@ struct Reference {
 const REFERENCE: [Reference; 6] = [
     Reference {
         set: "gnss+baro+ins",
-        horizontal_rms_m: 1.6053039565268463,
-        horizontal_p95_m: 1.799634131433854,
-        horizontal_final_m: 1.8005993249627634,
-        mean_position_nees: 81.7797562381478,
+        horizontal_rms_m: 1.6053175505136683,
+        horizontal_p95_m: 1.7995767708034964,
+        horizontal_final_m: 1.8005308571851346,
+        mean_position_nees: 74.23889645977647,
         outage_end_m: None,
         counts: [68, 68, 342, 342, 0, 0],
     },
@@ -68,38 +68,38 @@ const REFERENCE: [Reference; 6] = [
     },
     Reference {
         set: "ins+baro",
-        horizontal_rms_m: 3.431286860734899,
-        horizontal_p95_m: 4.510381238079001,
-        horizontal_final_m: 4.410614757438282,
-        mean_position_nees: 0.41688483790687875,
+        horizontal_rms_m: 3.3467238642289563,
+        horizontal_p95_m: 4.777027194564603,
+        horizontal_final_m: 5.445458465137517,
+        mean_position_nees: 0.9889799227393898,
         outage_end_m: None,
-        counts: [0, 0, 342, 342, 0, 0],
+        counts: [0, 0, 342, 341, 0, 0],
     },
     Reference {
         set: "ins+baro+stars",
-        horizontal_rms_m: 3.7040039602992074,
-        horizontal_p95_m: 8.242053382184928,
-        horizontal_final_m: 9.269802124006194,
-        mean_position_nees: 0.33363263445849767,
+        horizontal_rms_m: 3.7431757445350646,
+        horizontal_p95_m: 8.167193951075296,
+        horizontal_final_m: 8.973100070187034,
+        mean_position_nees: 0.9098019439185734,
         outage_end_m: None,
-        counts: [0, 0, 342, 342, 0, 7],
+        counts: [0, 0, 342, 341, 0, 7],
     },
     Reference {
         set: "gnss-outage+baro+ins",
-        horizontal_rms_m: 1.7456875341311218,
-        horizontal_p95_m: 2.3764719402643877,
-        horizontal_final_m: 1.8279554716664201,
-        mean_position_nees: 45.70351118758452,
-        outage_end_m: Some(2.6447396414980533),
+        horizontal_rms_m: 1.7458679417558092,
+        horizontal_p95_m: 2.3771651364100754,
+        horizontal_final_m: 1.8279535084447227,
+        mean_position_nees: 39.95483924979767,
+        outage_end_m: Some(2.645228004908841),
         counts: [47, 47, 342, 342, 21, 0],
     },
     Reference {
         set: "gnss-outage+baro+ins+stars",
-        horizontal_rms_m: 1.7952139827711064,
-        horizontal_p95_m: 2.50561212198565,
-        horizontal_final_m: 1.8361954377496854,
-        mean_position_nees: 46.729106707608665,
-        outage_end_m: Some(2.7819512099383283),
+        horizontal_rms_m: 1.7954461091745562,
+        horizontal_p95_m: 2.5065518274561494,
+        horizontal_final_m: 1.83619697787998,
+        mean_position_nees: 40.98124541989851,
+        outage_end_m: Some(2.7827094520405176),
         counts: [47, 47, 342, 342, 21, 7],
     },
 ];
@@ -130,8 +130,8 @@ fn reference() -> &'static (TrialRequest, RecordedTrial, TrialReport) {
     static RUN: OnceLock<(TrialRequest, RecordedTrial, TrialReport)> = OnceLock::new();
     RUN.get_or_init(|| {
         let request = reference_request();
-        let recorded = record_trial(&request).unwrap();
-        let report = evaluate(&request, &recorded).unwrap().report;
+        let recorded = record_trial_blocking(&request).unwrap();
+        let report = evaluate_blocking(&request, &recorded).unwrap().report;
         (request, recorded, report)
     })
 }
@@ -246,14 +246,14 @@ fn every_open_loop_path_writes_the_same_bytes() {
         records = records.wrapping_add(1);
         Ok(())
     };
-    let watched = run_trial_with_progress(request, &mut sink).unwrap();
+    let watched = run_trial_with_progress_blocking(request, &mut sink).unwrap();
     assert!(records > 60, "{records}");
     assert!(watched.to_json().unwrap() == evaluated.to_json().unwrap());
     let bytes = |set: &SetReport| serde_json::to_string(set).unwrap();
     for (index, interleaved) in evaluated.sensor_sets.iter().enumerate() {
         let mut alone = request.clone();
         alone.sensor_sets = vec![request.sensor_sets[index].clone()];
-        let report = evaluate(&alone, recorded).unwrap().report;
+        let report = evaluate_blocking(&alone, recorded).unwrap().report;
         assert!(
             bytes(&report.sensor_sets[0]) == bytes(interleaved),
             "{} alone differs",

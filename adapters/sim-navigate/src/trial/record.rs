@@ -3,12 +3,13 @@
 
 use glam::DVec3;
 use sim_core::{SimInstant, VehicleState};
-use sim_devices::InertialIncrement;
+use sim_devices::{AirDataSample, GnssReading, InertialIncrement};
 
+use super::devices::{StaticPort, receiver};
 use super::epoch::parse_utc;
-use super::gnss::{BaroAltimeter, BaroReading, GnssFix, GnssReceiver};
-use super::route::STEP_HZ;
+use super::route::{STEP_HZ, step_seconds};
 use super::stars::{StarExposure, StarFrame, StarScene, StarSky, render_star_frames};
+use super::terrain_camera::TerrainFrame;
 use super::{TrialError, TrialRequest};
 use crate::{AlignmentFix, InitialAlignment, SimulatedImu, Truth};
 
@@ -32,15 +33,17 @@ pub struct SensorLog {
     pub alignment: AlignmentFix,
     /// The IMU increment ending at each step from step 1.
     pub imu: Vec<InertialIncrement>,
-    /// GNSS fixes.
-    pub gnss: Vec<Logged<GnssFix>>,
-    /// Barometric altitudes.
-    pub baro: Vec<Logged<BaroReading>>,
+    /// GNSS receiver fixes.
+    pub gnss: Vec<Logged<GnssReading>>,
+    /// Static-port samples.
+    pub baro: Vec<Logged<AirDataSample>>,
     /// Star camera frames; their truth part is for scoring only.
     pub stars: Vec<StarFrame>,
     /// The mid-exposure step of every frame, in order, known from the
     /// camera's schedule before the frame is read out.
     pub star_mid_steps: Vec<usize>,
+    /// Terrain camera frames; their truth part is for scoring only.
+    pub terrain: Vec<TerrainFrame>,
 }
 
 /// Steps between readings of a sensor at `rate_hz`.
@@ -78,14 +81,17 @@ pub fn record(
             increments.push(increment);
         }
     }
-    let mut receiver = GnssReceiver::new(request.gnss, request.seeds.gnss)?;
-    let gnss = periodic(truth, period_steps("gnss", request.gnss.rate_hz)?, |s| {
-        receiver.measure(s)
-    });
-    let mut altimeter = BaroAltimeter::new(request.baro, request.seeds.baro)?;
-    let baro = periodic(truth, period_steps("baro", request.baro.rate_hz)?, |s| {
-        altimeter.measure(s)
-    });
+    let mut gnss_receiver = receiver(request)?;
+    let gnss_period = period_steps("gnss", request.gnss.rate_hz)?;
+    let gnss = periodic(truth, gnss_period, |_, s| {
+        Ok(gnss_receiver.measure(s, step_seconds(gnss_period)))
+    })?;
+    let mut port = StaticPort::new(request)?;
+    let baro_period = period_steps("baro", request.baro.rate_hz)?;
+    let baro = periodic(truth, baro_period, |step, s| {
+        port.sense(s, step_seconds(step), step_seconds(baro_period))
+            .map(Some)
+    })?;
     let stars = if request.uses_stars() {
         render_star_frames(truth, &star_scene(request)?)?
     } else {
@@ -98,6 +104,7 @@ pub fn record(
         gnss,
         baro,
         star_mid_steps: stars.iter().map(|frame| frame.image.mid_step).collect(),
+        terrain: Vec::new(),
         stars,
     })
 }
@@ -134,20 +141,18 @@ pub fn star_scene(request: &TrialRequest) -> Result<StarScene, TrialError> {
     })
 }
 
-/// A reading every `period` steps from step `period`, in order.
+/// A reading every `period` steps from step `period`, in order; a sample
+/// whose device produced nothing is absent.
 fn periodic<T>(
     truth: &[Truth<(SimInstant, VehicleState)>],
     period: usize,
-    mut measure: impl FnMut(&VehicleState) -> T,
-) -> Vec<Logged<T>> {
-    truth
-        .iter()
-        .enumerate()
-        .skip(period)
-        .step_by(period)
-        .map(|(step, sample)| Logged {
-            step,
-            reading: measure(&sample.get().1),
-        })
-        .collect()
+    mut measure: impl FnMut(usize, &VehicleState) -> Result<Option<T>, TrialError>,
+) -> Result<Vec<Logged<T>>, TrialError> {
+    let mut log = Vec::new();
+    for (step, sample) in truth.iter().enumerate().skip(period).step_by(period) {
+        if let Some(reading) = measure(step, &sample.get().1)? {
+            log.push(Logged { step, reading });
+        }
+    }
+    Ok(log)
 }

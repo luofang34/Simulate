@@ -7,19 +7,29 @@
 //! reads solutions, acceptance records and director outputs back, and
 //! never reaches into the algorithms behind them.
 
+use std::sync::Arc;
+
+use navigate_camera::{CameraMount as NavigateMount, ImagerModel, Intrinsics};
 use navigate_contract::{Ellipsoid, SolutionQuality, SourceId, Waypoint};
-use navigate_fusion::FogmBias;
+use navigate_data::{DayNumber, GeoidModel};
+use navigate_geodesy::GeoidUndulation;
 use navigate_guidance::GuidanceConfig;
 use navigate_onboard::{
-    ErrorBudget, FlightDirector, GuidanceLaw, Navigator, ReferenceNavigator, RouteDirector,
-    SensorKind, SensorSpec, SensorSuite, StarCatalogueConfig,
+    AssumedAccuracy, ErrorBudget, FlightDirector, GuidanceLaw, HostGeoid, Navigator,
+    ReferenceNavigator, RouteDirector, SensorKind, SensorSpec, SensorSuite, StarCatalogueConfig,
+    TerrainMapRequest,
 };
 
 use super::epoch::parse_utc;
+use super::map_store::{DirectoryStores, MapStores};
 use super::route::execution_config;
 use super::stars::{roof_star_mount, star_camera_config};
+use super::terrain_camera::TerrainCameraSpec;
 use super::{QualityFloor, SensorSetSpec, TrialError, TrialRequest, VehicleSpec};
 use crate::{MASTER_CLOCK_DOMAIN, NavMeans, imager_model, inertial_config, navigate_mount};
+pub(super) use readings::{altimeter_budget, baro_altitude_data, gnss_fix_data};
+
+mod readings;
 
 /// The trial's IMU.
 pub const IMU_SOURCE: SourceId = SourceId::new(90);
@@ -29,6 +39,11 @@ pub const GNSS_SOURCE: SourceId = SourceId::new(91);
 pub const BARO_SOURCE: SourceId = SourceId::new(93);
 /// The roof star camera.
 pub const STAR_SOURCE: SourceId = SourceId::new(94);
+/// The terrain camera.
+pub const TERRAIN_CAMERA_SOURCE: SourceId = SourceId::new(95);
+/// The terrain camera's declared calibration residual, radians: the
+/// simulated camera has the intrinsics it states exactly.
+const SIMULATED_CALIBRATION_SIGMA_RAD: f64 = 1e-4;
 
 /// The sensors of the request's vehicle as `set` carries them: the IMU,
 /// the GNSS receiver and the altimeter always, the star camera when the set
@@ -67,15 +82,15 @@ pub fn sensor_suite(
             imager: None,
             mount: None,
             rate_hz: request.baro.rate_hz,
-            budget: ErrorBudget::Barometer {
-                white_sigma_m: request.baro.white_sigma_m,
-                bias: FogmBias::new(
-                    request.baro.bias_correlation_time_s,
-                    request.baro.bias_sigma_m,
-                ),
-            },
+            budget: altimeter_budget(&request.baro, planned_height_m(request))?,
         },
     ];
+    if let (true, Some(camera)) = (
+        set.means.contains(&NavMeans::Visual),
+        request.terrain_camera.as_ref(),
+    ) {
+        sensors.push(terrain_camera_spec(camera));
+    }
     if set.means.contains(&NavMeans::Celestial) {
         let (mount, cg_body_m) = roof_star_mount();
         sensors.push(SensorSpec {
@@ -99,10 +114,21 @@ pub fn star_catalogue(request: &TrialRequest) -> Result<StarCatalogueConfig, Tri
     Ok(StarCatalogueConfig::with_utc_at_zero(start.unix_seconds()))
 }
 
-/// The navigator `set` flies with, unaligned.
-pub fn trial_navigator(
+/// The navigator `set` flies with, unaligned; a visual set's reads its
+/// onboard package from the store.
+pub fn trial_navigator_blocking(
     request: &TrialRequest,
     set: &SensorSetSpec,
+) -> Result<Box<dyn Navigator>, TrialError> {
+    trial_navigator_with_stores(request, set, &DirectoryStores)
+}
+
+/// [`trial_navigator_blocking`], reading the onboard package from the
+/// store `stores` resolves.
+pub fn trial_navigator_with_stores(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    stores: &dyn MapStores,
 ) -> Result<Box<dyn Navigator>, TrialError> {
     let suite = sensor_suite(request, set)?;
     let stars = set
@@ -110,11 +136,104 @@ pub fn trial_navigator(
         .contains(&NavMeans::Celestial)
         .then(|| star_catalogue(request))
         .transpose()?;
-    Ok(Box::new(ReferenceNavigator::new(
-        suite,
-        MASTER_CLOCK_DOMAIN,
-        stars,
-    )?))
+    let mut navigator = ReferenceNavigator::new(suite, MASTER_CLOCK_DOMAIN, stars)?;
+    if set.means.contains(&NavMeans::Visual) {
+        load_onboard_map(request, &mut navigator, stores)?;
+    }
+    Ok(Box::new(navigator))
+}
+
+/// The height the altimeter's budget is declared at: the route's start.
+fn planned_height_m(request: &TrialRequest) -> f64 {
+    request.waypoints.first().map_or(0.0, |w| w.altitude_m)
+}
+
+/// The terrain camera as the navigator is told of it: pinhole intrinsics
+/// with pixel centres on integer coordinates, as Simulate renders, and the
+/// same mount angles, in Navigate's own constructor.
+fn terrain_camera_spec(camera: &TerrainCameraSpec) -> SensorSpec {
+    let mount = camera.mount;
+    let intrinsics = camera.intrinsics();
+    let [x, y, z] = mount.offset_body_m;
+    SensorSpec {
+        id: TERRAIN_CAMERA_SOURCE,
+        kind: SensorKind::TerrainCamera,
+        imager: Some(ImagerModel::pinhole(Intrinsics {
+            width: camera.width,
+            height: camera.height,
+            fx: intrinsics.fx,
+            fy: intrinsics.fy,
+            cx: intrinsics.cx,
+            cy: intrinsics.cy,
+        })),
+        mount: Some(
+            NavigateMount::rotated_forward(
+                mount.roll_deg.to_radians(),
+                mount.pitch_deg.to_radians(),
+                mount.yaw_deg.to_radians(),
+            )
+            .with_lever_arm(nalgebra::Vector3::new(x, y, z)),
+        ),
+        rate_hz: 1.0 / camera.period_s,
+        budget: ErrorBudget::TerrainCamera {
+            calibration_sigma_rad: SIMULATED_CALIBRATION_SIGMA_RAD,
+        },
+    }
+}
+
+/// Simulate's own geoid, handed to the navigator so that it and the world
+/// convert orthometric heights identically.
+struct WorldGeoid;
+
+impl GeoidUndulation for WorldGeoid {
+    fn ellipsoid(&self) -> Ellipsoid {
+        Ellipsoid::WGS84
+    }
+
+    fn undulation_m(&self, latitude_rad: f64, longitude_rad: f64) -> Option<f64> {
+        let n = sim_geo::egm96_undulation_m(latitude_rad, longitude_rad);
+        (latitude_rad.is_finite() && longitude_rad.is_finite()).then_some(n)
+    }
+}
+
+/// Hands the onboard package to the navigator, as the request states it.
+fn load_onboard_map(
+    request: &TrialRequest,
+    navigator: &mut ReferenceNavigator,
+    stores: &dyn MapStores,
+) -> Result<(), TrialError> {
+    let Some(maps) = request.maps.as_ref() else {
+        return Err(TrialError::InvalidRequest {
+            field: "maps",
+            detail: "a set takes visual fixes".into(),
+        });
+    };
+    let identity = maps
+        .onboard
+        .package
+        .parse()
+        .map_err(|_| TrialError::InvalidRequest {
+            field: "maps.onboard.package",
+            detail: format!("`{}` is not 64 hex digits", maps.onboard.package),
+        })?;
+    let start = parse_utc(&request.epoch_utc)?;
+    let today = DayNumber((start.unix_seconds() / 86_400.0).floor() as i32);
+    let mut map = TerrainMapRequest::new(identity, today);
+    map.assumed_accuracy = maps.onboard.assumed_accuracy.map(|a| AssumedAccuracy {
+        horizontal_sigma_m: a.horizontal_m,
+        vertical_sigma_m: a.vertical_m,
+    });
+    if let Some(pixels) = maps.onboard.max_match_pixels {
+        map.config.max_match_pixels = pixels;
+    }
+    let geoid: Option<HostGeoid> = maps.geoid.map(|_| {
+        let model: Arc<dyn GeoidUndulation + Send + Sync> = Arc::new(WorldGeoid);
+        (GeoidModel::Egm96, model)
+    });
+    let store = Arc::new(stores.store(&maps.onboard.store)?);
+    let report = navigator.load_terrain_map(store, &map, geoid)?;
+    tracing::info!(?report, "onboard map loaded");
+    Ok(())
 }
 
 /// The flight director over the request's route: deviation guidance with

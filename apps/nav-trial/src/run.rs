@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use sim_navigate::trial::{
     FinishedRecord, ProgressRecord, RoutePoint, TrialReport, TrialRequest, request_from_route,
-    run_trial_with_progress,
+    run_trial_timed_blocking,
 };
 use tracing::info;
 
@@ -28,11 +28,12 @@ pub fn run_blocking(args: &CliArgs) -> Result<TrialReport, NavTrialError> {
     let mut progress = open_progress_blocking(args.progress.as_ref())?;
     let outcome = {
         let mut sink = |record: &ProgressRecord| write_record(progress.as_mut(), record);
-        run_trial_with_progress(&request, &mut sink)
+        run_trial_timed_blocking(&request, &mut sink)
     };
     let written = match &outcome {
-        Ok(report) => {
+        Ok((report, timing)) => {
             write_blocking(&args.out, &report.to_json()?)?;
+            write_blocking(&timing_path(&args.out), &timing.to_json()?)?;
             info!(out = %args.out.display(), "result written");
             Some(args.out.display().to_string())
         }
@@ -47,7 +48,14 @@ pub fn run_blocking(args: &CliArgs) -> Result<TrialReport, NavTrialError> {
         path: progress_path(args.progress.as_ref()),
         source,
     })?;
-    Ok(outcome?)
+    Ok(outcome?.0)
+}
+
+/// Where a run's wall-clock timing is written: beside `out`, as
+/// `<out stem>.timing.json`, apart from the result because it depends on
+/// the machine.
+pub fn timing_path(out: &Path) -> PathBuf {
+    out.with_extension("timing.json")
 }
 
 /// Where a route's completed request is written: beside `out`, as
