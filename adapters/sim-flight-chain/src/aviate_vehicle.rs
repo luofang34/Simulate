@@ -14,6 +14,7 @@ mod uplink;
 #[cfg(test)]
 mod tests;
 
+use aviate_core::control::ControlMode;
 use aviate_core::control::multirotor::MultirotorController;
 use aviate_core::mixer::QuadXMixerX500;
 use pilotage_adapter_api::{
@@ -129,6 +130,17 @@ impl AviateX500Vehicle {
         self.downlink.reports_armed()
     }
 
+    /// The control mode the flight controller flew on its last cycle.
+    pub fn flight_mode(&self) -> ControlMode {
+        self.controller.board().last_effective_command().mode
+    }
+
+    /// The flight controller's estimate of the vehicle state, when it has a
+    /// usable one.
+    pub fn estimated_state(&self) -> Option<VehicleState> {
+        self.controller.estimated_state()
+    }
+
     /// Command bytes the flight controller's receive ring had no room for.
     pub const fn refused_uplink_bytes(&self) -> u64 {
         self.refused_uplink_bytes
@@ -137,6 +149,11 @@ impl AviateX500Vehicle {
     /// Why stepping stopped, once it has.
     pub const fn fault(&self) -> Option<&ChainError> {
         self.fault.as_ref()
+    }
+
+    /// Takes the reason stepping stopped, leaving the vehicle stopped.
+    pub(crate) fn take_fault(&mut self) -> Option<ChainError> {
+        self.fault.replace(ChainError::Stopped)
     }
 
     fn send(&mut self, frame: &[u8]) {

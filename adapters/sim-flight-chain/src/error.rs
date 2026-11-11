@@ -1,4 +1,5 @@
 use mbd_core::MbdError;
+use pilotage_mission::MissionBuildError;
 use sim_aviate::AviateBridgeError;
 use sim_core::BlockError;
 
@@ -34,6 +35,12 @@ pub enum ChainError {
     /// The flight controller's rotor command does not fit the airframe.
     #[error("rotor command does not fit the X500")]
     Rotors(#[source] AviateBridgeError),
+    /// Pilotage's mission engine refused the route or its configuration.
+    #[error("mission could not be built")]
+    Mission(#[source] Box<MissionBuildError>),
+    /// The vehicle stopped stepping earlier and its reason was already taken.
+    #[error("the vehicle stopped stepping at an earlier fault")]
+    Stopped,
     /// The rate does not divide the master clock into whole ticks.
     #[error("{rate_hz} Hz is not a whole number of master-clock ticks")]
     Rate {

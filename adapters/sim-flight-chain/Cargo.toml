@@ -9,11 +9,15 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+aerocontext-core = { workspace = true }
+aerocontext-navdata = { workspace = true }
 aviate-core = { workspace = true }
 glam = { workspace = true }
 mbd-core = { workspace = true }
+navigate-contract = { workspace = true }
 pilotage-adapter-api = { workspace = true }
 pilotage-mavlink = { workspace = true }
+pilotage-mission = { workspace = true }
 pilotage-protocol = { workspace = true }
 pilotage-timing = { workspace = true }
 sim-atmosphere = { workspace = true }
