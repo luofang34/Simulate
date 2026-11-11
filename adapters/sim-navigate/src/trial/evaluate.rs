@@ -20,8 +20,9 @@ use super::closed::{ClosedLoopOutcome, ClosedLoopReport};
 use super::comparison::comparison;
 use super::epoch::parse_utc;
 use super::gnss::GnssReceiver;
+use super::map_store::{DirectoryStores, MapStores};
 use super::maps::OpenedPackage;
-use super::onboard::trial_navigator_blocking;
+use super::onboard::trial_navigator_with_stores;
 use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
 use super::replay::{SensorTallies, SetRun, SetSelection, StarAvailability};
@@ -79,11 +80,20 @@ pub(super) struct SetContext {
 /// visual set it reads the world package from its store to render the
 /// terrain camera.
 pub fn record_trial_blocking(request: &TrialRequest) -> Result<RecordedTrial, TrialError> {
+    record_trial_with_stores(request, &DirectoryStores)
+}
+
+/// [`record_trial_blocking`], reading the world package from the store
+/// `stores` resolves.
+pub fn record_trial_with_stores(
+    request: &TrialRequest,
+    stores: &dyn MapStores,
+) -> Result<RecordedTrial, TrialError> {
     request.validate()?;
     let flight = fly_route(request)?;
     let mut log = record(request, &flight.truth)?;
     let mut terrain_render_s = 0.0;
-    if let Some(camera) = terrain_camera_blocking(request)? {
+    if let Some(camera) = terrain_camera(request, stores)? {
         let started = web_time::Instant::now();
         log.terrain = camera.render_along(&flight.truth)?;
         terrain_render_s = started.elapsed().as_secs_f64();
@@ -97,8 +107,9 @@ pub fn record_trial_blocking(request: &TrialRequest) -> Result<RecordedTrial, Tr
 
 /// The request's terrain camera over its world package, when a set takes
 /// visual fixes.
-pub(super) fn terrain_camera_blocking(
+pub(super) fn terrain_camera(
     request: &TrialRequest,
+    stores: &dyn MapStores,
 ) -> Result<Option<TerrainCamera>, TrialError> {
     let (true, Some(spec), Some(maps)) = (
         request.uses_visual(),
@@ -107,7 +118,8 @@ pub(super) fn terrain_camera_blocking(
     ) else {
         return Ok(None);
     };
-    let world = OpenedPackage::open_blocking(&maps.world, "maps.world")?.scenery_blocking()?;
+    let world =
+        OpenedPackage::open_blocking(&maps.world, stores, "maps.world")?.scenery_blocking()?;
     let seed = request.seeds.terrain_camera.unwrap_or_default();
     let start = parse_utc(&request.epoch_utc)?;
     Ok(Some(TerrainCamera::new(
@@ -138,6 +150,17 @@ pub fn run_trial_timed_blocking(
     request: &TrialRequest,
     sink: &mut dyn ProgressSink,
 ) -> Result<(TrialReport, TrialTiming), TrialError> {
+    run_trial_with_stores(request, &DirectoryStores, sink)
+}
+
+/// Runs `request` end to end for a host that keeps its map packages in the
+/// stores `stores` resolves, handing `sink` the progress; returns the
+/// report and where the wall-clock time went.
+pub fn run_trial_with_stores(
+    request: &TrialRequest,
+    stores: &dyn MapStores,
+    sink: &mut dyn ProgressSink,
+) -> Result<(TrialReport, TrialTiming), TrialError> {
     request.validate()?;
     let (legs, _) = vertical_plan(&request.waypoints, &request.vehicle)?;
     let digest = identity(request)?.request_sha256;
@@ -145,8 +168,8 @@ pub fn run_trial_timed_blocking(
         .map_err(TrialError::Progress)?;
     match request.vehicle.guidance {
         GuidanceSource::Truth => {
-            let recorded = record_trial_blocking(request)?;
-            let outcome = evaluate_with_progress_blocking(request, &recorded, sink)?;
+            let recorded = record_trial_with_stores(request, stores)?;
+            let outcome = replays::open_trial(request, &recorded, stores, sink)?;
             Ok((outcome.report, outcome.timing))
         }
         GuidanceSource::Estimate => Ok((
@@ -180,7 +203,7 @@ pub fn evaluate_with_progress_blocking(
     recorded: &RecordedTrial,
     sink: &mut dyn ProgressSink,
 ) -> Result<TrialOutcome, TrialError> {
-    replays::open_trial(request, recorded, sink)
+    replays::open_trial(request, recorded, &DirectoryStores, sink)
 }
 
 pub(super) fn whole_steps(field: &'static str, seconds: f64) -> Result<usize, TrialError> {
@@ -213,11 +236,26 @@ pub fn replay_set_blocking(
     set: &SensorSetSpec,
     log: &SensorLog,
 ) -> Result<SetRun, TrialError> {
+    replay_set_with_stores(request, set, log, &DirectoryStores)
+}
+
+/// [`replay_set_blocking`], reading the onboard package from the store
+/// `stores` resolves.
+pub fn replay_set_with_stores(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    log: &SensorLog,
+    stores: &dyn MapStores,
+) -> Result<SetRun, TrialError> {
     let selection = SetSelection {
         means: set.ablation_set(),
         availability: SetAvailability::resolve(request, set)?,
     };
-    SetRun::new(log, selection, trial_navigator_blocking(request, set)?)
+    SetRun::new(
+        log,
+        selection,
+        trial_navigator_with_stores(request, set, stores)?,
+    )
 }
 
 /// What a set's run leaves for its report.
@@ -251,6 +289,7 @@ fn trial_report(
     request: &TrialRequest,
     route: RouteReport,
     results: Vec<SetResult>,
+    maps: Option<super::maps::MapsReport>,
 ) -> Result<TrialReport, TrialError> {
     let sensor_sets: Vec<SetReport> = request
         .sensor_sets
@@ -267,10 +306,7 @@ fn trial_report(
         availability: request.availability.clone(),
         gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
         comparison: comparison(&sensor_sets, request.output.horizontal_error_threshold_m),
-        maps: match request.maps.as_ref().filter(|_| request.uses_visual()) {
-            Some(maps) => Some(super::maps::maps_report_blocking(maps)?),
-            None => None,
-        },
+        maps,
         sensor_sets,
     })
 }

@@ -69,6 +69,6 @@ pub(super) fn closed_trial(
             flown: Vec::new(),
         },
     };
-    let report = trial_report(request, route, results)?;
+    let report = trial_report(request, route, results, None)?;
     Ok(ClosedTrialOutcome { report, sets })
 }

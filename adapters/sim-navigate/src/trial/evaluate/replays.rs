@@ -6,9 +6,11 @@ use sim_core::{SimInstant, VehicleState};
 use sim_geo::ecef_to_geodetic;
 
 use super::{
-    RecordedTrial, SetResult, TrialOutcome, replay_set_blocking, sample_periods, trial_report,
+    RecordedTrial, SetResult, TrialOutcome, replay_set_with_stores, sample_periods, trial_report,
     whole_steps,
 };
+use crate::trial::map_store::MapStores;
+use crate::trial::maps::maps_report_blocking;
 use crate::trial::progress::{EventKind, EventRecord, ProgressSink, Scored, Slices};
 use crate::trial::record::SensorLog;
 use crate::trial::replay::SetRun;
@@ -25,13 +27,14 @@ use crate::{AblationEvaluation, Estimate, NavigationOrigin};
 pub(super) fn open_trial(
     request: &TrialRequest,
     recorded: &RecordedTrial,
+    stores: &dyn MapStores,
     sink: &mut dyn ProgressSink,
 ) -> Result<TrialOutcome, TrialError> {
     let (sample_steps, progress_steps) = sample_periods(request)?;
     let mut replays = request
         .sensor_sets
         .iter()
-        .map(|set| OpenSet::new(request, set, &recorded.log))
+        .map(|set| OpenSet::new(request, set, &recorded.log, stores))
         .collect::<Result<Vec<_>, _>>()?;
     let known = waypoint_events(&recorded.flight);
     let mut slices = Slices::new(sink, request, progress_steps, known)?;
@@ -73,7 +76,12 @@ pub(super) fn open_trial(
         results.push(result);
         estimates.push(published);
     }
-    let report = trial_report(request, route_report(request, &recorded.flight)?, results)?;
+    let maps = match request.maps.as_ref().filter(|_| request.uses_visual()) {
+        Some(maps) => Some(maps_report_blocking(maps, stores)?),
+        None => None,
+    };
+    let route = route_report(request, &recorded.flight)?;
+    let report = trial_report(request, route, results, maps)?;
     Ok(TrialOutcome {
         report,
         estimates,
@@ -138,9 +146,10 @@ impl OpenSet {
         request: &TrialRequest,
         set: &SensorSetSpec,
         log: &SensorLog,
+        stores: &dyn MapStores,
     ) -> Result<Self, TrialError> {
         Ok(Self {
-            run: replay_set_blocking(request, set, log)?,
+            run: replay_set_with_stores(request, set, log, stores)?,
             origin: NavigationOrigin::Fused(set.ablation_set()),
             evaluation: AblationEvaluation::default(),
             series: Vec::new(),

@@ -179,8 +179,9 @@ pub struct IntervalReport {
     pub reason: Option<String>,
     /// First second without the sensor.
     pub start_s: f64,
-    /// Last second without it.
-    pub end_s: f64,
+    /// Last second without it; `None` for an interval that lasts to the
+    /// end of the flight.
+    pub end_s: Option<f64>,
     /// The errors across it; `None` when no scored sample lies at or before
     /// its start, or none inside it.
     pub errors: Option<IntervalErrors>,

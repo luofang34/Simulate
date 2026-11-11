@@ -217,9 +217,9 @@ fn an_outage_lets_the_track_wander_and_gnss_pulls_it_back() {
             .fold(0.0, f64::max)
     };
     let before = worst(outage_interval.start_s - 60.0, outage_interval.start_s);
-    let during = worst(outage_interval.start_s, outage_interval.end_s);
+    let during = worst(outage_interval.start_s, outage_interval.end_or_never());
     let bound = STRAIGHT_LEG_CROSS_TRACK_M + GNSS_SIGMAS * report.gnss_horizontal_sigma_m;
-    let after = worst(outage_interval.end_s + PULL_BACK_S, f64::INFINITY);
+    let after = worst(outage_interval.end_or_never() + PULL_BACK_S, f64::INFINITY);
     tracing::info!(
         before,
         during,
