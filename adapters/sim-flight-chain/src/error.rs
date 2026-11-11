@@ -64,6 +64,15 @@ pub enum ChainError {
     /// The airframe could not be trimmed for its starting flight condition.
     #[error("no trim at the start of flight")]
     Trim(#[source] Box<BlockError>),
+    /// Pilotage's host core refused its configuration, the plan or a tick.
+    #[error("the Pilotage host core failed")]
+    Host(#[source] Box<pilotage_host_core::HostCoreError>),
+    /// The control-feel law built for the vehicle is not a valid one.
+    #[error("the vehicle's control-feel law is invalid: {detail}")]
+    ControlFeel {
+        /// Pilotage's reason.
+        detail: String,
+    },
     /// The rate does not divide the master clock into whole ticks.
     #[error("{rate_hz} Hz is not a whole number of master-clock ticks")]
     Rate {

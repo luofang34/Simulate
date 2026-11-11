@@ -15,6 +15,7 @@ mod c172_airframe;
 mod c172_vehicle;
 mod chain;
 mod error;
+mod host_chain;
 mod hosted_board;
 mod mission_host;
 mod x500_plant;
@@ -29,8 +30,10 @@ pub use c172_vehicle::{
 };
 pub use chain::{ChainSetup, ChainVehicle, FlightChain, MISSION_FRAME_HZ};
 pub use error::ChainError;
+pub use host_chain::{ChainRoute, HostChain, LinkCounters};
 pub use hosted_board::HostedBoard;
 pub use mission_host::{FrameReport, MissionHost, MissionSetup, OwnshipFeed, RouteFix};
+pub use pilotage_host_core::{HostEvent, HostStatus};
 pub use pilotage_mission::{MissionEvent, MissionState};
 pub use pilotage_protocol::VehicleId;
 pub use sim_aviate::DirectNoiseTier;

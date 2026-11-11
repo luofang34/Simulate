@@ -15,6 +15,9 @@ glam = { workspace = true }
 mbd-core = { workspace = true }
 navigate-contract = { workspace = true }
 pilotage-adapter-api = { workspace = true }
+pilotage-adapter-aviate = { workspace = true }
+pilotage-control-feel = { workspace = true }
+pilotage-host-core = { workspace = true }
 pilotage-mavlink = { workspace = true }
 pilotage-mission = { workspace = true }
 pilotage-protocol = { workspace = true }
@@ -29,3 +32,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 web-time = { workspace = true }
 world-core = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

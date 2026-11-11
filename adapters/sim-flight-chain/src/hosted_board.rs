@@ -27,6 +27,7 @@ where
     suite: SensorSuite,
     /// On the heap: the board carries its rings and filter by value.
     controller: Box<AviateDirectRunner<C, M>>,
+    origin: Geodetic,
     now: SimInstant,
     samples: DeviceSamples,
     command: DirectActuatorCmd,
@@ -58,6 +59,7 @@ where
             airframe,
             suite: SensorSuite::new(suite).map_err(ChainError::Devices)?,
             controller: Box::new(controller),
+            origin,
             now: SimInstant::START,
             samples: DeviceSamples::default(),
             command: DirectActuatorCmd::default(),
@@ -86,6 +88,11 @@ where
     /// The instant the vehicle state describes.
     pub const fn now(&self) -> SimInstant {
         self.now
+    }
+
+    /// The origin of the flight controller's local frame.
+    pub const fn origin(&self) -> Geodetic {
+        self.origin
     }
 
     /// The true vehicle state, for scoring and drawing.
