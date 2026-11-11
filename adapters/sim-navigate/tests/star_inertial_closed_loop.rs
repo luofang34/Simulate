@@ -206,6 +206,7 @@ fn fly(
             position_cov: fix.position_cov,
             velocity_cov: fix.velocity_cov,
             attitude_cov: fix.attitude_cov,
+            imu_bias_prior: None,
             at: now(start),
         })
         .unwrap();

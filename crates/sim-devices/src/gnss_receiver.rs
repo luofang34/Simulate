@@ -118,6 +118,12 @@ impl GnssReceiver {
         })
     }
 
+    /// The error statistics the receiver draws from, for a host declaring
+    /// them to a filter.
+    pub const fn spec(&self) -> GnssErrorSpec {
+        self.spec
+    }
+
     /// Whether the receiver has the sky.
     pub const fn is_tracking(&self) -> bool {
         self.tracking
