@@ -1024,7 +1024,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2775,7 +2775,7 @@ checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
 [[package]]
 name = "maplibre"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=17523ae327182cb1e5a7e55f2bb535c2098d66e6#17523ae327182cb1e5a7e55f2bb535c2098d66e6"
+source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=dc5604c1a8d7abcdfcb75e1a468754f26f568ae0#dc5604c1a8d7abcdfcb75e1a468754f26f568ae0"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2825,7 +2825,7 @@ dependencies = [
 [[package]]
 name = "maplibre-build-tools"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=17523ae327182cb1e5a7e55f2bb535c2098d66e6#17523ae327182cb1e5a7e55f2bb535c2098d66e6"
+source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=dc5604c1a8d7abcdfcb75e1a468754f26f568ae0#dc5604c1a8d7abcdfcb75e1a468754f26f568ae0"
 dependencies = [
  "flate2",
  "log",
@@ -3289,7 +3289,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4226,7 +4226,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4638,7 +4638,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5722,10 +5722,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.6",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6693,7 +6693,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
