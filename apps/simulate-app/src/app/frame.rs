@@ -136,6 +136,25 @@ impl FlightApp {
         Some(camera)
     }
 
+    /// The pilot's keys, throttle and look over `elapsed_s` of wall time.
+    fn pilot_inputs(&mut self, elapsed_s: f64, viewport_mode: OperatorViewportMode) {
+        self.keyboard.update(elapsed_s, &mut self.mapper);
+        let throttle = self.mapper.controls().throttle;
+        if let Some(t) = self.controls.integrate_throttle(elapsed_s, throttle) {
+            self.mapper.set(sim_input::Control::Throttle, t);
+        }
+        self.controls.sync_live(self.mapper.controls());
+        if self.controls.take_look_reset() {
+            self.look.reset();
+        }
+        let look_axes = self.controls.camera_look_axes();
+        if viewport_mode == OperatorViewportMode::Cockpit {
+            self.look.follow_stick(look_axes, elapsed_s);
+        } else {
+            self.look.integrate(look_axes, elapsed_s);
+        }
+    }
+
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.mapper.controls();
@@ -143,21 +162,7 @@ impl FlightApp {
         match self.flight.advance_to_now(controls, time_scale) {
             Ok(elapsed_s) => {
                 if !self.esc_menu.is_open() {
-                    self.keyboard.update(elapsed_s, &mut self.mapper);
-                    let throttle = self.mapper.controls().throttle;
-                    if let Some(t) = self.controls.integrate_throttle(elapsed_s, throttle) {
-                        self.mapper.set(sim_input::Control::Throttle, t);
-                    }
-                    self.controls.sync_live(self.mapper.controls());
-                    if self.controls.take_look_reset() {
-                        self.look.reset();
-                    }
-                    let look_axes = self.controls.camera_look_axes();
-                    if viewport_mode == OperatorViewportMode::Cockpit {
-                        self.look.follow_stick(look_axes, elapsed_s);
-                    } else {
-                        self.look.integrate(look_axes, elapsed_s);
-                    }
+                    self.pilot_inputs(elapsed_s, viewport_mode);
                 }
                 self.update_takeover_hint(elapsed_s);
                 wall_s = elapsed_s;
@@ -174,8 +179,17 @@ impl FlightApp {
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
         let environment = sky.environment;
-        if let (Some(link), Some(rig)) = (self.flight.page_map(), self.cockpit_rig.as_mut()) {
-            rig.take_page_map(link);
+        let page_only = self.occluded && self.page_map.is_some();
+        if let Some(rig) = self.cockpit_rig.as_mut()
+            && page_map_frame(
+                rig,
+                &self.flight,
+                self.renderer.as_ref(),
+                page_only,
+                (&camera, &sky),
+            )
+        {
+            return self.present_occluded();
         }
         let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
             (Some(renderer), Some(rig)) => match rig.prepare_frame(
@@ -261,4 +275,24 @@ impl FlightApp {
             tracing::warn!(error = %err, "the page map was not drawn");
         }
     }
+}
+
+/// Hands the page's input to its map; with `page_only` (the window out of sight, the
+/// page's map on screen) draws the page's map alone and returns `true`.
+fn page_map_frame(
+    rig: &mut crate::cockpit_rig::CockpitRig,
+    flight: &crate::flight::Flight,
+    renderer: Option<&sim_render::Renderer>,
+    page_only: bool,
+    view: (&Camera, &crate::sky_rig::SkyFrame<'_>),
+) -> bool {
+    let Some(link) = flight.page_map() else {
+        return false;
+    };
+    rig.take_page_map(link);
+    let Some(renderer) = renderer.filter(|_| page_only) else {
+        return false;
+    };
+    rig.prepare_page_map_only(renderer.surface_size(), flight, view);
+    true
 }

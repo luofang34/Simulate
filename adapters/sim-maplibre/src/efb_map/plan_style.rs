@@ -1,6 +1,7 @@
 //! The plan's layers in the EFB style: a satellite basemap a host may show instead of the
-//! chart, outlines of coverage areas, flown tracks and their marks, and the flight plan
-//! on top in the usual avionics colours.
+//! chart, outlines of coverage areas, the flight plan's legs in the usual avionics
+//! colours, flown tracks and their marks over the legs they follow, and the plan's fixes
+//! on top.
 
 use maplibre::style::{Style, source::Source};
 use serde_json::{Value, json};
@@ -82,6 +83,21 @@ fn plan_layers() -> [Value; 7] {
                        "line-opacity": 0.85, "line-dasharray": [4, 3] }
         }),
         json!({
+            "id": "efb-route-casing", "type": "line", "source": ROUTE_SOURCE,
+            "filter": ["all", leg.clone(), ["==", ["get", "state"], "active"]],
+            "layout": { "line-join": "round", "line-cap": "round" },
+            "paint": { "line-color": CASING, "line-width": 6.0, "line-opacity": 0.8 }
+        }),
+        json!({
+            "id": "efb-route-line", "type": "line", "source": ROUTE_SOURCE,
+            "filter": leg,
+            "layout": { "line-join": "round", "line-cap": "round" },
+            "paint": {
+                "line-color": by_state(json!(ACTIVE_MAGENTA), json!(FUTURE_WHITE), json!(FLOWN_GREY)),
+                "line-width": by_state(json!(3.0), json!(2.0), json!(2.0))
+            }
+        }),
+        json!({
             "id": "efb-track-line", "type": "line", "source": TRACKS_SOURCE,
             "filter": ["==", ["geometry-type"], "LineString"],
             "layout": { "line-join": "round", "line-cap": "round" },
@@ -96,21 +112,6 @@ fn plan_layers() -> [Value; 7] {
                 "circle-opacity": ["case", ["get", "filled"], 1.0, 0.0],
                 "circle-stroke-color": ["get", "colour"],
                 "circle-stroke-width": ["case", ["get", "filled"], 0.0, 1.5]
-            }
-        }),
-        json!({
-            "id": "efb-route-casing", "type": "line", "source": ROUTE_SOURCE,
-            "filter": ["all", leg.clone(), ["==", ["get", "state"], "active"]],
-            "layout": { "line-join": "round", "line-cap": "round" },
-            "paint": { "line-color": CASING, "line-width": 6.0, "line-opacity": 0.8 }
-        }),
-        json!({
-            "id": "efb-route-line", "type": "line", "source": ROUTE_SOURCE,
-            "filter": leg,
-            "layout": { "line-join": "round", "line-cap": "round" },
-            "paint": {
-                "line-color": by_state(json!(ACTIVE_MAGENTA), json!(FUTURE_WHITE), json!(FLOWN_GREY)),
-                "line-width": by_state(json!(3.0), json!(2.0), json!(2.0))
             }
         }),
         json!({

@@ -2,14 +2,43 @@
 //! inset, its expanded view sized to the canvas instead of the window's tablet, while the
 //! compact view stays the world view's inset.
 
+use sim_core::SensorExposureEvent;
 use sim_maplibre::EfbDisplayMode;
-use sim_render::{CanvasPresenter, FrameOutcome, OverlayQuad, RenderError};
+use sim_render::{Camera, CanvasPresenter, FrameOutcome, OverlayQuad, RenderError};
 use tracing::warn;
 
 use super::CockpitRig;
 use super::efb_chrome::{efb_map_rect, rect_px};
-use crate::map_rig::{EfbStatus, MapLibreRig};
+use crate::flight::Flight;
+use crate::map_rig::{EfbStatus, MapFrameInput, MapLibreRig};
 use crate::page_map::PageMapLink;
+use crate::sky_rig::SkyFrame;
+use crate::supervisor_rig::SupervisorRig;
+
+/// What every map draws `flight` from this frame, seen by `camera` under `sky`.
+pub(super) fn frame_input<'a>(
+    supervisor: &'a SupervisorRig,
+    surface_size: [u32; 2],
+    flight: &Flight,
+    (camera, sky): (&Camera, &'a SkyFrame<'a>),
+    sensor_exposures: &'a [SensorExposureEvent],
+) -> MapFrameInput<'a> {
+    MapFrameInput {
+        surface_size,
+        timestamp: flight.now(),
+        profile: flight.profile(),
+        active_vehicle: flight.free_vehicle(),
+        vehicle: flight.display_vehicle_state(),
+        model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
+        ground_m: flight.display_ground_height_m(),
+        estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
+        sensor_exposures,
+        articulation: flight.display_articulation(),
+        otw_camera: *camera,
+        sky,
+        supervisor,
+    }
+}
 
 impl CockpitRig {
     /// Sizes the expanded EFB view to a page's map canvas of `size_px`, or to the
@@ -46,6 +75,27 @@ impl CockpitRig {
             maps.efb_view_of(EfbDisplayMode::CompactCorner)
         } else {
             maps.efb_view()
+        }
+    }
+
+    /// Draws only the EFB, for the page's map while the window that shows everything
+    /// else is out of sight.
+    pub fn prepare_page_map_only(
+        &mut self,
+        surface_size: [u32; 2],
+        flight: &Flight,
+        (camera, sky): (&Camera, &SkyFrame<'_>),
+    ) {
+        let expanded_px = self.efb_expanded_px(surface_size);
+        let Some(maps) = self.maps.as_mut() else {
+            return;
+        };
+        let input = frame_input(&self.supervisor, surface_size, flight, (camera, sky), &[]);
+        if let Err(err) = maps
+            .set_efb_expanded_px(expanded_px)
+            .and_then(|()| maps.render_efb_frame(&input))
+        {
+            warn!(error = %err, "the page map's frame failed");
         }
     }
 

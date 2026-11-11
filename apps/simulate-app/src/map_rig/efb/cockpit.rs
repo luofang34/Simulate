@@ -102,6 +102,18 @@ impl MapLibreRig {
         self.efb_airport = airport;
     }
 
+    /// Draws only the EFB, when it is shown and due, as the rest of the frame would.
+    pub fn render_efb_frame(&mut self, input: &MapFrameInput<'_>) -> Result<(), AppSimError> {
+        let sim_time = Duration::from_secs_f64(
+            input
+                .timestamp
+                .duration_since(sim_core::SimInstant::START)
+                .as_seconds()
+                .max(0.0),
+        );
+        self.step_efb(input, sim_time, None)
+    }
+
     /// Draws the EFB when it is shown and due, on the navigation solution.
     pub(in crate::map_rig) fn step_efb(
         &mut self,

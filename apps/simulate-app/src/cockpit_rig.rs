@@ -10,8 +10,8 @@ use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::host_guidance::StandInPilotageHost;
 use crate::map_rig::{
-    AIRPORT_SURFACE_MAP, AvionicsPreset, EfbAirport, EfbCommand, MFD_CHART_MAP, MapFrameInput,
-    MapLibreRig, PFD_SVS_MAP, ScenerySource,
+    AIRPORT_SURFACE_MAP, AvionicsPreset, EfbAirport, EfbCommand, MFD_CHART_MAP, MapLibreRig,
+    PFD_SVS_MAP, ScenerySource,
 };
 use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
@@ -384,21 +384,13 @@ impl CockpitRig {
             return (false, false, None, None);
         };
         let step = maps.set_efb_expanded_px(expanded_px).and_then(|()| {
-            maps.render_earth_frame(&MapFrameInput {
+            maps.render_earth_frame(&page_map::frame_input(
+                &self.supervisor,
                 surface_size,
-                timestamp: flight.now(),
-                profile: flight.profile(),
-                active_vehicle: flight.free_vehicle(),
-                vehicle: flight.display_vehicle_state(),
-                model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
-                ground_m: flight.display_ground_height_m(),
-                estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
+                flight,
+                (camera, sky),
                 sensor_exposures,
-                articulation: flight.display_articulation(),
-                otw_camera: *camera,
-                sky,
-                supervisor: &self.supervisor,
-            })
+            ))
         });
         let runway = match step {
             Ok(runway) => runway,
