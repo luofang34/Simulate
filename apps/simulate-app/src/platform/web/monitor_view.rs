@@ -1,6 +1,7 @@
 //! The flight monitor on the page: the status line, the error plot, a
 //! legend that shows or hides each set, a switch for each means the run
-//! uses, the track map, the terrain camera's latest frame, the pace, the
+//! uses, the track map, the terrain camera's latest frame and what the visual
+//! navigator matched it against, the pace, the
 //! link of the run, the terrain camera's tallies, the mission host's
 //! reports and the latest events.
 //!
@@ -8,6 +9,7 @@
 //! loop runs every animation frame anyway, so a click shows within a frame.
 
 mod frame_panel;
+mod match_panel;
 mod plot;
 mod track_map;
 
@@ -24,6 +26,7 @@ use web_sys::{Document, Element, HtmlInputElement};
 
 use super::section::{Section, append, write_lines};
 use frame_panel::FramePanel;
+use match_panel::MatchPanel;
 use plot::Plot;
 use track_map::TrackMap;
 
@@ -67,6 +70,7 @@ pub struct MonitorView {
     plot: Plot,
     map: TrackMap,
     frame: FramePanel,
+    matching: MatchPanel,
     legend: Element,
     switches: Element,
     speeds: Element,
@@ -104,6 +108,7 @@ impl MonitorView {
         }
         let map = TrackMap::under(&document, &root, world)?;
         let frame = FramePanel::under(&document, &root)?;
+        let matching = MatchPanel::under(&document, &root)?;
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);
@@ -119,6 +124,7 @@ impl MonitorView {
             plot,
             map,
             frame,
+            matching,
             legend,
             switches,
             speeds,
@@ -192,6 +198,7 @@ impl MonitorView {
         self.legend_values(monitor);
         self.map.draw(monitor, &controls.hidden);
         self.frame.draw(monitor);
+        self.matching.draw(monitor);
         self.switch_states(monitor);
         let mut visual: Vec<PlanLine> = monitor
             .traces()

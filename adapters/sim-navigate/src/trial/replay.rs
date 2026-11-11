@@ -6,6 +6,8 @@
 mod tally;
 mod terrain;
 
+pub use terrain::outcome_key;
+
 use std::collections::BTreeMap;
 
 use navigate_contract::{MonotonicNanos, NavigationSolution, SourceId};

@@ -8,6 +8,7 @@
 //! nothing about the flight that the feed does not say.
 
 mod camera;
+mod matching;
 mod pacer;
 mod replay;
 mod trace;
@@ -22,6 +23,7 @@ use sim_navigate::NavMeans;
 use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
 
 pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
+pub use matching::{GreyImage, MatchLine, MatchLog, MatchShot, OfferedPosition, SolvedFit};
 pub use pacer::{
     Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
     StepState, run_slice,
@@ -60,6 +62,8 @@ pub enum MonitorFeed {
     },
     /// A terrain-camera frame the flight delivered.
     Frame(CameraShot),
+    /// A visual set's latest terrain match.
+    Match(Box<MatchShot>),
 }
 
 /// A sensor a visitor can switch, because some set of the run uses it.
@@ -78,6 +82,7 @@ pub struct Monitor {
     truth: Vec<(f64, (f64, f64))>,
     waypoints: Vec<(String, (f64, f64))>,
     camera: CameraLog,
+    matches: MatchLog,
     sensors: BTreeMap<String, SensorStates>,
     fixes: BTreeMap<String, BTreeMap<String, u64>>,
     phase: Option<String>,
@@ -108,6 +113,7 @@ impl Monitor {
                 self.fixes.insert(set, fixes);
             }
             MonitorFeed::Frame(shot) => self.camera.deliver(shot),
+            MonitorFeed::Match(shot) => self.matches.take(*shot),
         }
     }
 
@@ -167,6 +173,11 @@ impl Monitor {
     /// degrees.
     pub fn waypoints(&self) -> &[(String, (f64, f64))] {
         &self.waypoints
+    }
+
+    /// Each visual set's latest terrain matches.
+    pub const fn matches(&self) -> &MatchLog {
+        &self.matches
     }
 
     /// The terrain camera's latest frame, its outcomes and the fix marks.
