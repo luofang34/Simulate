@@ -1,5 +1,6 @@
 use mbd_core::MbdError;
 use pilotage_mission::MissionBuildError;
+use pilotage_protocol::VehicleId;
 use sim_aviate::AviateBridgeError;
 use sim_core::BlockError;
 
@@ -38,6 +39,13 @@ pub enum ChainError {
     /// Pilotage's mission engine refused the route or its configuration.
     #[error("mission could not be built")]
     Mission(#[source] Box<MissionBuildError>),
+    /// The vehicle takes no velocity intents on its motion scope, which is
+    /// how the mission engine flies.
+    #[error("{vehicle:?} advertises no velocity intents on its motion scope")]
+    NoVelocityScope {
+        /// The vehicle the mission was to command.
+        vehicle: VehicleId,
+    },
     /// The vehicle stopped stepping earlier and its reason was already taken.
     #[error("the vehicle stopped stepping at an earlier fault")]
     Stopped,

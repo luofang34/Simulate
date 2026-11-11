@@ -50,10 +50,8 @@ impl FlightChain {
             noise: setup.noise,
             noise_seed: setup.noise_seed,
         })?;
-        Ok(Self {
-            vehicle,
-            host: MissionHost::new(&setup.mission)?,
-        })
+        let host = MissionHost::new(&setup.mission, &vehicle.capabilities())?;
+        Ok(Self { vehicle, host })
     }
 
     /// The instant the vehicle state describes.

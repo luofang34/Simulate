@@ -5,7 +5,7 @@
 //! and its telemetry comes back as MAVLink bytes from its transmit ring; the
 //! adapter holds no control law. Truth moves the airframe and feeds the
 //! flight controller's sensor synthesis, and leaves upward only as a
-//! [`SimTruthSample`].
+//! [`pilotage_adapter_api::SimTruthSample`].
 
 mod downlink;
 mod truth;
@@ -217,20 +217,13 @@ fn action(action: ActionKind) -> ActionCapability {
     }
 }
 
-fn scope(name: &str, family: IntentFamily, frames: Vec<ReferenceFrame>) -> ScopeDescriptor {
+fn scope(name: &str, intent: IntentCapability) -> ScopeDescriptor {
     ScopeDescriptor {
         payload: None,
         authority_group: Some(MOTION_SCOPE.to_owned()),
         scope: ScopeId::new(name),
         axes: Vec::new(),
-        intents: vec![IntentCapability {
-            family,
-            frames,
-            max_linear: 0.0,
-            max_vertical: 0.0,
-            max_angular: 0.0,
-            max_yaw_rate: 0.0,
-        }],
+        intents: vec![intent],
         actions: vec![action(ActionKind::Arm), action(ActionKind::Disarm)],
         legacy: None,
     }
@@ -238,7 +231,24 @@ fn scope(name: &str, family: IntentFamily, frames: Vec<ReferenceFrame>) -> Scope
 
 impl VehicleAdapter for AviateX500Vehicle {
     fn capabilities(&self) -> AdapterCapabilities {
-        let velocity_frames = vec![ReferenceFrame::BodyFrd, ReferenceFrame::LocalNed];
+        // The envelope is the flight controller's own configured limits.
+        let limits = &self.controller.board().kernel().cfg().limits;
+        let velocity = IntentCapability {
+            family: IntentFamily::Velocity,
+            frames: vec![ReferenceFrame::BodyFrd, ReferenceFrame::LocalNed],
+            max_linear: limits.max_horizontal_speed.0,
+            max_vertical: limits.max_climb_rate.0.min(limits.max_descent_rate.0),
+            max_angular: limits.max_yaw_rate.0,
+            max_yaw_rate: 0.0,
+        };
+        let attitude = IntentCapability {
+            family: IntentFamily::AttitudeThrust,
+            frames: vec![ReferenceFrame::LocalNed],
+            max_linear: 0.0,
+            max_vertical: 0.0,
+            max_angular: limits.max_roll.0.min(limits.max_pitch.0),
+            max_yaw_rate: limits.max_yaw_rate.0,
+        };
         AdapterCapabilities {
             execution: ExecutionMode {
                 real_time: false,
@@ -253,14 +263,7 @@ impl VehicleAdapter for AviateX500Vehicle {
                 class: VehicleClass::Multicopter,
                 heading_reference: Some(HeadingReference::True),
                 display_name: "X500 (Aviate)".to_owned(),
-                scopes: vec![
-                    scope(MOTION_SCOPE, IntentFamily::Velocity, velocity_frames),
-                    scope(
-                        DIRECT_SCOPE,
-                        IntentFamily::AttitudeThrust,
-                        vec![ReferenceFrame::LocalNed],
-                    ),
-                ],
+                scopes: vec![scope(MOTION_SCOPE, velocity), scope(DIRECT_SCOPE, attitude)],
                 link_loss_actions: Vec::new(),
             }],
             adapter_version: ADAPTER_VERSION.to_owned(),

@@ -11,7 +11,8 @@ mod route;
 
 use navigate_contract::{ClockDomainId, DurationNanos, GeodeticPosition, MonotonicNanos};
 use pilotage_adapter_api::{
-    AvionicsAttitudeSample, AvionicsSample, Disposition, TelemetrySample, VehicleAdapter,
+    AdapterCapabilities, AvionicsAttitudeSample, AvionicsSample, Disposition, IntentCapability,
+    TelemetrySample, VehicleAdapter,
 };
 use pilotage_mavlink::link::estimator::QUALITY_DEGRADED;
 use pilotage_mavlink::sampling::yaw_of;
@@ -20,8 +21,8 @@ use pilotage_mission::{
     MissionPlanRecord, MissionState, OwnshipSample, OwnshipSource, TruthRole,
 };
 use pilotage_protocol::{
-    ControlAction, ControlIntent, ControlPayload, DIRECT_SCOPE, Generation, MOTION_SCOPE, ScopeId,
-    ScopedControlFrame, SequenceNum, SessionId, VehicleId,
+    ControlAction, ControlIntent, ControlPayload, DIRECT_SCOPE, Generation, IntentFamily,
+    MOTION_SCOPE, ScopeId, ScopedControlFrame, SequenceNum, SessionId, VehicleId,
 };
 use pilotage_timing::MonoTimestamp;
 use sim_geo::Geodetic;
@@ -89,14 +90,18 @@ pub struct MissionHost {
     vehicle: VehicleId,
     sequence: u32,
     pending_arm: Option<PendingArm>,
-    last_estimate: Option<u32>,
+    last_estimate: Option<(u32, Option<u32>)>,
     arms_refused: u32,
 }
 
 impl MissionHost {
     /// The mission engine over `setup`'s route, flying the vehicle's own
-    /// estimate.
-    pub fn new(setup: &MissionSetup) -> Result<Self, ChainError> {
+    /// estimate inside the velocity envelope `capabilities` advertises for
+    /// it.
+    pub fn new(
+        setup: &MissionSetup,
+        capabilities: &AdapterCapabilities,
+    ) -> Result<Self, ChainError> {
         let mission = |error| ChainError::Mission(Box::new(error));
         let (snapshot, provenance, route) = route::packed_route(&setup.fixes).map_err(mission)?;
         let anchor = GeodeticPosition::new(
@@ -104,14 +109,22 @@ impl MissionHost {
             setup.anchor.lon_rad,
             setup.anchor.height_m,
         );
+        let envelope = velocity_envelope(capabilities, setup.vehicle)?;
+        let within = |asked: f64, bound: f32| match f64::from(bound) {
+            bound if bound > 0.0 => asked.min(bound),
+            _ => asked,
+        };
         let mut config = MissionConfig::new(route, anchor, MISSION_CLOCK);
         config.cruise_height_m = setup.cruise_height_m;
-        config.cruise_mps = setup.cruise_mps;
-        config.climb_rate_mps = setup.climb_rate_mps;
+        config.cruise_mps = within(setup.cruise_mps, envelope.max_linear);
+        config.climb_rate_mps = within(setup.climb_rate_mps, envelope.effective_vertical());
         config.limits = MissionLimits {
-            max_horizontal_mps: setup.cruise_mps,
-            max_vertical_mps: setup.climb_rate_mps,
-            ..MissionLimits::default()
+            max_horizontal_mps: config.cruise_mps,
+            max_vertical_mps: config.climb_rate_mps,
+            max_yaw_rate_rps: within(
+                MissionLimits::default().max_yaw_rate_rps,
+                envelope.max_angular,
+            ),
         };
         config.ownship_source = OwnshipSource::vehicle_estimate();
         let (engine, record) =
@@ -171,13 +184,20 @@ impl MissionHost {
     /// Offers the flight controller's estimate when it carries a new,
     /// authorized position and velocity.
     fn offer_estimate(&mut self, sample: &TelemetrySample, now: MonotonicNanos) {
-        let Some(ownship) = sample.avionics.as_ref().and_then(ownship_of) else {
+        let Some(avionics) = sample.avionics.as_ref() else {
             return;
         };
-        if self.last_estimate == Some(ownship.sequence) {
+        let Some(ownship) = ownship_of(avionics) else {
+            return;
+        };
+        // Attitude arrives twice as often as position, and the engine turns
+        // guidance into the body frame with the heading it last heard.
+        let attitude = avionics.attitude.map(|attitude| attitude.stamp().sequence);
+        let received = (ownship.sequence, attitude);
+        if self.last_estimate == Some(received) {
             return;
         }
-        self.last_estimate = Some(ownship.sequence);
+        self.last_estimate = Some(received);
         self.engine.on_ownship(&ownship, now);
     }
 
@@ -254,6 +274,23 @@ impl MissionHost {
             action_ids: action.iter().map(|(_, id)| *id).collect(),
         }
     }
+}
+
+/// The velocity envelope `capabilities` advertises on the motion scope of
+/// `vehicle`.
+fn velocity_envelope(
+    capabilities: &AdapterCapabilities,
+    vehicle: VehicleId,
+) -> Result<&IntentCapability, ChainError> {
+    capabilities
+        .vehicles
+        .iter()
+        .filter(|descriptor| descriptor.id == vehicle)
+        .flat_map(|descriptor| &descriptor.scopes)
+        .filter(|scope| scope.scope.as_str() == MOTION_SCOPE)
+        .flat_map(|scope| &scope.intents)
+        .find(|intent| intent.family == IntentFamily::Velocity)
+        .ok_or(ChainError::NoVelocityScope { vehicle })
 }
 
 /// The estimate as an ownship sample, when the flight controller authorizes

@@ -72,11 +72,20 @@ fn off_route_m(p: DVec3) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// Whether `p` is on a straight: clear of every fix by more than the capture
+/// radius and the turn that follows it.
+fn far_from_fixes(p: DVec3) -> bool {
+    CORNERS
+        .iter()
+        .all(|&(north, east)| (p.x - north).hypot(p.y - east) > 2.0 * CAPTURE_RADIUS_M)
+}
+
 /// What a flight looked like against truth.
 #[derive(Default)]
 struct Flown {
     events: Vec<MissionEvent>,
     worst_off_route_m: f64,
+    worst_off_straight_m: f64,
     worst_height_error_m: f64,
     worst_estimate_error_m: f64,
     top_speed_m_s: f64,
@@ -99,6 +108,9 @@ fn fly_to_completion(chain: &mut FlightChain) -> Flown {
         let p = ned(&truth);
         if report.state == MissionState::Enroute {
             flown.worst_off_route_m = flown.worst_off_route_m.max(off_route_m(p));
+            if far_from_fixes(p) {
+                flown.worst_off_straight_m = flown.worst_off_straight_m.max(off_route_m(p));
+            }
             let height_error = (-p.z - CRUISE_HEIGHT_M).abs();
             flown.worst_height_error_m = flown.worst_height_error_m.max(height_error);
             let mode = chain.flight_mode();
@@ -167,6 +179,11 @@ fn pilotage_mission_flies_the_route_on_the_flight_controllers_estimate() {
         flown.top_speed_m_s
     );
 
+    assert!(
+        flown.worst_off_straight_m < 3.0,
+        "{} m off a straight",
+        flown.worst_off_straight_m
+    );
     let truth = chain.true_state();
     let p = ned(&truth);
     assert!(
@@ -235,7 +252,6 @@ impl VehicleAdapter for FalseOracle {
 /// `offset_m`, and returns the true states at every frame.
 fn fly_with_oracle_offset(offset_m: f32, seconds: u32) -> Vec<VehicleState> {
     let setup = setup();
-    let mut host = MissionHost::new(&setup.mission).unwrap();
     let mut vehicle = FalseOracle {
         vehicle: AviateX500Vehicle::new(AviateVehicleConfig {
             vehicle: VEHICLE,
@@ -247,6 +263,7 @@ fn fly_with_oracle_offset(offset_m: f32, seconds: u32) -> Vec<VehicleState> {
         .unwrap(),
         offset_m,
     };
+    let mut host = MissionHost::new(&setup.mission, &vehicle.capabilities()).unwrap();
     let mut flown = Vec::new();
     for frame in 0..u64::from(seconds) * MISSION_FRAME_HZ {
         let now = MonotonicNanos::from_nanos(frame * 1_000_000_000 / MISSION_FRAME_HZ);

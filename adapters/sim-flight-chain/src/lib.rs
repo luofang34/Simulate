@@ -6,6 +6,10 @@
 //! exchanging the MAVLink frames Pilotage's codec encodes and decodes, and
 //! [`MissionHost`] flies a route on it with Pilotage's mission engine.
 //! [`FlightChain`] is the two together.
+//!
+//! Native only: Pilotage's MAVLink crate does not build for the browser.
+
+#![cfg(not(target_arch = "wasm32"))]
 
 mod aviate_vehicle;
 mod chain;
