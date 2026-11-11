@@ -161,6 +161,16 @@ impl FreeFlightPlant {
         Ok(Self::C172Mission(Box::new(chain_rig::build_chain_rig()?)))
     }
 
+    /// The civil time the plant's flight states for its start, Unix seconds, when it
+    /// states one: a link's flight happens at the link's epoch, not the host's clock.
+    #[must_use]
+    pub fn stated_epoch_utc_s(&self) -> Option<f64> {
+        match self {
+            Self::C172Mission(rig) => Some(rig.epoch_utc_s()),
+            _ => None,
+        }
+    }
+
     /// Pilotage's mission phase and each navigation set's standing, when flying the real
     /// chain.
     #[must_use]

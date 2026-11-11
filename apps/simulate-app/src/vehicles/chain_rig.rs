@@ -10,7 +10,7 @@ use glam::DVec3;
 use sim_chain_trial::{ChainTrial, StepOutcome, first_link};
 use sim_core::{AirframeArticulation, EngineStatus, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_flight_chain::C172_RATE_HZ;
-use sim_navigate::trial::{DirectoryStores, ProgressRecord};
+use sim_navigate::trial::{DirectoryStores, ProgressRecord, parse_utc};
 use tracing::info;
 
 use crate::error::AppSimError;
@@ -30,16 +30,22 @@ pub struct ChainRig {
     trial: Box<ChainTrial>,
     phase: Option<String>,
     standings: BTreeMap<String, SetStanding>,
+    /// The link's epoch, Unix seconds: the flight's civil time at its start.
+    epoch_utc_s: f64,
 }
 
 /// The C172 at the first link's start, its plan about to be handed to Pilotage.
 pub(super) fn build_chain_rig() -> Result<ChainRig, AppSimError> {
     let spec = first_link()?;
+    let epoch_utc_s = parse_utc(&spec.request.epoch_utc)
+        .map_err(sim_chain_trial::ChainTrialError::from)?
+        .unix_seconds();
     let trial = ChainTrial::new(&spec, &DirectoryStores)?;
     Ok(ChainRig {
         trial: Box::new(trial),
         phase: None,
         standings: BTreeMap::new(),
+        epoch_utc_s,
     })
 }
 
@@ -47,6 +53,11 @@ impl ChainRig {
     /// One cycle of the flight controller.
     pub(super) const fn period(&self) -> TickSpan {
         TickSpan::from_ticks(TICKS_PER_SECOND / C172_RATE_HZ)
+    }
+
+    /// The link's epoch, Unix seconds.
+    pub(super) const fn epoch_utc_s(&self) -> f64 {
+        self.epoch_utc_s
     }
 
     /// The true vehicle state.
