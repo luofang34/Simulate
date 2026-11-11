@@ -14,8 +14,9 @@ mod navigator_feed;
 
 const VEHICLE: VehicleId = VehicleId::new(7);
 const CRUISE_HEIGHT_M: f64 = 60.0;
-/// Navigate's default capture radius, which Pilotage's route missions fly.
-const CAPTURE_RADIUS_M: f64 = 100.0;
+/// Room to turn at the flight controller's 10 m/s and the 0.35 rad its
+/// velocity loop tilts to: v² / (g · tan 0.35), metres.
+const CAPTURE_RADIUS_M: f64 = 28.0;
 
 fn pad() -> Geodetic {
     Geodetic::from_degrees(39.1582, -75.5244, 15.0)
@@ -37,6 +38,7 @@ fn fix(north_m: f64, east_m: f64) -> RouteFix {
     RouteFix {
         lat_deg: position.lat_deg(),
         lon_deg: position.lon_deg(),
+        altitude_m: pad().height_m + CRUISE_HEIGHT_M,
     }
 }
 
@@ -46,7 +48,7 @@ fn setup() -> ChainSetup {
             vehicle: VEHICLE,
             anchor: pad(),
             fixes: CORNERS.iter().map(|&(n, e)| fix(n, e)).collect(),
-            cruise_height_m: CRUISE_HEIGHT_M,
+            capture_radius_m: CAPTURE_RADIUS_M,
             cruise_mps: 12.0,
             climb_rate_mps: 3.0,
             ownship: OwnshipFeed::FlightController,
@@ -136,7 +138,7 @@ fn fly_to_completion(chain: &mut FlightChain) -> Flown {
 #[test]
 fn pilotage_mission_flies_the_route_on_the_flight_controllers_estimate() {
     let mut chain = FlightChain::new(&setup()).unwrap();
-    assert_eq!(chain.host().record().waypoint_count, CORNERS.len());
+    assert_eq!(chain.host().record().idents.len(), CORNERS.len());
     let flown = fly_to_completion(&mut chain);
 
     let count =
@@ -154,16 +156,11 @@ fn pilotage_mission_flies_the_route_on_the_flight_controllers_estimate() {
     );
     assert_eq!(flown.modes_enroute, [ControlMode::VelocityControl]);
 
-    // Each fix sequences one capture radius early, which cuts a right-angle
-    // corner by 100 m · (1 - 1/√2) ≈ 29 m before the turn itself is flown.
+    // A fix sequences one capture radius early, which cuts a right-angle
+    // corner by 28 m · (1 - 1/√2) ≈ 8 m before the turn itself is flown.
     assert!(
-        flown.worst_off_route_m > 20.0,
-        "{} m",
-        flown.worst_off_route_m
-    );
-    assert!(
-        flown.worst_off_route_m < 0.7 * CAPTURE_RADIUS_M,
-        "{} m",
+        flown.worst_off_route_m > 3.0 && flown.worst_off_route_m < 0.7 * CAPTURE_RADIUS_M,
+        "{} m off the route",
         flown.worst_off_route_m
     );
     assert!(

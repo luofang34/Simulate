@@ -28,6 +28,9 @@ const CRUISE_HEIGHT_M: f64 = 60.0;
 const CRUISE_M_S: f64 = 12.0;
 /// Climb rate asked to the cruise height, m/s; the flight controller's envelope caps it.
 const CLIMB_M_S: f64 = 3.0;
+/// Distance from a fix at which the mission sequences it, metres: the room to turn at
+/// the flight controller's 10 m/s and the 0.35 rad its velocity loop tilts to.
+const CAPTURE_RADIUS_M: f64 = 28.0;
 const NOISE_SEED: u64 = 11;
 const MISSION_VEHICLE: VehicleId = VehicleId::new(1);
 
@@ -53,6 +56,7 @@ pub(super) fn build_mission_rig(
             RouteFix {
                 lat_deg: at.lat_deg(),
                 lon_deg: at.lon_deg(),
+                altitude_m: pad.height_m + CRUISE_HEIGHT_M,
             }
         })
         .collect();
@@ -61,7 +65,7 @@ pub(super) fn build_mission_rig(
             vehicle: MISSION_VEHICLE,
             anchor: pad,
             fixes,
-            cruise_height_m: CRUISE_HEIGHT_M,
+            capture_radius_m: CAPTURE_RADIUS_M,
             cruise_mps: CRUISE_M_S,
             climb_rate_mps: CLIMB_M_S,
             ownship: OwnshipFeed::FlightController,

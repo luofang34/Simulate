@@ -11,8 +11,6 @@ workspace = true
 # The chain is native only: Pilotage's MAVLink crate brings a socket
 # runtime that does not build for the browser.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-aerocontext-core = { workspace = true }
-aerocontext-navdata = { workspace = true }
 aviate-core = { workspace = true }
 glam = { workspace = true }
 mbd-core = { workspace = true }

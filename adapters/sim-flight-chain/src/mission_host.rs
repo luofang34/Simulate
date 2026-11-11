@@ -9,8 +9,6 @@
 //! solution, as [`OwnshipFeed`] says, and never on the simulation's truth
 //! sample.
 
-mod route;
-
 use navigate_contract::{
     AttitudeQuaternion, ClockDomainId, DurationNanos, GeodeticPosition, MonotonicNanos,
     NavigationSolution,
@@ -23,7 +21,8 @@ use pilotage_mavlink::link::estimator::QUALITY_DEGRADED;
 use pilotage_mavlink::sampling::yaw_of;
 use pilotage_mission::{
     MissionAction, MissionConfig, MissionEngine, MissionEvent, MissionLimits, MissionOutput,
-    MissionPlanRecord, MissionState, OwnshipAltitude, OwnshipSample, OwnshipSource, TruthRole,
+    MissionState, OwnshipAltitude, OwnshipSample, OwnshipSource, PlannedWaypoint, TruthRole,
+    WaypointPlan, WaypointPlanRecord,
 };
 use pilotage_protocol::{
     ControlAction, ControlIntent, ControlPayload, DIRECT_SCOPE, Generation, IntentFamily,
@@ -33,7 +32,6 @@ use pilotage_timing::MonoTimestamp;
 use sim_geo::Geodetic;
 
 use crate::ChainError;
-pub use route::RouteFix;
 
 /// The one clock the mission, the flight controller's boot time and the
 /// simulation share.
@@ -60,6 +58,17 @@ pub enum OwnshipFeed {
     Navigator,
 }
 
+/// One fix of a route.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RouteFix {
+    /// Geodetic latitude, degrees.
+    pub lat_deg: f64,
+    /// Longitude, degrees east.
+    pub lon_deg: f64,
+    /// Height above the WGS84 ellipsoid the vehicle holds at the fix, metres.
+    pub altitude_m: f64,
+}
+
 /// A route and how the mission flies it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissionSetup {
@@ -68,10 +77,12 @@ pub struct MissionSetup {
     /// The mission anchor: the pad, which the flight controller measures its
     /// local frame from.
     pub anchor: Geodetic,
-    /// The route's fixes in fly order.
+    /// The route's fixes in fly order. The mission climbs over the anchor to
+    /// the first fix's height before it sets out.
     pub fixes: Vec<RouteFix>,
-    /// Height of the whole route above the anchor, metres.
-    pub cruise_height_m: f64,
+    /// Distance from a fix at which it is sequenced, metres: the room the
+    /// vehicle needs to turn at its speed.
+    pub capture_radius_m: f64,
     /// Along-track speed, m/s.
     pub cruise_mps: f64,
     /// Climb rate to the cruise height, m/s.
@@ -107,7 +118,7 @@ pub struct MissionHost {
     /// On the heap: the engine is tens of kilobytes, and a host is moved by
     /// value through its owners.
     engine: Box<MissionEngine>,
-    record: MissionPlanRecord,
+    record: WaypointPlanRecord,
     vehicle: VehicleId,
     ownship: OwnshipFeed,
     sequence: u32,
@@ -125,7 +136,16 @@ impl MissionHost {
         capabilities: &AdapterCapabilities,
     ) -> Result<Self, ChainError> {
         let mission = |error| ChainError::Mission(Box::new(error));
-        let (snapshot, provenance, route) = route::packed_route(&setup.fixes).map_err(mission)?;
+        let waypoints = setup
+            .fixes
+            .iter()
+            .map(|fix| PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m))
+            .collect();
+        let plan = WaypointPlan {
+            waypoints,
+            capture_radius_m: setup.capture_radius_m,
+        };
+        let first_height_m = setup.fixes.first().map_or(0.0, |fix| fix.altitude_m);
         let anchor = GeodeticPosition::new(
             setup.anchor.lat_rad,
             setup.anchor.lon_rad,
@@ -136,8 +156,8 @@ impl MissionHost {
             bound if bound > 0.0 => asked.min(bound),
             _ => asked,
         };
-        let mut config = MissionConfig::new(route, anchor, MISSION_CLOCK);
-        config.cruise_height_m = setup.cruise_height_m;
+        let mut config = MissionConfig::new(String::new(), anchor, MISSION_CLOCK);
+        config.cruise_height_m = first_height_m - setup.anchor.height_m;
         config.cruise_mps = within(setup.cruise_mps, envelope.max_linear);
         config.climb_rate_mps = within(setup.climb_rate_mps, envelope.effective_vertical());
         config.limits = MissionLimits {
@@ -149,8 +169,7 @@ impl MissionHost {
             ),
         };
         config.ownship_source = OwnshipSource::vehicle_estimate();
-        let (engine, record) =
-            MissionEngine::new(&snapshot, provenance, config).map_err(mission)?;
+        let (engine, record) = MissionEngine::from_waypoints(&plan, config).map_err(mission)?;
         Ok(Self {
             engine: Box::new(engine),
             record,
@@ -163,8 +182,8 @@ impl MissionHost {
         })
     }
 
-    /// The pack-for-flight record of the built mission.
-    pub const fn record(&self) -> &MissionPlanRecord {
+    /// The record of the built mission: its waypoints and identity.
+    pub const fn record(&self) -> &WaypointPlanRecord {
         &self.record
     }
 
