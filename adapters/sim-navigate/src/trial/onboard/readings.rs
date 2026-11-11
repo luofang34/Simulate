@@ -1,13 +1,17 @@
 //! What the navigator's host makes of the devices' samples before handing
 //! them over: a receiver fix becomes Navigate's fix input as it is, and the
-//! static pressure becomes pressure altitude through the ICAO standard
-//! atmosphere, the reference a barometric altimeter set to standard holds.
+//! static pressure becomes ellipsoidal height. The pressure gives pressure
+//! altitude above mean sea level through the ICAO standard atmosphere, the
+//! reference a barometric altimeter set to standard holds; the EGM96 geoid
+//! undulation under the host's own position estimate lifts it to the
+//! ellipsoid Navigate works on.
 
 use navigate_contract::{GeodeticPosition, NedVelocity, SymmetricCov3};
 use navigate_fusion::FogmBias;
 use navigate_onboard::{ErrorBudget, SensorData};
 use sim_atmosphere::{geometric_to_geopotential_m, isa_at_geopotential};
 use sim_devices::{AirDataSample, GnssReading};
+use sim_geo::egm96_undulation_m;
 
 use crate::trial::{BaroSpec, TrialError};
 
@@ -44,17 +48,27 @@ pub(crate) fn gnss_fix_data(fix: &GnssReading) -> SensorData {
     }
 }
 
-/// Navigate's barometric input for one air-data sample: the pressure
-/// altitude of its static pressure.
-pub(crate) fn baro_altitude_data(sample: &AirDataSample) -> Result<SensorData, TrialError> {
+/// Navigate's barometric input for one air-data sample taken at latitude
+/// `lat_rad` and longitude `lon_rad` as the host estimates them: the
+/// pressure altitude of its static pressure, above the ellipsoid.
+///
+/// The undulation varies by metres over tens of kilometres, so a host
+/// position kilometres off moves the height by well under the altimeter's
+/// noise.
+pub(crate) fn baro_altitude_data(
+    sample: &AirDataSample,
+    lat_rad: f64,
+    lon_rad: f64,
+) -> Result<SensorData, TrialError> {
     Ok(SensorData::BaroAltitude {
-        altitude_m: pressure_altitude_m(sample.static_pressure_pa)?,
+        altitude_m: pressure_altitude_m(sample.static_pressure_pa)?
+            + egm96_undulation_m(lat_rad, lon_rad),
     })
 }
 
-/// The height at which the ICAO standard atmosphere has `pressure_pa`,
-/// metres: the standard atmosphere's pressure inverted by secant steps on
-/// its logarithm, which is nearly linear in height.
+/// The height above mean sea level at which the ICAO standard atmosphere
+/// has `pressure_pa`, metres: the standard atmosphere's pressure inverted
+/// by secant steps on its logarithm, which is nearly linear in height.
 pub(crate) fn pressure_altitude_m(pressure_pa: f64) -> Result<f64, TrialError> {
     let unreadable = |detail: String| TrialError::InvalidRequest {
         field: "baro",

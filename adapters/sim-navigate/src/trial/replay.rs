@@ -352,7 +352,18 @@ impl SetRun {
                     .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
-            let data = baro_altitude_data(&logged.reading)?;
+            // The undulation only needs the host's position to kilometres,
+            // so a navigator without a solution falls back on where it was
+            // aligned rather than losing the sample.
+            let position = self
+                .navigator
+                .solution(now)
+                .map_or(log.alignment.position, |s| s.position);
+            let data = baro_altitude_data(
+                &logged.reading,
+                position.latitude_rad,
+                position.longitude_rad,
+            )?;
             self.ingest(BARO_SOURCE, (now, now), data)?;
             let verdicts = verdicts(&self.records);
             self.ledger
