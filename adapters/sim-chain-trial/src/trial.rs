@@ -57,7 +57,7 @@ impl ChainTrial {
         let resolved = setup::resolve(spec)?;
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
-        let alignment = setup::alignment(&resolved.request, &start);
+        let alignment = setup::alignment(&resolved.request, &start, chain.board().suite());
         let nav = NavLog::new(start, alignment);
         let request = &resolved.request;
         let sets = request

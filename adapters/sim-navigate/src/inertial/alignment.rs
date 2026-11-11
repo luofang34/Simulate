@@ -3,6 +3,7 @@ use navigate_contract::{
     AttitudeQuaternion, GeodeticPosition, NedVelocity, SensorClass, SourceComposition,
     SymmetricCov3,
 };
+use navigate_onboard::ImuBiasPrior;
 use sim_core::VehicleState;
 use sim_devices::WhiteNoise;
 use sim_geo::{LocalFrame, ecef_to_geodetic};
@@ -70,6 +71,7 @@ impl InitialAlignment {
             velocity_cov: diagonal(floored(self.velocity_sigma_m_s, VELOCITY_FLOOR_M_S)),
             attitude_cov: symmetric(&attitude_ned),
             composition: SourceComposition::of(SensorClass::Gnss).with(SensorClass::Inertial),
+            imu_bias_prior: None,
         }
     }
 }
@@ -112,4 +114,8 @@ pub struct AlignmentFix {
     pub attitude_cov: SymmetricCov3,
     /// Declared provenance: a surveyed position and an inertial levelling.
     pub composition: SourceComposition,
+    /// The IMU biases a calibration before the start measured, with their
+    /// covariances; `None` starts the filter's biases at zero with their
+    /// stationary variances.
+    pub imu_bias_prior: Option<ImuBiasPrior>,
 }

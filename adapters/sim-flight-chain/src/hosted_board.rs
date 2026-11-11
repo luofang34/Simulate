@@ -128,6 +128,11 @@ where
         &self.airframe
     }
 
+    /// The sensor suite, to read what its devices drew at power-up.
+    pub const fn suite(&self) -> &SensorSuite {
+        &self.suite
+    }
+
     /// The sensor suite, to take the sky from its receiver or displace it.
     pub const fn suite_mut(&mut self) -> &mut SensorSuite {
         &mut self.suite

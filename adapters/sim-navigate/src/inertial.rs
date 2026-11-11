@@ -17,6 +17,7 @@
 //! body-to-NED at alignment.
 
 mod alignment;
+mod ground_calibration;
 mod navigator;
 mod synthesis;
 
@@ -24,6 +25,7 @@ mod synthesis;
 mod tests;
 
 pub use alignment::{AlignmentFix, InitialAlignment};
+pub use ground_calibration::GroundCalibration;
 pub use navigator::{InertialNavigator, inertial_config};
 pub(crate) use synthesis::rotation_vector;
 pub use synthesis::{SimulatedImu, ideal_increment};

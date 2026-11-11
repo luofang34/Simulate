@@ -6,13 +6,14 @@ use glam::DVec3;
 use sha2::{Digest, Sha256};
 use sim_atmosphere::{AtmosphereField, GeoidStandardAtmosphere};
 use sim_core::VehicleState;
+use sim_devices::SensorSuite;
 use sim_flight_chain::{
     C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
     c172_pilotage_airframe, c172_sensor_suite_with,
 };
 use sim_geo::{Geodetic, UtcTime};
-use sim_navigate::InitialAlignment;
 use sim_navigate::trial::{TrialRequest, parse_utc};
+use sim_navigate::{GroundCalibration, InitialAlignment};
 
 use super::C172Chain;
 use crate::{ChainTrialError, ChainTrialSpec, Steering};
@@ -128,16 +129,29 @@ fn true_airspeed_m_s(
 }
 
 /// The sets' alignment: the declared start with the request's stated
-/// uncertainty, its error drawn from the alignment seed.
+/// uncertainty, its error drawn from the alignment seed, and the biases of
+/// a ground calibration of `devices`' inertial unit.
+///
+/// The aeroplane starts in the air, but its crew ran the engine up at rest
+/// first: the gyroscopes' mean rate over that minute is their turn-on bias,
+/// which no set could otherwise learn before it turned the heading away.
+/// One calibration of the one unit serves every set.
 pub(super) fn alignment(
     request: &TrialRequest,
     start: &VehicleState,
+    devices: &SensorSuite,
 ) -> sim_navigate::AlignmentFix {
-    InitialAlignment {
+    let mut fix = InitialAlignment {
         position_sigma_m: DVec3::splat(request.alignment.position_sigma_m),
         velocity_sigma_m_s: DVec3::splat(request.alignment.velocity_sigma_m_s),
         attitude_sigma_rad: DVec3::splat(request.alignment.attitude_sigma_rad),
         seed: request.seeds.alignment,
     }
-    .measure(start)
+    .measure(start);
+    let calibration = GroundCalibration {
+        window_s: GroundCalibration::WINDOW_S,
+        seed: request.seeds.alignment,
+    };
+    fix.imu_bias_prior = calibration.prior(&devices.spec().imu, devices.imu().gyro_bias_rad_s());
+    fix
 }

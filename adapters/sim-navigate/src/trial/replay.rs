@@ -110,7 +110,7 @@ impl SetRun {
             velocity_cov: fix.velocity_cov,
             attitude_cov: fix.attitude_cov,
             at: clock.to_monotonic(start)?,
-            imu_bias_prior: None,
+            imu_bias_prior: fix.imu_bias_prior,
         })?;
         let star_half_exposure_steps = if selection.means.contains(NavMeans::Celestial) {
             exposure_steps(&star_camera_config(), STEP_HZ as f64)? / 2

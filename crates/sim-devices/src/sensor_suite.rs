@@ -127,6 +127,11 @@ impl SensorSuite {
         &self.spec
     }
 
+    /// The inertial unit, to read its biases.
+    pub const fn imu(&self) -> &ImuErrorModel {
+        &self.imu
+    }
+
     /// The inertial unit, to read or set its biases.
     pub const fn imu_mut(&mut self) -> &mut ImuErrorModel {
         &mut self.imu
