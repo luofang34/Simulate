@@ -38,8 +38,7 @@ pub use package::{
     package_plan_lines, package_route_msl, progress_words, sealed_lines,
 };
 pub use request::{
-    CameraGeometry, HostedRequest, StartState, UNTIL_END_S, VEHICLE_CAMERA, hosted_request,
-    own_cruise_speed_m_s, sensor_seeds,
+    CameraGeometry, HostedRequest, StartState, VEHICLE_CAMERA, hosted_request, own_cruise_speed_m_s,
 };
 pub use summary::{LegSummary, Light, PlanSummary, SunSample, plan_summary};
 pub use wording::{PlanLine, outage_words, plan_lines, refusal_lines};

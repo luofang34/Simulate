@@ -1,8 +1,8 @@
 use sim_link::{SimulationLink, decode_fragment};
 use sim_navigate::NavMeans;
-use sim_navigate::trial::{GuidanceSource, SensorKind};
+use sim_navigate::trial::{GuidanceSource, SeedSpec, SensorKind};
 
-use crate::{HostError, UNTIL_END_S, VEHICLE_CAMERA, hosted_request, sensor_seeds};
+use crate::{HostError, VEHICLE_CAMERA, hosted_request};
 
 /// The reference encoder's Zaragoza route with every optional parameter.
 const DAY: &str = "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,o,Z1;41.600000,-0.620000\
@@ -95,7 +95,7 @@ fn sets_carry_their_means_and_only_the_outages_of_sensors_they_have() {
 }
 
 #[test]
-fn outages_become_schedules_with_touching_spans_joined_and_an_open_end_far_off() {
+fn outages_become_schedules_with_touching_spans_joined_and_an_open_end() {
     let hosted = hosted_request(&link(DAY)).unwrap();
     let [gnss, camera] = hosted.trial.availability.as_slice() else {
         panic!("two schedules");
@@ -104,16 +104,16 @@ fn outages_become_schedules_with_touching_spans_joined_and_an_open_end_far_off()
         (gnss.name.as_str(), gnss.sensor),
         ("gnss", SensorKind::Gnss)
     );
-    let spans: Vec<(f64, f64)> = gnss
+    let spans: Vec<(f64, Option<f64>)> = gnss
         .unavailable
         .iter()
         .map(|i| (i.start_s, i.end_s))
         .collect();
-    assert_eq!(spans, [(300.0, 700.0), (900.0, UNTIL_END_S)]);
+    assert_eq!(spans, [(300.0, Some(700.0)), (900.0, None)]);
     assert_eq!(camera.sensor, SensorKind::TerrainCamera);
     assert_eq!(
         (camera.unavailable[0].start_s, camera.unavailable[0].end_s),
-        (5.0, 6.0)
+        (5.0, Some(6.0))
     );
 }
 
@@ -144,28 +144,45 @@ fn speed_is_the_links_or_the_vehicles_own() {
 }
 
 #[test]
-fn one_master_seed_gives_each_sensor_its_own_seed() {
-    let seeds = sensor_seeds(1, true);
-    let all = [
-        seeds.imu,
-        seeds.alignment,
-        seeds.gnss,
-        seeds.baro,
-        seeds.star_camera,
-        seeds.terrain_camera.unwrap(),
-    ];
-    for (index, seed) in all.iter().enumerate() {
-        assert!(!all[..index].contains(seed), "seed {index} repeats");
-    }
-    assert_eq!(sensor_seeds(1, true), seeds);
-    assert_ne!(sensor_seeds(2, true).imu, seeds.imu);
-    let without = sensor_seeds(1, false);
-    assert_eq!(without.terrain_camera, None);
+fn the_link_seed_is_the_trials_master_seed() {
+    let seeds = hosted_request(&link(DAY)).unwrap().trial.seeds;
+    assert_eq!(seeds, SeedSpec::from_master(1));
+    let blind = hosted_request(&link(PLAIN)).unwrap().trial.seeds;
+    let master = SeedSpec::from_master(7);
+    assert_eq!(blind.terrain_camera, None);
     assert_eq!(
-        (without.imu, without.star_camera),
-        (seeds.imu, seeds.star_camera)
+        (blind.imu, blind.star_camera),
+        (master.imu, master.star_camera)
     );
-    assert_eq!(hosted_request(&link(DAY)).unwrap().trial.seeds, seeds);
+}
+
+#[test]
+fn the_trial_gets_the_camera_by_its_geometry() {
+    let stated = hosted_request(&link(DAY))
+        .unwrap()
+        .trial
+        .terrain_camera
+        .unwrap();
+    assert_eq!((stated.width, stated.height), (1600, 1200));
+    assert_eq!(stated.horizontal_fov_deg, Some(90.0));
+    assert_eq!(stated.mount.pitch_deg, -45.5);
+    assert_eq!(stated.period_s, 0.5);
+    stated.validate().unwrap();
+    let own = hosted_request(&link(&DAY.replace("&cam=1600x1200,90,45.5,2", "")))
+        .unwrap()
+        .trial
+        .terrain_camera
+        .unwrap();
+    assert_eq!((own.width, own.height, own.period_s), (400, 300, 1.0));
+    assert_eq!(own.mount.pitch_deg, -90.0);
+    own.validate().unwrap();
+    assert!(
+        hosted_request(&link(PLAIN))
+            .unwrap()
+            .trial
+            .terrain_camera
+            .is_none()
+    );
 }
 
 #[test]

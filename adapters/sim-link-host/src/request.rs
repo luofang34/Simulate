@@ -4,18 +4,13 @@ use sim_link::{Camera, HeightDatum, Means, Micro, Milli, Outage, Sensor, Simulat
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     AvailabilitySchedule, GuidanceSource, RoutePoint, SeedSpec, SensorKind, SensorSetSpec,
-    TrialRequest, UnavailableInterval, request_from_route,
+    TerrainCameraSpec, TrialError, TrialRequest, UnavailableInterval, request_from_route,
 };
 
 use crate::HostError;
 
 #[cfg(test)]
 mod tests;
-
-/// The end, in seconds from the start, a schedule gives an outage that runs
-/// to the end of the flight: the trial's intervals are closed, and no flight
-/// of a link lasts thirty years.
-pub const UNTIL_END_S: f64 = 1.0e9;
 
 /// The terrain camera a link without `cam` gets when a set is visual: 400
 /// by 300 pixels, 67.4 degrees across, looking straight down, one frame a
@@ -36,8 +31,9 @@ pub const VEHICLE_CAMERA: CameraGeometry = CameraGeometry {
 pub struct HostedRequest {
     /// The request shared with the headless trial: epoch, route on the
     /// ellipsoid, cruise speed, closed-loop guidance, sets, schedules and
-    /// seeds. Its `terrain_camera` and `maps` are absent: the camera's
-    /// radiometry and the packages are the host's to add.
+    /// seeds, and the terrain camera by its geometry, the trial's
+    /// documented defaults filling the rest. Its `maps` are absent: the
+    /// packages are the host's to add.
     pub trial: TrialRequest,
     /// The vehicle the link names.
     pub vehicle: Vehicle,
@@ -158,7 +154,12 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
         .map(|set| sensor_set(set, &link.outages))
         .collect();
     let visual = link.sets.iter().any(|set| set.contains(Means::Visual));
-    trial.seeds = sensor_seeds(link.seed, visual);
+    let camera = visual.then(|| link.camera.map_or(VEHICLE_CAMERA, CameraGeometry::from));
+    trial.seeds = SeedSpec::from_master(link.seed);
+    if camera.is_none() {
+        trial.seeds.terrain_camera = None;
+    }
+    trial.terrain_camera = camera.map(terrain_camera_spec).transpose()?;
     Ok(HostedRequest {
         trial,
         vehicle: link.vehicle,
@@ -167,7 +168,26 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
             .steering()
             .map(sim_link::NavSet::text)
             .unwrap_or_default(),
-        camera: visual.then(|| link.camera.map_or(VEHICLE_CAMERA, CameraGeometry::from)),
+        camera,
+    })
+}
+
+/// The trial's terrain camera of `camera`: its size, field of view, view
+/// below the horizon from the nose and frame period; band, exposure,
+/// radiometry and the lowest Sun take the defaults the trial documents.
+fn terrain_camera_spec(camera: CameraGeometry) -> Result<TerrainCameraSpec, HostError> {
+    let stated = serde_json::json!({
+        "width": camera.width_px,
+        "height": camera.height_px,
+        "horizontal_fov_deg": camera.horizontal_fov_deg,
+        "mount": { "pitch_deg": -camera.depression_deg },
+        "period_s": 1.0 / camera.rate_hz,
+    });
+    serde_json::from_value(stated).map_err(|source| {
+        HostError::from(TrialError::Json {
+            what: "terrain camera",
+            source,
+        })
     })
 }
 
@@ -179,32 +199,6 @@ fn ellipsoid_height_m(datum: HeightDatum, lat_deg: f64, lon_deg: f64, height_m: 
         HeightDatum::MeanSeaLevel => {
             height_m + sim_geo::egm96_undulation_m(lat_deg.to_radians(), lon_deg.to_radians())
         }
-    }
-}
-
-/// The seed of each simulated sensor from the link's one master seed: the
-/// SplitMix64 stream of the master, drawn in the order IMU, alignment,
-/// GNSS, barometer, star camera, terrain camera. Every draw is made whether
-/// or not its sensor flies, so adding a means to a link leaves the other
-/// sensors' realisations as they were.
-pub fn sensor_seeds(master: u64, terrain_camera: bool) -> SeedSpec {
-    let mut state = master;
-    let mut draw = || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut mixed = state;
-        mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        mixed ^ (mixed >> 31)
-    };
-    let (imu, alignment, gnss, baro, star_camera, camera) =
-        (draw(), draw(), draw(), draw(), draw(), draw());
-    SeedSpec {
-        imu,
-        alignment,
-        gnss,
-        baro,
-        star_camera,
-        terrain_camera: terrain_camera.then_some(camera),
     }
 }
 
@@ -233,9 +227,9 @@ fn schedule(outage: &Outage) -> AvailabilitySchedule {
     let mut unavailable: Vec<UnavailableInterval> = Vec::new();
     for span in &outage.spans {
         let start_s = span.start.as_f64();
-        let end_s = span.end.map_or(UNTIL_END_S, Milli::as_f64);
+        let end_s = span.end.map(Milli::as_f64);
         match unavailable.last_mut() {
-            Some(before) if before.end_s == start_s => before.end_s = end_s,
+            Some(before) if before.end_s == Some(start_s) => before.end_s = end_s,
             _ => unavailable.push(UnavailableInterval {
                 start_s,
                 end_s,

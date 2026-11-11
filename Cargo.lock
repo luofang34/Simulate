@@ -5083,6 +5083,7 @@ version = "0.1.0"
 dependencies = [
  "navigate-celestial",
  "navigate-data",
+ "serde_json",
  "sim-geo",
  "sim-link",
  "sim-navdata",

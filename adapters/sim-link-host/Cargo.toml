@@ -14,5 +14,6 @@ navigate-data = { workspace = true }
 sim-geo = { workspace = true }
 sim-link = { workspace = true }
 sim-navdata = { workspace = true }
+serde_json = { workspace = true }
 sim-navigate = { workspace = true }
 thiserror = { workspace = true }
