@@ -1,11 +1,13 @@
-//! The vehicle's own control chain around a simulated X500 quadrotor.
+//! The vehicle's own control chain around a simulated airframe.
 //!
 //! Pilotage commands, the Aviate flight controller flies, and Simulate
-//! supplies only the airframe and the world: [`AviateX500Vehicle`] puts the
-//! Aviate kernel and the [`X500Plant`] behind Pilotage's `VehicleAdapter`,
+//! supplies only the airframe, its sensors and the world. [`HostedBoard`]
+//! is an Aviate kernel on an [`Airframe`], fed by the vehicle's sensor
+//! suite; [`HostedVehicle`] puts it behind Pilotage's `VehicleAdapter`,
 //! exchanging the MAVLink frames Pilotage's codec encodes and decodes, and
 //! [`MissionHost`] flies a route on it with Pilotage's mission engine.
-//! [`FlightChain`] is the two together.
+//! [`FlightChain`] is the two together. The C172 flies this way;
+//! [`AviateX500Vehicle`] is the X500 on Aviate's own sensor synthesis.
 //!
 //! Native only: Pilotage's MAVLink crate does not build for the browser.
 
@@ -14,6 +16,7 @@
 mod airframe;
 mod aviate_vehicle;
 mod c172_airframe;
+mod c172_vehicle;
 mod chain;
 mod error;
 mod hosted_board;
@@ -21,9 +24,14 @@ mod mission_host;
 mod x500_plant;
 
 pub use airframe::{Airframe, SharedAir};
-pub use aviate_vehicle::{AviateVehicleConfig, AviateX500Vehicle, FLIGHT_RATE_HZ};
+pub use aviate_vehicle::{
+    AviateVehicleConfig, AviateX500Vehicle, FLIGHT_RATE_HZ, HostedVehicle, VehicleIdentity,
+};
 pub use c172_airframe::{C172Airframe, C172Start};
-pub use chain::{ChainSetup, FlightChain, MISSION_FRAME_HZ};
+pub use c172_vehicle::{
+    C172_RATE_HZ, C172Board, C172Setup, C172Vehicle, c172_board, c172_sensor_suite, c172_vehicle,
+};
+pub use chain::{ChainSetup, ChainVehicle, FlightChain, MISSION_FRAME_HZ};
 pub use error::ChainError;
 pub use hosted_board::HostedBoard;
 pub use mission_host::{FrameReport, MissionHost, MissionSetup, OwnshipFeed, RouteFix};

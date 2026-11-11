@@ -25,7 +25,7 @@ pub enum ChainError {
         lon_deg: f64,
     },
     /// The flight controller's kernel could not be assembled.
-    #[error("the X500 flight controller kernel could not be built")]
+    #[error("the flight controller kernel could not be built")]
     KernelBuild,
     /// The flight controller refused its board configuration or a step.
     #[error("flight controller failed at {at_s:.3} s")]

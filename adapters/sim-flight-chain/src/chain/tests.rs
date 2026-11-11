@@ -10,8 +10,10 @@ use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use super::*;
 use crate::{OwnshipFeed, RouteFix};
 
+mod c172_route;
 mod navigator_feed;
 
+const FRAME_TICKS: u32 = (FLIGHT_RATE_HZ / MISSION_FRAME_HZ) as u32;
 const VEHICLE: VehicleId = VehicleId::new(7);
 const CRUISE_HEIGHT_M: f64 = 60.0;
 /// Room to turn at the flight controller's 10 m/s and the 0.35 rad its

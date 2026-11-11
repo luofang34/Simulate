@@ -169,6 +169,15 @@ impl MissionHost {
             ),
         };
         config.ownship_source = OwnshipSource::vehicle_estimate();
+        // The class decides how the plan ends: a vehicle that cannot stop
+        // orbits its last fix.
+        if let Some(descriptor) = capabilities
+            .vehicles
+            .iter()
+            .find(|descriptor| descriptor.id == setup.vehicle)
+        {
+            config.vehicle_class = descriptor.class;
+        }
         let (engine, record) = MissionEngine::from_waypoints(&plan, config).map_err(mission)?;
         Ok(Self {
             engine: Box::new(engine),

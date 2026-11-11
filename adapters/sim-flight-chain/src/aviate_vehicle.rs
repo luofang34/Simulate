@@ -8,6 +8,7 @@
 //! [`pilotage_adapter_api::SimTruthSample`].
 
 mod downlink;
+mod hosted;
 mod truth;
 mod uplink;
 
@@ -37,6 +38,7 @@ use sim_geo::Geodetic;
 
 use crate::{ChainError, PlantStimulus, X500Plant};
 use downlink::Downlink;
+pub use hosted::{HostedVehicle, VehicleIdentity};
 use truth::TruthReporter;
 use uplink::Uplink;
 
@@ -102,7 +104,7 @@ impl AviateX500Vehicle {
             .map_err(|source| ChainError::FlightController { at_s: 0.0, source })?,
         );
         Ok(Self {
-            truth: TruthReporter::new(&config),
+            truth: TruthReporter::new(config.vehicle, config.noise_seed, &config.pad),
             config,
             plant,
             controller,

@@ -6,17 +6,17 @@ use pilotage_adapter_api::{
     MeasurementClock, MeasurementStamp, SimTruthSample, SourceIncarnation, SourceIntegrity,
     SourceRole,
 };
+use pilotage_protocol::VehicleId;
 use sim_core::{SimInstant, VehicleState};
-use sim_geo::{LocalFrame, geodetic_to_ecef};
-
-use super::AviateVehicleConfig;
+use sim_geo::{Geodetic, LocalFrame, geodetic_to_ecef};
 
 /// Attitude, position and velocity: a truth sample carries no rates.
 const TRUTH_GROUPS: u32 = 0b1101;
 const TRUTH_SOURCE: u64 = 2;
 const NANOS_PER_SECOND: f64 = 1.0e9;
 
-/// Projects truth into the pad's north-east-down frame and stamps it.
+/// Projects truth into the north-east-down frame at the flight controller's
+/// origin and stamps it.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct TruthReporter {
     pad_ecef: DVec3,
@@ -26,14 +26,16 @@ pub(super) struct TruthReporter {
 }
 
 impl TruthReporter {
-    pub(super) fn new(config: &AviateVehicleConfig) -> Self {
+    /// The oracle of `vehicle` about `origin`; `seed` tells one run's
+    /// incarnation of it from another's.
+    pub(super) fn new(vehicle: VehicleId, seed: u64, origin: &Geodetic) -> Self {
         let mut bytes = [0; 16];
         let (head, tail) = bytes.split_at_mut(8);
-        head.copy_from_slice(&config.vehicle.as_u64().to_le_bytes());
-        tail.copy_from_slice(&config.noise_seed.to_le_bytes());
+        head.copy_from_slice(&vehicle.as_u64().to_le_bytes());
+        tail.copy_from_slice(&seed.to_le_bytes());
         Self {
-            pad_ecef: geodetic_to_ecef(&config.pad),
-            frame: LocalFrame::at(&config.pad),
+            pad_ecef: geodetic_to_ecef(origin),
+            frame: LocalFrame::at(origin),
             incarnation: SourceIncarnation::new(bytes),
             sequence: 0,
         }

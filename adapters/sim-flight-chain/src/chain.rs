@@ -1,26 +1,95 @@
 //! The chain as one steppable object: Pilotage's mission engine commanding
-//! the Aviate X500 at the engine's own frame rate.
+//! a vehicle's Aviate flight controller at the engine's own frame rate.
 
 #[cfg(test)]
 mod tests;
 
-use aviate_core::control::ControlMode;
+use aviate_core::control::{ControlMode, VehicleController};
+use aviate_core::mixer::Mixer;
 use navigate_contract::{MonotonicNanos, NavigationSolution};
 use pilotage_adapter_api::{StepBudget, VehicleAdapter};
 use pilotage_mission::MissionState;
 use sim_aviate::DirectNoiseTier;
-use sim_core::{SimInstant, VehicleState};
+use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 
 use crate::{
-    AviateVehicleConfig, AviateX500Vehicle, ChainError, FLIGHT_RATE_HZ, FrameReport, MissionHost,
-    MissionSetup,
+    Airframe, AviateVehicleConfig, AviateX500Vehicle, ChainError, FLIGHT_RATE_HZ, FrameReport,
+    HostedVehicle, MissionHost, MissionSetup,
 };
 
 /// Rate of the mission engine's frames, hertz: its documented interval.
 pub const MISSION_FRAME_HZ: u64 = 20;
-const FRAME_TICKS: u32 = (FLIGHT_RATE_HZ / MISSION_FRAME_HZ) as u32;
-const _: () = assert!(FLIGHT_RATE_HZ.is_multiple_of(MISSION_FRAME_HZ));
+const FRAME_SPAN_TICKS: u64 = TICKS_PER_SECOND / MISSION_FRAME_HZ;
+const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(MISSION_FRAME_HZ));
 const NANOS_PER_SECOND: f64 = 1.0e9;
+
+/// What the chain asks of the vehicle a mission flies, beyond Pilotage's
+/// adapter API: its clock and, for scoring and drawing, its truth.
+pub trait ChainVehicle: VehicleAdapter {
+    /// The instant the vehicle state describes.
+    fn now(&self) -> SimInstant;
+
+    /// The flight controller's cycle.
+    fn period(&self) -> TickSpan;
+
+    /// The true vehicle state.
+    fn true_state(&self) -> VehicleState;
+
+    /// The control mode the flight controller flew on its last cycle.
+    fn flight_mode(&self) -> ControlMode;
+
+    /// Takes the reason stepping stopped, leaving the vehicle stopped.
+    fn take_fault(&mut self) -> Option<ChainError>;
+}
+
+impl ChainVehicle for AviateX500Vehicle {
+    fn now(&self) -> SimInstant {
+        Self::now(self)
+    }
+
+    fn period(&self) -> TickSpan {
+        TickSpan::from_ticks(TICKS_PER_SECOND / FLIGHT_RATE_HZ)
+    }
+
+    fn true_state(&self) -> VehicleState {
+        Self::true_state(self)
+    }
+
+    fn flight_mode(&self) -> ControlMode {
+        Self::flight_mode(self)
+    }
+
+    fn take_fault(&mut self) -> Option<ChainError> {
+        Self::take_fault(self)
+    }
+}
+
+impl<A, C, M> ChainVehicle for HostedVehicle<A, C, M>
+where
+    A: Airframe,
+    C: VehicleController,
+    M: Mixer,
+{
+    fn now(&self) -> SimInstant {
+        Self::now(self)
+    }
+
+    fn period(&self) -> TickSpan {
+        Self::period(self)
+    }
+
+    fn true_state(&self) -> VehicleState {
+        Self::true_state(self)
+    }
+
+    fn flight_mode(&self) -> ControlMode {
+        Self::flight_mode(self)
+    }
+
+    fn take_fault(&mut self) -> Option<ChainError> {
+        Self::take_fault(self)
+    }
+}
 
 /// A mission and the vehicle that flies it.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,15 +104,16 @@ pub struct ChainSetup {
     pub noise_seed: u64,
 }
 
-/// Pilotage's mission engine, the Aviate flight controller and the X500.
-pub struct FlightChain {
-    vehicle: AviateX500Vehicle,
+/// Pilotage's mission engine, an Aviate flight controller and its vehicle.
+pub struct FlightChain<V = AviateX500Vehicle> {
+    vehicle: V,
     host: MissionHost,
-    ticks_into_frame: u32,
+    /// Simulation ticks flown since the last mission frame fell due.
+    since_frame_ticks: u64,
 }
 
 impl FlightChain {
-    /// The vehicle on its pad and the mission built, nothing commanded yet.
+    /// The X500 on its pad and the mission built, nothing commanded yet.
     pub fn new(setup: &ChainSetup) -> Result<Self, ChainError> {
         let vehicle = AviateX500Vehicle::new(AviateVehicleConfig {
             vehicle: setup.mission.vehicle,
@@ -52,16 +122,28 @@ impl FlightChain {
             noise: setup.noise,
             noise_seed: setup.noise_seed,
         })?;
-        let host = MissionHost::new(&setup.mission, &vehicle.capabilities())?;
+        Self::over(vehicle, &setup.mission)
+    }
+
+    /// Silences the flight controller's satellite receiver from now on.
+    pub fn silence_gnss(&mut self) {
+        self.vehicle.silence_gnss();
+    }
+}
+
+impl<V: ChainVehicle> FlightChain<V> {
+    /// `mission` built for `vehicle`, nothing commanded yet.
+    pub fn over(vehicle: V, mission: &MissionSetup) -> Result<Self, ChainError> {
+        let host = MissionHost::new(mission, &vehicle.capabilities())?;
         Ok(Self {
             vehicle,
             host,
-            ticks_into_frame: 0,
+            since_frame_ticks: FRAME_SPAN_TICKS,
         })
     }
 
     /// The instant the vehicle state describes.
-    pub const fn now(&self) -> SimInstant {
+    pub fn now(&self) -> SimInstant {
         self.vehicle.now()
     }
 
@@ -71,8 +153,13 @@ impl FlightChain {
     }
 
     /// The vehicle.
-    pub const fn vehicle(&self) -> &AviateX500Vehicle {
+    pub const fn vehicle(&self) -> &V {
         &self.vehicle
+    }
+
+    /// The vehicle, to reach its devices.
+    pub const fn vehicle_mut(&mut self) -> &mut V {
+        &mut self.vehicle
     }
 
     /// The mission host.
@@ -92,11 +179,6 @@ impl FlightChain {
         self.host.offer_navigation(solution, now);
     }
 
-    /// Silences the flight controller's satellite receiver from now on.
-    pub fn silence_gnss(&mut self) {
-        self.vehicle.silence_gnss();
-    }
-
     /// The present instant on the mission's clock.
     fn mission_now(&self) -> MonotonicNanos {
         let elapsed_s = self.now().duration_since(SimInstant::START).as_seconds();
@@ -112,11 +194,19 @@ impl FlightChain {
     /// frame when one is due. Returns that frame's report.
     pub fn advance_tick(&mut self) -> Result<Option<FrameReport>, ChainError> {
         let now = self.mission_now();
-        let report = (self.ticks_into_frame == 0).then(|| self.host.frame(&mut self.vehicle, now));
+        // A flight controller whose cycle does not divide the frame interval
+        // gets its frames on the cycle after each one falls due.
+        let due = self.since_frame_ticks >= FRAME_SPAN_TICKS;
+        let report = due.then(|| {
+            self.since_frame_ticks -= FRAME_SPAN_TICKS;
+            self.host.frame(&mut self.vehicle, now)
+        });
         if self.vehicle.step(StepBudget { ticks: 1 }).advanced == 0 {
             return Err(self.vehicle.take_fault().unwrap_or(ChainError::Stopped));
         }
-        self.ticks_into_frame = self.ticks_into_frame.wrapping_add(1) % FRAME_TICKS;
+        self.since_frame_ticks = self
+            .since_frame_ticks
+            .saturating_add(self.vehicle.period().ticks());
         Ok(report)
     }
 
@@ -124,11 +214,13 @@ impl FlightChain {
     /// that fell in it.
     pub fn advance_frame(&mut self) -> Result<FrameReport, ChainError> {
         let mut report = None;
-        for _ in 0..FRAME_TICKS {
+        loop {
             if let Some(frame) = self.advance_tick()? {
                 report = Some(frame);
             }
+            if self.since_frame_ticks >= FRAME_SPAN_TICKS {
+                return report.ok_or(ChainError::Stopped);
+            }
         }
-        report.ok_or(ChainError::Stopped)
     }
 }

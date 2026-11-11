@@ -1,75 +1,47 @@
-use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::control::{Command, CommandSource, Setpoint};
-use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use aviate_core::types::{Meters, MetersPerSecond};
 use glam::DVec3;
 use sim_atmosphere::StandardAtmosphere;
-use sim_aviate::{build_direct_fixed_wing_kernel, c172_airframe};
-use sim_core::{TICKS_PER_SECOND, TickSpan};
-use sim_devices::{
-    GaussMarkov, GnssErrorSpec, ImuGrade, MagneticEnvironment, MagnetometerSpec, PressureErrorSpec,
-};
 use sim_geo::{LocalFrame, UtcTime, ecef_to_geodetic};
 
 use super::*;
-use crate::{C172Airframe, C172Start, SharedAir};
+use crate::{C172_RATE_HZ as RATE_HZ, C172Board, C172Setup, SharedAir, VehicleId};
+use crate::{c172_board, c172_sensor_suite};
 
 mod c172_subjects;
 
-/// The fixed-wing law has flown at this kernel rate only.
-const RATE_HZ: u64 = 250;
 /// Height of the start above the board's origin, metres.
 const START_HEIGHT_M: f64 = 600.0;
 const CRUISE_M_S: f64 = 55.0;
-
-type C172Board = HostedBoard<C172Airframe, FixedWingController, FixedWingMixer>;
 
 fn ground() -> Geodetic {
     Geodetic::from_degrees(39.1582, -75.5244, 15.0)
 }
 
-/// The C172's devices at the 250 Hz cycle: air data at 25 Hz, magnetometer
-/// at 50 Hz, receiver at 10 Hz.
-fn suite(seed: u64) -> SensorSuiteSpec {
-    let pressure = |white_sigma_pa, sigma| PressureErrorSpec {
-        white_sigma_pa,
-        bias: GaussMarkov {
-            tau_s: 600.0,
-            sigma,
-        },
-    };
-    SensorSuiteSpec {
-        imu: ImuGrade::ConsumerMems.spec(),
-        static_port: pressure(3.0, 20.0),
-        pitot: Some((pressure(3.0, 10.0), DVec3::X)),
-        magnetometer: MagnetometerSpec {
-            white_sigma_ut: 0.2,
-            hard_iron_sigma_ut: 0.5,
-            scale_factor_sigma: 0.0,
-        },
-        gnss: GnssErrorSpec::OPEN_SKY,
-        magnetic: MagneticEnvironment::main_field(2026.5),
-        air_data_every: 10,
-        magnetometer_every: 5,
-        gnss_every: 25,
-        seed,
-    }
-}
-
-fn c172_board(seed: u64) -> C172Board {
-    let start = C172Start {
+fn c172_setup(seed: u64) -> C172Setup {
+    C172Setup {
+        vehicle: VehicleId::new(1),
+        origin: ground(),
         position: Geodetic {
             height_m: ground().height_m + START_HEIGHT_M,
             ..ground()
         },
         heading_rad: 0.0,
         speed_m_s: CRUISE_M_S,
-        period: TickSpan::from_ticks(TICKS_PER_SECOND / RATE_HZ),
         utc: UtcTime::from_unix_seconds(1_783_000_000.0),
-    };
-    let airframe = C172Airframe::trimmed(&start, SharedAir::new(StandardAtmosphere)).unwrap();
-    let kernel = build_direct_fixed_wing_kernel(&c172_airframe()).unwrap();
-    HostedBoard::new(airframe, &suite(seed), kernel, ground(), 2026.5).unwrap()
+        decimal_year: 2026.5,
+        seed,
+    }
+}
+
+fn c172(seed: u64) -> C172Board {
+    let suite = c172_sensor_suite(2026.5, seed);
+    c172_board(
+        &c172_setup(seed),
+        &suite,
+        SharedAir::new(StandardAtmosphere),
+    )
+    .unwrap()
 }
 
 /// What the aeroplane is doing at one instant, from truth, and what the

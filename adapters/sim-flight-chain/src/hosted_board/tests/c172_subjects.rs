@@ -3,7 +3,9 @@
 
 use std::f64::consts::FRAC_PI_2;
 
-use sim_aviate::{AviateDirectConfig, AviateDirectRunner};
+use sim_aviate::{
+    AviateDirectConfig, AviateDirectRunner, build_direct_fixed_wing_kernel, c172_airframe,
+};
 
 use super::*;
 
@@ -31,7 +33,7 @@ fn course_deg(probes: &[Probe]) -> f64 {
 
 #[test]
 fn the_c172_holds_cruise_on_its_own_sensors() {
-    let mut board = c172_board(3);
+    let mut board = c172(3);
     let armed_after_s = boot_and_arm(&mut board);
     assert!(
         armed_after_s < 2.0,
@@ -74,7 +76,7 @@ fn the_c172_holds_cruise_on_its_own_sensors() {
 
 #[test]
 fn the_c172_follows_speed_height_and_course_commands() {
-    let mut board = c172_board(5);
+    let mut board = c172(5);
     boot_and_arm(&mut board);
     let mut sequence = 0;
     fly(
@@ -111,7 +113,7 @@ fn the_c172_follows_speed_height_and_course_commands() {
 
 #[test]
 fn a_silent_receiver_leaves_the_c172_flying_wings_level() {
-    let mut board = c172_board(7);
+    let mut board = c172(7);
     boot_and_arm(&mut board);
     let mut sequence = 0;
     fly(
@@ -174,7 +176,7 @@ fn scripted_command(step: u64) -> Option<SystemCommand> {
 
 #[test]
 fn recorded_samples_alone_reproduce_the_actuator_commands() {
-    let mut board = c172_board(11);
+    let mut board = c172(11);
     let mut record = Vec::new();
     for step in 0..16 * RATE_HZ {
         if let Some(command) = scripted_command(step) {
