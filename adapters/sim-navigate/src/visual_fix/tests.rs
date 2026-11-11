@@ -301,7 +301,7 @@ fn a_second_anchor_in_a_cell_carries_the_ledgers_shared_map_error() {
     else {
         panic!("{disposition:?}");
     };
-    assert_eq!((cell.east, cell.north), (0, 0));
+    assert_eq!(cell.local_index(), Some([0, 0]));
     assert_eq!(earlier.index, 0);
 }
 

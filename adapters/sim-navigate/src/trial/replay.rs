@@ -5,6 +5,8 @@
 
 mod tally;
 
+use std::collections::BTreeMap;
+
 use navigate_contract::{MonotonicNanos, NavigationSolution, SourceId};
 use navigate_fusion::RejectionReason;
 use navigate_onboard::{AcceptanceRecord, Alignment, Navigator, Outcome, SensorData, SensorInput};
@@ -17,7 +19,7 @@ use tally::{Reading, sensor_state};
 
 use super::TrialError;
 use super::availability::{ScheduledInterval, SensorKind, SensorState, SetAvailability};
-use super::onboard::{BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE};
+use super::onboard::{BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, TERRAIN_CAMERA_SOURCE};
 use super::route::{STEP_HZ, step_seconds};
 use super::stars::{exposure_steps, star_camera_config};
 use crate::{AblationSet, Estimate, MasterClockBridge, NavMeans};
@@ -44,6 +46,11 @@ pub struct SetRun {
     next_opening: usize,
     next_reading: usize,
     star_half_exposure_steps: usize,
+    next_terrain: usize,
+    terrain_fixes: BTreeMap<String, u64>,
+    /// Wall-clock seconds the navigator spent on terrain frames, and the
+    /// frames; for the log only, never a result.
+    terrain_wall: (f64, u64, f64),
     records: Vec<AcceptanceRecord>,
     ledger: Ledger,
     stars: StarAvailability,
@@ -61,6 +68,9 @@ impl Clone for SetRun {
             next_opening: self.next_opening,
             next_reading: self.next_reading,
             star_half_exposure_steps: self.star_half_exposure_steps,
+            next_terrain: self.next_terrain,
+            terrain_fixes: self.terrain_fixes.clone(),
+            terrain_wall: self.terrain_wall,
             records: Vec::new(),
             ledger: self.ledger.clone(),
             stars: self.stars,
@@ -114,6 +124,9 @@ impl SetRun {
             next_opening: 0,
             next_reading: 0,
             star_half_exposure_steps,
+            next_terrain: 0,
+            terrain_fixes: BTreeMap::new(),
+            terrain_wall: (0.0, 0, 0.0),
             records: Vec::new(),
             ledger,
             stars: StarAvailability::default(),
@@ -185,6 +198,7 @@ impl SetRun {
             self.ingest(IMU_SOURCE, (now, now), data)?;
             self.step = step;
             self.stars_at(log, step, now)?;
+            self.terrain_at(log, step, now)?;
             self.gnss_at(log, step, now)?;
             self.baro_at(log, step, now)?;
         }
@@ -283,6 +297,98 @@ impl SetRun {
         Ok(())
     }
 
+    /// The terrain camera's frame read out at `step`, handed over unless a
+    /// schedule covers any instant of its exposure middle to readout; each
+    /// of the navigator's records is counted by outcome, reason and context.
+    fn terrain_at(
+        &mut self,
+        log: &SensorLog,
+        step: usize,
+        now: MonotonicNanos,
+    ) -> Result<(), TrialError> {
+        while let Some(frame) = log
+            .terrain
+            .get(self.next_terrain)
+            .filter(|f| f.end_step <= step)
+        {
+            self.next_terrain = self.next_terrain.wrapping_add(1);
+            if !self.selection.means.contains(NavMeans::Visual) {
+                continue;
+            }
+            let window = (step_seconds(frame.mid_step), step_seconds(frame.end_step));
+            if self
+                .selection
+                .availability
+                .withheld(SensorKind::TerrainCamera, window.0, window.1)
+            {
+                self.ledger
+                    .record(SensorKind::TerrainCamera, window, &Reading::Withheld);
+                continue;
+            }
+            let mid = self.clock.to_monotonic(frame.mid)?;
+            let (width, height) = frame.size;
+            let data = SensorData::TerrainFrame {
+                width,
+                height,
+                luma: frame.pixels.clone(),
+            };
+            let started = web_time::Instant::now();
+            self.ingest(TERRAIN_CAMERA_SOURCE, (mid, now), data)?;
+            let took = started.elapsed().as_secs_f64();
+            self.terrain_wall = (
+                self.terrain_wall.0 + took,
+                self.terrain_wall.1.wrapping_add(1),
+                self.terrain_wall.2.max(took),
+            );
+            for record in &self.records {
+                let outcome = match &record.outcome {
+                    Outcome::Accepted => "accepted".to_owned(),
+                    Outcome::Rejected(reason) => format!("rejected:{}", reason_name(reason)),
+                    Outcome::Unused(reason) => format!(
+                        "unused:{reason}:{}",
+                        record.context.map_or("unmatched", |_| "matched")
+                    ),
+                };
+                let context = record.context.unwrap_or("none");
+                for key in [outcome, format!("context:{context}")] {
+                    let count = self.terrain_fixes.entry(key).or_default();
+                    *count = count.wrapping_add(1);
+                }
+            }
+            let verdicts = verdicts(&self.records);
+            self.ledger.record(
+                SensorKind::TerrainCamera,
+                window,
+                &Reading::Offered(&verdicts),
+            );
+        }
+        Ok(())
+    }
+
+    /// The terrain camera's fixes so far, by outcome (`accepted`,
+    /// `rejected:<filter reason>`, `unused:<navigator reason>`) and by
+    /// context (`context:keyframe`, `context:render`).
+    pub fn terrain_fixes(&self) -> &BTreeMap<String, u64> {
+        &self.terrain_fixes
+    }
+
+    /// Wall-clock seconds the navigator spent on terrain frames, the
+    /// frames handed over, and the slowest frame's seconds. Not
+    /// deterministic: for logs, never a result.
+    pub const fn terrain_wall(&self) -> (f64, u64, f64) {
+        self.terrain_wall
+    }
+
+    /// The navigator's working terrain camera, as it states it, when it is
+    /// the reference navigator and has matched a frame.
+    pub fn terrain_working_camera(&self) -> Option<String> {
+        self.navigator
+            .as_any()
+            .downcast_ref::<navigate_onboard::ReferenceNavigator>()?
+            .terrain_working_camera(TERRAIN_CAMERA_SOURCE)
+            .map(|camera| format!("{camera:?}"))
+    }
+
     fn gnss_at(
         &mut self,
         log: &SensorLog,
@@ -365,6 +471,15 @@ fn verdicts(records: &[AcceptanceRecord]) -> Vec<Result<(), &RejectionReason>> {
             Outcome::Unused(_) => None,
         })
         .collect()
+}
+
+/// A rejection reason's variant name, without its values.
+fn reason_name(reason: &RejectionReason) -> String {
+    let text = format!("{reason:?}");
+    text.split([' ', '{', '('])
+        .next()
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// The instant of `step` in `log`.

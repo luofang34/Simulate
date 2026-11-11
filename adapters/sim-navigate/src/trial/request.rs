@@ -5,6 +5,8 @@ use sim_devices::ImuGrade;
 
 use super::TrialError;
 use super::availability::{AvailabilitySchedule, SensorKind};
+use super::maps::MapsSpec;
+use super::terrain_camera::TerrainCameraSpec;
 use crate::{AblationSet, NavMeans};
 
 #[cfg(test)]
@@ -51,6 +53,13 @@ pub struct TrialRequest {
     /// When a closed-loop flight ends abnormally; absent takes the defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub termination: Option<TerminationSpec>,
+    /// The terrain camera; required when any set takes the `visual` means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_camera: Option<TerrainCameraSpec>,
+    /// The onboard and world map packages; required with the terrain
+    /// camera.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maps: Option<MapsSpec>,
 }
 
 /// The rules that end a closed-loop flight abnormally, each judged on the
@@ -329,6 +338,9 @@ pub struct SeedSpec {
     pub baro: u64,
     /// Star camera noise.
     pub star_camera: u64,
+    /// Terrain camera noise; required with the terrain camera.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_camera: Option<u64>,
 }
 
 /// How densely the result and the progress stream sample the run.
@@ -380,11 +392,12 @@ impl Default for OutputSpec {
 }
 
 /// The means this trial can simulate.
-const SIMULATED_MEANS: [NavMeans; 4] = [
+const SIMULATED_MEANS: [NavMeans; 5] = [
     NavMeans::DeadReckoning,
     NavMeans::Barometric,
     NavMeans::Gnss,
     NavMeans::Celestial,
+    NavMeans::Visual,
 ];
 
 impl TrialRequest {

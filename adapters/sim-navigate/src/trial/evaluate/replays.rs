@@ -159,11 +159,23 @@ impl OpenSet {
     }
 
     fn finish(self) -> (SetResult, Vec<Estimate<(SimInstant, NavigationSolution)>>) {
+        let (wall_s, frames, slowest_s) = self.run.terrain_wall();
+        if frames > 0 {
+            tracing::info!(
+                frames,
+                navigator_s_per_frame = wall_s / frames as f64,
+                slowest_s,
+                working_camera = ?self.run.terrain_working_camera(),
+                fixes = ?self.run.terrain_fixes(),
+                "terrain frames handed to the navigator"
+            );
+        }
         let result = SetResult {
             series: self.series,
             tallies: self.run.tallies().clone(),
             intervals: self.run.interval_tallies().to_vec(),
             stars: self.run.star_availability(),
+            terrain_fixes: self.run.terrain_fixes().clone(),
             closed_loop: None,
         };
         (result, self.published)

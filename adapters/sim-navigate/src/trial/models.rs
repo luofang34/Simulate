@@ -96,7 +96,31 @@ const FINDINGS: [(&str, &str); 6] = [
 ];
 
 /// What every component of the trial is, with guidance as `source` runs it.
-pub(super) fn model_statements(source: GuidanceSource) -> Vec<ModelStatement> {
+/// What a run with the terrain camera adds.
+const VISUAL: [(&str, &str); 5] = [
+    (
+        "terrain camera",
+        "simulated: frames rendered by sim_scenery::render_luma_view from the world package at the true pose of the middle of the exposure, through the declared pinhole intrinsics (pixel centres on integer coordinates), mount and radiometric response; no motion blur, lens distortion or rolling shutter; below the stated Sun elevation the scene gives no light and a frame is offset and noise only, a boundary of the render model, which does not model night-time ground lighting, not a choice of the navigator",
+    ),
+    (
+        "terrain navigation",
+        "navigate_onboard::ReferenceNavigator's terrain-camera means: each frame resampled to its working resolution (ground pixel about one map texel, at most the navigator's max_match_pixels), matched against references rendered from the onboard package at the navigator's belief, offered as a terrain_position fix; frames within a correlation cell (Web Mercator z16, about 457 m at 41.7 N) that already gave a fix are Unused(shared_map_error), so a cruise takes about one fix per cell crossed",
+    ),
+    (
+        "map accuracy",
+        "where the onboard package declares no accuracy, the request's assumed_accuracy is handed to the navigator; it is an assumption about the source imagery and elevation, not a measurement",
+    ),
+    (
+        "geoid",
+        "the world converts orthometric map heights with EGM96 by sim_geo::egm96_undulation_m, bilinear over a 5 degree grid; with maps.geoid = world the navigator is given the same function, otherwise it has none and carries the undulation bound in its vertical sigma",
+    ),
+    (
+        "star camera availability",
+        "the star camera's sky brightness follows the Sun's elevation, so by day its frames saturate and give the navigator nothing; star and terrain fixes side by side are each limited by their own gate",
+    ),
+];
+
+pub(super) fn model_statements(source: GuidanceSource, visual: bool) -> Vec<ModelStatement> {
     let tagged = |origin: &'static str, entries: &'static [(&'static str, &'static str)]| {
         entries
             .iter()
@@ -120,6 +144,7 @@ pub(super) fn model_statements(source: GuidanceSource) -> Vec<ModelStatement> {
     navigate
         .into_iter()
         .chain(tagged("simulated", &SIMULATED))
+        .chain(tagged("visual", if visual { &VISUAL } else { &[] }))
         .chain(tagged("measured", &FINDINGS))
         .collect()
 }

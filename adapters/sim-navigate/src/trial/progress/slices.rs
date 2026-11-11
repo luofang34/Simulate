@@ -191,6 +191,7 @@ impl Scored<'_> {
                 gnss: run.sensor_state(SensorKind::Gnss, t_s),
                 baro: run.sensor_state(SensorKind::Baro, t_s),
                 stars: run.sensor_state(SensorKind::Stars, t_s),
+                terrain_camera: run.sensor_state(SensorKind::TerrainCamera, t_s),
             },
         })
     }

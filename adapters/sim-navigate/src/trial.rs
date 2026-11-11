@@ -23,6 +23,7 @@ mod epoch;
 mod error;
 mod evaluate;
 mod gnss;
+mod maps;
 mod models;
 mod onboard;
 mod progress;
@@ -34,6 +35,7 @@ mod route;
 mod score;
 mod sky;
 mod stars;
+mod terrain_camera;
 mod vertical;
 
 pub use availability::{
@@ -42,10 +44,18 @@ pub use availability::{
 };
 pub use comparison::{Baseline, ComparisonRow, ComparisonTable};
 pub use defaults::{DEFAULT_EPOCH_UTC, RoutePoint, default_sensor_sets, request_from_route};
+pub use maps::{
+    AssumedAccuracy, GeoidChoice, MapsReport, MapsSpec, OnboardMapSpec, OpenedPackage, PackageRef,
+    PackageRefusal, PackageReport, WORLD_GEOID, maps_report_blocking,
+};
 pub use progress::{
     EventKind, EventRecord, FinishedRecord, NoProgress, PROGRESS_SCHEMA, ProgressPosition,
     ProgressRecord, ProgressRoute, ProgressSet, ProgressSink, ProgressWaypoint, SampleRecord,
     SensorStates, StartedRecord,
+};
+pub use terrain_camera::{
+    CameraBand, CameraMountSpec, RadiometrySpec, TerrainCamera, TerrainCameraSpec, TerrainFrame,
+    TerrainFrameTruth,
 };
 pub use vertical::{FlownPoint, LegVertical, ProfilePoint, VerticalReport, vertical_plan};
 

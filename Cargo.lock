@@ -1066,7 +1066,7 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 
 [[package]]
 name = "flate2"
@@ -3059,7 +3059,7 @@ dependencies = [
 [[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3070,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3081,7 +3081,7 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3094,7 +3094,7 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -3102,7 +3102,7 @@ dependencies = [
 [[package]]
 name = "navigate-data"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3115,7 +3115,7 @@ dependencies = [
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3127,7 +3127,7 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
@@ -3136,7 +3136,7 @@ dependencies = [
 [[package]]
 name = "navigate-guidance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3150,8 +3150,9 @@ dependencies = [
 [[package]]
 name = "navigate-onboard"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
+ "image",
  "nalgebra",
  "navigate-camera",
  "navigate-celestial",
@@ -3162,13 +3163,17 @@ dependencies = [
  "navigate-guidance",
  "navigate-route",
  "navigate-startrack",
+ "navigate-visual",
+ "navigate-visual-render",
+ "pollster 1.0.1",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
 name = "navigate-route"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3178,7 +3183,7 @@ dependencies = [
 [[package]]
 name = "navigate-startrack"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3191,7 +3196,7 @@ dependencies = [
 [[package]]
 name = "navigate-trajectory"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3203,17 +3208,36 @@ dependencies = [
 [[package]]
 name = "navigate-visual"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
 dependencies = [
  "image",
  "nalgebra",
  "navigate-camera",
  "navigate-contract",
+ "navigate-data",
  "navigate-fusion",
  "navigate-geodesy",
  "sha2 0.11.1",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "navigate-visual-render"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=13cc341aecffee993b321d313e3e91e163bb27ae#13cc341aecffee993b321d313e3e91e163bb27ae"
+dependencies = [
+ "bytemuck",
+ "futures-channel",
+ "image",
+ "nalgebra",
+ "navigate-data",
+ "navigate-geodesy",
+ "navigate-visual",
+ "pollster 1.0.1",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "wgpu",
 ]
 
 [[package]]
@@ -3989,6 +4013,12 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
+name = "pollster"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc6355899e1c9462875b6757c79f3caa011a1fdae12bbb1a2e72dd1f234f8336"
 
 [[package]]
 name = "portable-atomic"
@@ -5059,7 +5089,7 @@ dependencies = [
  "mbd-core",
  "openusd",
  "openusd-schemas",
- "pollster",
+ "pollster 0.4.0",
  "serde_json",
  "sim-core",
  "sim-geo",
@@ -5097,11 +5127,13 @@ name = "sim-navigate"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "image",
  "memory-stats",
  "nalgebra",
  "navigate-camera",
  "navigate-celestial",
  "navigate-contract",
+ "navigate-data",
  "navigate-fusion",
  "navigate-geodesy",
  "navigate-guidance",
@@ -5109,6 +5141,7 @@ dependencies = [
  "navigate-route",
  "navigate-startrack",
  "navigate-visual",
+ "pollster 0.4.0",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -5120,9 +5153,11 @@ dependencies = [
  "sim-scenario",
  "sim-scenery",
  "sim-spacetime",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+ "web-time",
 ]
 
 [[package]]
@@ -5233,7 +5268,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.12",
  "naga",
- "pollster",
+ "pollster 0.4.0",
  "sim-geo",
  "sim-scenery",
  "thiserror 2.0.21",
@@ -5248,7 +5283,7 @@ dependencies = [
  "flightbag",
  "glam 0.33.12",
  "mbd-core",
- "pollster",
+ "pollster 0.4.0",
  "sim-apollo",
  "sim-atmosphere",
  "sim-core",
@@ -5371,7 +5406,7 @@ dependencies = [
  "indicate-instrument-scene",
  "mbd-airdata",
  "mbd-core",
- "pollster",
+ "pollster 0.4.0",
  "serde_json",
  "sim-analysis",
  "sim-apollo",

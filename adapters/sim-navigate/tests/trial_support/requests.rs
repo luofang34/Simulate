@@ -136,8 +136,11 @@ pub fn request(
             gnss: 0x6E55,
             baro: 0xBA20,
             star_camera: 7,
+            terrain_camera: None,
         },
         output: OutputSpec::default(),
         termination: None,
+        terrain_camera: None,
+        maps: None,
     }
 }
