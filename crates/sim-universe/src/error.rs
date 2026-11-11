@@ -1,6 +1,9 @@
 use sim_core::BlockError;
+use sim_core::SimInstant;
 use sim_orbital::{LagrangeError, NaifId, OrientationError, SchedulerError, VesselId};
 use sim_spacetime::TimeError;
+
+use crate::planning::PlanId;
 
 /// Why a vessel could not be added, advanced, or handed between tiers.
 #[derive(Debug, thiserror::Error)]
@@ -72,4 +75,33 @@ pub enum UniverseError {
     /// its prediction failed.
     #[error("station keeping failed")]
     Holding(#[source] Box<LagrangeError>),
+    /// No job for this plan is running or finished.
+    #[error("no job for plan {0:?}")]
+    UnknownPlan(PlanId),
+    /// The thread running a plan's job stopped without an output.
+    #[error("the thread running plan {0:?} failed")]
+    PlanThreadFailed(PlanId),
+    /// No thread could be started to run a plan's job.
+    #[error("could not start thread {thread} for plan {id:?}")]
+    PlanThreadSpawn {
+        /// The plan.
+        id: PlanId,
+        /// The thread's name.
+        thread: String,
+        /// Why the thread could not be started.
+        #[source]
+        source: std::io::Error,
+    },
+    /// A schedule asked for a plan and still claimed to be due at or before the
+    /// instant it was asked at; it is detached so it cannot hold up the others.
+    #[error("plan schedule {schedule} did not move past {at:?} and was detached")]
+    PlanScheduleStalled {
+        /// The schedule, as it describes itself.
+        schedule: String,
+        /// The instant it was asked at.
+        at: SimInstant,
+    },
+    /// A plan's command acts before the plan's deadline.
+    #[error("plan {0:?} commanded an instant before its deadline")]
+    PlanCommandTooEarly(PlanId),
 }

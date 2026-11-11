@@ -6,11 +6,13 @@ use sim_core::{SimInstant, TickSpan};
 use sim_orbital::{
     ContinuousPlantState, L2BoundedArcTargetSpec, L2HoldingTarget, MassPropertiesModel, NaifId,
     PropellantMode, ReactionWheelMode, SrpSurface, SynodicFrame, VesselConfig,
-    target_l2_terminal_x_arc_dop853,
+    VesselWarpConstraintInput, target_l2_terminal_x_arc_dop853,
 };
 use sim_raketa::{RaketaEnvironment, RaketaPlant};
 use sim_spacetime::SimEpoch;
-use sim_universe::{L2KeepingBurn, L2StationKeeper, Universe, VesselBusConfig};
+use sim_universe::{
+    L2StationKeeper, PlanOutput, PlanRecord, PlanReport, Universe, VesselBusConfig,
+};
 use tracing::{info, warn};
 
 use super::super::free_world::SolarSystem;
@@ -65,8 +67,8 @@ fn jwst_config(solar: &SolarSystem) -> VesselConfig {
 }
 
 /// Adds the observatory to `universe` at the first tick of `epoch`, on an arc about
-/// $L_2$, and returns the keeper that will hold it; the keeper's first update makes
-/// the insertion burn.
+/// $L_2$, and returns the keeper that will hold it once attached to the universe;
+/// its first plan is the insertion burn.
 pub(super) fn spawn_jwst_l2(
     universe: &mut Universe,
     epoch: &SimEpoch,
@@ -123,27 +125,48 @@ pub(super) fn spawn_jwst_l2(
 /// Reports a burn the keeper commanded, or why it could not; a keeper that cannot
 /// solve (the lookahead runs past the kernels' coverage, or the observatory has
 /// already left) must not end the pilot's flight.
-fn report_keeping(outcome: Result<Option<L2KeepingBurn>, sim_universe::UniverseError>) {
-    match outcome {
-        Ok(Some(burn)) => info!(
+fn report_keeping(record: PlanRecord) {
+    match record.outcome {
+        Ok(PlanOutput {
+            report: Some(PlanReport::L2Holding(burn)),
+            ..
+        }) => info!(
             delta_v_m_s = burn.delta_v_m_s,
             insertion = burn.insertion,
             "JWST_L2 holding burn"
         ),
-        Ok(None) => {}
+        Ok(_) => {}
         Err(error) => warn!(?error, "JWST_L2 station keeping skipped a burn"),
     }
 }
 
 impl SpaceWorld {
-    /// Lets the keeper burn if a maintenance epoch of `JWST_L2` is due.
+    /// What the observatory asks of the warp governor: nothing, except that time
+    /// not run past a holding burn whose solve is still being computed.
+    pub(in crate::flight) fn jwst_l2_warp_input(&self) -> VesselWarpConstraintInput {
+        VesselWarpConstraintInput {
+            vessel_id: JWST_L2,
+            is_pinned_surface_rest: false,
+            is_active_ground_contact: false,
+            q_inf_pa: 0.0,
+            in_proximity_group: false,
+            hazard_tgo_s: f64::INFINITY,
+            on_reduced_manifold: true,
+            plan_wait_s: self.plan_wait_s(),
+        }
+    }
+
+    /// Reports the holding burns the universe has stamped since the last call.
     pub(super) fn maintain_jwst_l2(&mut self) {
-        report_keeping(self.jwst_keeper.update(&mut self.universe));
+        for record in self.universe.take_plan_records() {
+            report_keeping(record);
+        }
     }
 }
 
 /// The observatory alone in a universe of its own, as the flight builds it, with its
-/// keeper: a year of it can be flown without the pilot's vessel stepping beside it.
+/// keeper attached when `kept`: a year of it can be flown without the pilot's vessel
+/// stepping beside it.
 #[cfg(test)]
 pub(in crate::flight) struct JwstAlone {
     pub(in crate::flight) universe: Universe,
@@ -155,9 +178,15 @@ impl JwstAlone {
     pub(in crate::flight) fn new(
         epoch: &SimEpoch,
         solar: &SolarSystem,
+        executor: Box<dyn sim_universe::PlanExecutor>,
+        kept: bool,
     ) -> Result<Self, AppSimError> {
-        let mut universe = Universe::new(epoch.clone(), solar.context());
+        let mut universe =
+            Universe::new(epoch.clone(), solar.context()).with_plan_executor(executor);
         let keeper = spawn_jwst_l2(&mut universe, epoch, solar, &solar.raketa_environment())?;
+        if kept {
+            universe.attach_plan_schedule(Box::new(keeper.clone()));
+        }
         Ok(Self { universe, keeper })
     }
 }

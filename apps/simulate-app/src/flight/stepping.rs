@@ -69,11 +69,13 @@ impl Flight {
                 steps
             }
             Mode::Space(world) if world.coasting(controls) => {
+                world.pump_plans();
                 world.coast(ticks)?;
                 self.prev_vehicle = world.vehicle();
                 0
             }
             Mode::Space(world) => {
+                world.pump_plans();
                 let steps = self.steps.steps_for(ticks);
                 for _ in 0..steps {
                     self.prev_vehicle = world.vehicle();
