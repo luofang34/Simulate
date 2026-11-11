@@ -120,6 +120,13 @@ struct Run {
 /// How much of a run the byte capture keeps, seconds.
 const CAPTURE_S: f64 = 60.0;
 
+/// Writes the run's link bytes to the file `CHAIN_LINK_CAPTURE` names.
+fn save_capture(run: &Run) {
+    if let (Some(path), Some(lines)) = (std::env::var_os("CHAIN_LINK_CAPTURE"), &run.capture) {
+        std::fs::write(path, lines.join("\n")).unwrap();
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -203,9 +210,7 @@ fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
         .ok();
     let mut chain = chain(1);
     let run = fly(&mut chain, 90.0);
-    if let (Some(path), Some(lines)) = (std::env::var_os("CHAIN_LINK_CAPTURE"), &run.capture) {
-        std::fs::write(path, lines.join("\n")).unwrap();
-    }
+    save_capture(&run);
     tracing::info!(
         timeline = ?run.timeline,
         messages = ?run.messages,
@@ -227,8 +232,14 @@ fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
 /// flight controller to come up before it gives up on the arm.
 #[test]
 fn a_plan_loaded_at_power_up_arms_once_the_flight_controller_is_ready() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .try_init()
+        .ok();
     let mut chain = HostChain::new(c172(1), &route(0.0)).unwrap();
     let run = fly(&mut chain, 30.0);
+    save_capture(&run);
     tracing::info!(timeline = ?run.timeline, events = ?run.events);
     assert!(
         run.timeline.arm_confirmed.is_some(),
