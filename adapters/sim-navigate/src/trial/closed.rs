@@ -3,8 +3,8 @@
 //! moves the vehicle, drives the sensors, and is scored, judged against the
 //! termination rules, and reported.
 
+mod autopilot;
 mod flight;
-mod pilot;
 mod report;
 mod run;
 mod sensors;
@@ -12,7 +12,7 @@ mod sensors;
 use navigate_contract::NavigationSolution;
 use sim_core::SimInstant;
 
-pub use pilot::{Pilot, PilotEvent, PilotInput, PilotOutput};
+pub use autopilot::{Autopilot, PilotInput, PilotOutput};
 pub use report::{ClosedLoopReport, CrossTrackSample, TerminationReport, WaypointOutcome};
 pub(super) use run::ClosedSet;
 

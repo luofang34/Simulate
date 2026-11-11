@@ -11,8 +11,9 @@ use sim_core::{SimInstant, VehicleState};
 
 use super::flight::Flight;
 use super::sensors::LiveSensors;
-use super::{ClosedLoopOutcome, Pilot, PilotInput, PilotOutput};
-use crate::trial::evaluate::{SetContext, set_run};
+use super::{Autopilot, ClosedLoopOutcome, PilotInput, PilotOutput};
+use crate::trial::evaluate::{SetContext, replay_set};
+use crate::trial::onboard::trial_director;
 use crate::trial::progress::{EventKind, EventRecord, ProgressRecord, Scored};
 use crate::trial::record::{SensorLog, initial_alignment};
 use crate::trial::replay::SetRun;
@@ -27,11 +28,11 @@ pub(in crate::trial) struct ClosedSet<'a> {
     request: &'a TrialRequest,
     name: &'a str,
     waypoints: &'a [Waypoint],
-    pilot: Pilot<'a>,
+    pilot: Autopilot,
     flight: Flight<'a>,
     sensors: LiveSensors,
     log: SensorLog,
-    run: SetRun<'a>,
+    run: SetRun,
     scorer: Scorer,
     clock: MasterClockBridge,
     sample_steps: usize,
@@ -57,22 +58,19 @@ impl<'a> ClosedSet<'a> {
         request: &'a TrialRequest,
         set: &'a SensorSetSpec,
         waypoints: &'a [Waypoint],
-        context: SetContext<'a>,
+        context: SetContext,
         progress_steps: usize,
         trace: bool,
     ) -> Result<Self, TrialError> {
         let clock = MasterClockBridge::default();
-        let pilot = Pilot::new(waypoints, &request.vehicle, clock.domain())?;
+        let director = trial_director(waypoints, &request.vehicle)?;
+        let pilot = Autopilot::new(director, &request.vehicle);
         let start = start_state(waypoints, &request.vehicle)?;
         let means = set.ablation_set();
-        let stars = context
-            .pairs
-            .filter(|_| means.contains(NavMeans::Celestial))
-            .is_some();
-        let mut sensors = LiveSensors::new(request, stars)?;
+        let mut sensors = LiveSensors::new(request, means.contains(NavMeans::Celestial))?;
         sensors.start(SimInstant::START, &start)?;
         let log = empty_log(request, &start);
-        let run = set_run(request, set, context, &log)?;
+        let run = replay_set(request, set, &log)?;
         Ok(Self {
             request,
             name: &set.name,

@@ -128,15 +128,13 @@ impl GnssReceiver {
     }
 }
 
-/// One barometric reading: ellipsoidal height with its white-noise
-/// variance. The bias is not in the variance because Navigate's filter
-/// carries it as a state, configured from the same [`BaroSpec`].
+/// One barometric reading: ellipsoidal height. Its error statistics are
+/// the altimeter's declared budget in the sensor suite, from the same
+/// [`BaroSpec`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BaroReading {
     /// Measured height above the ellipsoid, metres.
     pub altitude_m: f64,
-    /// Declared white-noise variance, m².
-    pub variance_m2: f64,
 }
 
 /// A barometric altimeter reporting ellipsoidal height plus a first-order
@@ -187,7 +185,6 @@ impl BaroAltimeter {
         let white = self.noise.next_gaussian() * spec.white_sigma_m;
         BaroReading {
             altitude_m: ecef_to_geodetic(truth.position_ecef).height_m + bias + white,
-            variance_m2: spec.white_sigma_m.powi(2),
         }
     }
 }

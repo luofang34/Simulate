@@ -4,9 +4,9 @@
 
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    ClosedLoopReport, EventKind, GuidanceSource, ImuGradeName, Pilot, ProgressRecord, QualityFloor,
-    SetReport, TerminationSpec, TrialRequest, WaypointSpec, plan_waypoints, run_closed_trial,
-    run_trial, run_trial_with_progress,
+    Autopilot, ClosedLoopReport, EventKind, GuidanceSource, ImuGradeName, ProgressRecord,
+    QualityFloor, SetReport, TerminationSpec, TrialRequest, WaypointSpec, plan_waypoints,
+    run_closed_trial, run_trial, run_trial_with_progress, trial_director,
 };
 
 #[cfg(test)]
@@ -134,8 +134,10 @@ fn long_fly_over_route() -> Vec<WaypointSpec> {
 
 /// (b) With no position aid the navigator still declares the first
 /// fly-over waypoint captured while the vehicle is truly as far from it as
-/// the navigator is lost; the flight then ends by the sequence-timeout rule,
-/// named in the result.
+/// the navigator is lost. The jittering estimate then passes the later
+/// fly-over fixes outside the capture radius, and the executor sequences
+/// each on the perpendicular through the fix, reporting the navigator's
+/// cross-track: the flight completes, kilometres from where it believes.
 #[test]
 fn a_lost_navigator_declares_captures_it_truly_missed() {
     init_tracing();
@@ -164,12 +166,25 @@ fn a_lost_navigator_declares_captures_it_truly_missed() {
         ((miss - lost) / lost).abs() <= LOST_MISS_TOLERANCE,
         "{first:?}"
     );
-    // Navigate's executor never sequences the next fly-over fix once the
-    // jittering estimate has passed it outside the capture radius, so the
-    // flight ends by a declared rule rather than by completing.
-    assert!(!closed.completed);
-    let termination = closed.termination.as_ref().unwrap();
-    assert_eq!(termination.rule, "sequence_timeout", "{termination:?}");
+    for waypoint in &closed.waypoints {
+        tracing::info!(
+            ident = waypoint.ident,
+            sequenced_at_s = waypoint.sequenced_at_s,
+            passed_cross_track_m = waypoint.passed_cross_track_m,
+            true_miss_m = waypoint.true_miss_at_sequence_m,
+            "sequencing"
+        );
+    }
+    assert!(closed.completed && closed.termination.is_none());
+    let capture_m = request.vehicle.capture_radius_m;
+    let passed: Vec<f64> = closed
+        .waypoints
+        .iter()
+        .filter_map(|waypoint| waypoint.passed_cross_track_m)
+        .collect();
+    assert!(!passed.is_empty(), "{:?}", closed.waypoints);
+    assert!(passed.iter().all(|xt| xt.abs() > capture_m), "{passed:?}");
+    assert!(closed.final_arrival_error_m.unwrap() > first.capture_threshold_m);
 }
 
 /// (c) A GNSS outage on a straight leg lets the true track wander, and GNSS
@@ -253,8 +268,8 @@ fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
     assert!(bytes(&first.report.sensor_sets[0]) == bytes(&second.sensor_sets[0]));
 
     let waypoints = plan_waypoints(&request.waypoints).unwrap();
-    let clock = sim_navigate::MasterClockBridge::default();
-    let mut pilot = Pilot::new(&waypoints, &request.vehicle, clock.domain()).unwrap();
+    let director = trial_director(&waypoints, &request.vehicle).unwrap();
+    let mut pilot = Autopilot::new(director, &request.vehicle);
     let trace = &first.sets[0].trace;
     assert!(trace.len() > 1_000);
     for (input, output) in trace {

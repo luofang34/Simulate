@@ -1,20 +1,17 @@
 //! The flown route: waypoints through Navigate's plan executor and
 //! deviation guidance to the kinematic vehicle, on truth.
 
-use navigate_contract::{
-    AltitudeConstraint, Ellipsoid, FlightPlan, GeodeticPosition, Ident, PlanRole, TurnType,
-    Waypoint,
-};
+use navigate_contract::{AltitudeConstraint, GeodeticPosition, Ident, TurnType, Waypoint};
 use navigate_geodesy::{BodyEllipsoid, distance_m, initial_bearing_rad};
-use navigate_guidance::{GuidanceConfig, guide};
+use navigate_onboard::{DirectorEvent, SequenceCause};
 use navigate_route::{
-    EARTH_STANDARD_GRAVITY_MPS2, ExecutionConfig, PlanExecution, SequenceEvent, SequenceReason,
-    turn_anticipation_m, turn_radius_m,
+    EARTH_STANDARD_GRAVITY_MPS2, ExecutionConfig, turn_anticipation_m, turn_radius_m,
 };
 use serde::{Deserialize, Serialize};
 use sim_core::{Block, KinematicInput, KinematicModel, SimInstant, TickSpan, VehicleState};
 use sim_geo::{Geodetic, ecef_to_geodetic};
 
+use super::onboard::trial_director;
 use super::{TrialError, TrialRequest, VehicleSpec, WaypointSpec};
 use crate::{MasterClockBridge, Truth};
 
@@ -45,6 +42,10 @@ pub struct RouteEvent {
     pub plan_complete: bool,
     /// Whether turn anticipation sequenced it beyond the capture radius.
     pub anticipated: bool,
+    /// The signed cross-track distance, metres, right of the inbound course,
+    /// when the vehicle passed the fix outside the capture distance and the
+    /// executor sequenced it on the perpendicular; `None` for a capture.
+    pub passed_cross_track_m: Option<f64>,
     /// True distance to the fix on Navigate's mean-radius sphere, metres.
     pub distance_m: f64,
 }
@@ -129,16 +130,9 @@ pub fn fly_route(request: &TrialRequest) -> Result<RouteFlight, TrialError> {
 type Flown = (Vec<Truth<(SimInstant, VehicleState)>>, Vec<RouteEvent>);
 
 fn fly_plan(waypoints: &[Waypoint], vehicle: &VehicleSpec) -> Result<Flown, TrialError> {
-    let route_id = Ident::try_new("trial-route").map_err(|source| TrialError::Ident {
-        ident: "trial-route".into(),
-        source,
-    })?;
-    let plan = FlightPlan::new(route_id, PlanRole::Mission, Ellipsoid::WGS84, waypoints);
-    let mut execution =
-        PlanExecution::new(plan, execution_config(vehicle)).map_err(TrialError::Plan)?;
+    let mut director = trial_director(waypoints, vehicle)?;
     let mut model = KinematicModel::new(start_state(waypoints, vehicle)?);
     let mut follower = RouteFollower::new(vehicle);
-    let guidance = GuidanceConfig::default().with_expected_ellipsoid(Ellipsoid::WGS84);
     let clock = MasterClockBridge::default();
     let step = step_span();
     let limit_s = flight_time_bound_s(waypoints);
@@ -148,35 +142,36 @@ fn fly_plan(waypoints: &[Waypoint], vehicle: &VehicleSpec) -> Result<Flown, Tria
     loop {
         let state = model.output();
         let time_s = at.duration_since(SimInstant::START).as_seconds();
-        let position = geodetic(&state);
-        let index = execution.active_index();
-        let speed = leg_speed(waypoints, index, vehicle);
-        let event = execution.advance(&position, speed);
-        if let Some(record) = route_event(event, waypoints, index, &position, time_s, &truth) {
-            events.push(record);
+        let now = clock.to_monotonic(at)?;
+        let solution = truth_solution(&Truth::new(state), now, clock.domain());
+        let output = director.step(Some(solution.get()), now);
+        if let Some(event) = output.event {
+            events.push(route_event(
+                event,
+                waypoints,
+                &geodetic(&state),
+                time_s,
+                &truth,
+            ));
         }
-        let Some(leg) = execution.active_leg() else {
+        let Some(active_index) = output.active_index else {
             break;
         };
         if time_s > limit_s {
             return Err(TrialError::RouteIncomplete {
                 time_s,
-                active_index: leg.index,
+                active_index,
             });
         }
-        let now = clock.to_monotonic(at)?;
-        let solution = truth_solution(&Truth::new(state), now, clock.domain());
-        let command = guide(
-            solution.get(),
-            leg.lateral_reference(),
-            leg.to,
-            now,
-            clock.domain(),
-            &guidance,
-        )
-        .map_err(|source| TrialError::Guidance { time_s, source })?;
-        let speed = leg_speed(waypoints, leg.index, vehicle);
-        let controls = follower.controls(Some(&command.setpoint), &state, speed, step.as_seconds());
+        if let Some(source) = output.refusal {
+            return Err(TrialError::Guidance { time_s, source });
+        }
+        let controls = follower.controls(
+            output.setpoint.as_ref(),
+            &state,
+            output.commanded_speed_mps,
+            step.as_seconds(),
+        );
         model
             .step(&KinematicInput { controls })
             .map_err(TrialError::Vehicle)?;
@@ -187,28 +182,29 @@ fn fly_plan(waypoints: &[Waypoint], vehicle: &VehicleSpec) -> Result<Flown, Tria
 }
 
 fn route_event(
-    event: SequenceEvent,
+    event: DirectorEvent,
     waypoints: &[Waypoint],
-    index: usize,
     position: &GeodeticPosition,
     time_s: f64,
     truth: &[Truth<(SimInstant, VehicleState)>],
-) -> Option<RouteEvent> {
-    let (plan_complete, reason) = match event {
-        SequenceEvent::LegAdvanced { reason, .. } => (false, reason),
-        SequenceEvent::PlanComplete { reason, .. } => (true, reason),
-        _ => return None,
-    };
-    let fix = waypoints.get(index)?;
-    Some(RouteEvent {
+) -> RouteEvent {
+    let index = event.waypoint_index;
+    let fix = waypoints.get(index);
+    RouteEvent {
         time_s,
         step: truth.len().saturating_sub(1),
         waypoint_index: index,
-        ident: fix.ident.as_str().to_owned(),
-        plan_complete,
-        anticipated: reason == SequenceReason::Anticipated,
-        distance_m: distance_m(position, &fix.position, BodyEllipsoid::WGS84),
-    })
+        ident: fix.map_or_else(String::new, |w| w.ident.as_str().to_owned()),
+        plan_complete: event.plan_complete,
+        anticipated: event.cause == SequenceCause::Anticipated,
+        passed_cross_track_m: match event.cause {
+            SequenceCause::Passed { cross_track_m } => Some(cross_track_m),
+            _ => None,
+        },
+        distance_m: fix.map_or(f64::NAN, |w| {
+            distance_m(position, &w.position, BodyEllipsoid::WGS84)
+        }),
+    }
 }
 
 /// Speed on the leg toward waypoint `index`: cruise under that waypoint's

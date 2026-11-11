@@ -5,19 +5,19 @@ use super::report::ModelStatement;
 const NAVIGATE: [(&str, &str); 5] = [
     (
         "navigation filter",
-        "navigate_fusion::InertialNavigationFilter, 22 error states, on WGS84, through sim_navigate::InertialNavigator; every sensor set feeds this one filter, and a missing sensor sends nothing",
+        "navigate_onboard::ReferenceNavigator linked as a navigate_onboard::Navigator: navigate_fusion::InertialNavigationFilter, 22 error states, on WGS84, fed the declared sensor suite's inputs; every sensor set feeds this one composition, and a missing or withheld sensor sends no input",
     ),
     (
         "route execution",
-        "navigate_route::PlanExecution over a navigate_contract::FlightPlan on WGS84: leg sequencing, capture radius and fly-by turn anticipation",
+        "navigate_onboard::RouteDirector linked as a navigate_onboard::FlightDirector: navigate_route::PlanExecution over a navigate_contract::FlightPlan on WGS84, leg sequencing, capture radius and fly-by turn anticipation",
     ),
     (
         "guidance",
-        "navigate_guidance::guide deviation tracking, evaluated on the true state: the flight is open loop and identical for every sensor set",
+        "the flight director's navigate_guidance::guide deviation tracking, evaluated on the true state: the flight is open loop and identical for every sensor set",
     ),
     (
         "star tracker",
-        "navigate_startrack: detection in the rendered counts, lost-in-space and prior-aided identification (prior from the navigator's own solution), attitude solve, line-of-sight observations",
+        "navigate_startrack: detection in the rendered counts on Simulate's side; inside the navigator, lost-in-space and prior-aided identification (prior from its own solution at mid-exposure), attitude solve, line-of-sight observations",
     ),
     (
         "sky ephemeris",
@@ -64,7 +64,7 @@ const SIMULATED: [(&str, &str); 8] = [
 /// Guidance in closed loop.
 const CLOSED_LOOP_GUIDANCE: (&str, &str) = (
     "guidance",
-    "navigate_route::PlanExecution and navigate_guidance::guide driven by each set's own navigation solution, and the route follower's attitude loops by its attitude and the IMU's sensed rates: closed loop, each set flies its own truth, and sensor noise is drawn per sample so sets meet the same realisation at the same route time",
+    "the flight director's navigate_guidance::guide deviation tracking on each set's own navigation solution, and Simulate's route follower's attitude loops on its attitude and the IMU's sensed rates: closed loop, each set flies its own truth, and sensor noise is drawn per sample so sets meet the same realisation at the same route time",
 );
 
 /// What this trial has measured of Navigate's behaviour, in plain words.
@@ -78,8 +78,8 @@ const FINDINGS: [(&str, &str); 6] = [
         "once the horizontal 1-sigma reaches about 800 m (tactical INS with baro, no position aid), each barometric altitude update moves the horizontal estimate by 5 to 80 m, so the estimated track jitters by up to about 150 m",
     ),
     (
-        "finding: a passed fly-over fix is never sequenced",
-        "navigate_route::PlanExecution does not sequence a track-to-fix fly-over waypoint once the position has passed it outside the capture radius, and navigate_guidance::guide then keeps flying the leg course away from it; measured: the estimate passed a fix 156 m off with a 100 m radius and the closed-loop flight ended by sequence timeout",
+        "finding: a passed fly-over fix sequences on the perpendicular",
+        "navigate_route::PlanExecution sequences a fly-over waypoint whose position passed it outside the capture radius when the position crosses the perpendicular through the fix, and reports the cross-track; measured: an INS-only navigator kilometres lost passed two fly-over fixes 120 m and 123 m off with a 100 m radius and completed the route, truly 17.7 km from the last fix",
     ),
     (
         "finding: guidance refuses above the integrity floor",

@@ -1066,7 +1066,7 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 
 [[package]]
 name = "flate2"
@@ -3059,7 +3059,7 @@ dependencies = [
 [[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3070,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3081,7 +3081,7 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3094,15 +3094,28 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-data"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+dependencies = [
+ "navigate-contract",
+ "navigate-geodesy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3114,7 +3127,7 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
@@ -3123,7 +3136,7 @@ dependencies = [
 [[package]]
 name = "navigate-guidance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3135,9 +3148,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-onboard"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
+dependencies = [
+ "nalgebra",
+ "navigate-camera",
+ "navigate-celestial",
+ "navigate-contract",
+ "navigate-data",
+ "navigate-fusion",
+ "navigate-geodesy",
+ "navigate-guidance",
+ "navigate-route",
+ "navigate-startrack",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-route"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3147,7 +3178,7 @@ dependencies = [
 [[package]]
 name = "navigate-startrack"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3160,7 +3191,7 @@ dependencies = [
 [[package]]
 name = "navigate-trajectory"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3172,7 +3203,7 @@ dependencies = [
 [[package]]
 name = "navigate-visual"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+source = "git+https://github.com/luofang34/Navigate?rev=009bce5ec899cf7cbaacb0ba1de820f1c9618448#009bce5ec899cf7cbaacb0ba1de820f1c9618448"
 dependencies = [
  "image",
  "nalgebra",
@@ -5074,6 +5105,7 @@ dependencies = [
  "navigate-fusion",
  "navigate-geodesy",
  "navigate-guidance",
+ "navigate-onboard",
  "navigate-route",
  "navigate-startrack",
  "navigate-visual",

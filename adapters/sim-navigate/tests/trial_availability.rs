@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     ComparisonRow, ImuGradeName, RecordedTrial, SensorKind, SensorSetSpec, SetAvailability,
-    SetSelection, TrialOutcome, TrialRequest, evaluate, record_trial, replay_set, star_pair_table,
+    SetSelection, TrialOutcome, TrialRequest, evaluate, record_trial, replay_set,
 };
 
 #[cfg(test)]
@@ -87,8 +87,7 @@ fn assert_fork_equal(set: &SensorSetSpec, sensor: SensorKind, schedule: &str) {
     let (request, recorded, _) = run();
     let mut scheduled_set = set.clone();
     scheduled_set.availability.insert(sensor, schedule.into());
-    let pairs = star_pair_table(request).unwrap();
-    let mut run = replay_set(request, &scheduled_set, pairs.as_ref(), &recorded.log).unwrap();
+    let mut run = replay_set(request, &scheduled_set, &recorded.log).unwrap();
     run.advance_to(&recorded.log, step(INTERVAL.0)).unwrap();
     let mut fork = run.fork(SetSelection {
         means: set.ablation_set().without(sensor.means()),

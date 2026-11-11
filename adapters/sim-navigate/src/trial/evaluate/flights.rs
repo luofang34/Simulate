@@ -1,9 +1,7 @@
 //! Closed loop: every set flies its own truth, all of them one sample
 //! slice at a time in turn.
 
-use super::{
-    ClosedTrialOutcome, SetContext, SetResult, sample_periods, star_pair_table, trial_report,
-};
+use super::{ClosedTrialOutcome, SetContext, SetResult, sample_periods, trial_report};
 use crate::trial::closed::ClosedSet;
 use crate::trial::progress::{ProgressSink, Slices};
 use crate::trial::report::RouteReport;
@@ -21,11 +19,7 @@ pub(super) fn closed_trial(
 ) -> Result<ClosedTrialOutcome, TrialError> {
     request.validate()?;
     let (sample_steps, progress_steps) = sample_periods(request)?;
-    let pairs = star_pair_table(request)?;
-    let context = SetContext {
-        pairs: pairs.as_ref(),
-        sample_steps,
-    };
+    let context = SetContext { sample_steps };
     let waypoints = plan_waypoints(&request.waypoints)?;
     let mut slices = Slices::new(sink, request, progress_steps, Vec::new())?;
     let mut flying = request
