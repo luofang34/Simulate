@@ -11,6 +11,6 @@ mod surface_ids;
 mod web;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{report_failure, run, set_title, spawn_renderer, startup_done, window_attributes};
+pub use native::{Host, run, spawn_renderer};
 #[cfg(target_arch = "wasm32")]
-pub use web::{report_failure, run, set_title, spawn_renderer, startup_done, window_attributes};
+pub use web::{Host, run, spawn_renderer};

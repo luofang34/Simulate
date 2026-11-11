@@ -9,7 +9,6 @@ use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
 use winit::event_loop::ActiveEventLoop;
 
 use super::{FlightApp, TITLE_INTERVAL_S};
-use crate::platform;
 use crate::sky_rig::wall_clock_utc_s;
 use crate::telemetry;
 
@@ -87,7 +86,7 @@ impl FlightApp {
                 )
             },
         );
-        platform::set_title(
+        self.host.set_title(
             window,
             &telemetry::title(
                 &self.flight,

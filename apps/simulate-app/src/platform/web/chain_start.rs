@@ -9,10 +9,13 @@ use sim_link_host::{CameraWorld, ChainFlight, HostError, PlanLine, chain_spec, p
 use sim_navdata::SealedPackage;
 use tracing::{info, warn};
 
+use super::PageView;
 use super::flight_run::{PageClock, fly};
 use super::monitor_view::MonitorView;
 use super::package_run::LinkPlan;
-use super::section::Section;
+use super::section::{Section, append};
+use wasm_bindgen::JsCast;
+use web_sys::HtmlCanvasElement;
 
 /// The pace a flight starts at, route seconds per wall second; the page
 /// holds it lower when it cannot afford it.
@@ -78,6 +81,24 @@ fn prepare(
     Ok((trial, world))
 }
 
+/// Starts the app's own world view at the top of `section`, above the
+/// monitor. Whatever becomes of it, the flight goes on.
+fn start_world_view(section: &Section) {
+    let document = section.document();
+    let canvas = append(document, section.root(), "canvas", "world-view")
+        .and_then(|canvas| canvas.dyn_into::<HtmlCanvasElement>().ok());
+    let line = append(document, section.root(), "p", "detail");
+    let (Some(canvas), Some(line)) = (canvas, line) else {
+        warn!("the page has no room for the world view");
+        return;
+    };
+    canvas
+        .set_attribute("aria-label", "The world outside the aircraft")
+        .ok();
+    line.set_text_content(Some("Starting the world view."));
+    super::show_world(PageView { canvas, line });
+}
+
 /// Flies the link of `plan` in `section`.
 pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedPackage>) {
     section.working(
@@ -100,6 +121,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         }
     };
     let world_note = world.as_ref().map(|_| WORLD_NOTE.to_owned());
+    start_world_view(&section);
     let Some(view) = MonitorView::inside(
         section,
         Some(START_SPEED),

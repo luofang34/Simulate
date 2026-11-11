@@ -3,19 +3,21 @@ use std::sync::Arc;
 use tracing::{Level, error};
 use tracing_wasm::WASMLayerConfigBuilder;
 use winit::event_loop::{EventLoop, EventLoopProxy};
-use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
-use winit::window::{Window, WindowAttributes};
+use winit::platform::web::EventLoopExtWebSys;
+use winit::window::Window;
 
 use crate::app::{AppEvent, FlightApp, GpuReady};
 
 mod chain_start;
 mod flight_run;
+mod host;
 mod link_start;
 mod monitor_view;
 mod package_run;
 mod progress_surface;
 mod section;
 
+pub use host::{Host, PageView};
 use progress_surface::ProgressSurface;
 
 /// Starts the app; the browser drives the event loop from here on.
@@ -41,51 +43,42 @@ pub fn run() {
         Ok(event_loop) => event_loop,
         Err(err) => {
             error!(%err, "creating the event loop failed");
-            report_failure("creating the event loop failed", &err);
+            Host::Page.report_failure("creating the event loop failed", &err);
             return;
         }
     };
-    let app = match FlightApp::new(event_loop.create_proxy()) {
+    let app = match FlightApp::new(event_loop.create_proxy(), Host::Page) {
         Ok(app) => app,
         Err(err) => {
             error!(%err, "starting the flight simulation failed");
-            report_failure("starting the flight simulation failed", &err);
+            Host::Page.report_failure("starting the flight simulation failed", &err);
             return;
         }
     };
     event_loop.spawn_app(app);
 }
 
-/// Removes the page's progress surface: the app has its first frame to draw.
-pub fn startup_done() {
-    ProgressSurface::of_page().dismiss();
-}
-
-/// Puts a failure on the page, where a visitor without the console sees it.
-pub fn report_failure(what: &str, err: &dyn std::error::Error) {
-    let mut detail = err.to_string();
-    let mut source = err.source();
-    while let Some(cause) = source {
-        detail.push('\n');
-        detail.push_str(&cause.to_string());
-        source = cause.source();
-    }
-    ProgressSurface::of_page().fail(&format!("Simulate stopped: {what}"), &detail);
-}
-
-/// Shows `title` on the page's tab: winit's own title only labels the canvas.
-pub fn set_title(_window: &Window, title: &str) {
-    if let Some(document) = web_sys::window().and_then(|window| window.document()) {
-        document.set_title(title);
-    }
-}
-
-/// Window settings for the browser: winit creates the canvas and appends it
-/// to the page body; CSS in `index.html` sizes it to the viewport.
-pub fn window_attributes() -> WindowAttributes {
-    Window::default_attributes()
-        .with_title("Simulate")
-        .with_append(true)
+/// Starts the app in `view` inside a link's page, beside the flight the page
+/// steps. A failure to start stays on the view's line.
+pub fn show_world(view: PageView) {
+    let host = Host::View(view);
+    let event_loop = match EventLoop::<AppEvent>::with_user_event().build() {
+        Ok(event_loop) => event_loop,
+        Err(err) => {
+            error!(%err, "creating the world view's event loop failed");
+            host.report_failure("creating the event loop failed", &err);
+            return;
+        }
+    };
+    let app = match FlightApp::new(event_loop.create_proxy(), host.clone()) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(%err, "starting the world view failed");
+            host.report_failure("starting the simulation failed", &err);
+            return;
+        }
+    };
+    event_loop.spawn_app(app);
 }
 
 /// Starts creating the renderer for `window`; it is posted back to the event

@@ -37,7 +37,7 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut app = match FlightApp::new(event_loop.create_proxy()) {
+    let mut app = match FlightApp::new(event_loop.create_proxy(), Host) {
         Ok(app) => app,
         Err(err) => {
             error!(%err, "starting the flight simulation failed");
@@ -54,22 +54,28 @@ pub fn run() -> ExitCode {
     }
 }
 
-/// The app has its first frame to draw; the desktop window needs no word of it.
-pub fn startup_done() {}
+/// Where the app is shown: on desktop, always its own window.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Host;
 
-/// A failure the log already carries; the desktop has no other place for it.
-pub fn report_failure(_what: &str, _err: &dyn std::error::Error) {}
+impl Host {
+    /// The app has its first frame to draw; the desktop window needs no word of it.
+    pub fn startup_done(&self) {}
 
-/// Shows `title` on the window.
-pub fn set_title(window: &Window, title: &str) {
-    window.set_title(title);
-}
+    /// A failure the log already carries; the desktop has no other place for it.
+    pub fn report_failure(&self, _what: &str, _err: &dyn std::error::Error) {}
 
-/// Window settings for desktop.
-pub fn window_attributes() -> WindowAttributes {
-    Window::default_attributes()
-        .with_title("Simulate")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+    /// Shows `title` on the window.
+    pub fn set_title(&self, window: &Window, title: &str) {
+        window.set_title(title);
+    }
+
+    /// Window settings for desktop.
+    pub fn window_attributes(&self) -> WindowAttributes {
+        Window::default_attributes()
+            .with_title("Simulate")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+    }
 }
 
 /// Creates the renderer for `window` and posts it back to the event loop.

@@ -104,13 +104,15 @@ pub struct FlightApp {
     hub: HubSettings,
     look: LookOffset,
     occluded: bool,
+    host: platform::Host,
     #[cfg(not(target_arch = "wasm32"))]
     next_occluded_tick: Option<std::time::Instant>,
 }
 
 impl FlightApp {
-    /// Initialises the flight simulation and input bindings before the GPU surface is created.
-    pub fn new(proxy: EventLoopProxy<AppEvent>) -> Result<Self, AppSimError> {
+    /// Initialises the flight simulation and input bindings before the GPU surface is created;
+    /// `host` is where the app is shown.
+    pub fn new(proxy: EventLoopProxy<AppEvent>, host: platform::Host) -> Result<Self, AppSimError> {
         let flight = Flight::new()?;
         let mut mapper = InputMapper::new(ProfileLibrary::default());
         let vehicle = flight.preferred_vehicle();
@@ -149,6 +151,7 @@ impl FlightApp {
             hub: HubSettings::new(&ScenerySource::from_environment()),
             look: LookOffset::default(),
             occluded: false,
+            host,
             #[cfg(not(target_arch = "wasm32"))]
             next_occluded_tick: None,
         })
@@ -163,7 +166,7 @@ impl FlightApp {
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, what: &str, err: &dyn std::error::Error) {
         error!(error = %err, source = ?err.source(), "{what}");
-        platform::report_failure(what, err);
+        self.host.report_failure(what, err);
         self.failed = true;
         event_loop.exit();
     }
@@ -200,7 +203,7 @@ impl FlightApp {
                     .inspect_err(|err| tracing::warn!(error = %err, "hangar preview unavailable"))
                     .ok();
                 info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
-                platform::startup_done();
+                self.host.startup_done();
                 self.cockpit_rig = Some(rig);
                 self.apply_vehicle_overlays();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
@@ -281,7 +284,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
         if self.window.is_some() {
             return;
         }
-        match event_loop.create_window(platform::window_attributes()) {
+        match event_loop.create_window(self.host.window_attributes()) {
             Ok(window) => {
                 let window = Arc::new(window);
                 self.window = Some(Arc::clone(&window));
