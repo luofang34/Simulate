@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "adapters/sim-aviate",
     "adapters/sim-indicate",
+    "adapters/sim-link-host",
     "adapters/sim-maplibre",
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
@@ -55,6 +56,7 @@ sim-geo = { path = "crates/sim-geo" }
 sim-indicate = { path = "adapters/sim-indicate" }
 sim-input = { path = "crates/sim-input" }
 sim-link = { path = "crates/sim-link" }
+sim-link-host = { path = "adapters/sim-link-host" }
 sim-maplibre = { path = "adapters/sim-maplibre" }
 sim-mission = { path = "crates/sim-mission" }
 sim-navigate = { path = "adapters/sim-navigate" }

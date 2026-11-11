@@ -1,0 +1,16 @@
+[package]
+name = "sim-link-host"
+description = "Hosts a simulation link: maps it to the trial request, summarises the plan with the Sun along the route, and words it for a page or a terminal"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+navigate-celestial = { workspace = true }
+sim-geo = { workspace = true }
+sim-link = { workspace = true }
+sim-navigate = { workspace = true }
+thiserror = { workspace = true }

@@ -61,6 +61,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-raketa` | `vehicles/raketa` | Raketa test rocket |
 | `sim-aviate` | `adapters/sim-aviate` | Aviate flight controller, in-process (Tier 0) and shared-memory (Tier 1) |
 | `sim-indicate` | `adapters/sim-indicate` | Indicate instruments, PFD/HSI, and HUD |
+| `sim-link-host` | `adapters/sim-link-host` | Hosts a simulation link: maps it to the trial request, summarises the plan with the Sun along the route, words it for a page or a terminal |
 | `sim-maplibre` | `adapters/sim-maplibre` | `maplibre-rs` out-the-window scene and instrument maps |
 | `sim-navigate` | `adapters/sim-navigate` | Navigate visual navigation and fusion |
 | `sim-pilotage` | `adapters/sim-pilotage` | Pilotage vehicle and camera bridge |

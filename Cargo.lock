@@ -5077,6 +5077,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-link-host"
+version = "0.1.0"
+dependencies = [
+ "navigate-celestial",
+ "sim-geo",
+ "sim-link",
+ "sim-navigate",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sim-maplibre"
 version = "0.1.0"
 dependencies = [

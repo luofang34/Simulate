@@ -274,3 +274,22 @@ fn the_steering_set_is_one_of_the_sets_in_any_order_of_means() {
         ],
     );
 }
+
+#[test]
+fn the_time_counts_seconds_from_1970() {
+    let seconds = |text: &str| {
+        decode_fragment(&with("t", text))
+            .unwrap()
+            .time
+            .unix_seconds()
+    };
+    assert_eq!(seconds("19700101T000000Z"), 0);
+    assert_eq!(seconds("19691231T235959Z"), -1);
+    assert_eq!(seconds("20000229T000000Z"), 951_782_400);
+    assert_eq!(seconds("20000301T000000Z"), 951_868_800);
+    assert_eq!(seconds("20260615T120000Z"), 1_781_524_800);
+    assert_eq!(
+        seconds("21000301T000000Z") - seconds("21000228T000000Z"),
+        86_400
+    );
+}

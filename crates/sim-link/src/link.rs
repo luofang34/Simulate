@@ -139,6 +139,21 @@ impl StartTime {
         }
     }
 
+    /// Seconds from 1970-01-01T00:00:00Z, on the proleptic Gregorian
+    /// calendar without leap seconds.
+    pub const fn unix_seconds(&self) -> i64 {
+        // Days from civil, counting years from March so the leap day ends
+        // a year.
+        let shifted_year = self.year as i64 - if self.month <= 2 { 1 } else { 0 };
+        let era = shifted_year.div_euclid(400);
+        let year_of_era = shifted_year.rem_euclid(400);
+        let shifted_month = (self.month as i64 + 9) % 12;
+        let day_of_year = (153 * shifted_month + 2) / 5 + self.day as i64 - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        let days = era * 146_097 + day_of_era - 719_468;
+        days * 86_400 + self.hour as i64 * 3_600 + self.minute as i64 * 60 + self.second as i64
+    }
+
     /// The link form, `YYYYMMDDTHHMMSSZ`.
     pub fn compact(&self) -> String {
         format!(
