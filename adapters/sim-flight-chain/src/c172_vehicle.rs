@@ -1,12 +1,13 @@
 //! The Cessna 172 as a vehicle a mission can command: the JSBSim airframe,
-//! its sensor suite and Aviate's fixed-wing kernel behind Pilotage's adapter.
+//! its sensor suite and Aviate's fixed-wing kernel, and the airframe
+//! Pilotage's adapter knows it as.
 
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use glam::DVec3;
 use pilotage_adapter_aviate::AviateAirframe;
 use pilotage_control_feel::{FixedWingEnvelope, ValidatedFixedWingEnvelope};
-use pilotage_protocol::{VehicleClass, VehicleId};
+use pilotage_protocol::VehicleId;
 use sim_aviate::{build_direct_fixed_wing_kernel, c172_airframe};
 use sim_core::{TICKS_PER_SECOND, TickSpan};
 use sim_devices::{
@@ -15,9 +16,7 @@ use sim_devices::{
 };
 use sim_geo::{Geodetic, UtcTime};
 
-use crate::{
-    C172Airframe, C172Start, ChainError, HostedBoard, HostedVehicle, SharedAir, VehicleIdentity,
-};
+use crate::{C172Airframe, C172Start, ChainError, HostedBoard, SharedAir};
 
 /// Cycle rate of the C172's flight controller, hertz: the one rate Aviate's
 /// fixed-wing law has flown at.
@@ -26,8 +25,6 @@ const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(C172_RATE_HZ));
 
 /// The C172's board on its airframe.
 pub type C172Board = HostedBoard<C172Airframe, FixedWingController, FixedWingMixer>;
-/// The C172 behind Pilotage's adapter API.
-pub type C172Vehicle = HostedVehicle<C172Airframe, FixedWingController, FixedWingMixer>;
 
 /// One C172 in the air.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -150,20 +147,4 @@ pub fn c172_pilotage_airframe() -> Result<AviateAirframe, ChainError> {
         .map_err(|source| ChainError::Envelope {
             detail: source.to_string(),
         })
-}
-
-/// [`c172_board`] behind Pilotage's adapter.
-pub fn c172_vehicle(
-    setup: &C172Setup,
-    suite: &SensorSuiteSpec,
-    air: SharedAir,
-) -> Result<C172Vehicle, ChainError> {
-    let identity = VehicleIdentity {
-        vehicle: setup.vehicle,
-        class: VehicleClass::FixedWing,
-        display_name: "C172 (Aviate)",
-        run_seed: setup.seed,
-    };
-    let board = c172_board(setup, suite, air)?;
-    Ok(HostedVehicle::new(identity, board, &setup.origin))
 }

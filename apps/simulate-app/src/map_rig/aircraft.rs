@@ -145,8 +145,6 @@ pub const fn ownship_visual(
         (None, None) => OwnshipVisualKind::Raketa,
         (None, Some(FreeFlightVehicle::JsbsimP38g)) => OwnshipVisualKind::P38g,
         (None, Some(FreeFlightVehicle::Kinematic)) => OwnshipVisualKind::FixedWingUav,
-        (None, Some(FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission)) => {
-            OwnshipVisualKind::QuadrotorX500
-        }
+        (None, Some(FreeFlightVehicle::AviateX500Direct)) => OwnshipVisualKind::QuadrotorX500,
     }
 }

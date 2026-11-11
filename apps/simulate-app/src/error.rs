@@ -24,17 +24,6 @@ pub enum AppSimError {
         /// Diagnostic description.
         detail: &'static str,
     },
-    /// The Pilotage-to-Aviate flight chain could not be built or stepped.
-    #[cfg(not(target_arch = "wasm32"))]
-    #[error("the Pilotage mission flight chain failed")]
-    Chain(#[from] sim_flight_chain::ChainError),
-    /// The vehicle runs on the desktop build only.
-    #[cfg(target_arch = "wasm32")]
-    #[error("{vehicle} is not available in the browser")]
-    DesktopOnly {
-        /// The vehicle's title.
-        vehicle: &'static str,
-    },
     /// Tier-0 Aviate runner step or initialization failed.
     #[error("Aviate direct bridge failed")]
     Aviate(#[from] AviateBridgeError),
