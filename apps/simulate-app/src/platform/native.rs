@@ -65,6 +65,9 @@ impl Host {
     /// A failure the log already carries; the desktop has no other place for it.
     pub fn report_failure(&self, _what: &str, _err: &dyn std::error::Error) {}
 
+    /// A line of diagnostics the log already carries; the desktop has no other place for it.
+    pub fn diagnostics(&self, _text: &str) {}
+
     /// Shows `title` on the window.
     pub fn set_title(&self, window: &Window, title: &str) {
         window.set_title(title);

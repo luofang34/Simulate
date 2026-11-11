@@ -9,8 +9,8 @@ use serde_json::Value;
 use sim_core::{AirframeArticulation, SensorExposureEvent, SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, ecef_to_geodetic};
 use sim_maplibre::{
-    AvionicsMapSet, ChartAssetStore, CockpitDeviceTier, ConformalFrameStamp, ConformalMapFrame,
-    HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
+    AvionicsMapSet, ChartAssetStore, ConformalFrameStamp, ConformalMapFrame, HostGpu,
+    InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
     TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
     UsdAircraftAsset, ViewSlotId, ViewSlotMask, tile_id_to_world_coords, truth_real_world_style,
 };
@@ -27,6 +27,7 @@ use crate::world_surface::WorldSurfaceHandle;
 
 pub(crate) mod aircraft;
 mod charts;
+mod device_tier;
 mod efb;
 mod globe;
 mod live_ground;
@@ -36,6 +37,7 @@ mod stamps;
 #[cfg(test)]
 mod tests;
 
+pub use device_tier::TierChoice;
 pub use efb::{EfbAirport, EfbCommand, EfbStatus};
 pub use globe::GlobeSelection;
 pub use preset::{AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, PFD_SVS_MAP};
@@ -99,6 +101,7 @@ pub struct MapLibreRig {
     efb: Option<efb::EfbRig>,
     efb_airport: Option<EfbAirport>,
     globe: Option<globe::GlobeRig>,
+    tier: TierChoice,
 }
 
 impl MapLibreRig {
@@ -120,9 +123,10 @@ impl MapLibreRig {
             catalog,
             live_ground,
         } = source.loader(charts.clone(), surface.runway_datum())?;
+        let tier = device_tier::choose_for(&gpu.adapter);
         let runtime = SharedMapRuntime::new(
             gpu,
-            default_device_tier(),
+            tier.tier,
             wgpu::TextureFormat::Rgba8Unorm,
             Some(loader),
         )?;
@@ -168,6 +172,7 @@ impl MapLibreRig {
             efb: None,
             efb_airport: None,
             globe: None,
+            tier,
         };
         rig.set_preset(preset)?;
         rig.surface
@@ -486,12 +491,10 @@ fn clamp_window([w, h]: [u32; 2]) -> [u32; 2] {
     [w.max(16), h.max(16)]
 }
 
-#[cfg(target_arch = "wasm32")]
-const fn default_device_tier() -> CockpitDeviceTier {
-    CockpitDeviceTier::Handheld
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-const fn default_device_tier() -> CockpitDeviceTier {
-    CockpitDeviceTier::Desktop
+impl MapLibreRig {
+    /// The tier the maps run at, and why.
+    #[must_use]
+    pub const fn tier(&self) -> &TierChoice {
+        &self.tier
+    }
 }
