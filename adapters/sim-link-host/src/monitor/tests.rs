@@ -299,3 +299,51 @@ fn the_pace_follows_the_wall_clock_without_a_debt() {
     assert_eq!(pacer.speed(), None);
     assert_eq!(pacer.frame(200.0, 1.0), f64::INFINITY);
 }
+
+/// A flight whose tick is one route second, as a recorded run at 1 Hz.
+struct Seconds(u32);
+
+impl FlightStepper for Seconds {
+    type Error = Infallible;
+
+    fn sim_time_s(&self) -> f64 {
+        f64::from(self.0)
+    }
+
+    fn step(&mut self, _out: &mut Vec<MonitorFeed>) -> Result<StepState, Infallible> {
+        self.0 = self.0.wrapping_add(1);
+        Ok(StepState::Running)
+    }
+}
+
+#[test]
+fn a_tick_longer_than_a_frame_still_keeps_the_pace() {
+    let clock = Costly {
+        now: Cell::new(0.0),
+        cost_s: 0.0,
+    };
+    let mut flight = Seconds(0);
+    let mut pacer = Pacer::new(Some(16.0));
+    let mut out = Vec::new();
+    // Ten wall seconds at 120 frames a second.
+    for frame in 0..=1200 {
+        let target_s = pacer.frame(f64::from(frame) / 120.0, flight.sim_time_s());
+        run_slice(&mut flight, &clock, 0.008, target_s, &mut out).unwrap();
+    }
+    assert!(
+        (159..=161).contains(&flight.0),
+        "{} route seconds",
+        flight.0
+    );
+    // A change of speed starts the pace again from where the flight is.
+    pacer.set_speed(Some(1.0));
+    for frame in 1201..=1320 {
+        let target_s = pacer.frame(f64::from(frame) / 120.0, flight.sim_time_s());
+        run_slice(&mut flight, &clock, 0.008, target_s, &mut out).unwrap();
+    }
+    assert!(
+        (160..=162).contains(&flight.0),
+        "{} route seconds",
+        flight.0
+    );
+}

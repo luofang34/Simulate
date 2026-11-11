@@ -52,7 +52,9 @@ pub trait Clock {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pacer {
     speed: Option<f64>,
-    target_s: f64,
+    /// The route time due; `None` until the next frame takes it from the
+    /// flight, at the start and after a change of speed.
+    target_s: Option<f64>,
     last_frame_s: Option<f64>,
 }
 
@@ -62,7 +64,7 @@ impl Pacer {
     pub const fn new(speed: Option<f64>) -> Self {
         Self {
             speed,
-            target_s: 0.0,
+            target_s: None,
             last_frame_s: None,
         }
     }
@@ -72,14 +74,20 @@ impl Pacer {
         self.speed
     }
 
-    /// Changes the speed from now on.
+    /// Changes the speed from now on: the pace starts again from where the
+    /// flight is.
     pub const fn set_speed(&mut self, speed: Option<f64>) {
         self.speed = speed;
+        self.target_s = None;
     }
 
     /// The route time to step to in the frame at `wall_s`, with the flight
     /// at `sim_s`: the wall time since the last frame, at most
-    /// [`MAX_FRAME_S`], times the speed, on from where the flight is.
+    /// [`MAX_FRAME_S`], times the speed, added to what was due. The due
+    /// time runs on its own, so a flight whose tick is longer than a frame
+    /// still keeps the pace, waiting out the frames its last tick ran
+    /// ahead; it is never more than [`MAX_FRAME_S`] of pace ahead of the
+    /// flight, so a flight slower than the pace builds no debt.
     pub fn frame(&mut self, wall_s: f64, sim_s: f64) -> f64 {
         let elapsed = self
             .last_frame_s
@@ -88,9 +96,10 @@ impl Pacer {
         let Some(speed) = self.speed else {
             return f64::INFINITY;
         };
-        let ahead_most = sim_s + MAX_FRAME_S * speed;
-        self.target_s = (self.target_s.max(sim_s) + elapsed * speed).min(ahead_most);
-        self.target_s
+        let due = self.target_s.unwrap_or(sim_s) + elapsed * speed;
+        let target = due.min(sim_s + MAX_FRAME_S * speed);
+        self.target_s = Some(target);
+        target
     }
 }
 
