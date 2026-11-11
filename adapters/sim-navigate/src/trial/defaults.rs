@@ -96,9 +96,12 @@ fn default_request(waypoints: Vec<WaypointSpec>) -> TrialRequest {
             gnss: 28_245,
             baro: 47_648,
             star_camera: 7,
+            terrain_camera: None,
         },
         output: OutputSpec::default(),
         termination: None,
+        terrain_camera: None,
+        maps: None,
     }
 }
 

@@ -9,6 +9,8 @@
 mod flights;
 mod replays;
 
+use std::sync::Arc;
+
 use navigate_contract::NavigationSolution;
 use sha2::{Digest, Sha256};
 use sim_core::SimInstant;
@@ -16,7 +18,9 @@ use sim_core::SimInstant;
 use super::availability::{ScheduledInterval, SetAvailability};
 use super::closed::{ClosedLoopOutcome, ClosedLoopReport};
 use super::comparison::comparison;
+use super::epoch::parse_utc;
 use super::gnss::GnssReceiver;
+use super::maps::OpenedPackage;
 use super::onboard::trial_navigator;
 use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
@@ -26,6 +30,7 @@ use super::report::{
 };
 use super::route::{RouteFlight, STEP_HZ, fly_route};
 use super::score::summarise;
+use super::terrain_camera::TerrainCamera;
 use super::vertical::vertical_plan;
 use super::{GuidanceSource, SensorSetSpec, TrialError, TrialRequest, model_statements};
 use crate::{Estimate, NavMeans};
@@ -68,8 +73,41 @@ pub(super) struct SetContext {
 pub fn record_trial(request: &TrialRequest) -> Result<RecordedTrial, TrialError> {
     request.validate()?;
     let flight = fly_route(request)?;
-    let log = record(request, &flight.truth)?;
+    let mut log = record(request, &flight.truth)?;
+    if let Some(camera) = terrain_camera_blocking(request)? {
+        let started = web_time::Instant::now();
+        log.terrain = camera.render_along(&flight.truth)?;
+        let frames = log.terrain.len().max(1) as f64;
+        tracing::info!(
+            frames = log.terrain.len(),
+            render_s_per_frame = started.elapsed().as_secs_f64() / frames,
+            "terrain camera frames rendered"
+        );
+    }
     Ok(RecordedTrial { flight, log })
+}
+
+/// The request's terrain camera over its world package, when a set takes
+/// visual fixes.
+pub(super) fn terrain_camera_blocking(
+    request: &TrialRequest,
+) -> Result<Option<TerrainCamera>, TrialError> {
+    let (true, Some(spec), Some(maps)) = (
+        request.uses_visual(),
+        request.terrain_camera,
+        request.maps.as_ref(),
+    ) else {
+        return Ok(None);
+    };
+    let world = OpenedPackage::open_blocking(&maps.world, "maps.world")?.scenery_blocking()?;
+    let seed = request.seeds.terrain_camera.unwrap_or_default();
+    let start = parse_utc(&request.epoch_utc)?;
+    Ok(Some(TerrainCamera::new(
+        Arc::new(world),
+        spec,
+        seed,
+        start,
+    )?))
 }
 
 /// Runs `request` end to end, in open or closed loop as it asks.
@@ -167,6 +205,7 @@ pub(super) struct SetResult {
     pub(super) tallies: SensorTallies,
     pub(super) intervals: Vec<(ScheduledInterval, SensorTallies)>,
     pub(super) stars: StarAvailability,
+    pub(super) terrain_fixes: std::collections::BTreeMap<String, u64>,
     pub(super) closed_loop: Option<ClosedLoopReport>,
 }
 
@@ -180,6 +219,7 @@ fn set_report(set: &SensorSetSpec, result: SetResult) -> SetReport {
         observations: result.tallies,
         stars: means.contains(NavMeans::Celestial).then_some(result.stars),
         series: result.series,
+        terrain_fixes: result.terrain_fixes,
         closed_loop: result.closed_loop,
     }
 }
@@ -199,12 +239,16 @@ fn trial_report(
     Ok(TrialReport {
         schema: REPORT_SCHEMA.into(),
         inputs: identity(request)?,
-        models: model_statements(request.vehicle.guidance),
+        models: model_statements(request.vehicle.guidance, request.uses_visual()),
         seeds: request.seeds,
         route,
         availability: request.availability.clone(),
         gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
         comparison: comparison(&sensor_sets, request.output.horizontal_error_threshold_m),
+        maps: match request.maps.as_ref().filter(|_| request.uses_visual()) {
+            Some(maps) => Some(super::maps::maps_report_blocking(maps)?),
+            None => None,
+        },
         sensor_sets,
     })
 }

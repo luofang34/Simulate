@@ -9,6 +9,7 @@ use super::epoch::parse_utc;
 use super::gnss::{BaroAltimeter, BaroReading, GnssFix, GnssReceiver};
 use super::route::STEP_HZ;
 use super::stars::{StarExposure, StarFrame, StarScene, StarSky, render_star_frames};
+use super::terrain_camera::TerrainFrame;
 use super::{TrialError, TrialRequest};
 use crate::{AlignmentFix, InitialAlignment, SimulatedImu, Truth};
 
@@ -41,6 +42,8 @@ pub struct SensorLog {
     /// The mid-exposure step of every frame, in order, known from the
     /// camera's schedule before the frame is read out.
     pub star_mid_steps: Vec<usize>,
+    /// Terrain camera frames; their truth part is for scoring only.
+    pub terrain: Vec<TerrainFrame>,
 }
 
 /// Steps between readings of a sensor at `rate_hz`.
@@ -98,6 +101,7 @@ pub fn record(
         gnss,
         baro,
         star_mid_steps: stars.iter().map(|frame| frame.image.mid_step).collect(),
+        terrain: Vec::new(),
         stars,
     })
 }

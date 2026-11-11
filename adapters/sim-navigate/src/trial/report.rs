@@ -34,6 +34,9 @@ pub struct TrialReport {
     pub gnss_horizontal_sigma_m: f64,
     /// Every set side by side.
     pub comparison: ComparisonTable,
+    /// The onboard and world map packages, with a visual set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maps: Option<super::maps::MapsReport>,
     /// One entry per sensor set, in request order.
     pub sensor_sets: Vec<SetReport>,
 }
@@ -109,6 +112,10 @@ pub struct SetReport {
     pub observations: SensorTallies,
     /// The star tracker's availability; `None` without stars.
     pub stars: Option<StarAvailability>,
+    /// The navigator's terrain-camera fixes by outcome and context; empty
+    /// without the visual means.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub terrain_fixes: BTreeMap<String, u64>,
     /// The scored samples.
     pub series: Vec<SeriesSample>,
     /// The set's own flight, in closed loop only.

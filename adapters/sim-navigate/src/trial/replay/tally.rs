@@ -31,6 +31,11 @@ pub struct ObservationTally {
 }
 
 impl ObservationTally {
+    /// Whether nothing was counted.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
     fn count(&mut self, outcome: Result<(), &RejectionReason>) {
         self.offered = self.offered.wrapping_add(1);
         match outcome {
@@ -73,6 +78,9 @@ pub struct SensorTallies {
     pub baro: ObservationTally,
     /// Star lines of sight; its readings are frames.
     pub stars: ObservationTally,
+    /// Terrain-camera position fixes; its readings are frames.
+    #[serde(default, skip_serializing_if = "ObservationTally::is_empty")]
+    pub terrain_camera: ObservationTally,
 }
 
 /// What became of one reading.
@@ -159,9 +167,8 @@ fn count(tallies: &mut SensorTallies, sensor: SensorKind, reading: &Reading<'_>)
             }
         }
         (SensorKind::Baro, reading) => count_one(&mut tallies.baro, reading),
-        (SensorKind::Stars | SensorKind::TerrainCamera, reading) => {
-            count_one(&mut tallies.stars, reading);
-        }
+        (SensorKind::Stars, reading) => count_one(&mut tallies.stars, reading),
+        (SensorKind::TerrainCamera, reading) => count_one(&mut tallies.terrain_camera, reading),
     }
 }
 

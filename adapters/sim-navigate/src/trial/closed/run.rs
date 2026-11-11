@@ -240,6 +240,7 @@ fn empty_log(request: &TrialRequest, start: &VehicleState) -> SensorLog {
         baro: Vec::new(),
         stars: Vec::new(),
         star_mid_steps: Vec::new(),
+        terrain: Vec::new(),
     }
 }
 

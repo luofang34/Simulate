@@ -60,10 +60,17 @@ impl TrialRequest {
             check_set(self, set)?;
         }
         let start = parse_utc(&self.epoch_utc)?;
-        if self.uses_stars() {
+        if self.uses_stars() || self.uses_visual() {
             check_sky_coverage(self, start)?;
         }
-        Ok(())
+        check_terrain_camera(self)
+    }
+
+    /// Whether any set takes terrain-camera fixes.
+    pub fn uses_visual(&self) -> bool {
+        self.sensor_sets
+            .iter()
+            .any(|set| set.means.contains(&NavMeans::Visual))
     }
 
     /// Whether any set takes star sightings, so frames need rendering.
@@ -185,5 +192,52 @@ fn check_sky_coverage(request: &TrialRequest, start: sim_geo::UtcTime) -> Result
         .catalogue_faintest_v;
     catalogue_ecef(star_camera_epoch(start, SimInstant::START), faintest)
         .map_err(|error| outside(error.to_string()))?;
+    Ok(())
+}
+
+/// The terrain camera, its seed and the map packages are present together
+/// whenever a set takes visual fixes, and each is usable as stated. The
+/// packages themselves are opened at the start of the run.
+fn check_terrain_camera(request: &TrialRequest) -> Result<(), TrialError> {
+    let invalid = |field: &'static str, detail: &str| TrialError::InvalidRequest {
+        field,
+        detail: detail.into(),
+    };
+    if let Some(camera) = &request.terrain_camera {
+        camera.validate()?;
+    }
+    if let Some(accuracy) = request
+        .maps
+        .as_ref()
+        .and_then(|maps| maps.onboard.assumed_accuracy)
+    {
+        let usable = [accuracy.horizontal_m, accuracy.vertical_m]
+            .iter()
+            .all(|sigma| sigma.is_finite() && *sigma > 0.0);
+        if !usable {
+            return Err(invalid(
+                "maps.onboard.assumed_accuracy",
+                "sigmas must be finite and positive",
+            ));
+        }
+    }
+    if !request.uses_visual() {
+        return Ok(());
+    }
+    if request.terrain_camera.is_none() {
+        return Err(invalid("terrain_camera", "a set takes visual fixes"));
+    }
+    if request.maps.is_none() {
+        return Err(invalid("maps", "a set takes visual fixes"));
+    }
+    if request.seeds.terrain_camera.is_none() {
+        return Err(invalid("seeds.terrain_camera", "a set takes visual fixes"));
+    }
+    if request.vehicle.guidance == super::GuidanceSource::Estimate {
+        return Err(invalid(
+            "vehicle.guidance",
+            "the terrain camera renders frames along a recorded flight only; closed loop with visual fixes is not wired",
+        ));
+    }
     Ok(())
 }

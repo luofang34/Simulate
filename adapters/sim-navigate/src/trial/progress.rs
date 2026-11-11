@@ -161,6 +161,8 @@ pub struct SensorStates {
     pub baro: SensorState,
     /// The star camera.
     pub stars: SensorState,
+    /// The terrain camera.
+    pub terrain_camera: SensorState,
 }
 
 /// Something that happened at an instant.
