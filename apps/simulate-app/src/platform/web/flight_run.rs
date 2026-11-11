@@ -81,9 +81,15 @@ fn apply_switches<F: FlightStepper>(flight: &mut F, before: &Controls, now: &Con
 
 /// Flies `flight` with `view` showing it, for as long as the page is open.
 /// `note` heads the status line: what is flying. With `link`, the view
-/// offers the link of the run as flown.
-pub async fn fly<F>(mut view: MonitorView, mut flight: F, note: &str, link: Option<&SimulationLink>)
-where
+/// offers the link of the run as flown. `publish` sees the flight after
+/// every slice, for other views of it.
+pub async fn fly<F>(
+    mut view: MonitorView,
+    mut flight: F,
+    note: &str,
+    link: Option<&SimulationLink>,
+    publish: &mut dyn FnMut(&F, &Monitor),
+) where
     F: FlightStepper,
     F::Error: Display,
 {
@@ -141,6 +147,7 @@ where
             for feed in out.drain(..) {
                 monitor.apply(feed);
             }
+            publish(&flight, &monitor);
             let flown = flight.outages();
             if flown != outages {
                 outages = flown;

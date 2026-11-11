@@ -18,7 +18,9 @@ mod structural;
 #[cfg(test)]
 mod tests;
 
-pub use chain_rig::SetStanding;
+#[cfg(any(target_arch = "wasm32", test))]
+pub use chain_rig::ChainSnapshot;
+pub use chain_rig::{PageFeed, SetStanding};
 pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
 
@@ -153,6 +155,12 @@ impl FreeFlightPlant {
                 VehicleState::level_flight(&spawn, heading_rad, 55.0),
             ))),
         }
+    }
+
+    /// The C172 a link's page flies, drawn from what the page publishes.
+    #[must_use]
+    pub fn page_mission(feed: PageFeed) -> Self {
+        Self::C172Mission(Box::new(chain_rig::page_chain_rig(feed)))
     }
 
     /// The C172 at the first link's start, wherever the spawn was: the link states where

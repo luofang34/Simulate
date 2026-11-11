@@ -157,6 +157,15 @@ impl FlightApp {
         })
     }
 
+    /// Draws the C172 a link's page flies, from what the page publishes on `feed`.
+    #[cfg(target_arch = "wasm32")]
+    pub fn show_page_mission(
+        &mut self,
+        feed: crate::vehicles::PageFeed,
+    ) -> Result<(), AppSimError> {
+        self.flight.show_page_mission(feed)
+    }
+
     /// Whether the app stopped because of an error.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]

@@ -44,6 +44,12 @@ impl<C: Clock> ChainFlight<C> {
         }
     }
 
+    /// The trial being flown, for a host that shows more of it than the
+    /// monitor's feed carries.
+    pub fn trial(&self) -> &ChainTrial {
+        &self.trial
+    }
+
     /// Renders and delivers the frame `request` asks for, and hands the
     /// monitor a copy.
     fn develop(

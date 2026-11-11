@@ -2,7 +2,8 @@
 //! shareable link's route through the Aviate flight controller while Navigate's sets
 //! navigate on the same devices, the same trial the browser page steps.
 //!
-//! Nobody flies this vehicle by hand; the app steps the trial and draws its true state.
+//! Nobody flies this vehicle by hand. On desktop the app steps the trial; in a link's page
+//! the page steps it and the app draws what the page publishes ([`PageFeed`]).
 
 use std::collections::BTreeMap;
 
@@ -15,6 +16,10 @@ use tracing::info;
 
 use crate::error::AppSimError;
 
+mod page;
+
+pub use page::{ChainSnapshot, PageFeed};
+
 /// One navigation set's latest standing against truth.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SetStanding {
@@ -24,11 +29,20 @@ pub struct SetStanding {
     pub sigma_horizontal_m: Option<f64>,
 }
 
-/// The chain trial and what the operator reads of it.
+/// Who steps the chain: the app, or a link's page.
+enum Source {
+    /// The app's own trial. On the heap: it carries the board, the host core and every
+    /// navigator.
+    Own(Box<ChainTrial>),
+    /// The page's trial, read through what the page publishes.
+    Page(PageFeed),
+}
+
+/// The chain and what the operator reads of it.
 pub struct ChainRig {
-    /// On the heap: the trial carries the board, the host core and every navigator.
-    trial: Box<ChainTrial>,
-    phase: Option<String>,
+    source: Source,
+    /// The chain as last stepped or published.
+    seen: ChainSnapshot,
     standings: BTreeMap<String, SetStanding>,
     /// The link's epoch, Unix seconds: the flight's civil time at its start.
     epoch_utc_s: f64,
@@ -42,11 +56,21 @@ pub(super) fn build_chain_rig() -> Result<ChainRig, AppSimError> {
         .unix_seconds();
     let trial = ChainTrial::new(&spec, &DirectoryStores)?;
     Ok(ChainRig {
-        trial: Box::new(trial),
-        phase: None,
+        seen: ChainSnapshot::of(&trial, None),
+        source: Source::Own(Box::new(trial)),
         standings: BTreeMap::new(),
         epoch_utc_s,
     })
+}
+
+/// The C172 a link's page flies, drawn from `feed`.
+pub(super) fn page_chain_rig(feed: PageFeed) -> ChainRig {
+    ChainRig {
+        seen: feed.latest(),
+        epoch_utc_s: feed.epoch_utc_s(),
+        source: Source::Page(feed),
+        standings: BTreeMap::new(),
+    }
 }
 
 impl ChainRig {
@@ -61,59 +85,66 @@ impl ChainRig {
     }
 
     /// The true vehicle state.
-    pub(super) fn state(&self) -> VehicleState {
-        self.trial.chain().true_state()
+    pub(super) const fn state(&self) -> VehicleState {
+        self.seen.state
     }
 
     /// The true specific force in body forward-right-down axes, m/s².
-    pub(super) fn specific_force_frd_m_s2(&self) -> DVec3 {
-        self.trial
-            .chain()
-            .board()
-            .airframe()
-            .specific_force_body_m_s2()
+    pub(super) const fn specific_force_frd_m_s2(&self) -> DVec3 {
+        self.seen.specific_force_frd_m_s2
     }
 
     /// The flight model's engine.
-    pub(super) fn engine_status(&self) -> EngineStatus {
-        self.trial.chain().board().airframe().fdm().engine_status()
+    pub(super) const fn engine_status(&self) -> EngineStatus {
+        self.seen.engine
     }
 
     /// The flight model's surfaces, gear and propeller.
-    pub(super) fn articulation(&self) -> AirframeArticulation {
-        self.trial.chain().board().airframe().fdm().articulation()
+    pub(super) const fn articulation(&self) -> AirframeArticulation {
+        self.seen.articulation
     }
 
     /// Whether the flight controller is armed.
-    pub(super) fn armed(&self) -> bool {
-        self.trial.chain().board().controller().is_armed()
+    pub(super) const fn armed(&self) -> bool {
+        self.seen.armed
     }
 
     /// Pilotage's mission phase, in its own words.
     pub(super) fn phase(&self) -> Option<&str> {
-        self.phase.as_deref()
+        self.seen.phase.as_deref()
     }
 
-    /// Each navigation set's latest standing, by set name.
+    /// Each navigation set's latest standing, by set name; a page's flight reports its
+    /// sets on the page.
     pub(super) const fn standings(&self) -> &BTreeMap<String, SetStanding> {
         &self.standings
     }
 
-    /// One flight-controller cycle, and the trial's reports of it.
+    /// One flight-controller cycle of the app's own trial, and its reports; for a page's
+    /// flight, the page's latest snapshot.
     pub(super) fn step(&mut self) -> Result<(), AppSimError> {
+        let trial = match &mut self.source {
+            Source::Own(trial) => trial,
+            Source::Page(feed) => {
+                self.seen = feed.latest();
+                return Ok(());
+            }
+        };
         // The desktop trial has no terrain camera, so no frame is ever asked for.
-        let outputs = match self.trial.step()? {
+        let outputs = match trial.step()? {
             StepOutcome::Advanced(outputs) | StepOutcome::FrameWanted(_, outputs) => outputs,
         };
+        let mut phase = self.seen.phase.take();
         for update in outputs.mission {
             for event in &update.events {
                 info!(at_s = update.t_s, event, "Pilotage mission");
             }
-            if update.phase != self.phase {
+            if update.phase != phase {
                 info!(at_s = update.t_s, phase = ?update.phase, "mission phase");
-                self.phase = update.phase;
+                phase = update.phase;
             }
         }
+        self.seen = ChainSnapshot::of(trial, phase);
         for record in outputs.records {
             if let ProgressRecord::Sample(sample) = record {
                 self.standings.insert(

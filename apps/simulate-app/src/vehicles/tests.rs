@@ -49,6 +49,7 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
     }
 }
 mod gear_datum;
+mod page_mission;
 
 /// An airborne P-38G spawns with both engines turning: its level-flight trim does not
 /// converge (the constant-speed governors), and the failed trim must leave the running

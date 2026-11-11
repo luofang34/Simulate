@@ -96,6 +96,8 @@ pub struct Flight {
     solar: Arc<SolarSystem>,
     epoch: SimEpoch,
     model_origins: crate::vehicles::ModelOrigins,
+    /// A link's page whose flight the C172 mission draws, when the app runs inside one.
+    page: Option<crate::vehicles::PageFeed>,
 }
 
 impl Flight {
@@ -117,6 +119,7 @@ impl Flight {
             &surface,
             &time_scales,
             &solar,
+            None,
         )?;
         let epoch = mode.sim_epoch();
         let prev_vehicle = mode.vehicle();
@@ -143,6 +146,7 @@ impl Flight {
             solar,
             epoch,
             model_origins: crate::vehicles::ModelOrigins::default(),
+            page: None,
         };
         flight.begin_flight()?;
         Ok(flight)

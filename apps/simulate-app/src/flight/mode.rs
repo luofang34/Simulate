@@ -16,7 +16,7 @@ use super::sensors::{OPTICAL_SENSOR_CHANNEL, OPTICAL_SENSOR_PERIOD};
 use super::space_world::SpaceWorld;
 use crate::error::AppSimError;
 use crate::sky_rig::wall_clock_utc_s;
-use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
+use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle, PageFeed};
 use crate::world_surface::WorldSurfaceHandle;
 
 const SCENARIO_OWNSHIP: VesselId = VesselId(1);
@@ -207,6 +207,7 @@ impl Mode {
         surface: &WorldSurfaceHandle,
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
+        page: Option<&PageFeed>,
     ) -> Result<Self, AppSimError> {
         Self::free_at(
             vehicle,
@@ -214,6 +215,7 @@ impl Mode {
             surface,
             scales,
             solar,
+            page,
             wall_clock_utc_s().floor(),
         )
     }
@@ -224,20 +226,30 @@ impl Mode {
         surface: &WorldSurfaceHandle,
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
+        page: Option<&PageFeed>,
         utc_s: f64,
     ) -> Result<Self, AppSimError> {
-        let plant = match spawn {
-            FreeSpawn::Delaware => FreeFlightPlant::new(vehicle)?,
-            FreeSpawn::At {
-                spawn,
-                heading_rad,
-                field_elev_m,
-            } => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?,
-            FreeSpawn::Ground {
-                spawn,
-                heading_rad,
-                cold,
-            } => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold)?,
+        let plant = match (spawn, page) {
+            (_, Some(feed)) if vehicle == FreeFlightVehicle::C172Mission => {
+                FreeFlightPlant::page_mission(feed.clone())
+            }
+            (FreeSpawn::Delaware, _) => FreeFlightPlant::new(vehicle)?,
+            (
+                FreeSpawn::At {
+                    spawn,
+                    heading_rad,
+                    field_elev_m,
+                },
+                _,
+            ) => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?,
+            (
+                FreeSpawn::Ground {
+                    spawn,
+                    heading_rad,
+                    cold,
+                },
+                _,
+            ) => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold)?,
         };
         let mut panel = Box::new(CockpitInstrumentPanel::new(SimInstant::START));
         observe(&mut panel, &plant, SimInstant::START);

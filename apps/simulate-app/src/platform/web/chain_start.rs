@@ -5,8 +5,11 @@
 
 use navigate_data::MemoryStore;
 use sim_chain_trial::ChainTrial;
-use sim_link_host::{CameraWorld, ChainFlight, HostError, PlanLine, chain_spec, page_stores};
+use sim_link_host::{
+    CameraWorld, ChainFlight, HostError, Monitor, PlanLine, chain_spec, page_stores,
+};
 use sim_navdata::SealedPackage;
+use sim_navigate::trial::parse_utc;
 use tracing::{info, warn};
 
 use super::PageView;
@@ -14,6 +17,7 @@ use super::flight_run::{PageClock, fly};
 use super::monitor_view::MonitorView;
 use super::package_run::LinkPlan;
 use super::section::{Section, append};
+use crate::vehicles::{ChainSnapshot, PageFeed};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 
@@ -82,8 +86,9 @@ fn prepare(
 }
 
 /// Starts the app's own world view at the top of `section`, above the
-/// monitor. Whatever becomes of it, the flight goes on.
-fn start_world_view(section: &Section) {
+/// monitor, drawing the flight `feed` publishes. Whatever becomes of it, the
+/// flight goes on.
+fn start_world_view(section: &Section, feed: PageFeed) {
     let document = section.document();
     let canvas = append(document, section.root(), "canvas", "world-view")
         .and_then(|canvas| canvas.dyn_into::<HtmlCanvasElement>().ok());
@@ -96,7 +101,7 @@ fn start_world_view(section: &Section) {
         .set_attribute("aria-label", "The world outside the aircraft")
         .ok();
     line.set_text_content(Some("Starting the world view."));
-    super::show_world(PageView { canvas, line });
+    super::show_world(PageView { canvas, line }, feed);
 }
 
 /// Flies the link of `plan` in `section`.
@@ -121,7 +126,19 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         }
     };
     let world_note = world.as_ref().map(|_| WORLD_NOTE.to_owned());
-    start_world_view(&section);
+    let feed = match parse_utc(&plan.request.trial.epoch_utc) {
+        Ok(epoch) => Some(PageFeed::new(
+            epoch.unix_seconds(),
+            ChainSnapshot::of(&trial, None),
+        )),
+        Err(error) => {
+            warn!(%error, "the link's epoch does not parse; no world view");
+            None
+        }
+    };
+    if let Some(feed) = &feed {
+        start_world_view(&section, feed.clone());
+    }
     let Some(view) = MonitorView::inside(
         section,
         Some(START_SPEED),
@@ -133,5 +150,13 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         return;
     };
     let flight = ChainFlight::new(trial, world, PageClock::of_page());
-    fly(view, flight, NOTE, Some(&plan.link)).await;
+    let mut publish = |flight: &ChainFlight<PageClock>, monitor: &Monitor| {
+        if let Some(feed) = &feed {
+            feed.publish(ChainSnapshot::of(
+                flight.trial(),
+                monitor.phase().map(str::to_owned),
+            ));
+        }
+    };
+    fly(view, flight, NOTE, Some(&plan.link), &mut publish).await;
 }

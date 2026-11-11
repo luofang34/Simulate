@@ -299,6 +299,7 @@ fn free_flight_preserves_wall_clock_outside_de440_while_spaceflight_flags_clampe
         &flight.surface,
         &flight.time_scales,
         &flight.solar,
+        None,
         out_of_kernel_utc_s,
     )
     .expect("free mode at 2030");

@@ -7,6 +7,7 @@ use winit::platform::web::EventLoopExtWebSys;
 use winit::window::Window;
 
 use crate::app::{AppEvent, FlightApp, GpuReady};
+use crate::vehicles::PageFeed;
 
 mod chain_start;
 mod flight_run;
@@ -58,9 +59,9 @@ pub fn run() {
     event_loop.spawn_app(app);
 }
 
-/// Starts the app in `view` inside a link's page, beside the flight the page
-/// steps. A failure to start stays on the view's line.
-pub fn show_world(view: PageView) {
+/// Starts the app in `view` inside a link's page, drawing the flight the page
+/// steps and publishes on `feed`. A failure to start stays on the view's line.
+pub fn show_world(view: PageView, feed: PageFeed) {
     let host = Host::View(view);
     let event_loop = match EventLoop::<AppEvent>::with_user_event().build() {
         Ok(event_loop) => event_loop,
@@ -70,15 +71,17 @@ pub fn show_world(view: PageView) {
             return;
         }
     };
-    let app = match FlightApp::new(event_loop.create_proxy(), host.clone()) {
-        Ok(app) => app,
+    let app = FlightApp::new(event_loop.create_proxy(), host.clone()).and_then(|mut app| {
+        app.show_page_mission(feed)?;
+        Ok(app)
+    });
+    match app {
+        Ok(app) => event_loop.spawn_app(app),
         Err(err) => {
             error!(%err, "starting the world view failed");
             host.report_failure("starting the simulation failed", &err);
-            return;
         }
-    };
-    event_loop.spawn_app(app);
+    }
 }
 
 /// Starts creating the renderer for `window`; it is posted back to the event

@@ -136,7 +136,19 @@ impl Flight {
             &self.surface,
             &self.time_scales,
             &self.solar,
+            self.page.as_ref(),
         )
+    }
+
+    /// Draws the C172 a link's page flies, from what the page publishes on `feed`: the
+    /// page steps the one trial, and this flight only shows it.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn show_page_mission(
+        &mut self,
+        feed: crate::vehicles::PageFeed,
+    ) -> Result<(), AppSimError> {
+        self.page = Some(feed);
+        self.select_vehicle(FreeFlightVehicle::C172Mission)
     }
 
     /// Starts free flight on the preferred vehicle at `spawn`; later free flights and
