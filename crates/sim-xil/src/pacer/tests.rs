@@ -47,9 +47,9 @@ fn late_steps_count_overruns_and_long_stalls_reanchor() {
 fn instants_before_the_anchor_never_wait() {
     let mut pacer = RealtimePacer::anchored_at(at_ms(500));
     assert_eq!(pacer.origin(), at_ms(500));
-    let started = Instant::now();
     pacer.pace_until(at_ms(100), Duration::from_millis(2));
-    assert!(started.elapsed() < Duration::from_millis(50));
+    assert_eq!(pacer.stats().steps, 1);
+    assert_eq!(pacer.stats().total_sleep_us, 0);
     assert_eq!(sim_offset(at_ms(500), at_ms(100)), Duration::ZERO);
     assert_eq!(
         sim_offset(SimInstant::START, at_ms(1_250)),

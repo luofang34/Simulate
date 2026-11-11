@@ -21,7 +21,9 @@ fn tier0_x500_climbs_and_replays_bit_identically_with_industrial_noise() {
     assert_eq!(run_a.final_state, run_b.final_state);
     let climbed = run_a.final_geodetic.height_m - origin.height_m;
     assert!(climbed > 2.5 && climbed < 5.5, "climbed {climbed:.3} m");
-    assert!(run_a.realtime_speedup > 10.0);
+    // Tier 0 runs unpaced: no pacer step is ever taken, so speed is bounded by compute alone.
+    assert_eq!(run_a.pacer_stats, sim_xil::PacerStats::default());
+    assert!((run_a.simulated_seconds - 5.0).abs() < 1e-9);
 }
 
 #[test]
@@ -228,7 +230,6 @@ fn tier1_realtime_paces_to_wall_clock_while_lockstep_runs_faster() {
     };
     let fast = run_tier1_shm_x500(origin, 0.10, lockstep, hover_peer).unwrap();
     assert_eq!(fast.steps_executed, 40);
-    assert!(fast.realtime_speedup > 1.0, "{}", fast.realtime_speedup);
     assert_eq!(fast.pacer_stats, sim_xil::PacerStats::default());
 }
 
