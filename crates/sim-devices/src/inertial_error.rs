@@ -40,8 +40,11 @@ pub struct TriadErrorSpec {
     /// increment over `dt` carries `noise_density·√dt` of it, the variance a
     /// filter with this continuous density assumes.
     pub noise_density: f64,
-    /// In-run bias; its turn-on value is a draw from the stationary
-    /// distribution.
+    /// 1-sigma of the turn-on bias: a random constant drawn at each
+    /// power-up, the part's initial offset.
+    pub turn_on_bias_sigma: f64,
+    /// In-run bias on top of the turn-on constant; its first value is a
+    /// draw from the stationary distribution.
     pub bias: GaussMarkov,
     /// Density of a further random walk on the bias, unit/s/√Hz.
     pub bias_random_walk_density: f64,
@@ -55,6 +58,7 @@ impl TriadErrorSpec {
     /// A perfect triad.
     pub const IDEAL: Self = Self {
         noise_density: 0.0,
+        turn_on_bias_sigma: 0.0,
         bias: GaussMarkov::NONE,
         bias_random_walk_density: 0.0,
         scale_factor_sigma: 0.0,
@@ -64,6 +68,7 @@ impl TriadErrorSpec {
     fn validate(&self, triad: &'static str) -> Result<(), DeviceError> {
         let fields = [
             ("noise_density", self.noise_density),
+            ("turn_on_bias_sigma", self.turn_on_bias_sigma),
             ("bias.sigma", self.bias.sigma),
             ("bias_random_walk_density", self.bias_random_walk_density),
             ("scale_factor_sigma", self.scale_factor_sigma),
@@ -122,6 +127,7 @@ pub struct InertialIncrement {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TriadState {
     sensitivity: DMat3,
+    turn_on: DVec3,
     markov: DVec3,
     walk: DVec3,
 }
@@ -136,15 +142,23 @@ impl TriadState {
             DVec3::new(upper.x, 1.0 + scale.y, lower.z),
             DVec3::new(upper.y, upper.z, 1.0 + scale.z),
         );
+        let markov = noise.next_vec3(DVec3::splat(spec.bias.sigma));
+        // Drawn last, and only for a part that has one, so a unit without a
+        // turn-on constant draws the stream it always drew.
+        let turn_on = match spec.turn_on_bias_sigma > 0.0 {
+            true => noise.next_vec3(DVec3::splat(spec.turn_on_bias_sigma)),
+            false => DVec3::ZERO,
+        };
         Self {
             sensitivity,
-            markov: noise.next_vec3(DVec3::splat(spec.bias.sigma)),
+            turn_on,
+            markov,
             walk: DVec3::ZERO,
         }
     }
 
     fn bias(&self) -> DVec3 {
-        self.markov + self.walk
+        self.turn_on + self.markov + self.walk
     }
 
     /// One interval's reading of `ideal`, then the bias moves on to the next
@@ -216,8 +230,14 @@ impl ImuErrorModel {
     /// can be flown again with that very unit. The bias wanders on from
     /// there by its model.
     pub fn set_accel_bias_m_s2(&mut self, bias: DVec3) {
-        self.accel.markov = bias;
+        self.accel.turn_on = bias;
+        self.accel.markov = DVec3::ZERO;
         self.accel.walk = DVec3::ZERO;
+    }
+
+    /// The gyroscopes' turn-on bias, rad/s: the constant this power-up drew.
+    pub fn gyro_turn_on_bias_rad_s(&self) -> DVec3 {
+        self.gyro.turn_on
     }
 
     /// The gyroscope bias the next interval carries, rad/s.

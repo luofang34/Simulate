@@ -220,6 +220,8 @@ impl ChainTrial {
             self.navigate(step)?;
         }
         let events = self.chain.drain_events();
+        let sequenced = self.records.sequenced(&events);
+        self.pending.records.extend(sequenced);
         let phase = self.chain.status().mission_state.map(|s| format!("{s:?}"));
         if let Some(update) = self.records.mission(self.now_s(), phase, &events) {
             self.pending.mission.push(update);
