@@ -2,7 +2,6 @@
 //! Navigate's plan executor and guidance, so navigation error moves the true
 //! flight. The pilot sees no truth.
 
-use sha2::{Digest, Sha256};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     ClosedLoopReport, EventKind, GuidanceSource, ImuGradeName, Pilot, ProgressRecord, QualityFloor,
@@ -25,12 +24,6 @@ const LOST_MISS_TOLERANCE: f64 = 0.10;
 /// Time after GNSS returns within which true cross-track must be back under
 /// the GNSS-aided bound, seconds.
 const PULL_BACK_S: f64 = 120.0;
-/// SHA-256 of the open-loop result of [`open_loop_reference`]. Closed loop,
-/// slice interleaving and progress must leave every byte of it alone; only
-/// a change of the result schema may move it, with every number checked
-/// equal.
-const OPEN_LOOP_RESULT_SHA256: &str =
-    "dcc66b596f9f05153025bc6e3f393179a1fa59074c468bffa83e73cbe5fbc6fd";
 
 #[cfg(test)]
 fn init_tracing() {
@@ -308,30 +301,4 @@ fn check_closed_stream(records: &[ProgressRecord], request: &TrialRequest) {
     for set in &request.sensor_sets {
         assert_eq!(sequenced.get(&set.name), Some(&request.waypoints.len()));
     }
-}
-
-#[cfg(test)]
-fn open_loop_reference() -> TrialRequest {
-    let mut request = requests::request(
-        requests::straight(1.0),
-        ImuGradeName::Tactical,
-        requests::reference_sets(),
-    );
-    request.stars.period_s = 10.0;
-    request.availability = vec![requests::gnss_jammed(20.0, 40.0)];
-    request
-}
-
-/// (e) Closed loop leaves an open-loop result byte for byte as it was.
-#[test]
-fn open_loop_results_are_unchanged() {
-    let json = run_trial(&open_loop_reference())
-        .unwrap()
-        .to_json()
-        .unwrap();
-    let digest: String = Sha256::digest(json.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    assert_eq!(digest, OPEN_LOOP_RESULT_SHA256);
 }

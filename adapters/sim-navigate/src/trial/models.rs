@@ -26,7 +26,7 @@ const NAVIGATE: [(&str, &str); 5] = [
 ];
 
 /// Simulate's models in the trial.
-const SIMULATED: [(&str, &str); 7] = [
+const SIMULATED: [(&str, &str); 8] = [
     (
         "vehicle",
         "sim_core::KinematicModel: stick to body rate (at most 1.0, 0.35, 0.2 rad/s), throttle to 30-120 m/s, velocity along the nose, no aerodynamics or wind; flown by Simulate's attitude autopilot under a bank- and climb-limited route follower",
@@ -50,6 +50,10 @@ const SIMULATED: [(&str, &str); 7] = [
     (
         "star camera",
         "sim_render::StarCamera radiometric 1024 x 1024, 20 degree tracker on a roof mount, moving 0.1 s exposure from the true poses; sky brightness from the Sun's elevation and the line of sight (night, twilight, day table with airmass and Rayleigh phase), no Moon, cloud or aerosol",
+    ),
+    (
+        "reproducibility",
+        "a result is bit-reproducible on one platform; across platforms it agrees only to numeric tolerances, not to the bit, because floating-point functions and fused multiply-adds differ between targets",
     ),
     (
         "scoring",
