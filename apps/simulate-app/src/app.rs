@@ -403,7 +403,8 @@ impl FlightApp {
     /// offscreen-only pulse while occluded so unpaused flight and in-flight map tiles stay
     /// resident in VRAM without touching `surface.get_current_texture()`.
     fn pace_after_events(&mut self, event_loop: &ActiveEventLoop) {
-        if !self.occluded {
+        // A page's map is on screen of its own and keeps the frame loop going.
+        if !self.occluded || self.page_map.is_some() {
             event_loop.set_control_flow(ControlFlow::Wait);
             if let Some(window) = &self.window {
                 window.request_redraw();

@@ -203,12 +203,7 @@ impl FlightApp {
             return;
         }
         if self.occluded {
-            if let Some(renderer) = &self.renderer
-                && let Err(err) = renderer.device().poll(wgpu::PollType::Poll)
-            {
-                tracing::debug!(?err, "occluded GPU poll failed");
-            }
-            return;
+            return self.present_occluded();
         }
         self.present(
             event_loop,
@@ -240,7 +235,24 @@ impl FlightApp {
             Ok(FrameOutcome::Presented | FrameOutcome::Skipped) => {}
             Err(err) => return self.fail(event_loop, "rendering failed", &err),
         }
-        if let (Some(presenter), Some(rig), Some(link)) = (
+        self.present_page_map();
+    }
+
+    /// While the window is occluded: no window frame, but the GPU's work goes on, and the
+    /// page's map, a surface of its own, may be on screen while the world view is not.
+    fn present_occluded(&mut self) {
+        if let Some(renderer) = &self.renderer
+            && let Err(err) = renderer.device().poll(wgpu::PollType::Poll)
+        {
+            tracing::debug!(?err, "occluded GPU poll failed");
+        }
+        self.present_page_map();
+    }
+
+    /// Shows the EFB's expanded view on the page's map canvas, when there is one.
+    fn present_page_map(&mut self) {
+        if let (Some(renderer), Some(presenter), Some(rig), Some(link)) = (
+            self.renderer.as_ref(),
             self.page_map.as_mut(),
             self.cockpit_rig.as_mut(),
             self.flight.page_map(),

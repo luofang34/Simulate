@@ -10,6 +10,10 @@ use super::EfbRig;
 use crate::error::AppSimError;
 use crate::page_map::{FixLabel, PageMapInput, PageMapView, PickedFix};
 
+/// The page map's first zoom: a route of a few tens of kilometres in view, where the
+/// tablet's own starts closer in.
+const PAGE_ZOOM: f64 = 10.5;
+
 /// How near a fix a tap picks it, CSS pixels: a fingertip's reach.
 #[cfg(any(target_arch = "wasm32", test))]
 const PICK_RADIUS_CSS_PX: f32 = 16.0;
@@ -70,6 +74,8 @@ impl MapLibreRig {
         if !efb.surface.all_views_shown() {
             efb.surface.set_all_views_shown(true);
             efb.command(super::EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb))?;
+            let zoom = PAGE_ZOOM - efb.surface.zoom();
+            efb.command(super::EfbCommand::ZoomBy(zoom))?;
         }
         for command in input.commands {
             efb.command(command)?;

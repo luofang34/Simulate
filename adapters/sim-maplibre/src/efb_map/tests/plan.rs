@@ -172,8 +172,8 @@ fn sample_efb() -> Option<EfbMapSurface> {
         &SceneryEndpoints::catalog(0, 0),
         serde_json::json!({ "type": "FeatureCollection", "features": [] }),
         EfbMapConfig {
-            compact_size: [160, 120],
-            expanded_size: [320, 240],
+            compact_size: [320, 240],
+            expanded_size: [480, 360],
             ..EfbMapConfig::default()
         },
     )
@@ -181,58 +181,133 @@ fn sample_efb() -> Option<EfbMapSurface> {
     Some(efb)
 }
 
-fn magenta_pixels(rgba: &[u8]) -> usize {
-    rgba.as_chunks::<4>()
-        .0
-        .iter()
-        .filter(|&&[r, g, b, _]| r > 200 && g < 120 && b > 200)
-        .count()
+/// Whether a magenta pixel lies within 3 pixels of `at` in a `width`-wide frame.
+fn magenta_near(rgba: &[u8], width: u32, [x, y]: [f32; 2]) -> bool {
+    let pixels = rgba.as_chunks::<4>().0;
+    (-3_i64..=3).any(|dy| {
+        (-3_i64..=3).any(|dx| {
+            let (px, py) = (x as i64 + dx, y as i64 + dy);
+            px >= 0
+                && py >= 0
+                && usize::try_from(py * i64::from(width) + px)
+                    .ok()
+                    .and_then(|i| pixels.get(i))
+                    .is_some_and(|&[r, g, b, _]| r > 200 && g < 120 && b > 200)
+        })
+    })
 }
 
-/// The inset and the expanded view are views of one map: shown together, both draw the
-/// plan's active leg, and each places the fixes by its own camera.
+/// The inset and the expanded view are views of one map: shown together, each draws the
+/// plan's active leg where its own camera puts it, though one is track up at the inset's
+/// zoom and the other north up two levels out, as a page's map starts.
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn both_views_draw_the_same_plan_layers_with_their_own_cameras() {
     let Some(mut efb) = sample_efb() else {
         return;
     };
-    efb.set_route(&plan(), RouteProgress::after_sequenced(Some((0, false))))
+    let long = FlightPlan {
+        origin: Some([40.69, -74.40]),
+        fixes: vec![
+            fix(10, "AAA", 40.69, -74.38),
+            fix(11, "BBB", 40.69, -74.08),
+            fix(12, "CCC", 40.79, -74.08),
+        ],
+    };
+    efb.set_route(&long, RouteProgress::after_sequenced(Some((0, false))))
         .expect("route");
     efb.set_all_views_shown(true);
     efb.set_display_mode(EfbDisplayMode::ExpandedEfb);
+    efb.resize_expanded([1664, 1031]).expect("resize");
+    efb.set_pixel_ratio(2.0);
     efb.set_follow_mode(EfbFollowMode::FollowNorthUp);
-    efb.zoom_by(-1.0);
+    let own = crate::ChartOwnship {
+        lat_deg: 40.69,
+        lon_deg: -74.23,
+        true_heading_deg: 90.0,
+        ground_velocity_en_mps: [50.0, 0.0],
+    };
     let symbology = ChartSymbologyInput {
         camera: efb.camera().spec(),
         viewport_px: [1, 1],
-        ownship: None,
+        ownship: Some(own),
         runway: None,
         traffic: &[],
     };
-    let mut drawn = [0, 0];
-    for mode in [EfbDisplayMode::ExpandedEfb, EfbDisplayMode::CompactCorner] {
-        efb.set_display_mode(mode);
-        for _ in 0..120 {
-            efb.render(&symbology).expect("frame");
-            if !efb.needs_redraw() {
-                break;
-            }
-            std::thread::yield_now();
-        }
-        let index = super::super::mode_index(mode);
-        drawn[index] = magenta_pixels(&efb.read_active_rgba().expect("rgba"));
-    }
-    assert!(drawn.iter().all(|&n| n > 20), "magenta pixels {drawn:?}");
-    let zooms = [EfbDisplayMode::CompactCorner, EfbDisplayMode::ExpandedEfb]
-        .map(|mode| efb.camera_spec(mode).map(|spec| spec.zoom));
-    assert_ne!(zooms[0], zooms[1], "each view keeps its own zoom");
+    settle(&mut efb, &symbology);
+    efb.zoom_by(-2.0);
+    grow_tracks(&mut efb, &symbology);
+    settle(&mut efb, &symbology);
+    let specs = [EfbDisplayMode::CompactCorner, EfbDisplayMode::ExpandedEfb]
+        .map(|mode| efb.camera_spec(mode).expect("camera"));
+    assert!(
+        (specs[0].zoom - specs[1].zoom).abs() > 0.5,
+        "each view keeps its own zoom"
+    );
+    assert_ne!(
+        specs[0].bearing_deg, specs[1].bearing_deg,
+        "track up and north up"
+    );
     for mode in [EfbDisplayMode::CompactCorner, EfbDisplayMode::ExpandedEfb] {
         let positions = efb.fix_positions(mode);
-        assert_eq!(positions.len(), 3);
-        let first = positions[0].expect("first fix on screen");
-        let picked = efb.pick_fix(mode, [first[0] + 3.0, first[1]], 12.0);
-        assert_eq!(picked.map(|p| p.id), Some(FixId(10)));
+        let (Some(a), Some(b)) = (positions[0], positions[1]) else {
+            panic!("the active leg's ends project in {mode:?}: {positions:?}");
+        };
+        // A point of the active leg (the first fix to the second) clear of ownship.
+        let on_leg = [a[0] + (b[0] - a[0]) * 0.42, a[1] + (b[1] - a[1]) * 0.42];
+        let rgba = efb_view_rgba(&mut efb, mode, &symbology);
+        let [width, _] = efb.size_of(mode);
+        assert!(
+            magenta_near(&rgba, width, on_leg),
+            "the active leg passes {on_leg:?} in {mode:?}"
+        );
+        let picked = efb.pick_fix(mode, [b[0] + 3.0, b[1]], 12.0);
+        assert_eq!(picked.map(|p| p.id), Some(FixId(11)));
         assert_eq!(efb.pick_fix(mode, [-500.0, -500.0], 12.0), None);
     }
+}
+
+/// Draws until the map has nothing left to load.
+fn settle(efb: &mut EfbMapSurface, symbology: &ChartSymbologyInput<'_>) {
+    for _ in 0..200 {
+        efb.render(symbology).expect("frame");
+        if !efb.needs_redraw() {
+            break;
+        }
+        std::thread::yield_now();
+    }
+}
+
+/// Hands over a growing track while the views draw, as a page does.
+fn grow_tracks(efb: &mut EfbMapSurface, symbology: &ChartSymbologyInput<'_>) {
+    for step in 0..40_u32 {
+        let points = (0..step.wrapping_add(2))
+            .map(|i| [40.69, -74.38 + 0.0025 * f64::from(i)])
+            .collect();
+        let tracks = EfbTracks {
+            lines: vec![TrackLine {
+                colour: [0xff, 0xe0, 0x66],
+                width_px: 2.0,
+                points,
+            }],
+            ..EfbTracks::default()
+        };
+        efb.set_tracks(tracks).expect("tracks");
+        efb.render(symbology).expect("frame");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// `mode`'s last frame, read back with it focused and every view drawn once more.
+fn efb_view_rgba(
+    efb: &mut EfbMapSurface,
+    mode: EfbDisplayMode,
+    symbology: &ChartSymbologyInput<'_>,
+) -> Vec<u8> {
+    let focus = efb.display_mode();
+    efb.focus = mode;
+    efb.render(symbology).expect("frame");
+    let rgba = efb.read_active_rgba().expect("rgba");
+    efb.focus = focus;
+    rgba
 }
