@@ -17,9 +17,11 @@ use crate::UniverseError;
 use crate::bus::{VesselBusConfig, VesselBusState};
 use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
 use crate::local::{LocalFactory, LocalPlant};
+use crate::planning::Planner;
 use crate::tiering::{TierChange, TierPolicy, planetary_dynamic_pressure_pa};
 
 mod checkpoint;
+mod planned;
 
 pub use checkpoint::UniverseCheckpoint;
 
@@ -78,6 +80,7 @@ pub struct Universe {
     policy: Option<TierPolicy>,
     tier_changes: Vec<TierChange>,
     state_reinitializations: u64,
+    planner: Planner,
 }
 
 impl Universe {
@@ -114,6 +117,7 @@ impl Universe {
             policy: None,
             tier_changes: Vec::new(),
             state_reinitializations: 0,
+            planner: Planner::new(),
         }
     }
 
@@ -316,13 +320,9 @@ impl Universe {
         }
     }
 
-    /// Advances every vessel to `until`: local tiers by whole periods, the
-    /// orbital tier to exactly `until`. A tier policy acts at each of its
-    /// check instants on the way.
-    pub fn advance_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
-        if until < self.now {
-            return Err(UniverseError::Backwards);
-        }
+    /// Advances to `until` with a tier policy acting at each of its check
+    /// instants on the way, but no plans.
+    fn advance_unplanned_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
         while let Some(check) = self
             .policy
             .as_ref()

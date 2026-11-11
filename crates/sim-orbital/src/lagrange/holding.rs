@@ -25,15 +25,10 @@ use crate::{
     ReactionWheelMode, SolarRadiationPressureLaw, SrpSurface, TdbEpoch, propagate_plant_interval,
 };
 
-/// Steps allowed to solve for one burn.
-const SOLVER_STEPS: u32 = 40;
-/// A burn is found once its bracket is this narrow (`m/s`).
-const BURN_RESOLUTION_M_S: f64 = 1.0e-5;
-/// A burn is found once it leaves this little velocity along the line at the crossing
-/// (`m/s`).
-const CROSSING_RATE_TOLERANCE_M_S: f64 = 1.0e-3;
-/// How often the lookahead checks the box and looks for a crossing (`s`).
-const LOOKAHEAD_STEP_S: f64 = 2.0 * 86_400.0;
+mod search;
+
+pub use search::HoldingBurnSearch;
+
 /// First integration step of each lookahead leg (`s`).
 const FIRST_STEP_S: f64 = 3_600.0;
 
@@ -116,32 +111,6 @@ pub struct L2HoldingDynamics<'a> {
     pub tolerances: &'a Dop853Tolerances,
     /// The spacecraft as sunlight pushes on it, if radiation pressure is modelled.
     pub srp: Option<SrpSurface>,
-}
-
-/// How a trajectory ends up, looking ahead from a maintenance epoch.
-#[derive(Clone, Copy, PartialEq)]
-enum Outlook {
-    /// It left the box towards the secondary before the crossing.
-    FellInward,
-    /// It left the box away from the secondary before the crossing.
-    DriftedOutward,
-    /// It reached the crossing with this velocity along the line of the two bodies
-    /// (`m/s`), positive away from the primary.
-    Crossed(f64),
-    /// It stayed in the box and did not reach the crossing in the time allowed.
-    StillBounded,
-}
-
-impl Outlook {
-    /// Negative when the spacecraft needs a push away from the primary.
-    fn drift(self) -> Option<f64> {
-        match self {
-            Self::FellInward => Some(f64::NEG_INFINITY),
-            Self::DriftedOutward => Some(f64::INFINITY),
-            Self::Crossed(rate) => Some(rate),
-            Self::StillBounded => None,
-        }
-    }
 }
 
 impl L2HoldingDynamics<'_> {
@@ -237,45 +206,6 @@ impl L2HoldingDynamics<'_> {
         Ok((position - l2, velocity))
     }
 
-    /// Where `state` is headed over the lookahead.
-    fn outlook(
-        &self,
-        target: &L2HoldingTarget,
-        state: &ContinuousPlantState,
-        epoch: TdbEpoch,
-    ) -> Result<Outlook, LagrangeError> {
-        let mut state = *state;
-        let (mut before, _) = self.offset_from_l2(&state, epoch)?;
-        let mut before_rate = 0.0;
-        let mut crossings = 0_u32;
-        let mut flown_s = 0.0;
-        while flown_s < target.lookahead_s {
-            let step_s = LOOKAHEAD_STEP_S.min(target.lookahead_s - flown_s);
-            let to = epoch.advanced_seconds(flown_s + step_s);
-            state = self.coast(&state, epoch.advanced_seconds(flown_s), to)?;
-            flown_s += step_s;
-            let (here, velocity) = self.offset_from_l2(&state, to)?;
-            if here.x > target.x_bound_m {
-                return Ok(Outlook::DriftedOutward);
-            }
-            if here.x < -target.x_bound_m {
-                return Ok(Outlook::FellInward);
-            }
-            if before.y * here.y < 0.0 {
-                crossings = crossings.wrapping_add(1);
-                if crossings >= target.crossings_ahead {
-                    let fraction = before.y / (before.y - here.y);
-                    return Ok(Outlook::Crossed(
-                        before_rate + fraction * (velocity.x - before_rate),
-                    ));
-                }
-            }
-            before = here;
-            before_rate = velocity.x;
-        }
-        Ok(Outlook::StillBounded)
-    }
-
     /// The burn at `epoch` along the line of the two bodies (`m/s`, positive away
     /// from the primary) that leaves `state` crossing the plane `target`'s number of
     /// crossings ahead with no velocity along that line; zero if it is too small to
@@ -291,58 +221,11 @@ impl L2HoldingDynamics<'_> {
         state: &ContinuousPlantState,
         epoch: TdbEpoch,
     ) -> Result<f64, LagrangeError> {
-        if !target.is_valid() {
-            return Err(LagrangeError::InvalidHoldingTarget);
-        }
-        let drift_after = |delta_v: f64| -> Result<Option<f64>, LagrangeError> {
-            Ok(self
-                .outlook(target, &self.burned(state, epoch, delta_v)?, epoch)?
-                .drift())
-        };
-        let limit = target.max_burn_m_s;
-        let worth_making = |delta_v: f64| {
-            if delta_v.abs() < target.min_burn_m_s {
-                0.0
-            } else {
-                delta_v
-            }
-        };
-        let Some(drift_now) = drift_after(0.0)? else {
-            return Ok(0.0);
-        };
-        // Bracket the burn between one that leaves the spacecraft drifting inward and
-        // one that leaves it drifting outward, then close in by false position.
-        let far = if drift_now < 0.0 { limit } else { -limit };
-        let Some(drift_far) = drift_after(far)? else {
-            return Ok(0.0);
-        };
-        let cannot_hold = LagrangeError::NoHoldingBurn {
-            epoch,
-            max_burn_m_s: limit,
-        };
-        if drift_now * drift_far > 0.0 {
-            return Err(cannot_hold);
-        }
-        let (mut a, mut drift_a, mut b, mut drift_b) = (0.0, drift_now, far, drift_far);
-        for _ in 0..SOLVER_STEPS {
-            let both_reach_the_crossing = drift_a.is_finite() && drift_b.is_finite();
-            let next = if both_reach_the_crossing {
-                a - drift_a * (b - a) / (drift_b - drift_a)
-            } else {
-                0.5 * (a + b)
-            };
-            let Some(drift) = drift_after(next)? else {
-                return Ok(worth_making(next));
-            };
-            if drift * drift_a > 0.0 {
-                (a, drift_a) = (next, drift);
-            } else {
-                (b, drift_b) = (next, drift);
-            }
-            if drift.abs() < CROSSING_RATE_TOLERANCE_M_S || (b - a).abs() < BURN_RESOLUTION_M_S {
-                return Ok(worth_making(next));
+        let mut search = HoldingBurnSearch::new(*target, *state, epoch)?;
+        loop {
+            if let Some(burn) = search.advance(self)? {
+                return Ok(burn);
             }
         }
-        Err(cannot_hold)
     }
 }

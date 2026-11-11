@@ -19,7 +19,7 @@ use crate::{
     time::TdbEpoch,
 };
 
-pub use holding::{L2HoldingDynamics, L2HoldingTarget, l2_holding_tolerances};
+pub use holding::{HoldingBurnSearch, L2HoldingDynamics, L2HoldingTarget, l2_holding_tolerances};
 pub use sim_spacetime::{CollinearLagrangePoint, SynodicFrame, solve_collinear_lagrange_gamma};
 pub use targeting::{
     L2BoundedArcTargetReport, L2BoundedArcTargetSpec, L2SingleShootingFailureReason,
