@@ -187,7 +187,7 @@ impl Scored<'_> {
             },
             horizontal_error_m: self.sample.horizontal_error_m,
             vertical_error_m: self.sample.vertical_error_m,
-            sigma_horizontal_m: self.sample.horizontal_sigma_m,
+            sigma_horizontal_m: Some(self.sample.horizontal_sigma_m),
             cross_track_true_m,
             sensors: SensorStates {
                 gnss: run.sensor_state(SensorKind::Gnss, t_s),

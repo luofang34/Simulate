@@ -96,6 +96,7 @@ pub(super) fn chain(
             })
             .collect(),
         cruise_mps: spec.start.indicated_m_s,
+        route_bank_deg: sim_flight_chain::C172_PLANNING_BANK_DEG,
         climb_rate_mps: CLIMB_RATE_M_S,
         max_horizontal_mps: spec.start.indicated_m_s,
         ownship: match spec.steering {

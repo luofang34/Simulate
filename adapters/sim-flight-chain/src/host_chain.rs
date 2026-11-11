@@ -37,6 +37,9 @@ pub struct ChainRoute {
     pub fixes: Vec<RouteFix>,
     /// Along-track speed asked of guidance, m/s.
     pub cruise_mps: f64,
+    /// The bank the mission plans its turns at, degrees: it sizes the turn
+    /// lead and the orbit.
+    pub route_bank_deg: f64,
     /// Climb rate toward a fix above the vehicle, m/s.
     pub climb_rate_mps: f64,
     /// Greatest horizontal speed the vehicle may be asked for, m/s.
@@ -270,6 +273,7 @@ where
         .map_or(0.0, |fix| (fix.altitude_m - origin.height_m).max(0.0));
     mission.cruise_mps = route.cruise_mps;
     mission.climb_rate_mps = route.climb_rate_mps;
+    mission.route_bank_deg = route.route_bank_deg;
     mission.limits = MissionLimits {
         max_horizontal_mps: route.max_horizontal_mps,
         max_vertical_mps: route.climb_rate_mps,

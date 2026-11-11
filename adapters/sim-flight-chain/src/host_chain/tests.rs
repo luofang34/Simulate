@@ -57,6 +57,7 @@ fn route() -> ChainRoute {
             })
             .collect(),
         cruise_mps: INDICATED_M_S,
+        route_bank_deg: crate::C172_PLANNING_BANK_DEG,
         climb_rate_mps: 2.0,
         max_horizontal_mps: INDICATED_M_S,
         ownship: OwnshipFeed::FlightController,

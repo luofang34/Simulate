@@ -26,7 +26,7 @@ use super::availability::{SensorKind, SensorState};
 use crate::NavMeans;
 
 /// The schema number of [`ProgressRecord`].
-pub const PROGRESS_SCHEMA: u32 = 1;
+pub const PROGRESS_SCHEMA: u32 = 2;
 
 /// One line of the progress stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,8 +130,9 @@ pub struct SampleRecord {
     pub horizontal_error_m: f64,
     /// Vertical error of the estimate against truth, metres.
     pub vertical_error_m: f64,
-    /// The estimate's own horizontal 1-sigma, metres.
-    pub sigma_horizontal_m: f64,
+    /// The estimate's own horizontal 1-sigma, metres; `null` when the
+    /// source states no covariance, so no consistency is judged for it.
+    pub sigma_horizontal_m: Option<f64>,
     /// TRUTH: the true distance from the leg being flown, right positive,
     /// metres; `null` with no leg active.
     pub cross_track_true_m: Option<f64>,

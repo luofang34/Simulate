@@ -136,6 +136,11 @@ pub fn c172_board(
     HostedBoard::new(airframe, suite, kernel, setup.origin, setup.decimal_year)
 }
 
+/// The bank Pilotage's mission plans the C172's turns at, degrees: 3°
+/// under the flight controller's 25° route bank, so the roll-in and
+/// disturbances keep authority left.
+pub const C172_PLANNING_BANK_DEG: f64 = 22.0;
+
 /// The C172 as Pilotage's Aviate adapter knows it: a fixed wing flown by
 /// the flight controller's own law, its demands bounded by Pilotage's C172
 /// envelope.
