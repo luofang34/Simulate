@@ -1,12 +1,15 @@
 //! The trial's route flight: Navigate's plan executor and deviation guidance
 //! steer the kinematic vehicle round a four-waypoint route with two turns
-//! over 60° and a climb, on truth.
+//! over 60° and a climb, on truth; and a route through 300 m, 3 km and 9 km
+//! flies its vertical plan.
 
 use navigate_geodesy::{BodyEllipsoid, cross_track_m, initial_bearing_rad};
 use navigate_route::{turn_anticipation_m, turn_radius_m};
 use sim_devices::ImuErrorSpec;
 use sim_geo::{LocalFrame, ecef_to_geodetic};
-use sim_navigate::trial::{ImuGradeName, RouteFlight, execution_config, fly_route};
+use sim_navigate::trial::{
+    ImuGradeName, RouteFlight, TrialError, execution_config, fly_route, vertical_plan,
+};
 
 #[cfg(test)]
 #[path = "trial_support/ideal.rs"]
@@ -157,4 +160,81 @@ fn an_ideal_imu_follows_the_route() {
     let drift = ideal::dead_reckon(&flight.truth, ImuErrorSpec::IDEAL);
     tracing::info!(?drift, "ideal IMU over the route");
     ideal::assert_ideal(&drift);
+}
+
+/// Five waypoints east of the corridor: level at 300 m, a 2.7 km climb to
+/// 3 km, a 6 km climb to 9 km, and a 6 km descent back to 3 km, flown at
+/// 100 m/s with a 20 m/s climb limit.
+#[cfg(test)]
+fn multi_altitude() -> sim_navigate::trial::TrialRequest {
+    let waypoints = vec![
+        requests::waypoint("V0", 39.0, -75.6, 300.0),
+        requests::waypoint("V1", 39.0, -75.507, 300.0),
+        requests::waypoint("V2", 39.02, -75.22, 3_000.0),
+        requests::waypoint("V3", 39.0, -74.70, 9_000.0),
+        requests::waypoint("V4", 39.0, -74.24, 3_000.0),
+    ];
+    let mut request = requests::request(
+        waypoints,
+        ImuGradeName::Tactical,
+        vec![requests::set(
+            "ins",
+            &[sim_navigate::NavMeans::DeadReckoning],
+        )],
+    );
+    request.vehicle.cruise_speed_m_s = 100.0;
+    request.vehicle.max_climb_m_s = 20.0;
+    request.vehicle.bank_limit_deg = 25.0;
+    request
+}
+
+/// The multi-altitude route passes every waypoint inside the executor's
+/// capture threshold, crossing each at its altitude, and its vertical plan
+/// names each leg's demand within the climb limit.
+#[test]
+fn a_route_through_300_m_3_km_and_9_km_flies_its_vertical_plan() {
+    init_tracing();
+    let request = multi_altitude();
+    request.validate().unwrap();
+    let (legs, planned) = vertical_plan(&request.waypoints, &request.vehicle).unwrap();
+    for leg in &legs {
+        tracing::info!(?leg, "vertical demand");
+        assert!(leg.required_rate_m_s <= leg.limit_m_s, "{leg:?}");
+    }
+    assert_eq!(planned.last().unwrap().altitude_m, 3_000.0);
+    let flight = fly_route(&request).unwrap();
+    let indices: Vec<usize> = flight.events.iter().map(|e| e.waypoint_index).collect();
+    assert_eq!(indices, vec![0, 1, 2, 3, 4], "{:?}", flight.events);
+    let config = execution_config(&request.vehicle);
+    for event in &flight.events {
+        let threshold = capture_threshold_m(
+            &flight,
+            event.waypoint_index,
+            request.vehicle.cruise_speed_m_s,
+            config.bank_limit_rad,
+        );
+        let state = flight.truth[event.step].get().1;
+        let height = ecef_to_geodetic(state.position_ecef).height_m;
+        let target = request.waypoints[event.waypoint_index].altitude_m;
+        tracing::info!(?event, threshold, height, target, "sequenced");
+        assert!(event.distance_m < threshold, "{event:?} {threshold}");
+        assert!((height - target).abs() < 10.0, "{event:?}: {height} m");
+    }
+}
+
+/// A climb the vehicle cannot make before the waypoint is refused, naming
+/// the leg.
+#[test]
+fn an_impossible_climb_is_refused_naming_the_leg() {
+    init_tracing();
+    let mut request = multi_altitude();
+    request.vehicle.max_climb_m_s = 5.0;
+    let error = request.validate().unwrap_err();
+    tracing::info!(%error, "refused");
+    match error {
+        TrialError::UnreachableAltitude { leg, from, to, .. } => {
+            assert_eq!((leg, from.as_str(), to.as_str()), (2, "V1", "V2"));
+        }
+        other => panic!("{other:?}"),
+    }
 }

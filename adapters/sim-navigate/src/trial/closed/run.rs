@@ -1,90 +1,236 @@
+//! One sensor set's closed-loop flight, stepped so that a trial can fly
+//! every set side by side in route time. Each set owns its vehicle, sensors
+//! and navigator, so the order in which sets are stepped changes nothing in
+//! any of them.
+
 use std::collections::BTreeMap;
 
 use glam::DVec3;
-use navigate_contract::{GeodeticPosition, NavigationSolution, Waypoint};
-use navigate_geodesy::{BodyEllipsoid, cross_track_m, distance_m, initial_bearing_rad};
-use sim_core::{Block, KinematicInput, KinematicModel, SimInstant, VehicleState};
-use sim_geo::ecef_to_geodetic;
+use navigate_contract::{NavigationSolution, Waypoint};
+use sim_core::{SimInstant, VehicleState};
 
+use super::flight::Flight;
 use super::sensors::LiveSensors;
-use super::{
-    ClosedLoopOutcome, ClosedLoopReport, CrossTrackSample, Pilot, PilotInput, PilotOutput,
-    TerminationReport, WaypointOutcome,
-};
+use super::{ClosedLoopOutcome, Pilot, PilotInput, PilotOutput};
 use crate::trial::evaluate::{SetContext, set_run};
+use crate::trial::progress::{EventKind, EventRecord, ProgressRecord, Scored};
 use crate::trial::record::{SensorLog, initial_alignment};
-use crate::trial::report::TrackPoint;
-use crate::trial::route::{
-    capture_threshold_m, geodetic, leg_speed, plan_waypoints, start_state, step_span,
-};
+use crate::trial::replay::SetRun;
+use crate::trial::route::{start_state, step_seconds, step_span};
 use crate::trial::score::score_sample;
-use crate::trial::{SensorSetSpec, TerminationSpec, TrialError, TrialRequest};
-use crate::{
-    AblationEvaluation, Estimate, MasterClockBridge, NavMeans, NavigationOrigin, Truth,
-    compare_with_truth,
-};
+use crate::trial::{SensorSetSpec, TrialError, TrialRequest};
+use crate::{AblationEvaluation, Estimate, MasterClockBridge, NavMeans, NavigationOrigin, Truth};
 
-/// Steps between checks of the corridor rule: 10 Hz.
-const CORRIDOR_CHECK_STEPS: usize = 12;
+/// One set flying the request's route in closed loop: the set's own
+/// navigator steers, so the set flies its own truth.
+pub(in crate::trial) struct ClosedSet<'a> {
+    request: &'a TrialRequest,
+    name: &'a str,
+    waypoints: &'a [Waypoint],
+    pilot: Pilot<'a>,
+    flight: Flight<'a>,
+    sensors: LiveSensors,
+    log: SensorLog,
+    run: SetRun<'a>,
+    scorer: Scorer,
+    clock: MasterClockBridge,
+    sample_steps: usize,
+    rate: DVec3,
+    trace: Option<Vec<(PilotInput, PilotOutput)>>,
+    done: bool,
+    progress: Progress,
+}
 
-/// Flies `set` in closed loop over the request's route: the set's own
-/// navigator steers, so the set flies its own truth. `trace` keeps every
-/// step's pilot input and output.
-pub(in crate::trial) fn fly_closed_loop(
-    request: &TrialRequest,
-    set: &SensorSetSpec,
-    context: SetContext<'_>,
-    trace: bool,
-) -> Result<ClosedLoopOutcome, TrialError> {
-    let (pairs, sample_steps) = (context.pairs, context.sample_steps);
-    let waypoints = plan_waypoints(&request.waypoints)?;
-    let clock = MasterClockBridge::default();
-    let mut pilot = Pilot::new(&waypoints, &request.vehicle, clock.domain())?;
-    let start = start_state(&waypoints, &request.vehicle)?;
-    let means = set.ablation_set();
-    let stars = pairs.filter(|_| means.contains(NavMeans::Celestial));
-    let mut sensors = LiveSensors::new(request, stars.is_some())?;
-    sensors.start(SimInstant::START, &start)?;
-    let mut log = empty_log(request, &start);
-    let mut run = set_run(request, set, context, &log)?;
-    let mut flight = Flight::new(request, &waypoints, start);
-    let mut scorer = Scorer::new(NavigationOrigin::Fused(means), sample_steps);
-    let mut traced = Vec::new();
-    let dt_s = step_span().as_seconds();
-    let mut rate = DVec3::ZERO;
-    loop {
-        let step = run.step();
-        let at = flight.instant(step)?;
-        let estimate = run.solution(&log)?;
+/// What a closed set has for the progress stream.
+struct Progress {
+    period_steps: usize,
+    records: Vec<ProgressRecord>,
+    refusal_counts: BTreeMap<String, u64>,
+    refusing: bool,
+}
+
+impl<'a> ClosedSet<'a> {
+    /// `set` at the start of `waypoints`, its navigator aligned, with a
+    /// progress sample every `progress_steps`; `trace` keeps every step's
+    /// pilot input and output.
+    pub(in crate::trial) fn new(
+        request: &'a TrialRequest,
+        set: &'a SensorSetSpec,
+        waypoints: &'a [Waypoint],
+        context: SetContext<'a>,
+        progress_steps: usize,
+        trace: bool,
+    ) -> Result<Self, TrialError> {
+        let clock = MasterClockBridge::default();
+        let pilot = Pilot::new(waypoints, &request.vehicle, clock.domain())?;
+        let start = start_state(waypoints, &request.vehicle)?;
+        let means = set.ablation_set();
+        let stars = context
+            .pairs
+            .filter(|_| means.contains(NavMeans::Celestial))
+            .is_some();
+        let mut sensors = LiveSensors::new(request, stars)?;
+        sensors.start(SimInstant::START, &start)?;
+        let log = empty_log(request, &start);
+        let run = set_run(request, set, context, &log)?;
+        Ok(Self {
+            request,
+            name: &set.name,
+            waypoints,
+            pilot,
+            flight: Flight::new(request, waypoints, start),
+            sensors,
+            log,
+            run,
+            scorer: Scorer::new(NavigationOrigin::Fused(means), context.sample_steps),
+            clock,
+            sample_steps: context.sample_steps,
+            rate: DVec3::ZERO,
+            trace: trace.then(Vec::new),
+            done: false,
+            progress: Progress {
+                period_steps: progress_steps.max(1),
+                records: Vec::new(),
+                refusal_counts: BTreeMap::new(),
+                refusing: false,
+            },
+        })
+    }
+
+    /// Whether the flight has completed or been terminated.
+    pub(in crate::trial) const fn done(&self) -> bool {
+        self.done
+    }
+
+    /// The progress records since the last call.
+    pub(in crate::trial) fn take_progress(&mut self) -> Vec<ProgressRecord> {
+        std::mem::take(&mut self.progress.records)
+    }
+
+    /// Flies until the pilot has read `target`, or the flight ends.
+    pub(in crate::trial) fn advance_through(&mut self, target: usize) -> Result<(), TrialError> {
+        while !self.done && self.run.step() <= target {
+            self.advance()?;
+        }
+        Ok(())
+    }
+
+    /// One step: the pilot reads the navigator, the step is judged and
+    /// scored on truth, and unless the flight ended the vehicle flies on
+    /// and the sensors and navigator take the next step.
+    fn advance(&mut self) -> Result<(), TrialError> {
+        let step = self.run.step();
+        let at = self.flight.instant(step)?;
+        let estimate = self.run.solution(&self.log)?;
         let input = PilotInput {
             estimate,
-            sensed_rate_body: rate,
-            now: clock.to_monotonic(at)?,
+            sensed_rate_body: self.rate,
+            now: self.clock.to_monotonic(at)?,
         };
-        let output = pilot.step(&input, dt_s);
-        flight.observe(step, &input, &output, sample_steps);
-        let done = flight.finished();
-        scorer.sample(step, done, &flight.truth, input.estimate.as_ref())?;
-        if trace {
-            traced.push((input, output));
+        let output = self.pilot.step(&input, step_span().as_seconds());
+        self.flight
+            .observe(step, &input, &output, self.sample_steps);
+        self.done = self.flight.finished();
+        let scored =
+            self.scorer
+                .sample(step, self.done, &self.flight.truth, input.estimate.as_ref())?;
+        self.report_progress(step, &output, scored.as_ref(), input.estimate.as_ref());
+        if let Some(trace) = self.trace.as_mut() {
+            trace.push((input, output));
         }
-        if done {
-            break;
+        if self.done {
+            return Ok(());
         }
-        flight.fly(&output)?;
+        self.flight.fly(&output)?;
         let next = step.wrapping_add(1);
-        rate = sensors.sense(&flight.truth, next, &mut log)?;
-        run.advance_to(&log, next)?;
+        self.rate = self
+            .sensors
+            .sense(&self.flight.truth, next, &mut self.log)?;
+        self.run.advance_to(&self.log, next)
     }
-    let refusals = pilot.refusals().clone();
-    Ok(ClosedLoopOutcome {
-        report: flight.into_report(request, refusals)?,
-        series: scorer.series,
-        estimates: scorer.estimates,
-        tallies: run.tallies().clone(),
-        stars: run.star_availability(),
-        trace: traced,
-    })
+
+    /// The step's events, and its progress sample when one is due.
+    fn report_progress(
+        &mut self,
+        step: usize,
+        output: &PilotOutput,
+        scored: Option<&crate::trial::SeriesSample>,
+        estimate: Option<&Estimate<NavigationSolution>>,
+    ) {
+        let t_s = step_seconds(step);
+        let event = |kind| {
+            ProgressRecord::Event(EventRecord {
+                t_s,
+                set: Some(self.name.to_owned()),
+                kind,
+            })
+        };
+        let mut records = Vec::new();
+        if let Some(sequenced) = output.event {
+            let ident = self
+                .waypoints
+                .get(sequenced.waypoint_index)
+                .map_or_else(String::new, |w| w.ident.as_str().to_owned());
+            records.push(event(EventKind::WaypointSequenced {
+                waypoint_index: sequenced.waypoint_index,
+                ident,
+                plan_complete: sequenced.plan_complete,
+            }));
+        }
+        if let Some(refusal) = self.refusal_onset() {
+            records.push(event(EventKind::GuidanceRefused { refusal }));
+        }
+        if let Some(termination) = self.flight.termination().filter(|_| self.done) {
+            records.push(event(EventKind::Terminated {
+                rule: termination.rule.clone(),
+                detail: termination.detail.clone(),
+            }));
+        }
+        let due = self.done || step.is_multiple_of(self.progress.period_steps);
+        if let (Some(sample), Some(estimate), Some(truth), true) =
+            (scored, estimate, self.flight.truth.get(step), due)
+        {
+            let scored = Scored {
+                truth: &truth.get().1,
+                estimate: estimate.get(),
+                sample,
+            };
+            records.push(scored.record(self.name, &self.run, self.flight.cross_track_at(t_s)));
+        }
+        self.progress.records.extend(records);
+    }
+
+    /// The refusal kind when guidance refused this step after accepting
+    /// the step before.
+    fn refusal_onset(&mut self) -> Option<String> {
+        let refusals = self.pilot.refusals();
+        let counted = &self.progress.refusal_counts;
+        let refused = refusals
+            .iter()
+            .find(|(kind, count)| counted.get(*kind) != Some(*count))
+            .map(|(kind, _)| kind.clone());
+        let refusing = refused.is_some();
+        let onset = refused.filter(|_| !self.progress.refusing);
+        self.progress.refusing = refusing;
+        if self.progress.refusing {
+            self.progress.refusal_counts = refusals.clone();
+        }
+        onset
+    }
+
+    /// The flight's results.
+    pub(in crate::trial) fn finish(self) -> Result<ClosedLoopOutcome, TrialError> {
+        let refusals = self.pilot.refusals().clone();
+        Ok(ClosedLoopOutcome {
+            report: self.flight.into_report(self.request, refusals)?,
+            series: self.scorer.series,
+            estimates: self.scorer.estimates,
+            tallies: self.run.tallies().clone(),
+            interval_tallies: self.run.interval_tallies().to_vec(),
+            stars: self.run.star_availability(),
+            trace: self.trace.unwrap_or_default(),
+        })
+    }
 }
 
 fn empty_log(request: &TrialRequest, start: &VehicleState) -> SensorLog {
@@ -125,287 +271,16 @@ impl Scorer {
         last: bool,
         truth: &[Truth<(SimInstant, VehicleState)>],
         estimate: Option<&Estimate<NavigationSolution>>,
-    ) -> Result<(), TrialError> {
+    ) -> Result<Option<crate::trial::SeriesSample>, TrialError> {
         let due = step > 0 && (step.is_multiple_of(self.sample_steps) || last);
         let (Some(estimate), Some(truth), true) = (estimate, truth.get(step), due) else {
-            return Ok(());
+            return Ok(None);
         };
         self.evaluation.expect(self.origin);
-        self.series.push(score_sample(
-            &mut self.evaluation,
-            self.origin,
-            truth,
-            estimate,
-        )?);
+        let sample = score_sample(&mut self.evaluation, self.origin, truth, estimate)?;
+        self.series.push(sample);
         self.estimates
             .push(Estimate::new((truth.get().0, *estimate.get())));
-        Ok(())
+        Ok(Some(sample))
     }
-}
-
-/// The true flight: the vehicle, and everything judged on its truth.
-struct Flight<'w> {
-    waypoints: &'w [Waypoint],
-    vehicle: crate::trial::VehicleSpec,
-    limits: TerminationSpec,
-    model: KinematicModel,
-    truth: Vec<Truth<(SimInstant, VehicleState)>>,
-    outcomes: Vec<WaypointOutcome>,
-    cross_track: Vec<CrossTrackSample>,
-    termination: Option<TerminationReport>,
-    last_event_step: usize,
-    final_arrival_error_m: Option<f64>,
-    completed: bool,
-}
-
-impl<'w> Flight<'w> {
-    fn new(request: &TrialRequest, waypoints: &'w [Waypoint], start: VehicleState) -> Self {
-        let outcomes = waypoints
-            .iter()
-            .enumerate()
-            .map(|(index, waypoint)| WaypointOutcome {
-                index,
-                ident: waypoint.ident.as_str().to_owned(),
-                capture_threshold_m: capture_threshold_m(waypoints, index, &request.vehicle),
-                sequenced_at_s: None,
-                true_miss_at_sequence_m: None,
-                estimated_distance_at_sequence_m: None,
-                navigation_error_at_sequence_m: None,
-                truly_within_threshold: None,
-                closest_true_approach_m: f64::INFINITY,
-            })
-            .collect();
-        Self {
-            waypoints,
-            vehicle: request.vehicle,
-            limits: request.termination.unwrap_or_default(),
-            model: KinematicModel::new(start),
-            truth: vec![Truth::new((SimInstant::START, start))],
-            outcomes,
-            cross_track: Vec::new(),
-            termination: None,
-            last_event_step: 0,
-            final_arrival_error_m: None,
-            completed: false,
-        }
-    }
-
-    fn instant(&self, step: usize) -> Result<SimInstant, TrialError> {
-        self.truth
-            .get(step)
-            .map(|sample| sample.get().0)
-            .ok_or_else(|| TrialError::InvalidRequest {
-                field: "closed loop",
-                detail: format!("no truth at step {step}"),
-            })
-    }
-
-    fn finished(&self) -> bool {
-        self.completed || self.termination.is_some()
-    }
-
-    fn fly(&mut self, output: &PilotOutput) -> Result<(), TrialError> {
-        let at = self
-            .truth
-            .last()
-            .map_or(SimInstant::START, |sample| sample.get().0);
-        self.model
-            .step(&KinematicInput {
-                controls: output.controls,
-            })
-            .map_err(TrialError::Vehicle)?;
-        self.truth
-            .push(Truth::new((at.advanced(step_span()), self.model.output())));
-        Ok(())
-    }
-
-    /// Judges `step` on truth: closest approaches, the pilot's sequencing,
-    /// cross-track, and the termination rules.
-    fn observe(&mut self, step: usize, input: &PilotInput, output: &PilotOutput, sample: usize) {
-        let Some((at, state)) = self.truth.get(step).map(|s| *s.get()) else {
-            return;
-        };
-        let time_s = at.duration_since(SimInstant::START).as_seconds();
-        let position = geodetic(&state);
-        for (outcome, waypoint) in self.outcomes.iter_mut().zip(self.waypoints) {
-            let distance = horizontal_m(&position, &waypoint.position);
-            outcome.closest_true_approach_m = outcome.closest_true_approach_m.min(distance);
-        }
-        if let (Some(event), Some(estimate)) = (output.event, input.estimate.as_ref()) {
-            self.sequenced(event, estimate.get(), &state, &position, time_s, step);
-        }
-        let leg = output.active_index;
-        let check_corridor = step.is_multiple_of(CORRIDOR_CHECK_STEPS);
-        if let Some(index) = leg
-            && (step.is_multiple_of(sample.max(1)) || check_corridor)
-            && let Some((xt, course)) = self.true_cross_track(index, &position)
-        {
-            if step.is_multiple_of(sample.max(1)) {
-                let frame = sim_geo::LocalFrame::at(&ecef_to_geodetic(state.position_ecef));
-                let v = state.velocity_ecef;
-                let track = v.dot(frame.east()).atan2(v.dot(frame.north()));
-                let error = (track - course + std::f64::consts::PI)
-                    .rem_euclid(std::f64::consts::TAU)
-                    - std::f64::consts::PI;
-                self.cross_track.push(CrossTrackSample {
-                    time_s,
-                    leg_index: index,
-                    true_cross_track_m: xt,
-                    true_track_error_rad: error,
-                });
-            }
-            if xt.abs() > self.limits.corridor_half_width_m {
-                self.terminate(
-                    "left_corridor",
-                    time_s,
-                    format!("{xt:.1} m off leg {index}"),
-                );
-            }
-        }
-        self.check_height(position.altitude_m, time_s);
-        if let Some(index) = leg {
-            self.check_leg_time(index, step, time_s);
-        }
-    }
-
-    fn sequenced(
-        &mut self,
-        event: super::PilotEvent,
-        estimate: &NavigationSolution,
-        state: &VehicleState,
-        position: &GeodeticPosition,
-        time_s: f64,
-        step: usize,
-    ) {
-        let index = event.waypoint_index;
-        let (Some(outcome), Some(waypoint)) =
-            (self.outcomes.get_mut(index), self.waypoints.get(index))
-        else {
-            return;
-        };
-        let miss = horizontal_m(position, &waypoint.position);
-        outcome.sequenced_at_s = Some(time_s);
-        outcome.true_miss_at_sequence_m = Some(miss);
-        outcome.estimated_distance_at_sequence_m =
-            Some(horizontal_m(&estimate.position, &waypoint.position));
-        outcome.navigation_error_at_sequence_m = compare_with_truth(estimate, state.position_ecef)
-            .ok()
-            .map(|c| c.horizontal_error_m);
-        outcome.truly_within_threshold = Some(miss <= outcome.capture_threshold_m);
-        self.last_event_step = step;
-        if event.plan_complete {
-            self.completed = true;
-            self.final_arrival_error_m = Some(miss);
-        }
-    }
-
-    /// True cross-track from leg `index`, and the leg's course.
-    fn true_cross_track(&self, index: usize, position: &GeodeticPosition) -> Option<(f64, f64)> {
-        let from = self.waypoints.get(index.checked_sub(1)?)?;
-        let to = self.waypoints.get(index)?;
-        let xt =
-            cross_track_m(position, &from.position, &to.position, BodyEllipsoid::WGS84).ok()?;
-        Some((xt, initial_bearing_rad(&from.position, &to.position)))
-    }
-
-    fn check_height(&mut self, height_m: f64, time_s: f64) {
-        let (low, high) = (self.limits.min_height_m, self.limits.max_height_m);
-        if !(low..=high).contains(&height_m) {
-            let detail = format!("{height_m:.1} m outside {low}..{high} m");
-            self.terminate("altitude_limit", time_s, detail);
-        }
-    }
-
-    fn check_leg_time(&mut self, index: usize, step: usize, time_s: f64) {
-        let planned_s = match (
-            index.checked_sub(1).and_then(|i| self.waypoints.get(i)),
-            self.waypoints.get(index),
-        ) {
-            (Some(from), Some(to)) => {
-                distance_m(&from.position, &to.position, BodyEllipsoid::WGS84)
-                    / leg_speed(self.waypoints, index, &self.vehicle)
-            }
-            _ => 0.0,
-        };
-        let limit_s = self.limits.leg_time_factor * planned_s + self.limits.leg_time_margin_s;
-        let elapsed_s = step.saturating_sub(self.last_event_step) as f64 * step_span().as_seconds();
-        if elapsed_s > limit_s {
-            let detail = format!("waypoint {index} not sequenced within {limit_s:.0} s");
-            self.terminate("sequence_timeout", time_s, detail);
-        }
-    }
-
-    fn terminate(&mut self, rule: &str, time_s: f64, detail: String) {
-        if self.termination.is_none() && !self.completed {
-            self.termination = Some(TerminationReport {
-                rule: rule.into(),
-                time_s,
-                detail,
-            });
-        }
-    }
-
-    fn into_report(
-        self,
-        request: &TrialRequest,
-        guidance_refusals: BTreeMap<String, u64>,
-    ) -> Result<ClosedLoopReport, TrialError> {
-        let track_steps = crate::trial::evaluate::whole_steps(
-            "output.track_period_s",
-            request.output.track_period_s,
-        )?;
-        let point = |(at, state): &(SimInstant, VehicleState)| {
-            let p = geodetic(state);
-            TrackPoint {
-                time_s: at.duration_since(SimInstant::START).as_seconds(),
-                lat_deg: p.latitude_rad.to_degrees(),
-                lon_deg: p.longitude_rad.to_degrees(),
-                height_m: p.altitude_m,
-            }
-        };
-        let mut track: Vec<TrackPoint> = self
-            .truth
-            .iter()
-            .step_by(track_steps)
-            .map(|s| point(s.get()))
-            .collect();
-        let last = self.truth.last().map(|s| point(s.get()));
-        if let Some(last) = last
-            && track.last().map(|p| p.time_s) != Some(last.time_s)
-        {
-            track.push(last);
-        }
-        let max_abs_cross_track_m = self
-            .cross_track
-            .iter()
-            .map(|s| s.true_cross_track_m.abs())
-            .fold(0.0, f64::max);
-        Ok(ClosedLoopReport {
-            completed: self.completed,
-            termination: self.termination,
-            duration_s: last.map_or(0.0, |p| p.time_s),
-            track,
-            cross_track: self.cross_track,
-            max_abs_cross_track_m,
-            waypoints: self.outcomes,
-            final_arrival_error_m: self.final_arrival_error_m,
-            guidance_refusals,
-        })
-    }
-}
-
-/// Horizontal distance from `a` to `b` on the WGS84 ellipsoid, metres: in
-/// `a`'s north-east plane, the metric the navigation error is scored in, so
-/// a true miss and a navigation error compare directly.
-fn horizontal_m(a: &GeodeticPosition, b: &GeodeticPosition) -> f64 {
-    let ecef = |p: &GeodeticPosition| {
-        sim_geo::geodetic_to_ecef(&sim_geo::Geodetic {
-            lat_rad: p.latitude_rad,
-            lon_rad: p.longitude_rad,
-            height_m: p.altitude_m,
-        })
-    };
-    let (from, to) = (ecef(a), ecef(b));
-    let d = sim_geo::LocalFrame::at(&ecef_to_geodetic(from)).ecef_to_ned_vector(to - from);
-    d.x.hypot(d.y)
 }

@@ -65,6 +65,15 @@ pub fn step_span() -> TickSpan {
     TickSpan::from_ticks(sim_core::TICKS_PER_SECOND / STEP_HZ)
 }
 
+/// Route time of `step`, seconds, exactly as the step's instant gives it.
+pub(super) fn step_seconds(step: usize) -> f64 {
+    let ticks = step_span().ticks().saturating_mul(step as u64);
+    SimInstant::START
+        .advanced(TickSpan::from_ticks(ticks))
+        .duration_since(SimInstant::START)
+        .as_seconds()
+}
+
 /// The plan executor's configuration: the vehicle's capture radius and bank
 /// limit on the Earth's standard gravity.
 pub fn execution_config(vehicle: &VehicleSpec) -> ExecutionConfig {

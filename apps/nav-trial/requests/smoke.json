@@ -46,10 +46,17 @@
     "period_s": 10.0,
     "mount_alignment_sigma_rad": 2e-05
   },
-  "outages": [
+  "availability": [
     {
-      "start_s": 40.0,
-      "end_s": 80.0
+      "name": "gnss-jammed",
+      "sensor": "gnss",
+      "unavailable": [
+        {
+          "start_s": 40.0,
+          "end_s": 80.0,
+          "reason": "jamming"
+        }
+      ]
     }
   ],
   "sensor_sets": [
@@ -76,7 +83,9 @@
         "barometric",
         "gnss"
       ],
-      "gnss_outages": true
+      "availability": {
+        "gnss": "gnss-jammed"
+      }
     }
   ],
   "seeds": {

@@ -3,6 +3,7 @@
 //! moves the vehicle, drives the sensors, and is scored, judged against the
 //! termination rules, and reported.
 
+mod flight;
 mod pilot;
 mod report;
 mod run;
@@ -13,8 +14,9 @@ use sim_core::SimInstant;
 
 pub use pilot::{Pilot, PilotEvent, PilotInput, PilotOutput};
 pub use report::{ClosedLoopReport, CrossTrackSample, TerminationReport, WaypointOutcome};
-pub(super) use run::fly_closed_loop;
+pub(super) use run::ClosedSet;
 
+use super::availability::ScheduledInterval;
 use super::replay::{SensorTallies, StarAvailability};
 use super::report::SeriesSample;
 use crate::Estimate;
@@ -31,6 +33,8 @@ pub struct ClosedLoopOutcome {
     pub report: ClosedLoopReport,
     /// Observations offered, accepted and refused, per sensor.
     pub tallies: SensorTallies,
+    /// Observations per sensor inside each scheduled interval.
+    pub interval_tallies: Vec<(ScheduledInterval, SensorTallies)>,
     /// Star tracker availability.
     pub stars: StarAvailability,
     /// Every step's pilot input and output, when traced.

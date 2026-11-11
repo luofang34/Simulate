@@ -2,7 +2,7 @@
 //! sensor set. Nothing here takes truth: the log and the navigator's own
 //! solution are all a replay sees.
 
-use std::collections::BTreeMap;
+mod tally;
 
 use navigate_contract::{
     NavigationSolution, SensorClass, SourceComposition, SourceEpoch, SourceId, WrappingSequence,
@@ -10,12 +10,18 @@ use navigate_contract::{
 use navigate_fusion::{
     FogmBias, InertialConfig, IngestOutcome, Observation, ObservationValue, RejectionReason,
 };
-use serde::{Deserialize, Serialize};
 use sim_core::SimInstant;
 
 use super::record::SensorLog;
+use tally::Ledger;
+pub use tally::{ObservationTally, SensorTallies, StarAvailability};
+use tally::{Reading, sensor_state};
+
+use super::availability::{ScheduledInterval, SensorKind, SensorState, SetAvailability};
+use super::route::{STEP_HZ, step_seconds};
 use super::stars::sighting::{SightingOutcome, StarSighting};
-use super::{BaroSpec, OutageSpec, TrialError};
+use super::stars::{exposure_steps, star_camera_config};
+use super::{BaroSpec, TrialError};
 use crate::{AblationSet, Estimate, InertialNavigator, MasterClockBridge, NavMeans};
 
 /// Navigate source identifiers of the trial's sensors.
@@ -29,67 +35,14 @@ pub const BARO_SOURCE: SourceId = SourceId::new(93);
 /// Star sightings.
 pub const STAR_SOURCE: SourceId = SourceId::new(94);
 
-/// Observations of one sensor offered to the filter and what it did with
-/// them.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ObservationTally {
-    /// Offered to the filter.
-    pub offered: u64,
-    /// Accepted.
-    pub accepted: u64,
-    /// Refused.
-    pub rejected: u64,
-    /// Refusals by Navigate's rejection reason.
-    pub reasons: BTreeMap<String, u64>,
-}
-
-impl ObservationTally {
-    pub(super) fn count(&mut self, outcome: Result<(), &RejectionReason>) {
-        self.offered = self.offered.wrapping_add(1);
-        match outcome {
-            Ok(()) => self.accepted = self.accepted.wrapping_add(1),
-            Err(reason) => {
-                self.rejected = self.rejected.wrapping_add(1);
-                let entry = self.reasons.entry(reason_kind(reason)).or_default();
-                *entry = entry.wrapping_add(1);
-            }
-        }
-    }
-}
-
-/// A rejection reason's variant name, without its values.
-fn reason_kind(reason: &RejectionReason) -> String {
-    let text = format!("{reason:?}");
-    text.split([' ', '{', '('])
-        .next()
-        .unwrap_or_default()
-        .to_owned()
-}
-
-/// How the star tracker fared over a replay.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
-pub struct StarAvailability {
-    /// Frames handed to the tracker.
-    pub frames_attempted: u64,
-    /// Frames identified and solved.
-    pub frames_solved: u64,
-    /// Frames the tracker tried lost in space.
-    pub lost_in_space_attempted: u64,
-    /// Of those, solved.
-    pub lost_in_space_solved: u64,
-    /// Stars over all solved frames.
-    pub stars_in_solved_frames: u64,
-    /// Stars per solved frame; zero when none solved.
-    pub stars_per_solved_frame: f64,
-}
-
-/// The sensors a replay may use: its means, and the GNSS outages it honours.
+/// The sensors a replay may use: its means, and the schedules that
+/// withhold them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetSelection {
     /// The means the filter may take observations from.
     pub means: AblationSet,
-    /// GNSS outages; empty when the set ignores them.
-    pub outages: Vec<OutageSpec>,
+    /// When each sensor is withheld.
+    pub availability: SetAvailability,
 }
 
 /// Navigate's inertial configuration for the trial: the IMU grade's
@@ -99,19 +52,6 @@ pub fn trial_inertial_config(spec: &sim_devices::ImuErrorSpec, baro: &BaroSpec) 
         baro_bias: FogmBias::new(baro.bias_correlation_time_s, baro.bias_sigma_m),
         ..crate::inertial_config(spec)
     }
-}
-
-/// Per-sensor tallies of a replay.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct SensorTallies {
-    /// GNSS position fixes.
-    pub gnss_position: ObservationTally,
-    /// GNSS velocity fixes.
-    pub gnss_velocity: ObservationTally,
-    /// Barometric altitudes.
-    pub baro: ObservationTally,
-    /// Star lines of sight.
-    pub stars: ObservationTally,
 }
 
 /// One sensor set's navigator stepping through a log. Cloning it forks the
@@ -131,7 +71,8 @@ pub struct SetRun<'a> {
     gnss_position_sequence: WrappingSequence,
     gnss_velocity_sequence: WrappingSequence,
     baro_sequence: WrappingSequence,
-    tallies: SensorTallies,
+    star_half_exposure_steps: usize,
+    ledger: Ledger,
     stars: StarAvailability,
 }
 
@@ -149,6 +90,11 @@ impl<'a> SetRun<'a> {
         let start = log.instants.first().copied().unwrap_or(SimInstant::START);
         navigator.align(&log.alignment, start)?;
         let sighting = sighting.filter(|_| selection.means.contains(NavMeans::Celestial));
+        let star_half_exposure_steps = match sighting {
+            Some(_) => exposure_steps(&star_camera_config(), STEP_HZ as f64)? / 2,
+            None => 0,
+        };
+        let ledger = Ledger::new(&selection.availability);
         Ok(Self {
             selection,
             navigator,
@@ -161,7 +107,8 @@ impl<'a> SetRun<'a> {
             gnss_position_sequence: WrappingSequence::new(0),
             gnss_velocity_sequence: WrappingSequence::new(0),
             baro_sequence: WrappingSequence::new(0),
-            tallies: SensorTallies::default(),
+            star_half_exposure_steps,
+            ledger,
             stars: StarAvailability::default(),
         })
     }
@@ -183,7 +130,20 @@ impl<'a> SetRun<'a> {
 
     /// Per-sensor tallies so far.
     pub const fn tallies(&self) -> &SensorTallies {
-        &self.tallies
+        self.ledger.total()
+    }
+
+    /// Per-sensor tallies inside each scheduled interval so far, in the
+    /// order of the set's schedules.
+    pub fn interval_tallies(&self) -> &[(ScheduledInterval, SensorTallies)] {
+        self.ledger.intervals()
+    }
+
+    /// What `sensor` is doing for this set at route time `t_s`, as of the
+    /// last step processed.
+    pub fn sensor_state(&self, sensor: SensorKind, t_s: f64) -> SensorState {
+        let has = self.selection.means.contains(sensor.means());
+        sensor_state(&self.ledger, &self.selection.availability, has, sensor, t_s)
     }
 
     /// Star tracker availability so far.
@@ -221,26 +181,41 @@ impl<'a> SetRun<'a> {
         Ok(())
     }
 
+    /// The star frame opening or read out at `step`. A frame any instant
+    /// of whose mid-exposure to readout a schedule covers is neither primed
+    /// with the navigator's prior nor read: the camera gave nothing.
     fn stars_at(&mut self, log: &SensorLog, step: usize, at: SimInstant) -> Result<(), TrialError> {
         let frames = &log.stars;
         let Some(sighting) = self.sighting.as_mut() else {
             return Ok(());
         };
+        let availability = &self.selection.availability;
         if log.star_mid_steps.get(self.next_opening) == Some(&step) {
-            sighting.hold_prior(&mut self.navigator, at)?;
+            let end = step.wrapping_add(self.star_half_exposure_steps);
+            if !availability.withheld(SensorKind::Stars, step_seconds(step), step_seconds(end)) {
+                sighting.hold_prior(&mut self.navigator, at)?;
+            }
             self.next_opening = self.next_opening.wrapping_add(1);
         }
-        if let Some(frame) = frames.get(self.next_reading)
-            && frame.image.end_step == step
-        {
-            let outcome = sighting.aid(&frame.image, &mut self.navigator, at)?;
-            self.next_reading = self.next_reading.wrapping_add(1);
-            self.tally_stars(&outcome);
+        let Some(frame) = frames.get(self.next_reading) else {
+            return Ok(());
+        };
+        if frame.image.end_step != step {
+            return Ok(());
         }
+        self.next_reading = self.next_reading.wrapping_add(1);
+        let window = (step_seconds(frame.image.mid_step), step_seconds(step));
+        if availability.withheld(SensorKind::Stars, window.0, window.1) {
+            self.ledger
+                .record(SensorKind::Stars, window, &Reading::Withheld);
+            return Ok(());
+        }
+        let outcome = sighting.aid(&frame.image, &mut self.navigator, at)?;
+        self.tally_stars(&outcome, window);
         Ok(())
     }
 
-    fn tally_stars(&mut self, outcome: &SightingOutcome) {
+    fn tally_stars(&mut self, outcome: &SightingOutcome, window: (f64, f64)) {
         let stars = &mut self.stars;
         stars.frames_attempted = stars.frames_attempted.wrapping_add(1);
         if outcome.lost_in_space {
@@ -257,20 +232,28 @@ impl<'a> SetRun<'a> {
                 stars.lost_in_space_solved = stars.lost_in_space_solved.wrapping_add(1);
             }
         }
-        for _ in 0..outcome.accepted {
-            self.tallies.stars.count(Ok(()));
-        }
-        for reason in &outcome.rejected {
-            self.tallies.stars.count(Err(reason));
-        }
+        let accepted = (0..outcome.accepted).map(|_| Ok(()));
+        let verdicts: Vec<Result<(), &RejectionReason>> =
+            accepted.chain(outcome.rejected.iter().map(Err)).collect();
+        self.ledger
+            .record(SensorKind::Stars, window, &Reading::Offered(&verdicts));
     }
 
     fn gnss_at(&mut self, log: &SensorLog, step: usize, at: SimInstant) -> Result<(), TrialError> {
         let time_s = at.duration_since(SimInstant::START).as_seconds();
         while let Some(logged) = log.gnss.get(self.next_gnss).filter(|f| f.step <= step) {
             self.next_gnss = self.next_gnss.wrapping_add(1);
-            let denied = self.selection.outages.iter().any(|o| o.contains(time_s));
-            if !self.selection.means.contains(NavMeans::Gnss) || denied {
+            if !self.selection.means.contains(NavMeans::Gnss) {
+                continue;
+            }
+            let window = (time_s, time_s);
+            if self
+                .selection
+                .availability
+                .withheld(SensorKind::Gnss, time_s, time_s)
+            {
+                self.ledger
+                    .record(SensorKind::Gnss, window, &Reading::Withheld);
                 continue;
             }
             let fix = logged.reading;
@@ -282,34 +265,42 @@ impl<'a> SetRun<'a> {
                 velocity: fix.velocity,
                 covariance: fix.velocity_cov,
             };
-            let outcome = offer(
+            let position = offer(
                 &mut self.navigator,
                 &mut self.gnss_position_sequence,
                 (GNSS_POSITION_SOURCE, SensorClass::Gnss),
                 position,
                 at,
             )?;
-            self.tallies
-                .gnss_position
-                .count(outcome.as_ref().map(|_| ()));
-            let outcome = offer(
+            let velocity = offer(
                 &mut self.navigator,
                 &mut self.gnss_velocity_sequence,
                 (GNSS_VELOCITY_SOURCE, SensorClass::Gnss),
                 velocity,
                 at,
             )?;
-            self.tallies
-                .gnss_velocity
-                .count(outcome.as_ref().map(|_| ()));
+            let verdicts = [position.as_ref().map(|_| ()), velocity.as_ref().map(|_| ())];
+            self.ledger
+                .record(SensorKind::Gnss, window, &Reading::Offered(&verdicts));
         }
         Ok(())
     }
 
     fn baro_at(&mut self, log: &SensorLog, step: usize, at: SimInstant) -> Result<(), TrialError> {
+        let time_s = at.duration_since(SimInstant::START).as_seconds();
         while let Some(logged) = log.baro.get(self.next_baro).filter(|b| b.step <= step) {
             self.next_baro = self.next_baro.wrapping_add(1);
             if !self.selection.means.contains(NavMeans::Barometric) {
+                continue;
+            }
+            let window = (time_s, time_s);
+            if self
+                .selection
+                .availability
+                .withheld(SensorKind::Baro, time_s, time_s)
+            {
+                self.ledger
+                    .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
             let value = ObservationValue::Altitude {
@@ -323,7 +314,9 @@ impl<'a> SetRun<'a> {
                 value,
                 at,
             )?;
-            self.tallies.baro.count(outcome.as_ref().map(|_| ()));
+            let verdicts = [outcome.as_ref().map(|_| ())];
+            self.ledger
+                .record(SensorKind::Baro, window, &Reading::Offered(&verdicts));
         }
         Ok(())
     }

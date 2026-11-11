@@ -7,7 +7,8 @@ use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_navigate::NavMeans;
 use sim_navigate::Truth;
 use sim_navigate::trial::{
-    ImuGradeName, OutageSpec, TrialReport, TrialRequest, evaluate, record_trial, run_trial,
+    ImuGradeName, ProgressRecord, TrialReport, TrialRequest, evaluate, evaluate_with_progress,
+    record_trial, run_trial,
 };
 
 #[cfg(test)]
@@ -30,20 +31,24 @@ fn init_tracing() {
 fn request() -> TrialRequest {
     use NavMeans::{Barometric, Celestial, DeadReckoning, Gnss};
     let sets = vec![
-        requests::set(
+        requests::jammed_set(
             "gnss-outage+baro+ins+stars",
             &[DeadReckoning, Barometric, Gnss, Celestial],
-            true,
         ),
-        requests::set("ins+baro", &[DeadReckoning, Barometric], false),
+        requests::set("ins+baro", &[DeadReckoning, Barometric]),
     ];
     let mut request = requests::request(requests::straight(3.0), ImuGradeName::Tactical, sets);
     request.stars.period_s = 20.0;
-    request.outages = vec![OutageSpec {
-        start_s: 60.0,
-        end_s: 120.0,
-    }];
+    request.availability = vec![requests::gnss_jammed(60.0, 120.0)];
     request
+}
+
+/// The request's recorded trial, shared by the tests that replay it.
+#[cfg(test)]
+fn recorded() -> &'static sim_navigate::trial::RecordedTrial {
+    static RECORDED: std::sync::OnceLock<sim_navigate::trial::RecordedTrial> =
+        std::sync::OnceLock::new();
+    RECORDED.get_or_init(|| record_trial(&request()).unwrap())
 }
 
 /// Truth the navigator must never see, moved 1 km north and turned 0.05 rad
@@ -54,7 +59,7 @@ fn request() -> TrialRequest {
 fn moving_the_truth_changes_scores_and_never_estimates() {
     init_tracing();
     let request = request();
-    let recorded = record_trial(&request).unwrap();
+    let recorded = recorded();
     let mut moved = recorded.clone();
     let start = ecef_to_geodetic(recorded.flight.truth[0].get().1.position_ecef);
     let north = LocalFrame::at(&start).north() * OFFSET_M;
@@ -65,7 +70,7 @@ fn moving_the_truth_changes_scores_and_never_estimates() {
         state.attitude = (state.attitude * turn).normalize();
         *sample = Truth::new((at, state));
     }
-    let original = evaluate(&request, &recorded).unwrap();
+    let original = evaluate(&request, recorded).unwrap();
     let perturbed = evaluate(&request, &moved).unwrap();
     assert_eq!(original.estimates, perturbed.estimates);
     for (a, b) in original
@@ -91,6 +96,59 @@ fn moving_the_truth_changes_scores_and_never_estimates() {
     assert!(stars.frames_solved > 1, "{stars:?}");
 }
 
+/// The progress stream carries truth beside each estimate, written from the
+/// scoring side: with a sink taking every record, moving the truth moves
+/// only the stream's truth and the scores, never an estimate.
+#[test]
+fn progress_carries_truth_without_feeding_it_to_the_navigator() {
+    init_tracing();
+    // Scored every two seconds against the default one-second progress
+    // period: every scored sample is a progress sample.
+    let mut request = request();
+    request.output.sample_period_s = 2.0;
+    let recorded = recorded();
+    let mut moved = recorded.clone();
+    let start = ecef_to_geodetic(recorded.flight.truth[0].get().1.position_ecef);
+    let north = LocalFrame::at(&start).north() * OFFSET_M;
+    for sample in &mut moved.flight.truth {
+        let (at, mut state) = *sample.get();
+        state.position_ecef += north;
+        *sample = Truth::new((at, state));
+    }
+    let watched = |recorded| {
+        let mut samples = Vec::new();
+        let mut sink = |record: &ProgressRecord| -> std::io::Result<()> {
+            if let ProgressRecord::Sample(sample) = record {
+                samples.push(sample.clone());
+            }
+            Ok(())
+        };
+        let outcome = evaluate_with_progress(&request, recorded, &mut sink).unwrap();
+        (outcome, samples)
+    };
+    let (original, original_samples) = watched(recorded);
+    let (perturbed, perturbed_samples) = watched(&moved);
+    assert_eq!(original.estimates, perturbed.estimates);
+    assert_eq!(
+        original.estimates,
+        evaluate(&request, recorded).unwrap().estimates
+    );
+    assert_eq!(original_samples.len(), perturbed_samples.len());
+    let scored: usize = original
+        .report
+        .sensor_sets
+        .iter()
+        .map(|s| s.series.len())
+        .sum();
+    assert_eq!(original_samples.len(), scored);
+    assert!(original_samples.len() > 150, "{}", original_samples.len());
+    for (a, b) in original_samples.iter().zip(&perturbed_samples) {
+        assert_eq!((a.t_s, &a.set, a.estimate), (b.t_s, &b.set, b.estimate));
+        assert_ne!(a.truth, b.truth);
+        assert!(b.horizontal_error_m != a.horizontal_error_m, "{a:?} {b:?}");
+    }
+}
+
 #[test]
 fn the_same_request_writes_the_same_bytes() {
     init_tracing();
@@ -103,13 +161,14 @@ fn the_same_request_writes_the_same_bytes() {
 #[test]
 fn the_request_and_result_read_back_as_written() {
     init_tracing();
-    let request = request();
+    let mut request = request();
+    request.availability[0].unavailable[0].reason = Some("jamming".into());
     let text = request.to_json().unwrap();
     assert_eq!(TrialRequest::from_json(&text).unwrap(), request);
 
     let mut short = request.clone();
     short.waypoints = requests::straight(1.0);
-    short.outages.clear();
+    short.availability[0].unavailable.clear();
     let report = run_trial(&short).unwrap();
     let written = report.to_json().unwrap();
     let read = TrialReport::from_json(&written).unwrap();

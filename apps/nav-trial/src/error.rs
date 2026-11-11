@@ -5,8 +5,10 @@ use sim_navigate::trial::TrialError;
 /// Why the trial binary stopped.
 #[derive(Debug, thiserror::Error)]
 pub enum NavTrialError {
-    /// The command line is not `--request <file> --out <file>`.
-    #[error("usage: nav-trial --request <request.json> --out <result.json> ({detail})")]
+    /// The command line is not one [`crate::cli`] describes.
+    #[error(
+        "usage: nav-trial (--request <request.json> | --route <route.json> [--defaults <file>] [--epoch <utc>] [--imu <grade>] [--guidance truth|estimate]) --out <result.json> [--progress <file|->] ({detail})"
+    )]
     Usage {
         /// What was wrong.
         detail: String,

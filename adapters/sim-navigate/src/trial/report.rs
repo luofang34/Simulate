@@ -1,13 +1,18 @@
 //! The trial's result file.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use super::availability::{AvailabilitySchedule, SensorKind};
+use super::comparison::ComparisonTable;
 use super::replay::{SensorTallies, StarAvailability};
-use super::{OutageSpec, RouteEvent, SeedSpec, TrialError, WaypointSpec};
+use super::vertical::VerticalReport;
+use super::{RouteEvent, SeedSpec, TrialError, WaypointSpec};
 use crate::NavMeans;
 
 /// The schema identifier of [`TrialReport`].
-pub const REPORT_SCHEMA: &str = "simulate.nav-trial.report/1";
+pub const REPORT_SCHEMA: &str = "simulate.nav-trial.report/2";
 
 /// Everything one trial measured, per sensor set, over one truth.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -23,10 +28,12 @@ pub struct TrialReport {
     pub seeds: SeedSpec,
     /// The flown route.
     pub route: RouteReport,
-    /// GNSS outages as requested.
-    pub outages: Vec<OutageSpec>,
+    /// The availability schedules as requested.
+    pub availability: Vec<AvailabilitySchedule>,
     /// Horizontal 1-sigma of the simulated GNSS position error, metres.
     pub gnss_horizontal_sigma_m: f64,
+    /// Every set side by side.
+    pub comparison: ComparisonTable,
     /// One entry per sensor set, in request order.
     pub sensor_sets: Vec<SetReport>,
 }
@@ -65,8 +72,11 @@ pub struct RouteReport {
     pub events: Vec<RouteEvent>,
     /// Route time from start to completion, seconds.
     pub duration_s: f64,
-    /// The true track, downsampled.
+    /// The true track, downsampled; empty in closed loop, where each set
+    /// reports its own.
     pub track: Vec<TrackPoint>,
+    /// The vertical plan, and in open loop the profile flown.
+    pub vertical: VerticalReport,
 }
 
 /// One point of the true track.
@@ -91,8 +101,8 @@ pub struct SetReport {
     pub name: String,
     /// Its means.
     pub means: Vec<NavMeans>,
-    /// Whether the GNSS outages applied.
-    pub gnss_outages: bool,
+    /// The schedule withholding each sensor.
+    pub availability: BTreeMap<SensorKind, String>,
     /// Summary numbers.
     pub summary: SetSummary,
     /// Observations offered, accepted and refused, per sensor.
@@ -151,23 +161,41 @@ pub struct ErrorStats {
     pub last: f64,
 }
 
-/// One GNSS outage seen from a set that honoured it.
+/// One scheduled interval seen from the set it applied to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IntervalReport {
+    /// The sensor withheld.
+    pub sensor: SensorKind,
+    /// The schedule's name.
+    pub schedule: String,
+    /// The schedule's reason, if it gave one.
+    pub reason: Option<String>,
+    /// First second without the sensor.
+    pub start_s: f64,
+    /// Last second without it.
+    pub end_s: f64,
+    /// The errors across it; `None` when no scored sample lies at or before
+    /// its start, or none inside it.
+    pub errors: Option<IntervalErrors>,
+    /// Every sensor's readings inside the interval: those of the withheld
+    /// sensor all count as scheduled unavailable.
+    pub tallies: SensorTallies,
+}
+
+/// The navigation error across one interval.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OutageReport {
-    /// First second without GNSS.
-    pub start_s: f64,
-    /// Last second without GNSS.
-    pub end_s: f64,
+pub struct IntervalErrors {
     /// Horizontal error at the start, metres.
     pub horizontal_error_at_start_m: f64,
-    /// Horizontal error at the end, the unaided error, metres.
+    /// Horizontal error at the end, the error without the sensor, metres.
     pub horizontal_error_at_end_m: f64,
     /// Claimed horizontal 1-sigma at the end, metres.
     pub horizontal_sigma_at_end_m: f64,
-    /// Mean horizontal error growth over the outage, m/s.
+    /// Mean horizontal error growth over the interval, m/s.
     pub horizontal_growth_m_s: f64,
-    /// Mean position NEES over the outage.
+    /// Mean position NEES over the interval.
     pub mean_position_nees: f64,
 }
 
@@ -189,8 +217,8 @@ pub struct SetSummary {
     pub mean_position_nees: f64,
     /// Mean attitude NEES; consistent outputs average 3.
     pub mean_attitude_nees: f64,
-    /// Each honoured outage.
-    pub outages: Vec<OutageReport>,
+    /// Each scheduled interval of the set, in schedule order.
+    pub unavailable: Vec<IntervalReport>,
     /// Whether the filter's claimed covariance matched its errors.
     pub consistency: ConsistencyNote,
 }

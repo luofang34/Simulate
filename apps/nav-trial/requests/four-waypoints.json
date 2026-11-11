@@ -38,7 +38,13 @@
     "period_s": 10.0,
     "mount_alignment_sigma_rad": 2e-5
   },
-  "outages": [{ "start_s": 90.0, "end_s": 240.0 }],
+  "availability": [
+    {
+      "name": "gnss-jammed",
+      "sensor": "gnss",
+      "unavailable": [{ "start_s": 90.0, "end_s": 240.0, "reason": "jamming" }]
+    }
+  ],
   "sensor_sets": [
     { "name": "gnss+baro+ins", "means": ["dead_reckoning", "barometric", "gnss"] },
     { "name": "ins", "means": ["dead_reckoning"] },
@@ -47,12 +53,12 @@
     {
       "name": "gnss-outage+baro+ins",
       "means": ["dead_reckoning", "barometric", "gnss"],
-      "gnss_outages": true
+      "availability": { "gnss": "gnss-jammed" }
     },
     {
       "name": "gnss-outage+baro+ins+stars",
       "means": ["dead_reckoning", "barometric", "gnss", "celestial"],
-      "gnss_outages": true
+      "availability": { "gnss": "gnss-jammed" }
     }
   ],
   "seeds": { "imu": 22434, "alignment": 31, "gnss": 28245, "baro": 47648, "star_camera": 7 },

@@ -5,8 +5,9 @@
 use sha2::{Digest, Sha256};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    ClosedLoopReport, GuidanceSource, ImuGradeName, OutageSpec, Pilot, QualityFloor, SetReport,
-    TerminationSpec, TrialRequest, WaypointSpec, plan_waypoints, run_closed_trial, run_trial,
+    ClosedLoopReport, EventKind, GuidanceSource, ImuGradeName, Pilot, ProgressRecord, QualityFloor,
+    SetReport, TerminationSpec, TrialRequest, WaypointSpec, plan_waypoints, run_closed_trial,
+    run_trial, run_trial_with_progress,
 };
 
 #[cfg(test)]
@@ -24,11 +25,12 @@ const LOST_MISS_TOLERANCE: f64 = 0.10;
 /// Time after GNSS returns within which true cross-track must be back under
 /// the GNSS-aided bound, seconds.
 const PULL_BACK_S: f64 = 120.0;
-/// SHA-256 of the open-loop result of [`open_loop_reference`]. It was taken
-/// before closed loop existed and retaken only when the consistency note and
-/// the measured findings were added, with every other byte checked equal.
+/// SHA-256 of the open-loop result of [`open_loop_reference`]. Closed loop,
+/// slice interleaving and progress must leave every byte of it alone; only
+/// a change of the result schema may move it, with every number checked
+/// equal.
 const OPEN_LOOP_RESULT_SHA256: &str =
-    "8afe9ebbf3dcb13ead0b19ed6db605b6b63d3b4f9e82a5daa30b4cf1dc6c9c44";
+    "dcc66b596f9f05153025bc6e3f393179a1fa59074c468bffa83e73cbe5fbc6fd";
 
 #[cfg(test)]
 fn init_tracing() {
@@ -148,11 +150,7 @@ fn a_lost_navigator_declares_captures_it_truly_missed() {
     let mut request = closed(requests::request(
         long_fly_over_route(),
         ImuGradeName::Tactical,
-        vec![requests::set(
-            "ins+baro",
-            &[DeadReckoning, Barometric],
-            false,
-        )],
+        vec![requests::set("ins+baro", &[DeadReckoning, Barometric])],
     ));
     // Guidance must steer on a solution Navigate rates unusable, and the
     // corridor must hold a vehicle kilometres off its route.
@@ -187,20 +185,17 @@ fn a_lost_navigator_declares_captures_it_truly_missed() {
 fn an_outage_lets_the_track_wander_and_gnss_pulls_it_back() {
     init_tracing();
     use NavMeans::{Barometric, DeadReckoning, Gnss};
-    let outage = OutageSpec {
-        start_s: 120.0,
-        end_s: 360.0,
-    };
+    let outage = requests::gnss_jammed(120.0, 360.0);
     let mut request = closed(requests::request(
         requests::straight(12.0),
         ImuGradeName::Tactical,
-        vec![requests::set(
+        vec![requests::jammed_set(
             "outage",
             &[DeadReckoning, Barometric, Gnss],
-            true,
         )],
     ));
-    request.outages = vec![outage];
+    let outage_interval = outage.unavailable[0].clone();
+    request.availability = vec![outage];
     let report = run_trial(&request).unwrap();
     let set = &report.sensor_sets[0];
     log(set);
@@ -213,10 +208,10 @@ fn an_outage_lets_the_track_wander_and_gnss_pulls_it_back() {
             .map(|s| s.true_cross_track_m.abs())
             .fold(0.0, f64::max)
     };
-    let before = worst(outage.start_s - 60.0, outage.start_s);
-    let during = worst(outage.start_s, outage.end_s);
+    let before = worst(outage_interval.start_s - 60.0, outage_interval.start_s);
+    let during = worst(outage_interval.start_s, outage_interval.end_s);
     let bound = STRAIGHT_LEG_CROSS_TRACK_M + GNSS_SIGMAS * report.gnss_horizontal_sigma_m;
-    let after = worst(outage.end_s + PULL_BACK_S, f64::INFINITY);
+    let after = worst(outage_interval.end_s + PULL_BACK_S, f64::INFINITY);
     tracing::info!(
         before,
         during,
@@ -228,9 +223,12 @@ fn an_outage_lets_the_track_wander_and_gnss_pulls_it_back() {
     assert!(after < bound, "{after}");
 }
 
-/// (d) The same closed-loop request writes the same bytes; and the pilot is
-/// a function of what it reads: replaying its recorded inputs, which hold
-/// no truth, through a fresh pilot reproduces every command bit for bit.
+/// (d) A closed-loop set's result is a function of its request and its own
+/// set alone: flown alone with a pilot trace, and flown interleaved slice by
+/// slice with a second set while a sink takes progress, it writes the same
+/// bytes. And the pilot is a function of what it reads: replaying its
+/// recorded inputs, which hold no truth, through a fresh pilot reproduces
+/// every command bit for bit.
 #[test]
 fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
     init_tracing();
@@ -238,20 +236,28 @@ fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
     let mut request = closed(requests::request(
         requests::four_waypoints(),
         ImuGradeName::Tactical,
-        vec![requests::set(
+        vec![requests::jammed_set(
             "gnss-outage+baro+ins+stars",
             &[DeadReckoning, Barometric, Gnss, Celestial],
-            true,
         )],
     ));
     request.stars.period_s = 30.0;
-    request.outages = vec![OutageSpec {
-        start_s: 120.0,
-        end_s: 200.0,
-    }];
+    request.availability = vec![requests::gnss_jammed(120.0, 200.0)];
     let first = run_closed_trial(&request, true).unwrap();
-    let second = run_trial(&request).unwrap();
-    assert!(first.report.to_json().unwrap() == second.to_json().unwrap());
+    let mut paired = request.clone();
+    paired.sensor_sets.push(requests::set(
+        "gnss+baro+ins",
+        &[DeadReckoning, Barometric, Gnss],
+    ));
+    let mut records = Vec::new();
+    let mut sink = |record: &ProgressRecord| -> std::io::Result<()> {
+        records.push(record.clone());
+        Ok(())
+    };
+    let second = run_trial_with_progress(&paired, &mut sink).unwrap();
+    check_closed_stream(&records, &paired);
+    let bytes = |set: &SetReport| serde_json::to_string(set).unwrap();
+    assert!(bytes(&first.report.sensor_sets[0]) == bytes(&second.sensor_sets[0]));
 
     let waypoints = plan_waypoints(&request.waypoints).unwrap();
     let clock = sim_navigate::MasterClockBridge::default();
@@ -265,6 +271,45 @@ fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
     assert!(stars.frames_solved > 1, "{stars:?}");
 }
 
+/// The closed-loop stream: `started` first, route time never going back
+/// though each set flies its own flight, and every set sequencing the
+/// whole route in it.
+#[cfg(test)]
+fn check_closed_stream(records: &[ProgressRecord], request: &TrialRequest) {
+    assert!(matches!(records.first(), Some(ProgressRecord::Started(_))));
+    let mut last_t = f64::NEG_INFINITY;
+    let mut sequenced = std::collections::BTreeMap::<String, usize>::new();
+    let mut samples = 0_usize;
+    for record in records {
+        let t_s = match record {
+            ProgressRecord::Sample(sample) => {
+                samples = samples.wrapping_add(1);
+                sample.t_s
+            }
+            ProgressRecord::Event(event) => {
+                if let EventKind::WaypointSequenced { .. } = event.kind {
+                    let set = event.set.clone().unwrap();
+                    let count = sequenced.entry(set).or_default();
+                    *count = count.wrapping_add(1);
+                }
+                event.t_s
+            }
+            _ => continue,
+        };
+        assert!(t_s >= last_t, "{t_s} after {last_t}");
+        last_t = t_s;
+    }
+    tracing::info!(
+        records = records.len(),
+        samples,
+        ?sequenced,
+        "closed-loop stream"
+    );
+    for set in &request.sensor_sets {
+        assert_eq!(sequenced.get(&set.name), Some(&request.waypoints.len()));
+    }
+}
+
 #[cfg(test)]
 fn open_loop_reference() -> TrialRequest {
     let mut request = requests::request(
@@ -273,10 +318,7 @@ fn open_loop_reference() -> TrialRequest {
         requests::reference_sets(),
     );
     request.stars.period_s = 10.0;
-    request.outages = vec![OutageSpec {
-        start_s: 20.0,
-        end_s: 40.0,
-    }];
+    request.availability = vec![requests::gnss_jammed(20.0, 40.0)];
     request
 }
 

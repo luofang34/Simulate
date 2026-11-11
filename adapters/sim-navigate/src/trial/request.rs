@@ -1,11 +1,15 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use sim_devices::ImuGrade;
 
 use super::TrialError;
+use super::availability::{AvailabilitySchedule, SensorKind};
 use crate::{AblationSet, NavMeans};
 
 #[cfg(test)]
 mod tests;
+mod validate;
 
 /// Everything one trial run depends on. The same request gives the same
 /// result file, byte for byte.
@@ -33,10 +37,9 @@ pub struct TrialRequest {
     /// The star camera.
     #[serde(default)]
     pub stars: StarSpec,
-    /// Route-time intervals in which GNSS is denied to the sets that honour
-    /// outages.
+    /// Named schedules of sensor unavailability that sets refer to.
     #[serde(default)]
-    pub outages: Vec<OutageSpec>,
+    pub availability: Vec<AvailabilitySchedule>,
     /// The sensor sets to compare over the same truth and sensor
     /// realisations.
     pub sensor_sets: Vec<SensorSetSpec>,
@@ -289,23 +292,6 @@ impl Default for StarSpec {
     }
 }
 
-/// A GNSS outage in route time.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutageSpec {
-    /// First second without GNSS.
-    pub start_s: f64,
-    /// Last second without GNSS: the error there is the unaided error.
-    pub end_s: f64,
-}
-
-impl OutageSpec {
-    /// Whether route time `t_s` falls inside the outage, ends included.
-    pub fn contains(&self, t_s: f64) -> bool {
-        (self.start_s..=self.end_s).contains(&t_s)
-    }
-}
-
 /// One sensor set: the means the filter may take observations from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -314,9 +300,10 @@ pub struct SensorSetSpec {
     pub name: String,
     /// The means; `dead_reckoning` (the INS) must be one of them.
     pub means: Vec<NavMeans>,
-    /// Whether the request's GNSS outages apply to this set.
+    /// The schedule, by name, that withholds each sensor; a sensor not
+    /// named is available whenever its physics allows.
     #[serde(default)]
-    pub gnss_outages: bool,
+    pub availability: BTreeMap<SensorKind, String>,
 }
 
 impl SensorSetSpec {
@@ -344,7 +331,7 @@ pub struct SeedSpec {
     pub star_camera: u64,
 }
 
-/// How densely the result samples the run.
+/// How densely the result and the progress stream sample the run.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputSpec {
@@ -354,14 +341,40 @@ pub struct OutputSpec {
     /// Time between points of the truth track, seconds; a whole multiple
     /// of `sample_period_s`.
     pub track_period_s: f64,
+    /// Time between progress samples, seconds; a whole number of
+    /// simulation steps. A scored sample at a whole multiple of it, and the
+    /// last, is also a progress sample. It shapes only the progress stream,
+    /// though like every request field it enters the result's request
+    /// digest.
+    #[serde(default = "default_progress_period_s")]
+    pub progress_period_s: f64,
+    /// The horizontal error the comparison table counts time above,
+    /// metres.
+    #[serde(default = "default_error_threshold_m")]
+    pub horizontal_error_threshold_m: f64,
+}
+
+/// One progress sample a second of route time.
+const fn default_progress_period_s() -> f64 {
+    1.0
+}
+
+/// Navigate's guidance refuses a solution whose horizontal 1-sigma passes
+/// 50 m, so an error beyond it is where navigation stops being usable for
+/// route following.
+const fn default_error_threshold_m() -> f64 {
+    50.0
 }
 
 impl Default for OutputSpec {
-    /// Scores at 1 Hz and a track point every ten seconds.
+    /// Scores at 1 Hz, a track point every ten seconds, progress at 1 Hz,
+    /// and a 50 m error threshold.
     fn default() -> Self {
         Self {
             sample_period_s: 1.0,
             track_period_s: 10.0,
+            progress_period_s: default_progress_period_s(),
+            horizontal_error_threshold_m: default_error_threshold_m(),
         }
     }
 }
@@ -389,41 +402,5 @@ impl TrialRequest {
             what: "request",
             source,
         })
-    }
-
-    /// Refuses a request the trial cannot run as stated.
-    pub fn validate(&self) -> Result<(), TrialError> {
-        let invalid =
-            |field: &'static str, detail: String| TrialError::InvalidRequest { field, detail };
-        if self.waypoints.len() < 2 {
-            return Err(invalid("waypoints", "at least two".into()));
-        }
-        if self.sensor_sets.is_empty() {
-            return Err(invalid("sensor_sets", "at least one".into()));
-        }
-        for set in &self.sensor_sets {
-            if !set.means.contains(&NavMeans::DeadReckoning) {
-                return Err(invalid("sensor_sets", format!("{}: no INS", set.name)));
-            }
-            if let Some(means) = set.means.iter().find(|m| !SIMULATED_MEANS.contains(m)) {
-                return Err(invalid(
-                    "sensor_sets",
-                    format!("{}: {means:?} is not simulated", set.name),
-                ));
-            }
-        }
-        for outage in &self.outages {
-            if !(outage.start_s.is_finite() && outage.end_s > outage.start_s) {
-                return Err(invalid("outages", format!("{outage:?}")));
-            }
-        }
-        Ok(())
-    }
-
-    /// Whether any set takes star sightings, so frames need rendering.
-    pub fn uses_stars(&self) -> bool {
-        self.sensor_sets
-            .iter()
-            .any(|set| set.means.contains(&NavMeans::Celestial))
     }
 }

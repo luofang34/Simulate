@@ -5,9 +5,13 @@ use navigate_contract::{NavigationSolution, SymmetricCov3};
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 
+use super::TrialError;
+use super::availability::ScheduledInterval;
 use super::replay::IMU_SOURCE;
-use super::report::{ConsistencyNote, ErrorStats, OutageReport, SeriesSample, SetSummary};
-use super::{OutageSpec, TrialError};
+use super::replay::SensorTallies;
+use super::report::{
+    ConsistencyNote, ErrorStats, IntervalErrors, IntervalReport, SeriesSample, SetSummary,
+};
 use crate::{
     AblationEvaluation, Estimate, NavigationOrigin, NavigationOutput, Percentiles, SimTruth, Truth,
     compare_attitude_with_truth,
@@ -78,8 +82,12 @@ fn mean(values: impl Iterator<Item = f64>) -> f64 {
     sum / count.max(1) as f64
 }
 
-/// The summary of a set's series, with each of `outages` it honoured.
-pub fn summarise(series: &[SeriesSample], outages: &[OutageSpec]) -> SetSummary {
+/// The summary of a set's series, with each scheduled interval and the
+/// tallies inside it.
+pub fn summarise(
+    series: &[SeriesSample],
+    intervals: &[(ScheduledInterval, SensorTallies)],
+) -> SetSummary {
     let column = |f: fn(&SeriesSample) -> f64| -> Vec<f64> { series.iter().map(f).collect() };
     SetSummary {
         samples: series.len() as u64,
@@ -89,9 +97,17 @@ pub fn summarise(series: &[SeriesSample], outages: &[OutageSpec]) -> SetSummary 
         attitude_error_rad: error_stats(&column(|s| s.attitude_error_rad)),
         mean_position_nees: mean(series.iter().map(|s| s.position_nees)),
         mean_attitude_nees: mean(series.iter().map(|s| s.attitude_nees)),
-        outages: outages
+        unavailable: intervals
             .iter()
-            .filter_map(|outage| outage_report(series, outage))
+            .map(|(scheduled, tallies)| IntervalReport {
+                sensor: scheduled.sensor,
+                schedule: scheduled.schedule.clone(),
+                reason: scheduled.interval.reason.clone(),
+                start_s: scheduled.interval.start_s,
+                end_s: scheduled.interval.end_s,
+                errors: interval_errors(series, scheduled),
+                tallies: tallies.clone(),
+            })
             .collect(),
         consistency: consistency(series),
     }
@@ -143,15 +159,17 @@ fn consistency(series: &[SeriesSample]) -> ConsistencyNote {
     }
 }
 
-/// The outage from the last sample at or before its start to the last
-/// sample inside it; `None` when the run does not cover it.
-fn outage_report(series: &[SeriesSample], outage: &OutageSpec) -> Option<OutageReport> {
-    let start = series.iter().rev().find(|s| s.time_s <= outage.start_s)?;
-    let end = series.iter().rev().find(|s| outage.contains(s.time_s))?;
+/// The errors from the last sample at or before the interval's start to
+/// the last sample inside it; `None` when the run does not cover it.
+fn interval_errors(
+    series: &[SeriesSample],
+    scheduled: &ScheduledInterval,
+) -> Option<IntervalErrors> {
+    let interval = &scheduled.interval;
+    let start = series.iter().rev().find(|s| s.time_s <= interval.start_s)?;
+    let end = series.iter().rev().find(|s| interval.contains(s.time_s))?;
     let duration = end.time_s - start.time_s;
-    Some(OutageReport {
-        start_s: outage.start_s,
-        end_s: outage.end_s,
+    Some(IntervalErrors {
         horizontal_error_at_start_m: start.horizontal_error_m,
         horizontal_error_at_end_m: end.horizontal_error_m,
         horizontal_sigma_at_end_m: end.horizontal_sigma_m,
@@ -163,7 +181,7 @@ fn outage_report(series: &[SeriesSample], outage: &OutageSpec) -> Option<OutageR
         mean_position_nees: mean(
             series
                 .iter()
-                .filter(|s| outage.contains(s.time_s))
+                .filter(|s| interval.contains(s.time_s))
                 .map(|s| s.position_nees),
         ),
     })

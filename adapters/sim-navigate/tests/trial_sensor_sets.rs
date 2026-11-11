@@ -4,8 +4,8 @@
 use std::sync::OnceLock;
 
 use sim_navigate::trial::{
-    GnssSpec, ImuGradeName, OutageReport, OutageSpec, RecordedTrial, SetReport, SetRun,
-    SetSelection, TrialReport, TrialRequest, evaluate, record_trial, trial_inertial_config,
+    GnssSpec, ImuGradeName, IntervalErrors, RecordedTrial, SensorKind, SetAvailability, SetReport,
+    SetRun, SetSelection, TrialReport, TrialRequest, evaluate, record_trial, trial_inertial_config,
 };
 use sim_navigate::{AblationSet, NavMeans, compare_with_truth};
 
@@ -23,11 +23,9 @@ const AIDED_NEES: std::ops::RangeInclusive<f64> = 0.5..=6.0;
 /// Time after GNSS returns within which the error must be back at the
 /// GNSS-aided level, seconds.
 const SETTLING_S: f64 = 60.0;
-/// The outage: GNSS denied from t1 to t2 inclusive, seconds of route time.
-const OUTAGE: OutageSpec = OutageSpec {
-    start_s: 90.0,
-    end_s: 240.0,
-};
+/// The outage: GNSS withheld from t1 to t2 inclusive, seconds of route
+/// time.
+const OUTAGE: (f64, f64) = (90.0, 240.0);
 /// Seeds per grade for the unaided ensemble.
 const ENSEMBLE: u64 = 4;
 
@@ -49,7 +47,7 @@ fn log_set(set: &SetReport) {
         attitude_rms_mrad = s.attitude_error_rad.rms * 1e3,
         position_nees = s.mean_position_nees,
         attitude_nees = s.mean_attitude_nees,
-        outages = ?s.outages,
+        unavailable = ?s.unavailable,
         observations = ?set.observations,
         "sensor set"
     );
@@ -66,11 +64,11 @@ fn set<'a>(report: &'a TrialReport, name: &str) -> &'a SetReport {
 fn outage_request(gnss: GnssSpec) -> TrialRequest {
     use NavMeans::{Barometric, DeadReckoning, Gnss};
     let sets = vec![
-        requests::set("gnss+baro+ins", &[DeadReckoning, Barometric, Gnss], false),
-        requests::set("outage", &[DeadReckoning, Barometric, Gnss], true),
+        requests::set("gnss+baro+ins", &[DeadReckoning, Barometric, Gnss]),
+        requests::jammed_set("outage", &[DeadReckoning, Barometric, Gnss]),
     ];
     let mut request = requests::request(requests::four_waypoints(), ImuGradeName::Tactical, sets);
-    request.outages = vec![OUTAGE];
+    request.availability = vec![requests::gnss_jammed(OUTAGE.0, OUTAGE.1)];
     request.gnss = gnss;
     request
 }
@@ -90,10 +88,11 @@ fn default_run() -> &'static (TrialRequest, RecordedTrial, TrialReport) {
 }
 
 #[cfg(test)]
-fn the_outage(report: &TrialReport) -> OutageReport {
-    let outages = &set(report, "outage").summary.outages;
-    assert_eq!(outages.len(), 1, "{outages:?}");
-    outages[0]
+fn the_outage(report: &TrialReport) -> IntervalErrors {
+    let intervals = &set(report, "outage").summary.unavailable;
+    assert_eq!(intervals.len(), 1, "{intervals:?}");
+    assert_eq!(intervals[0].sensor, SensorKind::Gnss);
+    intervals[0].errors.unwrap()
 }
 
 #[test]
@@ -164,7 +163,7 @@ fn unaided(grade: ImuGradeName, minutes: f64, seeds: u64) -> (f64, f64, Vec<SetR
     let request = requests::request(
         requests::straight(minutes),
         grade,
-        vec![requests::set("ins", &[NavMeans::DeadReckoning], false)],
+        vec![requests::set("ins", &[NavMeans::DeadReckoning])],
     );
     let sets: Vec<SetReport> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..seeds)
@@ -242,33 +241,41 @@ fn the_result_flags_a_diverged_consumer_ins() {
     assert_eq!(note.verdict, "diverged", "{note:?}");
 }
 
-/// During the outage the filter runs exactly as an `ins+baro` filter forked
-/// from the outage run's own state at t1; its covariance grows; and after
-/// GNSS returns the error is back at the aided level.
+/// Fork equality for GNSS: during the scheduled outage the filter runs
+/// exactly as an `ins+baro` filter forked from the outage run's own state
+/// at t1; its covariance grows; and after GNSS returns the error is back at
+/// the aided level.
 #[test]
 fn an_outage_leaves_the_filter_unaided_until_gnss_returns() {
     init_tracing();
     use NavMeans::{Barometric, DeadReckoning, Gnss};
     let (request, recorded, report) = default_run();
     let outage = the_outage(report);
-    let selection = |means: &[NavMeans], outages: Vec<OutageSpec>| SetSelection {
+    let selection = |means: &[NavMeans], availability: SetAvailability| SetSelection {
         means: means.iter().fold(AblationSet::EMPTY, |s, m| s.with(*m)),
-        outages,
+        availability,
     };
+    let jammed = SetAvailability::resolve(request, &request.sensor_sets[1]).unwrap();
     let config = trial_inertial_config(&request.imu_grade.grade().spec(), &request.baro);
     let mut run = SetRun::new(
         &recorded.log,
-        selection(&[DeadReckoning, Barometric, Gnss], vec![OUTAGE]),
+        selection(&[DeadReckoning, Barometric, Gnss], jammed),
         config,
         None,
     )
     .unwrap();
     let step = |seconds: f64| (seconds * 120.0).round() as usize;
-    run.advance_to(&recorded.log, step(OUTAGE.start_s)).unwrap();
-    let mut fork = run.fork(selection(&[DeadReckoning, Barometric], Vec::new()));
-    fork.advance_to(&recorded.log, step(OUTAGE.end_s)).unwrap();
+    run.advance_to(&recorded.log, step(OUTAGE.0)).unwrap();
+    let mut fork = run.fork(selection(
+        &[DeadReckoning, Barometric],
+        SetAvailability::NONE,
+    ));
+    fork.advance_to(&recorded.log, step(OUTAGE.1)).unwrap();
+    run.advance_to(&recorded.log, step(OUTAGE.1)).unwrap();
     let solution = fork.solution(&recorded.log).unwrap().unwrap();
-    let truth = recorded.flight.truth[step(OUTAGE.end_s)].get().1;
+    let scheduled = run.solution(&recorded.log).unwrap().unwrap();
+    assert_eq!(scheduled, solution, "the scheduled run and the fork differ");
+    let truth = recorded.flight.truth[step(OUTAGE.1)].get().1;
     let forked = compare_with_truth(solution.get(), truth.position_ecef).unwrap();
     let ratio = outage.horizontal_error_at_end_m / forked.horizontal_error_m;
     tracing::info!(
@@ -281,12 +288,12 @@ fn an_outage_leaves_the_filter_unaided_until_gnss_returns() {
 
     let series = &set(report, "outage").series;
     let at = |t: f64| series.iter().find(|s| (s.time_s - t).abs() < 1e-6).unwrap();
-    let (start, end) = (at(OUTAGE.start_s), at(OUTAGE.end_s));
+    let (start, end) = (at(OUTAGE.0), at(OUTAGE.1));
     assert!(
         end.horizontal_sigma_m > 2.0 * start.horizontal_sigma_m,
         "{start:?} {end:?}"
     );
-    let settled = at(OUTAGE.end_s + SETTLING_S);
+    let settled = at(OUTAGE.1 + SETTLING_S);
     tracing::info!(?settled, "after GNSS returns");
     assert!(
         settled.horizontal_error_m <= 2.0 * report.gnss_horizontal_sigma_m,

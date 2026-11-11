@@ -1,24 +1,36 @@
 //! A whole trial: fly, sense once, replay each sensor set, score.
+//!
+//! Every set advances one sample slice at a time in turn, in open loop over
+//! the one recorded flight and in closed loop each over its own, so a
+//! progress monitor sees every set's curve grow together. Each set owns its
+//! navigator, and in closed loop its vehicle and sensors, so the order in
+//! which they are stepped changes nothing in any of them.
+
+mod flights;
+mod replays;
 
 use navigate_contract::NavigationSolution;
 use navigate_startrack::PairCatalogue;
 use sha2::{Digest, Sha256};
 use sim_core::SimInstant;
-use sim_geo::ecef_to_geodetic;
 
-use super::closed::{ClosedLoopOutcome, fly_closed_loop};
+use super::availability::{ScheduledInterval, SetAvailability};
+use super::closed::{ClosedLoopOutcome, ClosedLoopReport};
+use super::comparison::comparison;
 use super::epoch::parse_utc;
 use super::gnss::GnssReceiver;
+use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
-use super::replay::{STAR_SOURCE, SetRun, SetSelection, trial_inertial_config};
+use super::replay::{STAR_SOURCE, SensorTallies, SetRun, SetSelection, StarAvailability};
 use super::report::{
-    InputIdentity, REPORT_SCHEMA, RouteReport, SetReport, TrackPoint, TrialReport,
+    InputIdentity, REPORT_SCHEMA, RouteReport, SeriesSample, SetReport, TrialReport,
 };
 use super::route::{RouteFlight, STEP_HZ, fly_route};
-use super::score::{score_sample, summarise};
+use super::score::summarise;
 use super::stars::sighting::{StarSighting, pair_table};
+use super::vertical::vertical_plan;
 use super::{GuidanceSource, SensorSetSpec, TrialError, TrialRequest, model_statements};
-use crate::{AblationEvaluation, Estimate, NavMeans, NavigationOrigin};
+use crate::{Estimate, NavMeans};
 
 /// A flown and sensed trial, before any sensor set has been replayed.
 #[derive(Debug, Clone)]
@@ -39,6 +51,15 @@ pub struct TrialOutcome {
     pub estimates: Vec<Vec<Estimate<(SimInstant, NavigationSolution)>>>,
 }
 
+/// A closed-loop trial's report with each set's full outcome, in set order.
+#[derive(Debug, Clone)]
+pub struct ClosedTrialOutcome {
+    /// The result file's content.
+    pub report: TrialReport,
+    /// Each set's flight, with the pilot trace when asked for.
+    pub sets: Vec<ClosedLoopOutcome>,
+}
+
 /// What every set of a run shares.
 #[derive(Clone, Copy)]
 pub(super) struct SetContext<'p> {
@@ -56,22 +77,28 @@ pub fn record_trial(request: &TrialRequest) -> Result<RecordedTrial, TrialError>
 
 /// Runs `request` end to end, in open or closed loop as it asks.
 pub fn run_trial(request: &TrialRequest) -> Result<TrialReport, TrialError> {
+    run_trial_with_progress(request, &mut NoProgress)
+}
+
+/// Runs `request` end to end, handing `sink` a `started` record and then
+/// every slice's events and samples. The report is the same whatever the
+/// sink does with them.
+pub fn run_trial_with_progress(
+    request: &TrialRequest,
+    sink: &mut dyn ProgressSink,
+) -> Result<TrialReport, TrialError> {
+    request.validate()?;
+    let (legs, _) = vertical_plan(&request.waypoints, &request.vehicle)?;
+    let digest = identity(request)?.request_sha256;
+    sink.record(&started(request, digest, &legs))
+        .map_err(TrialError::Progress)?;
     match request.vehicle.guidance {
         GuidanceSource::Truth => {
             let recorded = record_trial(request)?;
-            Ok(evaluate(request, &recorded)?.report)
+            Ok(evaluate_with_progress(request, &recorded, sink)?.report)
         }
-        GuidanceSource::Estimate => Ok(run_closed_trial(request, false)?.report),
+        GuidanceSource::Estimate => Ok(flights::closed_trial(request, false, sink)?.report),
     }
-}
-
-/// A closed-loop trial's report with each set's full outcome, in set order.
-#[derive(Debug, Clone)]
-pub struct ClosedTrialOutcome {
-    /// The result file's content.
-    pub report: TrialReport,
-    /// Each set's flight, with the pilot trace when asked for.
-    pub sets: Vec<ClosedLoopOutcome>,
 }
 
 /// Flies every sensor set of `request` in closed loop, each on its own
@@ -80,64 +107,25 @@ pub fn run_closed_trial(
     request: &TrialRequest,
     trace: bool,
 ) -> Result<ClosedTrialOutcome, TrialError> {
-    request.validate()?;
-    let sample_steps = whole_steps("output.sample_period_s", request.output.sample_period_s)?;
-    let pairs = if request.uses_stars() {
-        Some(pair_table(parse_utc(&request.epoch_utc)?)?)
-    } else {
-        None
-    };
-    let context = SetContext {
-        pairs: pairs.as_ref(),
-        sample_steps,
-    };
-    let mut sets = Vec::new();
-    let mut reports = Vec::new();
-    for set in &request.sensor_sets {
-        let outcome = fly_closed_loop(request, set, context, trace)?;
-        reports.push(SetReport {
-            name: set.name.clone(),
-            means: set.ablation_set().means().collect(),
-            gnss_outages: set.gnss_outages,
-            summary: summarise(&outcome.series, &set_outages(request, set)),
-            observations: outcome.tallies.clone(),
-            stars: set
-                .ablation_set()
-                .contains(NavMeans::Celestial)
-                .then_some(outcome.stars),
-            series: outcome.series.clone(),
-            closed_loop: Some(outcome.report.clone()),
-        });
-        sets.push(outcome);
-    }
-    let duration_s = sets
-        .iter()
-        .map(|set| set.report.duration_s)
-        .fold(0.0, f64::max);
-    let report = TrialReport {
-        schema: REPORT_SCHEMA.into(),
-        inputs: identity(request)?,
-        models: model_statements(request.vehicle.guidance),
-        seeds: request.seeds,
-        route: RouteReport {
-            waypoints: request.waypoints.clone(),
-            events: Vec::new(),
-            duration_s,
-            track: Vec::new(),
-        },
-        outages: request.outages.clone(),
-        gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
-        sensor_sets: reports,
-    };
-    Ok(ClosedTrialOutcome { report, sets })
+    flights::closed_trial(request, trace, &mut NoProgress)
 }
 
-fn set_outages(request: &TrialRequest, set: &SensorSetSpec) -> Vec<super::OutageSpec> {
-    if set.gnss_outages {
-        request.outages.clone()
-    } else {
-        Vec::new()
-    }
+/// Replays every sensor set of `request` over `recorded` and scores each
+/// against the recorded flight's truth.
+pub fn evaluate(
+    request: &TrialRequest,
+    recorded: &RecordedTrial,
+) -> Result<TrialOutcome, TrialError> {
+    evaluate_with_progress(request, recorded, &mut NoProgress)
+}
+
+/// [`evaluate`], handing `sink` every slice's events and samples.
+pub fn evaluate_with_progress(
+    request: &TrialRequest,
+    recorded: &RecordedTrial,
+    sink: &mut dyn ProgressSink,
+) -> Result<TrialOutcome, TrialError> {
+    replays::open_trial(request, recorded, sink)
 }
 
 pub(super) fn whole_steps(field: &'static str, seconds: f64) -> Result<usize, TrialError> {
@@ -151,40 +139,40 @@ pub(super) fn whole_steps(field: &'static str, seconds: f64) -> Result<usize, Tr
     Ok(steps.round() as usize)
 }
 
-/// Replays every sensor set of `request` over `recorded` and scores each
-/// against the recorded flight's truth.
-pub fn evaluate(
-    request: &TrialRequest,
-    recorded: &RecordedTrial,
-) -> Result<TrialOutcome, TrialError> {
-    let sample_steps = whole_steps("output.sample_period_s", request.output.sample_period_s)?;
-    let pairs = if request.uses_stars() {
-        Some(pair_table(parse_utc(&request.epoch_utc)?)?)
+/// The scored and progress sample periods in steps. A scored sample is a
+/// progress sample when its step is a whole multiple of the progress
+/// period, so a progress period finer than the scored one takes every
+/// scored sample.
+fn sample_periods(request: &TrialRequest) -> Result<(usize, usize), TrialError> {
+    let output = &request.output;
+    let sample = whole_steps("output.sample_period_s", output.sample_period_s)?;
+    let progress = whole_steps("output.progress_period_s", output.progress_period_s)?;
+    Ok((sample, progress))
+}
+
+/// The lost-in-space pair table when any set of `request` takes stars.
+pub fn star_pair_table(request: &TrialRequest) -> Result<Option<PairCatalogue>, TrialError> {
+    if request.uses_stars() {
+        Ok(Some(pair_table(parse_utc(&request.epoch_utc)?)?))
     } else {
-        None
-    };
-    let context = SetContext {
-        pairs: pairs.as_ref(),
-        sample_steps,
-    };
-    let mut reports = Vec::new();
-    let mut estimates = Vec::new();
-    for set in &request.sensor_sets {
-        let (report, series) = evaluate_set(request, recorded, set, context)?;
-        reports.push(report);
-        estimates.push(series);
+        Ok(None)
     }
-    let report = TrialReport {
-        schema: REPORT_SCHEMA.into(),
-        inputs: identity(request)?,
-        models: model_statements(request.vehicle.guidance),
-        seeds: request.seeds,
-        route: route_report(request, &recorded.flight)?,
-        outages: request.outages.clone(),
-        gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
-        sensor_sets: reports,
+}
+
+/// The navigator `set` of `request` replays `log` with, aligned, its star
+/// tracker on `pairs` when the set takes stars: what a trial runs, for
+/// stepping by hand.
+pub fn replay_set<'p>(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    pairs: Option<&'p PairCatalogue>,
+    log: &SensorLog,
+) -> Result<SetRun<'p>, TrialError> {
+    let context = SetContext {
+        pairs,
+        sample_steps: 1,
     };
-    Ok(TrialOutcome { report, estimates })
+    set_run(request, set, context, log)
 }
 
 /// The navigator of `set`, aligned from `log`.
@@ -209,68 +197,58 @@ pub(super) fn set_run<'p>(
     };
     let selection = SetSelection {
         means,
-        outages: if set.gnss_outages {
-            request.outages.clone()
-        } else {
-            Vec::new()
-        },
+        availability: SetAvailability::resolve(request, set)?,
     };
-    let config = trial_inertial_config(&request.imu_grade.grade().spec(), &request.baro);
+    let config = super::trial_inertial_config(&request.imu_grade.grade().spec(), &request.baro);
     SetRun::new(log, selection, config, sighting)
 }
 
-type SetOutcome = (SetReport, Vec<Estimate<(SimInstant, NavigationSolution)>>);
+/// What a set's run leaves for its report.
+pub(super) struct SetResult {
+    pub(super) series: Vec<SeriesSample>,
+    pub(super) tallies: SensorTallies,
+    pub(super) intervals: Vec<(ScheduledInterval, SensorTallies)>,
+    pub(super) stars: StarAvailability,
+    pub(super) closed_loop: Option<ClosedLoopReport>,
+}
 
-fn evaluate_set(
-    request: &TrialRequest,
-    recorded: &RecordedTrial,
-    set: &SensorSetSpec,
-    context: SetContext<'_>,
-) -> Result<SetOutcome, TrialError> {
-    let sample_steps = context.sample_steps;
+fn set_report(set: &SensorSetSpec, result: SetResult) -> SetReport {
     let means = set.ablation_set();
-    let outages = set_outages(request, set);
-    let mut run = set_run(request, set, context, &recorded.log)?;
-    let origin = NavigationOrigin::Fused(means);
-    let mut evaluation = AblationEvaluation::default();
-    let truth = &recorded.flight.truth;
-    let last = truth.len().saturating_sub(1);
-    let mut steps: Vec<usize> = (sample_steps..=last).step_by(sample_steps).collect();
-    if steps.last() != Some(&last) && last > 0 {
-        steps.push(last);
-    }
-    let mut series = Vec::with_capacity(steps.len());
-    let mut published = Vec::with_capacity(steps.len());
-    for step in steps {
-        run.advance_to(&recorded.log, step)?;
-        let Some(estimate) = run.solution(&recorded.log)? else {
-            continue;
-        };
-        evaluation.expect(origin);
-        let Some(sample_truth) = truth.get(step) else {
-            continue;
-        };
-        series.push(score_sample(
-            &mut evaluation,
-            origin,
-            sample_truth,
-            &estimate,
-        )?);
-        published.push(Estimate::new((sample_truth.get().0, *estimate.get())));
-    }
-    let report = SetReport {
+    SetReport {
         name: set.name.clone(),
         means: means.means().collect(),
-        gnss_outages: set.gnss_outages,
-        summary: summarise(&series, &outages),
-        observations: run.tallies().clone(),
-        stars: means
-            .contains(NavMeans::Celestial)
-            .then(|| run.star_availability()),
-        series,
-        closed_loop: None,
-    };
-    Ok((report, published))
+        availability: set.availability.clone(),
+        summary: summarise(&result.series, &result.intervals),
+        observations: result.tallies,
+        stars: means.contains(NavMeans::Celestial).then_some(result.stars),
+        series: result.series,
+        closed_loop: result.closed_loop,
+    }
+}
+
+/// The result file of `request` over `route` with each set's `results`.
+fn trial_report(
+    request: &TrialRequest,
+    route: RouteReport,
+    results: Vec<SetResult>,
+) -> Result<TrialReport, TrialError> {
+    let sensor_sets: Vec<SetReport> = request
+        .sensor_sets
+        .iter()
+        .zip(results)
+        .map(|(set, result)| set_report(set, result))
+        .collect();
+    Ok(TrialReport {
+        schema: REPORT_SCHEMA.into(),
+        inputs: identity(request)?,
+        models: model_statements(request.vehicle.guidance),
+        seeds: request.seeds,
+        route,
+        availability: request.availability.clone(),
+        gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
+        comparison: comparison(&sensor_sets, request.output.horizontal_error_threshold_m),
+        sensor_sets,
+    })
 }
 
 fn identity(request: &TrialRequest) -> Result<InputIdentity, TrialError> {
@@ -283,35 +261,5 @@ fn identity(request: &TrialRequest) -> Result<InputIdentity, TrialError> {
         request_sha256: digest.iter().map(|byte| format!("{byte:02x}")).collect(),
         sim_navigate_version: env!("CARGO_PKG_VERSION").into(),
         epoch_utc: request.epoch_utc.clone(),
-    })
-}
-
-fn route_report(request: &TrialRequest, flight: &RouteFlight) -> Result<RouteReport, TrialError> {
-    let track_steps = whole_steps("output.track_period_s", request.output.track_period_s)?;
-    let point = |(at, state): &(SimInstant, sim_core::VehicleState)| {
-        let geo = ecef_to_geodetic(state.position_ecef);
-        TrackPoint {
-            time_s: at.duration_since(SimInstant::START).as_seconds(),
-            lat_deg: geo.lat_rad.to_degrees(),
-            lon_deg: geo.lon_rad.to_degrees(),
-            height_m: geo.height_m,
-        }
-    };
-    let mut track: Vec<TrackPoint> = flight
-        .truth
-        .iter()
-        .step_by(track_steps)
-        .map(|sample| point(sample.get()))
-        .collect();
-    if let Some(last) = flight.truth.last()
-        && track.last().map(|p| p.time_s) != Some(point(last.get()).time_s)
-    {
-        track.push(point(last.get()));
-    }
-    Ok(RouteReport {
-        waypoints: request.waypoints.clone(),
-        events: flight.events.clone(),
-        duration_s: track.last().map_or(0.0, |p| p.time_s),
-        track,
     })
 }

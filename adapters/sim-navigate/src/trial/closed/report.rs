@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::trial::TrackPoint;
+use crate::trial::vertical::FlownPoint;
 
 /// One sensor set's closed-loop flight: where its navigator truly took the
 /// vehicle.
@@ -17,6 +18,8 @@ pub struct ClosedLoopReport {
     pub duration_s: f64,
     /// The true ground track, downsampled.
     pub track: Vec<TrackPoint>,
+    /// The true vertical profile, at the track's points.
+    pub vertical_profile: Vec<FlownPoint>,
     /// True cross-track deviation from the leg being flown, per sample.
     pub cross_track: Vec<CrossTrackSample>,
     /// Largest absolute true cross-track deviation, metres.

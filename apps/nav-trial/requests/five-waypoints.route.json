@@ -1,0 +1,7 @@
+[
+  { "ident": "R0", "lat_deg": 39.0, "lon_deg": -75.6, "altitude_m": 600.0 },
+  { "lat_deg": 39.004, "lon_deg": -75.578, "altitude_m": 600.0 },
+  { "lat_deg": 39.0, "lon_deg": -75.556, "altitude_m": 800.0, "speed_m_s": 50.0 },
+  { "lat_deg": 39.004, "lon_deg": -75.534, "altitude_m": 800.0 },
+  { "ident": "R4", "lat_deg": 39.0, "lon_deg": -75.512, "altitude_m": 700.0 }
+]

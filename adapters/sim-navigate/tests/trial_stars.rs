@@ -3,7 +3,8 @@
 
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    ImuGradeName, SetReport, TrialOutcome, TrialRequest, evaluate, record_trial,
+    ImuGradeName, ProgressRecord, SensorState, SetReport, TrialOutcome, TrialRequest,
+    evaluate_with_progress, record_trial,
 };
 
 #[cfg(test)]
@@ -29,12 +30,8 @@ fn init_tracing() {
 fn star_request(epoch_utc: &str) -> TrialRequest {
     use NavMeans::{Barometric, Celestial, DeadReckoning};
     let sets = vec![
-        requests::set("ins+baro", &[DeadReckoning, Barometric], false),
-        requests::set(
-            "ins+baro+stars",
-            &[DeadReckoning, Barometric, Celestial],
-            false,
-        ),
+        requests::set("ins+baro", &[DeadReckoning, Barometric]),
+        requests::set("ins+baro+stars", &[DeadReckoning, Barometric, Celestial]),
     ];
     let mut request = requests::request(requests::four_waypoints(), ImuGradeName::Tactical, sets);
     request.epoch_utc = epoch_utc.into();
@@ -42,8 +39,10 @@ fn star_request(epoch_utc: &str) -> TrialRequest {
     request
 }
 
+/// The trial's outcome, the Sun's elevation at every frame, and the star
+/// camera's state in every progress sample of the star set.
 #[cfg(test)]
-fn run(request: &TrialRequest) -> (TrialOutcome, Vec<f64>) {
+fn run(request: &TrialRequest) -> (TrialOutcome, Vec<f64>, Vec<SensorState>) {
     let recorded = record_trial(request).unwrap();
     let sun_elevations = recorded
         .log
@@ -51,7 +50,17 @@ fn run(request: &TrialRequest) -> (TrialOutcome, Vec<f64>) {
         .iter()
         .filter_map(|frame| frame.truth.get().sky.map(|sky| sky.sun_elevation_deg))
         .collect();
-    (evaluate(request, &recorded).unwrap(), sun_elevations)
+    let mut states = Vec::new();
+    let mut sink = |record: &ProgressRecord| -> std::io::Result<()> {
+        if let ProgressRecord::Sample(sample) = record
+            && sample.set == "ins+baro+stars"
+        {
+            states.push(sample.sensors.stars);
+        }
+        Ok(())
+    };
+    let outcome = evaluate_with_progress(request, &recorded, &mut sink).unwrap();
+    (outcome, sun_elevations, states)
 }
 
 #[cfg(test)]
@@ -76,7 +85,7 @@ fn log(set: &SetReport, sun_elevations: &[f64]) {
 #[test]
 fn stars_hold_attitude_at_night() {
     init_tracing();
-    let (outcome, sun) = run(&star_request(requests::NIGHT_UTC));
+    let (outcome, sun, _) = run(&star_request(requests::NIGHT_UTC));
     let [without, with] = &outcome.report.sensor_sets[..] else {
         panic!("two sets");
     };
@@ -105,7 +114,7 @@ fn stars_hold_attitude_at_night() {
 #[test]
 fn the_noon_sky_leaves_the_tracker_nothing() {
     init_tracing();
-    let (outcome, sun) = run(&star_request(requests::NOON_UTC));
+    let (outcome, sun, states) = run(&star_request(requests::NOON_UTC));
     let [without, with] = &outcome.report.sensor_sets[..] else {
         panic!("two sets");
     };
@@ -116,6 +125,15 @@ fn the_noon_sky_leaves_the_tracker_nothing() {
     assert!(stars.frames_attempted > 0, "{stars:?}");
     let solved = stars.frames_solved as f64 / stars.frames_attempted as f64;
     assert!(solved <= NOON_SOLVED_FRACTION, "{stars:?}");
+    // Every frame the sky left unsolved counts as physically unavailable,
+    // none as scheduled.
+    let tally = &with.observations.stars;
+    assert_eq!(
+        tally.physically_unavailable,
+        stars.frames_attempted - stars.frames_solved,
+        "{tally:?}"
+    );
+    assert_eq!(tally.scheduled_unavailable, 0);
     if stars.frames_solved == 0 {
         assert_eq!(with.observations.stars.offered, 0);
         // Reading the prior publishes a solution, which advances the
@@ -138,6 +156,13 @@ fn the_noon_sky_leaves_the_tracker_nothing() {
         };
         assert_eq!(state(0), state(1));
         assert_eq!(without.series, with.series);
+        assert!(!states.is_empty());
+        assert!(
+            states
+                .iter()
+                .all(|s| *s == SensorState::PhysicallyUnavailable),
+            "{states:?}"
+        );
     }
 }
 
@@ -177,7 +202,7 @@ fn stars_over_a_schuler_period() {
         request.waypoints = schuler_loop();
         request.imu_grade = grade;
         request.stars.period_s = 1.0;
-        let (outcome, sun) = run(&request);
+        let (outcome, sun, _) = run(&request);
         let [without, with] = &outcome.report.sensor_sets[..] else {
             panic!("two sets");
         };
