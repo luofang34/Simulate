@@ -7,6 +7,7 @@ mod tests;
 use aviate_core::control::ControlMode;
 use navigate_contract::MonotonicNanos;
 use pilotage_adapter_api::{StepBudget, VehicleAdapter};
+use pilotage_mission::MissionState;
 use sim_aviate::DirectNoiseTier;
 use sim_core::{SimInstant, VehicleState};
 
@@ -38,6 +39,7 @@ pub struct ChainSetup {
 pub struct FlightChain {
     vehicle: AviateX500Vehicle,
     host: MissionHost,
+    ticks_into_frame: u32,
 }
 
 impl FlightChain {
@@ -51,7 +53,11 @@ impl FlightChain {
             noise_seed: setup.noise_seed,
         })?;
         let host = MissionHost::new(&setup.mission, &vehicle.capabilities())?;
-        Ok(Self { vehicle, host })
+        Ok(Self {
+            vehicle,
+            host,
+            ticks_into_frame: 0,
+        })
     }
 
     /// The instant the vehicle state describes.
@@ -79,15 +85,35 @@ impl FlightChain {
         self.vehicle.flight_mode()
     }
 
-    /// One mission frame, then the flight until the next.
-    pub fn advance_frame(&mut self) -> Result<FrameReport, ChainError> {
-        let elapsed_s = self.now().duration_since(SimInstant::START).as_seconds();
-        let now = MonotonicNanos::from_nanos((elapsed_s * NANOS_PER_SECOND).round() as u64);
-        let report = self.host.frame(&mut self.vehicle, now);
-        let outcome = self.vehicle.step(StepBudget { ticks: FRAME_TICKS });
-        if outcome.advanced < FRAME_TICKS {
+    /// The mission phase after the last frame.
+    pub fn mission_state(&self) -> MissionState {
+        self.host.engine().state()
+    }
+
+    /// One cycle of the flight controller and the airframe, after a mission
+    /// frame when one is due. Returns that frame's report.
+    pub fn advance_tick(&mut self) -> Result<Option<FrameReport>, ChainError> {
+        let report = (self.ticks_into_frame == 0).then(|| {
+            let elapsed_s = self.now().duration_since(SimInstant::START).as_seconds();
+            let now = MonotonicNanos::from_nanos((elapsed_s * NANOS_PER_SECOND).round() as u64);
+            self.host.frame(&mut self.vehicle, now)
+        });
+        if self.vehicle.step(StepBudget { ticks: 1 }).advanced == 0 {
             return Err(self.vehicle.take_fault().unwrap_or(ChainError::Stopped));
         }
+        self.ticks_into_frame = self.ticks_into_frame.wrapping_add(1) % FRAME_TICKS;
         Ok(report)
+    }
+
+    /// One mission frame's worth of flight, and the report of the frame
+    /// that fell in it.
+    pub fn advance_frame(&mut self) -> Result<FrameReport, ChainError> {
+        let mut report = None;
+        for _ in 0..FRAME_TICKS {
+            if let Some(frame) = self.advance_tick()? {
+                report = Some(frame);
+            }
+        }
+        report.ok_or(ChainError::Stopped)
     }
 }

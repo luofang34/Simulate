@@ -3,7 +3,7 @@ use pilotage_adapter_api::{
     AdapterCapabilities, ApplyOutcome, LinkLossEnactError, LinkLossPolicy, StepOutcome,
     TelemetryBatch, VideoSource,
 };
-use pilotage_mission::{MissionEvent, MissionState};
+use pilotage_mission::MissionEvent;
 use pilotage_protocol::{ScopeId, ScopedControlFrame, VehicleId};
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
