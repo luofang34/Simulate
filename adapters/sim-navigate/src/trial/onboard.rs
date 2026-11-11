@@ -117,8 +117,9 @@ pub fn star_catalogue(request: &TrialRequest) -> Result<StarCatalogueConfig, Tri
     Ok(StarCatalogueConfig::with_utc_at_zero(start.unix_seconds()))
 }
 
-/// The navigator `set` flies with, unaligned.
-pub fn trial_navigator(
+/// The navigator `set` flies with, unaligned; a visual set's reads its
+/// onboard package from the store.
+pub fn trial_navigator_blocking(
     request: &TrialRequest,
     set: &SensorSetSpec,
 ) -> Result<Box<dyn Navigator>, TrialError> {

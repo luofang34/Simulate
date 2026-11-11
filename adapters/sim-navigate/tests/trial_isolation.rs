@@ -7,8 +7,8 @@ use sim_geo::{LocalFrame, ecef_to_geodetic};
 use sim_navigate::NavMeans;
 use sim_navigate::Truth;
 use sim_navigate::trial::{
-    ImuGradeName, ProgressRecord, TrialReport, TrialRequest, evaluate, evaluate_with_progress,
-    record_trial, run_trial,
+    ImuGradeName, ProgressRecord, TrialReport, TrialRequest, evaluate_blocking,
+    evaluate_with_progress_blocking, record_trial_blocking, run_trial_blocking,
 };
 
 #[cfg(test)]
@@ -48,7 +48,7 @@ fn request() -> TrialRequest {
 fn recorded() -> &'static sim_navigate::trial::RecordedTrial {
     static RECORDED: std::sync::OnceLock<sim_navigate::trial::RecordedTrial> =
         std::sync::OnceLock::new();
-    RECORDED.get_or_init(|| record_trial(&request()).unwrap())
+    RECORDED.get_or_init(|| record_trial_blocking(&request()).unwrap())
 }
 
 /// Truth the navigator must never see, moved 1 km north and turned 0.05 rad
@@ -70,8 +70,8 @@ fn moving_the_truth_changes_scores_and_never_estimates() {
         state.attitude = (state.attitude * turn).normalize();
         *sample = Truth::new((at, state));
     }
-    let original = evaluate(&request, recorded).unwrap();
-    let perturbed = evaluate(&request, &moved).unwrap();
+    let original = evaluate_blocking(&request, recorded).unwrap();
+    let perturbed = evaluate_blocking(&request, &moved).unwrap();
     assert_eq!(original.estimates, perturbed.estimates);
     for (a, b) in original
         .report
@@ -123,7 +123,7 @@ fn progress_carries_truth_without_feeding_it_to_the_navigator() {
             }
             Ok(())
         };
-        let outcome = evaluate_with_progress(&request, recorded, &mut sink).unwrap();
+        let outcome = evaluate_with_progress_blocking(&request, recorded, &mut sink).unwrap();
         (outcome, samples)
     };
     let (original, original_samples) = watched(recorded);
@@ -131,7 +131,7 @@ fn progress_carries_truth_without_feeding_it_to_the_navigator() {
     assert_eq!(original.estimates, perturbed.estimates);
     assert_eq!(
         original.estimates,
-        evaluate(&request, recorded).unwrap().estimates
+        evaluate_blocking(&request, recorded).unwrap().estimates
     );
     assert_eq!(original_samples.len(), perturbed_samples.len());
     let scored: usize = original
@@ -153,8 +153,8 @@ fn progress_carries_truth_without_feeding_it_to_the_navigator() {
 fn the_same_request_writes_the_same_bytes() {
     init_tracing();
     let request = request();
-    let first = run_trial(&request).unwrap().to_json().unwrap();
-    let second = run_trial(&request).unwrap().to_json().unwrap();
+    let first = run_trial_blocking(&request).unwrap().to_json().unwrap();
+    let second = run_trial_blocking(&request).unwrap().to_json().unwrap();
     assert!(first == second, "the result files differ");
 }
 
@@ -169,7 +169,7 @@ fn the_request_and_result_read_back_as_written() {
     let mut short = request.clone();
     short.waypoints = requests::straight(1.0);
     short.availability[0].unavailable.clear();
-    let report = run_trial(&short).unwrap();
+    let report = run_trial_blocking(&short).unwrap();
     let written = report.to_json().unwrap();
     let read = TrialReport::from_json(&written).unwrap();
     assert_eq!(read, report);
