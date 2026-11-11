@@ -105,6 +105,11 @@ fn the_inset_and_the_page_map_are_one_map_drawn_together() -> Result<(), AppSimE
     assert!(maps.efb_view_of(EfbDisplayMode::CompactCorner).is_some());
     let chrome = rig.efb_chrome(flight.world()).expect("the inset shows");
     assert_eq!(chrome.mode, EfbDisplayMode::CompactCorner);
+    assert!(
+        chrome.buttons.is_empty(),
+        "the page's buttons command the map"
+    );
+    assert!(rig.page_commands_efb());
     let corner = efb_map_rect(SIZE, EfbDisplayMode::CompactCorner);
     let quads = rig.overlay_quads(flight.world());
     assert_eq!(

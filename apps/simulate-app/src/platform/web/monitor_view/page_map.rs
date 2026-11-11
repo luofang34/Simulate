@@ -75,7 +75,6 @@ impl PageMap {
     /// The map at the end of `parent`.
     pub fn under(document: &Document, parent: &Element, setup: PageMapSetup) -> Option<Self> {
         let frame = append(document, parent, "div", "page-map-frame")?;
-        frame.set_attribute("hidden", "").ok();
         let canvas = setup.canvas;
         canvas.set_class_name("page-map");
         canvas
@@ -106,7 +105,9 @@ impl PageMap {
             handed: None,
             _listeners: listeners,
         };
+        // Sized while shown, then hidden until the app's map first draws.
         map.size_buffer();
+        map.frame.set_attribute("hidden", "").ok();
         Some(map)
     }
 
@@ -137,6 +138,7 @@ impl PageMap {
             self.link.publish_tracks(Arc::new(tracks));
             self.handed = Some((handed, now_ms));
         }
+        self.follow_width();
         let view = self.link.view();
         if view.live {
             self.frame.remove_attribute("hidden").ok();
@@ -152,6 +154,24 @@ impl PageMap {
         let width = f64::from(self.canvas.client_width()).max(320.0) * ratio;
         self.canvas.set_width(width as u32);
         self.canvas.set_height((width * ASPECT) as u32);
+    }
+
+    /// Sizes the drawing buffer again when the canvas's width on screen changed, and
+    /// tells the app's map.
+    fn follow_width(&self) {
+        let ratio = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
+        let css = self.canvas.client_width();
+        if css <= 0 {
+            return;
+        }
+        let width = (f64::from(css) * ratio) as u32;
+        if width.abs_diff(self.canvas.width()) <= 1 {
+            return;
+        }
+        let height = (f64::from(width) * ASPECT) as u32;
+        self.canvas.set_width(width);
+        self.canvas.set_height(height);
+        self.link.resize([width, height]);
     }
 
     /// CSS pixels per drawing-buffer pixel.

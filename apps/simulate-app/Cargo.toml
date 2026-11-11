@@ -69,6 +69,7 @@ web-sys = { workspace = true, features = [
     "AddEventListenerOptions",
     "CanvasRenderingContext2d",
     "Document",
+    "DomRect",
     "Element",
     "Event",
     "EventTarget",

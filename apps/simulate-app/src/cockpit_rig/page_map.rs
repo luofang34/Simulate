@@ -8,7 +8,7 @@ use sim_render::{Camera, CanvasPresenter, FrameOutcome, OverlayQuad, RenderError
 use tracing::warn;
 
 use super::CockpitRig;
-use super::efb_chrome::{efb_map_rect, rect_px};
+use super::efb_chrome::{EfbChrome, efb_map_rect, rect_px};
 use crate::flight::Flight;
 use crate::map_rig::{EfbStatus, MapFrameInput, MapLibreRig};
 use crate::page_map::PageMapLink;
@@ -68,6 +68,21 @@ impl CockpitRig {
         status
     }
 
+    /// The window's EFB chrome: beside a page's map the inset only shows, and the page's
+    /// own buttons command the map, so it has none.
+    pub(super) fn inset_chrome(&self, mut chrome: EfbChrome) -> EfbChrome {
+        if self.page_map_px.is_some() {
+            chrome.buttons.clear();
+        }
+        chrome
+    }
+
+    /// Whether a page's map, not the window, takes the EFB's commands.
+    #[must_use]
+    pub const fn page_commands_efb(&self) -> bool {
+        self.page_map_px.is_some()
+    }
+
     /// The frame the window's EFB chrome frames: beside a page's map the compact inset,
     /// else the shown view.
     pub(super) fn inset_view<'m>(&self, maps: &'m MapLibreRig) -> Option<&'m wgpu::TextureView> {
@@ -99,14 +114,20 @@ impl CockpitRig {
         }
     }
 
-    /// Applies what the page handed over on `link` before the frame draws.
-    pub fn take_page_map(&mut self, link: &PageMapLink) {
+    /// Applies what the page handed over on `link` before the frame draws; returns the
+    /// canvas's new size when the page resized it.
+    pub fn take_page_map(&mut self, link: &PageMapLink) -> Option<[u32; 2]> {
         let input = link.take();
+        let resized = input.size_px.filter(|size| !size.contains(&0));
+        if resized.is_some() && self.page_map_px.is_some() {
+            self.page_map_px = resized;
+        }
         if let Some(maps) = self.maps.as_mut()
             && let Err(err) = maps.take_page_map(input)
         {
             warn!(error = %err, "the page map refused the page's input");
         }
+        resized
     }
 
     /// Shows the expanded EFB view on `presenter`, and tells the page on `link` what it

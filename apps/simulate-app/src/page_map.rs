@@ -64,6 +64,7 @@ struct Shared {
     route: Option<(FlightPlan, RouteProgress)>,
     route_new: bool,
     tracks: Option<Arc<EfbTracks>>,
+    size_px: Option<[u32; 2]>,
     view: PageMapView,
 }
 
@@ -104,6 +105,12 @@ impl PageMapLink {
         self.lock().tracks = Some(tracks);
     }
 
+    /// Page: the canvas's drawing buffer is now `size_px`.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn resize(&self, size_px: [u32; 2]) {
+        self.lock().size_px = Some(size_px);
+    }
+
     /// Page: what the map shows now.
     #[cfg(any(target_arch = "wasm32", test))]
     #[must_use]
@@ -120,6 +127,7 @@ impl PageMapLink {
                 .then(|| shared.route.clone())
                 .flatten(),
             tracks: shared.tracks.take(),
+            size_px: shared.size_px.take(),
         }
     }
 
@@ -138,4 +146,6 @@ pub(crate) struct PageMapInput {
     pub route: Option<(FlightPlan, RouteProgress)>,
     /// New tracks.
     pub tracks: Option<Arc<EfbTracks>>,
+    /// The canvas's new drawing-buffer size, physical pixels.
+    pub size_px: Option<[u32; 2]>,
 }

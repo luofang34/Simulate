@@ -116,7 +116,7 @@ pub(super) fn listen(
             let Some(event) = event.dyn_ref::<PointerEvent>() else {
                 return;
             };
-            let (id, at) = (event.pointer_id(), offset(event));
+            let (id, at) = (event.pointer_id(), offset(event, canvas));
             let input = match kind {
                 "pointerdown" => {
                     canvas.set_pointer_capture(id).ok();
@@ -172,9 +172,13 @@ fn apply(
     }
 }
 
-/// Where `event` is on its target, CSS pixels from its top left.
-fn offset(event: &MouseEvent) -> [f64; 2] {
-    [f64::from(event.offset_x()), f64::from(event.offset_y())]
+/// Where `event` is on `canvas`, CSS pixels from its top left.
+fn offset(event: &MouseEvent, canvas: &HtmlCanvasElement) -> [f64; 2] {
+    let rect = canvas.get_bounding_client_rect();
+    [
+        f64::from(event.client_x()) - rect.left(),
+        f64::from(event.client_y()) - rect.top(),
+    ]
 }
 
 /// Calls `handler` for each `kind` event on `target`.

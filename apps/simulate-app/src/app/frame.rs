@@ -182,7 +182,7 @@ impl FlightApp {
         let page_only = self.occluded && self.page_map.is_some();
         if let Some(rig) = self.cockpit_rig.as_mut()
             && page_map_frame(
-                rig,
+                (rig, self.page_map.as_mut()),
                 &self.flight,
                 self.renderer.as_ref(),
                 page_only,
@@ -280,7 +280,10 @@ impl FlightApp {
 /// Hands the page's input to its map; with `page_only` (the window out of sight, the
 /// page's map on screen) draws the page's map alone and returns `true`.
 fn page_map_frame(
-    rig: &mut crate::cockpit_rig::CockpitRig,
+    (rig, presenter): (
+        &mut crate::cockpit_rig::CockpitRig,
+        Option<&mut sim_render::CanvasPresenter>,
+    ),
     flight: &crate::flight::Flight,
     renderer: Option<&sim_render::Renderer>,
     page_only: bool,
@@ -289,7 +292,11 @@ fn page_map_frame(
     let Some(link) = flight.page_map() else {
         return false;
     };
-    rig.take_page_map(link);
+    if let (Some([width, height]), Some(presenter), Some(renderer)) =
+        (rig.take_page_map(link), presenter, renderer)
+    {
+        presenter.resize(renderer.device(), width, height);
+    }
     let Some(renderer) = renderer.filter(|_| page_only) else {
         return false;
     };

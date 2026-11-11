@@ -141,7 +141,7 @@ impl CockpitRig {
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
         let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
         let status = self.inset_status(maps.efb_status()?);
-        Some(EfbChrome::new(self.surface_size, &status))
+        Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
     }
 
     /// Applies an operator command to the EFB.

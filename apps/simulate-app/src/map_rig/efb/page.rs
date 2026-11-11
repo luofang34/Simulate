@@ -12,7 +12,7 @@ use crate::page_map::{FixLabel, PageMapInput, PageMapView, PickedFix};
 
 /// The page map's first zoom: a route of a few tens of kilometres in view, where the
 /// tablet's own starts closer in.
-const PAGE_ZOOM: f64 = 10.5;
+const PAGE_ZOOM: f64 = 9.5;
 
 /// How near a fix a tap picks it, CSS pixels: a fingertip's reach.
 #[cfg(any(target_arch = "wasm32", test))]

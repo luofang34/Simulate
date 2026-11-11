@@ -187,13 +187,16 @@ fn the_link_hands_each_change_over_once() {
     link.command(EfbCommand::Recenter);
     link.publish_route(&plan, progress);
     link.publish_tracks(Arc::new(EfbTracks::default()));
+    link.resize([800, 496]);
     let first = link.take();
+    assert_eq!(first.size_px, Some([800, 496]));
     assert_eq!(first.commands, [EfbCommand::Recenter]);
     assert_eq!(first.route, Some((plan.clone(), progress)));
     assert!(first.tracks.is_some());
     link.publish_route(&plan, progress);
     let again = link.take();
     assert!(again.commands.is_empty() && again.route.is_none() && again.tracks.is_none());
+    assert_eq!(again.size_px, None);
     link.show(PageMapView {
         live: true,
         ..PageMapView::default()
