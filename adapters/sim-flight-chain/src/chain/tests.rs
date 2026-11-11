@@ -11,6 +11,7 @@ use super::*;
 use crate::{OwnshipFeed, RouteFix};
 
 mod c172_route;
+mod c172_zaragoza;
 mod navigator_feed;
 
 const FRAME_TICKS: u32 = (FLIGHT_RATE_HZ / MISSION_FRAME_HZ) as u32;
