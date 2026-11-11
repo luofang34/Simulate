@@ -47,6 +47,7 @@ pub(super) fn closed_trial(
             tallies: outcome.tallies.clone(),
             intervals: outcome.interval_tallies.clone(),
             stars: outcome.stars,
+            terrain_fixes: Default::default(),
             closed_loop: Some(outcome.report.clone()),
         });
         sets.push(outcome);

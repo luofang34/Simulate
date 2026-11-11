@@ -69,11 +69,12 @@ fn sample_lines_are_pinned() {
             gnss: SensorState::ScheduledUnavailable,
             baro: SensorState::Aiding,
             stars: SensorState::NotInSet,
+            terrain_camera: SensorState::NotInSet,
         },
     });
     assert_eq!(
         line(&sample),
-        r#"{"type":"sample","t_s":4.0,"set":"ins","truth":{"lat_deg":1.0,"lon_deg":2.0,"altitude_m":3.0},"estimate":{"lat_deg":1.5,"lon_deg":2.0,"altitude_m":3.0},"horizontal_error_m":5.0,"vertical_error_m":6.0,"sigma_horizontal_m":7.0,"cross_track_true_m":null,"sensors":{"gnss":"scheduled_unavailable","baro":"aiding","stars":"not_in_set"}}"#
+        r#"{"type":"sample","t_s":4.0,"set":"ins","truth":{"lat_deg":1.0,"lon_deg":2.0,"altitude_m":3.0},"estimate":{"lat_deg":1.5,"lon_deg":2.0,"altitude_m":3.0},"horizontal_error_m":5.0,"vertical_error_m":6.0,"sigma_horizontal_m":7.0,"cross_track_true_m":null,"sensors":{"gnss":"scheduled_unavailable","baro":"aiding","stars":"not_in_set","terrain_camera":"not_in_set"}}"#
     );
     let states = [
         (SensorState::PhysicallyUnavailable, "physically_unavailable"),

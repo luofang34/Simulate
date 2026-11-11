@@ -63,6 +63,22 @@ pub enum TrialError {
         /// What is wrong with it.
         detail: String,
     },
+    /// A named map package was refused before the run.
+    #[error("{field}: {reason:?}: {detail}")]
+    Package {
+        /// The request field naming it.
+        field: &'static str,
+        /// Why.
+        reason: super::maps::PackageRefusal,
+        /// The store's own words.
+        detail: String,
+    },
+    /// A map package could not be read or decoded.
+    #[error("map package: {what}")]
+    Maps {
+        /// What failed.
+        what: String,
+    },
     /// The progress sink refused a record.
     #[error("progress stream")]
     Progress(#[source] std::io::Error),
