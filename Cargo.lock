@@ -291,7 +291,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "aviate-airframe-fixed-wing"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 dependencies = [
  "aviate-core",
 ]
@@ -299,7 +299,7 @@ dependencies = [
 [[package]]
 name = "aviate-core"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 dependencies = [
  "bitflags 2.13.2",
  "libm",
@@ -308,7 +308,7 @@ dependencies = [
 [[package]]
 name = "aviate-hal-io"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 dependencies = [
  "aviate-core",
  "embedded-hal",
@@ -318,7 +318,7 @@ dependencies = [
 [[package]]
 name = "aviate-link"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -328,12 +328,12 @@ dependencies = [
 [[package]]
 name = "aviate-xil-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 
 [[package]]
 name = "aviate-xil-direct"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=2f128ec17e51900e42f4720e4a78c0237ec12c21#2f128ec17e51900e42f4720e4a78c0237ec12c21"
+source = "git+https://github.com/luofang34/Aviate?rev=13e1e5580c3891db1a783c5c283cc44858a3b068#13e1e5580c3891db1a783c5c283cc44858a3b068"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -1137,7 +1137,7 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 
 [[package]]
 name = "flate2"
@@ -3131,7 +3131,7 @@ dependencies = [
 [[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3142,7 +3142,7 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3153,7 +3153,7 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3166,7 +3166,7 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -3174,7 +3174,7 @@ dependencies = [
 [[package]]
 name = "navigate-data"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3187,7 +3187,7 @@ dependencies = [
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3199,7 +3199,7 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
@@ -3208,7 +3208,7 @@ dependencies = [
 [[package]]
 name = "navigate-guidance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3222,7 +3222,7 @@ dependencies = [
 [[package]]
 name = "navigate-onboard"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "image",
  "nalgebra",
@@ -3245,7 +3245,7 @@ dependencies = [
 [[package]]
 name = "navigate-route"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3255,7 +3255,7 @@ dependencies = [
 [[package]]
 name = "navigate-startrack"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3268,7 +3268,7 @@ dependencies = [
 [[package]]
 name = "navigate-trajectory"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3280,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "navigate-visual"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "image",
  "nalgebra",
@@ -3297,7 +3297,7 @@ dependencies = [
 [[package]]
 name = "navigate-visual-render"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
+source = "git+https://github.com/luofang34/Navigate?rev=f9179abd017fba04d80e53dc02b38038f6e726a8#f9179abd017fba04d80e53dc02b38038f6e726a8"
 dependencies = [
  "bytemuck",
  "futures-channel",
@@ -3938,7 +3938,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -3955,7 +3955,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-aviate"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-control-feel",
@@ -3972,7 +3972,7 @@ dependencies = [
 [[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "serde",
  "serde_json",
@@ -3983,7 +3983,7 @@ dependencies = [
 [[package]]
 name = "pilotage-authority"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-protocol",
  "pilotage-timing",
@@ -3993,12 +3993,12 @@ dependencies = [
 [[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -4010,7 +4010,7 @@ dependencies = [
 [[package]]
 name = "pilotage-control-feel"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "serde",
  "serde_json",
@@ -4021,7 +4021,7 @@ dependencies = [
 [[package]]
 name = "pilotage-flight-uplink"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-control-feel",
  "pilotage-mavlink",
@@ -4031,7 +4031,7 @@ dependencies = [
 [[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -4043,7 +4043,7 @@ dependencies = [
 [[package]]
 name = "pilotage-host-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "aerocontext-core",
  "navigate-contract",
@@ -4066,12 +4066,12 @@ dependencies = [
 [[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 
 [[package]]
 name = "pilotage-mavlink"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-geo",
@@ -4088,12 +4088,12 @@ dependencies = [
 [[package]]
 name = "pilotage-mavlink-framing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 
 [[package]]
 name = "pilotage-mission"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "aerocontext-core",
  "aerocontext-navdata",
@@ -4104,6 +4104,7 @@ dependencies = [
  "navigate-geodesy",
  "navigate-guidance",
  "navigate-route",
+ "pilotage-geo",
  "pilotage-mission-core",
  "pilotage-protocol",
  "prost",
@@ -4114,7 +4115,7 @@ dependencies = [
 [[package]]
 name = "pilotage-mission-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "serde",
  "serde_json",
@@ -4125,7 +4126,7 @@ dependencies = [
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -4138,7 +4139,7 @@ dependencies = [
 [[package]]
 name = "pilotage-session"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-authority",
@@ -4149,12 +4150,12 @@ dependencies = [
 [[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 
 [[package]]
 name = "pilotage-world"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=449f9aa968a26e499e2f4b19ab34d21f1e72f291#449f9aa968a26e499e2f4b19ab34d21f1e72f291"
+source = "git+https://github.com/luofang34/Pilotage?rev=8eca04a8943b40eb077fb9a3c9254617a22231db#8eca04a8943b40eb077fb9a3c9254617a22231db"
 dependencies = [
  "libm",
  "pilotage-geo",
@@ -5739,6 +5740,7 @@ dependencies = [
  "sim-aviate",
  "sim-chain-trial",
  "sim-core",
+ "sim-flight-chain",
  "sim-geo",
  "sim-indicate",
  "sim-input",

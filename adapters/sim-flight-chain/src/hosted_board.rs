@@ -13,7 +13,7 @@ use aviate_hal_io::SystemCommand;
 use sim_aviate::{AviateDirectConfig, AviateDirectRunner, DirectActuatorCmd};
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::{DeviceSamples, SensorSuite, SensorSuiteSpec};
-use sim_geo::Geodetic;
+use sim_geo::{Geodetic, egm96_undulation_m};
 
 use crate::{Airframe, ChainError};
 
@@ -64,8 +64,13 @@ where
             decimal_year,
             ..AviateDirectConfig::ideal(origin)
         };
-        let controller = AviateDirectRunner::new(kernel, config)
+        let mut controller = AviateDirectRunner::new(kernel, config)
             .map_err(|source| ChainError::FlightController { at_s: 0.0, source })?;
+        // The installation states the geoid's height at the origin, as a real
+        // one would, so the controller reports heights above mean sea level.
+        controller
+            .board_mut()
+            .set_geoid_separation(egm96_undulation_m(origin.lat_rad, origin.lon_rad));
         Ok(Self {
             airframe,
             suite: SensorSuite::new(suite).map_err(ChainError::Devices)?,
@@ -121,6 +126,11 @@ where
     /// The airframe.
     pub const fn airframe(&self) -> &A {
         &self.airframe
+    }
+
+    /// The sensor suite, to read what its devices drew at power-up.
+    pub const fn suite(&self) -> &SensorSuite {
+        &self.suite
     }
 
     /// The sensor suite, to take the sky from its receiver or displace it.

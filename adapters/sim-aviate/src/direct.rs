@@ -369,7 +369,27 @@ where
     pub fn estimated_state(&self) -> Option<VehicleState> {
         let estimate = self.board.kernel().state.estimator.get_estimate();
         (estimate.quality != EstimateQuality::Unusable)
-            .then(|| self.world.vehicle_from_estimate(&estimate))
+            .then(|| self.navigation_world().vehicle_from_estimate(&estimate))
+    }
+
+    /// The tangent world the onboard estimate is in. The board moves its
+    /// frame's origin to the vehicle as it flies, so after a move the
+    /// configured origin no longer anchors the estimate's positions and axes.
+    #[must_use]
+    pub fn navigation_world(&self) -> NedWorld {
+        let frame = self.board.navigation_frame();
+        if frame.rebases == 0 {
+            return self.world;
+        }
+        let origin = frame.origin;
+        NedWorld::new(
+            &BodyEllipsoid::WGS84,
+            &Geodetic::from_degrees(
+                origin.latitude_deg,
+                origin.longitude_deg,
+                origin.ellipsoidal_height_m,
+            ),
+        )
     }
 
     /// Whether the EKF and pre-arm gates report ready.

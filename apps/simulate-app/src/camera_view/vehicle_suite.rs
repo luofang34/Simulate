@@ -37,6 +37,7 @@ pub fn vehicle_camera_suite(vehicle: FreeFlightVehicle) -> &'static VehicleCamer
     match vehicle {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::AviateFixedWingDirect
+        | FreeFlightVehicle::C172Mission
         | FreeFlightVehicle::Kinematic => {
             C172_SUITE.get_or_init(|| suite(vehicle, package_views("c172", builtin_c172_package())))
         }

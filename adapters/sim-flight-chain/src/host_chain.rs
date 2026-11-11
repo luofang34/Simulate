@@ -29,8 +29,6 @@ use crate::{Airframe, ChainError, HostedBoard};
 /// so no frame is split across two datagrams.
 const TRANSMIT_RING_BYTES: usize = 8_192;
 const NANOS_PER_SECOND: f64 = 1.0e9;
-/// Lag admitted between the estimate groups of one sample, milliseconds.
-const MAX_INTER_GROUP_SKEW_MS: u32 = 100;
 
 /// Whose navigation the mission flies on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -310,12 +308,7 @@ where
         OwnshipFeed::Navigator => OwnshipSource::onboard_navigation(),
     };
     Ok(HostCoreConfig {
-        // Aviate publishes attitude at 20 Hz and local position at 10 Hz, so
-        // the newer of the two groups may lead the other by up to 100 ms.
-        link: LinkConfig {
-            maximum_inter_group_skew_ms: MAX_INTER_GROUP_SKEW_MS,
-            ..LinkConfig::simulator()
-        },
+        link: LinkConfig::simulator(),
         airframe: route.airframe.clone(),
         fc_origin_height_m: Some(origin.height_m),
         incarnations: EmbeddedIncarnations {

@@ -45,7 +45,7 @@ const SIMULATED: [(&str, &str); 8] = [
     ),
     (
         "barometric altimeter",
-        "sim_devices::PitotStatic static port in the ICAO standard atmosphere entered at ellipsoidal height, in still air with no weather: true static pressure plus a first-order Gauss-Markov offset plus white noise, in pascals; the navigator's host reads it as standard-atmosphere pressure altitude and declares the pressure statistics to the filter's barometric bias state through the standard pressure gradient at the first waypoint's height",
+        "sim_devices::PitotStatic static port in the ICAO standard atmosphere referenced to mean sea level through the EGM96 geoid, in still air with no weather: true static pressure plus a first-order Gauss-Markov offset plus white noise, in pascals; the navigator's host reads it as standard-atmosphere pressure altitude above mean sea level, adds the EGM96 undulation under its own position estimate, and declares the pressure statistics to the filter's barometric bias state through the standard pressure gradient at the first waypoint's height",
     ),
     (
         "star camera",

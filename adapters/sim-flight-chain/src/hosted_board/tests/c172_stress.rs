@@ -226,7 +226,7 @@ fn crash_board(no_gnss: bool) -> C172Board {
     let mut board = c172_board(
         &c172_setup(seed),
         &suite,
-        SharedAir::new(StandardAtmosphere),
+        SharedAir::new(GeoidStandardAtmosphere::new()),
     )
     .unwrap();
     board
@@ -258,7 +258,6 @@ fn assert_survived(watched: &Watched) {
 /// The crash case: the turn must stay a turn, and the estimate must keep
 /// its attitude through it.
 #[test]
-#[ignore = "stress case; run it by name. Aviate d9f8d5b's filter loses its attitude in it"]
 fn the_crash_bias_survives_a_steep_turn_on_arming() {
     tracing_subscriber::fmt().with_test_writer().try_init().ok();
     let watched = turn_on_arming(&mut crash_board(false));
@@ -269,7 +268,6 @@ fn the_crash_bias_survives_a_steep_turn_on_arming() {
 /// The crash case with the receiver silent from power-up: the flight
 /// controller must come up and fly the turn on its inertial and air data.
 #[test]
-#[ignore = "stress case; run it by name. Aviate d9f8d5b needs a fix to become ready"]
 fn the_crash_bias_survives_a_steep_turn_on_arming_without_gnss() {
     tracing_subscriber::fmt().with_test_writer().try_init().ok();
     let watched = turn_on_arming(&mut crash_board(true));

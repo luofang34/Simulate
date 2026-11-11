@@ -94,6 +94,9 @@ pub fn title(
     if let Some(armed) = flight.aviate_armed() {
         add(if armed { "FC ARMED" } else { "FC DISARMED" }.to_owned());
     }
+    if let Some(chain) = flight.chain_readout() {
+        add(chain_line(&chain));
+    }
     if flight.world().body() == sim_geo::BodyEllipsoid::WGS84 {
         let nav_mode = match flight.sensor_realism() {
             crate::sensor_bus::SensorRealism::Realistic => "WAAS [N]",
@@ -237,4 +240,17 @@ fn append_dsn_link(dsn: &SpaceLinkStatus, add: &mut impl FnMut(String)) {
     } else {
         add(format!("DSN MASK ({el_deg:.0}°)"));
     }
+}
+
+/// The mission phase and each navigation set's horizontal error against truth, with its
+/// stated 1-sigma where it states one.
+fn chain_line(chain: &crate::flight::ChainReadout) -> String {
+    let mut line = format!("MSN {}", chain.phase.as_deref().unwrap_or("-"));
+    for (set, standing) in &chain.standings {
+        line.push_str(&format!(" | {set} {:.0} m", standing.horizontal_error_m));
+        if let Some(sigma) = standing.sigma_horizontal_m {
+            line.push_str(&format!(" (σ {sigma:.0})"));
+        }
+    }
+    line
 }

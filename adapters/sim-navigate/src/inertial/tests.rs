@@ -143,3 +143,99 @@ fn rotation_vectors_keep_their_digits_near_the_identity() {
         );
     }
 }
+
+/// The consumer gyroscope's residual after a minute at rest, about a
+/// thousandth of a degree a second, from its own statistics.
+#[test]
+fn a_minute_on_the_ground_leaves_the_consumer_gyroscope_a_small_residual() {
+    let calibration = GroundCalibration {
+        window_s: GroundCalibration::WINDOW_S,
+        seed: 0,
+    };
+    let spec = ImuGrade::ConsumerMemsCalibrated.spec();
+    let sigma_deg_s = calibration
+        .residual_variance(&spec.gyro)
+        .sqrt()
+        .to_degrees();
+    assert!((0.0008..0.001).contains(&sigma_deg_s), "{sigma_deg_s}");
+    assert!(sigma_deg_s < spec.gyro.turn_on_bias_sigma.to_degrees() / 500.0);
+    assert!(
+        calibration
+            .prior(&ImuErrorSpec::IDEAL, DVec3::ZERO)
+            .is_none()
+    );
+}
+
+#[test]
+fn a_ground_calibration_misses_by_its_declared_sigma() {
+    let spec = ImuGrade::ConsumerMemsCalibrated.spec();
+    let accel_sigma = inertial_config(&spec).accel_bias.sigma();
+    let (mut squares, draws) = (0.0, 400_u64);
+    let mut declared = 0.0;
+    for seed in 0..draws {
+        let calibration = GroundCalibration {
+            window_s: GroundCalibration::WINDOW_S,
+            seed,
+        };
+        let bias = DVec3::new(0.01, -0.004, 0.007);
+        let prior = calibration.prior(&spec, bias).unwrap();
+        squares += (DVec3::from_array(prior.gyro_bias_body_rad_s) - bias).length_squared();
+        declared = prior.gyro_cov_body.diagonal().0;
+        assert_eq!(prior.accel_bias_body_mps2, [0.0; 3]);
+        assert!(
+            (prior.accel_cov_body.diagonal().0 / (accel_sigma * accel_sigma) - 1.0).abs() < 1e-12
+        );
+    }
+    let variance = squares / (3 * draws) as f64;
+    assert!(
+        (variance / declared - 1.0).abs() < 0.15,
+        "{variance} {declared}"
+    );
+}
+
+/// Unaided at rest for a minute, the consumer part's turn-on bias turns the
+/// heading by degrees; the ground calibration's prior holds it to a small
+/// fraction of a degree. A sign slip between the unit and the filter would
+/// double the turn instead.
+#[test]
+fn a_ground_calibrated_unit_holds_its_heading_unaided() {
+    let truth = VehicleState::level_flight(&delaware(), 0.3, 0.0);
+    let spec = ImuGrade::ConsumerMemsCalibrated.spec();
+    let heading_after_a_minute = |calibrated: bool| {
+        let mut imu = SimulatedImu::new(spec, 11).unwrap();
+        let mut fix = InitialAlignment::EXACT.measure(&truth);
+        let bias = imu.errors().gyro_bias_rad_s();
+        if calibrated {
+            let calibration = GroundCalibration {
+                window_s: GroundCalibration::WINDOW_S,
+                seed: 3,
+            };
+            fix.imu_bias_prior = calibration.prior(&spec, bias);
+        }
+        let mut navigator = InertialNavigator::new(
+            inertial_config(&spec),
+            crate::MasterClockBridge::default(),
+            navigate_contract::SourceId::new(1),
+        );
+        let period = sim_core::TickSpan::period_of_hz(120).unwrap().ticks_u128();
+        let at = |step: u64| sim_core::SimInstant::from_ticks_u128(u128::from(step) * period);
+        navigator.align(&fix, at(0)).unwrap();
+        imu.sense(at(0), &truth).unwrap();
+        let steps = (60.0 / DT_S).round() as u64;
+        for step in 1..=steps {
+            let increment = imu.sense(at(step), &truth).unwrap().unwrap();
+            navigator.ingest(&increment, at(step)).unwrap();
+        }
+        let solution = navigator.solution(at(steps)).unwrap().unwrap();
+        let comparison = crate::compare_attitude_with_truth(&solution, truth.attitude).unwrap();
+        (comparison.heading_rad.abs().to_degrees(), bias)
+    };
+    let (unaided_deg, bias) = heading_after_a_minute(false);
+    assert!(bias.z.abs().to_degrees() > 0.1, "{bias}");
+    let (calibrated_deg, _) = heading_after_a_minute(true);
+    assert!(unaided_deg > 5.0, "{unaided_deg}");
+    assert!(
+        calibrated_deg < 0.2,
+        "{calibrated_deg} against {unaided_deg}"
+    );
+}

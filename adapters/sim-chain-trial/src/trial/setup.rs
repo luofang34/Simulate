@@ -4,15 +4,16 @@
 
 use glam::DVec3;
 use sha2::{Digest, Sha256};
-use sim_atmosphere::{StandardAtmosphere, geometric_to_geopotential_m, isa_at_geopotential};
+use sim_atmosphere::{AtmosphereField, GeoidStandardAtmosphere};
 use sim_core::VehicleState;
+use sim_devices::SensorSuite;
 use sim_flight_chain::{
     C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
     c172_pilotage_airframe, c172_sensor_suite_with,
 };
 use sim_geo::{Geodetic, UtcTime};
-use sim_navigate::InitialAlignment;
 use sim_navigate::trial::{TrialRequest, parse_utc};
+use sim_navigate::{GroundCalibration, InitialAlignment};
 
 use super::C172Chain;
 use crate::{ChainTrialError, ChainTrialSpec, Steering};
@@ -66,7 +67,7 @@ pub(super) fn chain(
     spec: &ChainTrialSpec,
     resolved: &Resolved,
 ) -> Result<C172Chain, ChainTrialError> {
-    let true_m_s = true_airspeed_m_s(spec.start.indicated_m_s, &resolved.start)?;
+    let true_m_s = true_airspeed_m_s(spec.start.indicated_m_s, &resolved.start, resolved.utc)?;
     let decimal_year = 1970.0 + resolved.utc.unix_seconds() / SECONDS_PER_YEAR;
     let seed = resolved.request.seeds.imu;
     let setup = C172Setup {
@@ -80,9 +81,10 @@ pub(super) fn chain(
         seed,
     };
     let suite = c172_sensor_suite_with(decimal_year, seed, spec.calibration.calibration());
-    // The trial's air: the standard atmosphere entered at the ellipsoidal
-    // height, the same air the navigation trial's devices and JSBSim fly in.
-    let air = SharedAir::new(StandardAtmosphere);
+    // The trial's air: the standard atmosphere entered at mean sea level,
+    // the air the navigation trial's devices sense and its navigators read
+    // their altimeters in.
+    let air = SharedAir::new(GeoidStandardAtmosphere::new());
     let board = c172_board(&setup, &suite, air)?;
     let route = ChainRoute {
         fixes: resolved
@@ -113,25 +115,43 @@ pub(super) fn chain(
 
 /// The true airspeed that reads `indicated_m_s` at `start` in the standard
 /// atmosphere, the air the aeroplane starts in.
-fn true_airspeed_m_s(indicated_m_s: f64, start: &Geodetic) -> Result<f64, ChainTrialError> {
-    let geopotential = geometric_to_geopotential_m(start.height_m);
-    let air = isa_at_geopotential(geopotential).map_err(|error| ChainTrialError::Invalid {
-        detail: format!("no standard air at the start: {error}"),
-    })?;
+fn true_airspeed_m_s(
+    indicated_m_s: f64,
+    start: &Geodetic,
+    utc: UtcTime,
+) -> Result<f64, ChainTrialError> {
+    let air = GeoidStandardAtmosphere::new()
+        .sample(start, utc)
+        .map_err(|error| ChainTrialError::Invalid {
+            detail: format!("no standard air at the start: {error}"),
+        })?;
     Ok(indicated_m_s * (ISA_RHO0_KG_M3 / air.density_kg_m3).sqrt())
 }
 
 /// The sets' alignment: the declared start with the request's stated
-/// uncertainty, its error drawn from the alignment seed.
+/// uncertainty, its error drawn from the alignment seed, and the biases of
+/// a ground calibration of `devices`' inertial unit.
+///
+/// The aeroplane starts in the air, but its crew ran the engine up at rest
+/// first: the gyroscopes' mean rate over that minute is their turn-on bias,
+/// which no set could otherwise learn before it turned the heading away.
+/// One calibration of the one unit serves every set.
 pub(super) fn alignment(
     request: &TrialRequest,
     start: &VehicleState,
+    devices: &SensorSuite,
 ) -> sim_navigate::AlignmentFix {
-    InitialAlignment {
+    let mut fix = InitialAlignment {
         position_sigma_m: DVec3::splat(request.alignment.position_sigma_m),
         velocity_sigma_m_s: DVec3::splat(request.alignment.velocity_sigma_m_s),
         attitude_sigma_rad: DVec3::splat(request.alignment.attitude_sigma_rad),
         seed: request.seeds.alignment,
     }
-    .measure(start)
+    .measure(start);
+    let calibration = GroundCalibration {
+        window_s: GroundCalibration::WINDOW_S,
+        seed: request.seeds.alignment,
+    };
+    fix.imu_bias_prior = calibration.prior(&devices.spec().imu, devices.imu().gyro_bias_rad_s());
+    fix
 }

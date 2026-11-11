@@ -91,7 +91,7 @@ fn fly_then_deny(denial: Denial, noise: DirectNoiseTier) -> Vec<Observation> {
             let board = runner.board();
             let estimate = board.kernel().state.estimator.get_estimate();
             let truth = plant.output();
-            let est = runner.world.vehicle_from_estimate(&estimate);
+            let est = runner.navigation_world().vehicle_from_estimate(&estimate);
             out.push(Observation {
                 seconds_denied: (f64::from(k) - f64::from(hover_steps)) / 400.0,
                 flags: estimate.valid_flags,

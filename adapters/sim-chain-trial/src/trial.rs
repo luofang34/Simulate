@@ -26,7 +26,7 @@ use sets::{SetSlot, has_sensor};
 pub use sets::FLIGHT_CONTROLLER_SET;
 
 /// The C172 under Pilotage's host core.
-type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
+pub type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
 
 /// A navigation trial flown by the vehicle's own control chain.
 ///
@@ -57,7 +57,7 @@ impl ChainTrial {
         let resolved = setup::resolve(spec)?;
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
-        let alignment = setup::alignment(&resolved.request, &start);
+        let alignment = setup::alignment(&resolved.request, &start, chain.board().suite());
         let nav = NavLog::new(start, alignment);
         let request = &resolved.request;
         let sets = request
@@ -114,6 +114,12 @@ impl ChainTrial {
             progress_steps,
             pending: Outputs::default(),
         })
+    }
+
+    /// The control chain the trial flies: the board, its airframe and
+    /// Pilotage's host, for drawing and readouts.
+    pub fn chain(&self) -> &C172Chain {
+        &self.chain
     }
 
     /// Route time, seconds.

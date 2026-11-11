@@ -15,7 +15,7 @@ use syspack::InstrumentPackDocument;
 use super::Flight;
 use super::mode::Mode;
 use super::rewind::seconds;
-use crate::vehicles::FreeFlightVehicle;
+use crate::vehicles::{FreeFlightVehicle, SetStanding};
 
 /// Metres per inch, the unit of JSBSim structural frames.
 const METRES_PER_INCH: f64 = 0.0254;
@@ -67,6 +67,7 @@ impl Flight {
             Mode::Free { vehicle, .. } => match vehicle {
                 FreeFlightVehicle::JsbsimC172
                 | FreeFlightVehicle::AviateFixedWingDirect
+                | FreeFlightVehicle::C172Mission
                 | FreeFlightVehicle::Kinematic => Some(cached_c172_specs()),
                 FreeFlightVehicle::JsbsimP38g => Some(cached_p38_specs()),
                 FreeFlightVehicle::AviateX500Direct => None,
@@ -261,4 +262,31 @@ impl Flight {
             Mode::Scenario(_) | Mode::Space(_) => None,
         }
     }
+
+    /// Pilotage's mission phase and each navigation set's standing, when the free
+    /// vehicle flies the real control chain.
+    #[must_use]
+    pub fn chain_readout(&self) -> Option<ChainReadout> {
+        let Mode::Free { world, .. } = &self.mode else {
+            return None;
+        };
+        let session = world.session()?;
+        let (phase, standings) = session.block().plant().chain_readout()?;
+        Some(ChainReadout {
+            phase: phase.map(str::to_owned),
+            standings: standings
+                .iter()
+                .map(|(set, standing)| (set.clone(), *standing))
+                .collect(),
+        })
+    }
+}
+
+/// What the operator reads of a flight on the real control chain.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChainReadout {
+    /// Pilotage's mission phase, in its own words.
+    pub phase: Option<String>,
+    /// Each navigation set's latest standing, by set name.
+    pub standings: Vec<(String, SetStanding)>,
 }

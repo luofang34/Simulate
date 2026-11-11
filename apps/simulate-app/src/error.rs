@@ -24,6 +24,9 @@ pub enum AppSimError {
         /// Diagnostic description.
         detail: &'static str,
     },
+    /// The navigation trial on the real control chain could not be built or stepped.
+    #[error("the chain trial failed")]
+    ChainTrial(#[from] sim_chain_trial::ChainTrialError),
     /// Tier-0 Aviate runner step or initialization failed.
     #[error("Aviate direct bridge failed")]
     Aviate(#[from] AviateBridgeError),

@@ -110,6 +110,7 @@ impl SetRun {
             velocity_cov: fix.velocity_cov,
             attitude_cov: fix.attitude_cov,
             at: clock.to_monotonic(start)?,
+            imu_bias_prior: fix.imu_bias_prior,
         })?;
         let star_half_exposure_steps = if selection.means.contains(NavMeans::Celestial) {
             exposure_steps(&star_camera_config(), STEP_HZ as f64)? / 2
@@ -352,7 +353,18 @@ impl SetRun {
                     .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
-            let data = baro_altitude_data(&logged.reading)?;
+            // The undulation only needs the host's position to kilometres,
+            // so a navigator without a solution falls back on where it was
+            // aligned rather than losing the sample.
+            let position = self
+                .navigator
+                .solution(now)
+                .map_or(log.alignment.position, |s| s.position);
+            let data = baro_altitude_data(
+                &logged.reading,
+                position.latitude_rad,
+                position.longitude_rad,
+            )?;
             self.ingest(BARO_SOURCE, (now, now), data)?;
             let verdicts = verdicts(&self.records);
             self.ledger

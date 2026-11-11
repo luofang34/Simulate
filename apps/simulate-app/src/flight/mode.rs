@@ -241,6 +241,7 @@ impl Mode {
         };
         let mut panel = Box::new(CockpitInstrumentPanel::new(SimInstant::START));
         observe(&mut panel, &plant, SimInstant::START);
+        let utc_s = plant.stated_epoch_utc_s().unwrap_or(utc_s);
         let mut session = SimSession::new(
             PlantBlock::new(plant, surface.clone()),
             ControlInputs::default(),

@@ -9,6 +9,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+sim-chain-trial = { workspace = true }
+sim-flight-chain = { workspace = true }
 aviate-core = { workspace = true }
 aviate-hal-io = { workspace = true }
 flightbag = { workspace = true }

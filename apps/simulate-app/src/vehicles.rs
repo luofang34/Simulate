@@ -11,12 +11,14 @@ use crate::supervisor_rig::{DELAWARE_RUNWAY_BEARING_RAD, default_delaware_spawn}
 use crate::world_surface::WorldSurfaceHandle;
 
 mod aviate_rigs;
+mod chain_rig;
 mod jsbsim;
 mod selection;
 mod structural;
 #[cfg(test)]
 mod tests;
 
+pub use chain_rig::SetStanding;
 pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
 
@@ -79,6 +81,9 @@ pub enum PlantSnapshot {
     AviateX500(Box<X500Snapshot>),
     /// Aviate fixed-wing JSBSim aircraft and attitude target.
     AviateFixedWing(Box<FixedWingSnapshot>),
+    /// A flight on the real control chain, which keeps no rewindable state: the marker
+    /// only says which plant it came from.
+    C172Mission,
     /// Kinematic model state.
     Kinematic(Box<KinematicModel>),
 }
@@ -96,6 +101,9 @@ pub enum FreeFlightPlant {
     AviateX500(Box<AviateX500Rig>),
     /// Tier-0 Aviate fixed-wing controller closed around a `120 Hz` JSBSim plant.
     AviateFixedWing(Box<AviateFixedWingRig>),
+    /// The C172 on the real chain: Pilotage's host core flying the first link through
+    /// the Aviate flight controller, Navigate's sets navigating beside it.
+    C172Mission(Box<chain_rig::ChainRig>),
     /// Lightweight kinematic model.
     Kinematic(KinematicModel),
 }
@@ -140,9 +148,41 @@ impl FreeFlightPlant {
             FreeFlightVehicle::AviateFixedWingDirect => Ok(Self::AviateFixedWing(Box::new(
                 build_aviate_fixed_wing(spawn, heading_rad, field_elev_m)?,
             ))),
+            FreeFlightVehicle::C172Mission => Self::on_first_link(),
             FreeFlightVehicle::Kinematic => Ok(Self::Kinematic(KinematicModel::new(
                 VehicleState::level_flight(&spawn, heading_rad, 55.0),
             ))),
+        }
+    }
+
+    /// The C172 at the first link's start, wherever the spawn was: the link states where
+    /// the flight begins.
+    fn on_first_link() -> Result<Self, AppSimError> {
+        Ok(Self::C172Mission(Box::new(chain_rig::build_chain_rig()?)))
+    }
+
+    /// The civil time the plant's flight states for its start, Unix seconds, when it
+    /// states one: a link's flight happens at the link's epoch, not the host's clock.
+    #[must_use]
+    pub fn stated_epoch_utc_s(&self) -> Option<f64> {
+        match self {
+            Self::C172Mission(rig) => Some(rig.epoch_utc_s()),
+            _ => None,
+        }
+    }
+
+    /// Pilotage's mission phase and each navigation set's standing, when flying the real
+    /// chain.
+    #[must_use]
+    pub fn chain_readout(
+        &self,
+    ) -> Option<(
+        Option<&str>,
+        &std::collections::BTreeMap<String, SetStanding>,
+    )> {
+        match self {
+            Self::C172Mission(rig) => Some((rig.phase(), rig.standings())),
+            _ => None,
         }
     }
 
@@ -187,6 +227,7 @@ impl FreeFlightPlant {
                     heading_rad,
                 )?)))
             }
+            FreeFlightVehicle::C172Mission => Self::on_first_link(),
             FreeFlightVehicle::AviateFixedWingDirect => Self::new_at(
                 vehicle,
                 Geodetic {
@@ -216,6 +257,7 @@ impl FreeFlightPlant {
             Self::Jsbsim { fdm, .. } => fdm.period(),
             Self::AviateX500(rig) => rig.body.period(),
             Self::AviateFixedWing(rig) => rig.fdm.period(),
+            Self::C172Mission(rig) => rig.period(),
             Self::Kinematic(model) => model.period(),
         }
     }
@@ -227,6 +269,7 @@ impl FreeFlightPlant {
             Self::Jsbsim { fdm, .. } => fdm.output(),
             Self::AviateX500(rig) => rig.body.output(),
             Self::AviateFixedWing(rig) => rig.fdm.output(),
+            Self::C172Mission(rig) => rig.state(),
             Self::Kinematic(model) => model.output(),
         }
     }
@@ -241,6 +284,7 @@ impl FreeFlightPlant {
             } => Some(*specific_force_frd_m_s2),
             Self::AviateX500(rig) => Some(rig.body.specific_force_cg_body()),
             Self::AviateFixedWing(rig) => Some(rig.specific_force_frd_m_s2),
+            Self::C172Mission(rig) => Some(rig.specific_force_frd_m_s2()),
             Self::Kinematic(_) => None,
         }
     }
@@ -291,6 +335,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => Some(fdm.engine_status()),
             Self::AviateFixedWing(rig) => Some(rig.fdm.engine_status()),
+            Self::C172Mission(rig) => Some(rig.engine_status()),
             _ => None,
         }
     }
@@ -301,6 +346,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.articulation(),
             Self::AviateFixedWing(rig) => rig.fdm.articulation(),
+            Self::C172Mission(rig) => rig.articulation(),
             Self::AviateX500(rig) => AirframeArticulation::from_kinematic(
                 &rig.body.output(),
                 ControlInputs {
@@ -330,6 +376,7 @@ impl FreeFlightPlant {
         match self {
             Self::AviateX500(rig) => Some(rig.runner.is_armed()),
             Self::AviateFixedWing(rig) => Some(rig.runner.is_armed()),
+            Self::C172Mission(rig) => Some(rig.armed()),
             Self::Jsbsim { .. } | Self::Kinematic(_) => None,
         }
     }
@@ -348,6 +395,7 @@ impl FreeFlightPlant {
             },
             Self::AviateX500(rig) => PlantSnapshot::AviateX500(Box::new(rig.snapshot())),
             Self::AviateFixedWing(rig) => PlantSnapshot::AviateFixedWing(Box::new(rig.snapshot())),
+            Self::C172Mission(_) => PlantSnapshot::C172Mission,
             Self::Kinematic(model) => PlantSnapshot::Kinematic(Box::new(model.snapshot())),
         }
     }
@@ -381,6 +429,12 @@ impl FreeFlightPlant {
                 model.restore(saved);
                 Ok(())
             }
+            (Self::C172Mission(_), PlantSnapshot::C172Mission) => {
+                Err(sim_scenario::ScenarioError::Unsupported {
+                    detail: "a flight on the real control chain cannot be rewound; restart it",
+                }
+                .into())
+            }
             _ => Err(sim_scenario::ScenarioError::SnapshotMismatch {
                 detail: "the snapshot was taken from another free-flight plant",
             }
@@ -402,6 +456,7 @@ impl FreeFlightPlant {
             } => step_jsbsim_with_force(fdm, specific_force_frd_m_s2, controls, surface),
             Self::AviateX500(rig) => step_aviate_x500(rig, controls),
             Self::AviateFixedWing(rig) => step_aviate_fixed_wing(rig, controls, surface),
+            Self::C172Mission(rig) => rig.step(),
             Self::Kinematic(model) => {
                 model
                     .step(&KinematicInput { controls })

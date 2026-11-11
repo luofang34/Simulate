@@ -251,3 +251,25 @@ fn global_airport_spawns_register_its_runways_and_line_up() {
     flight.restart().expect("restart keeps the airport");
     assert!(flight.surface.ellipsoidal_ground_m(&threshold).is_some());
 }
+
+/// The C172 mission flies the first link, so its sky and Sun are those of
+/// the link's epoch, 2026-06-15 12:04 UTC, whatever the host's clock says,
+/// and a restart keeps it.
+#[test]
+fn the_c172_mission_flies_at_its_links_epoch() {
+    const LINK_EPOCH_UNIX_S: f64 = 1_781_525_040.0;
+    let mut flight = Flight::new().expect("flight");
+    flight
+        .select_vehicle(FreeFlightVehicle::C172Mission)
+        .expect("the mission");
+    let start = |flight: &Flight| {
+        flight
+            .sim_epoch()
+            .start_utc()
+            .expect("a civil start")
+            .unix_seconds()
+    };
+    assert_eq!(start(&flight), LINK_EPOCH_UNIX_S);
+    flight.restart().expect("restart");
+    assert_eq!(start(&flight), LINK_EPOCH_UNIX_S);
+}

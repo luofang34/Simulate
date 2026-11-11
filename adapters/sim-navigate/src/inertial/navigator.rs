@@ -90,8 +90,15 @@ impl InertialNavigator {
         &self.filter
     }
 
-    /// Starts the state from `fix`, valid at `at`.
+    /// Starts the state from `fix`, valid at `at`, its biases from the
+    /// fix's prior when it has one.
     pub fn align(&mut self, fix: &AlignmentFix, at: SimInstant) -> Result<(), NavigateBridgeError> {
+        self.filter
+            .set_imu_bias_prior(fix.imu_bias_prior)
+            .map_err(|reason| NavigateBridgeError::InertialRefused {
+                stage: "bias prior",
+                reason,
+            })?;
         self.filter
             .initialize_surface(
                 fix.position,
