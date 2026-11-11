@@ -1,14 +1,10 @@
 use mbd_core::MbdError;
 use pilotage_aircraft::AircraftError;
-use sim_core::BlockError;
 use sim_pack::{PackError, SystemKind};
 
 /// Why a vehicle, camera, or package could not cross into Pilotage.
 #[derive(Debug, thiserror::Error)]
 pub enum PilotageBridgeError {
-    /// The dynamics block could not be built.
-    #[error("vehicle dynamics could not be built")]
-    Block(#[source] Box<BlockError>),
     /// The package could not supply what was asked of it.
     #[error("vehicle package failed")]
     Pack(#[source] Box<PackError>),
@@ -70,12 +66,6 @@ pub enum PilotageBridgeError {
         /// Wire datum code (`1=ellipsoid`, `2=msl`, `3=agl`, or unknown).
         datum: u32,
     },
-}
-
-impl From<BlockError> for PilotageBridgeError {
-    fn from(source: BlockError) -> Self {
-        Self::Block(Box::new(source))
-    }
 }
 
 impl From<PackError> for PilotageBridgeError {
