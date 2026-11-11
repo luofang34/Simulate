@@ -14,12 +14,14 @@ navigate-celestial = { workspace = true }
 navigate-data = { workspace = true }
 serde_json = { workspace = true }
 sim-chain-trial = { workspace = true }
+sim-flight-chain = { workspace = true }
 sim-geo = { workspace = true }
 sim-link = { workspace = true }
 sim-navdata = { workspace = true }
 sim-navigate = { workspace = true }
 sim-scenery = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }

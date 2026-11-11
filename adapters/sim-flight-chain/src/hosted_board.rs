@@ -82,11 +82,13 @@ where
     /// the airframe flies its command.
     pub fn step(&mut self) -> Result<(), ChainError> {
         let period = self.airframe.period();
+        let probe = crate::profile::start();
         let truth = self.airframe.sensed()?;
         self.samples = self
             .suite
             .sense(&truth, period.as_seconds())
             .map_err(ChainError::Devices)?;
+        crate::profile::stop("chain: devices", probe);
         if self.outages.gnss {
             self.samples.gnss = None;
         }
@@ -94,11 +96,15 @@ where
             self.samples.air_data = None;
         }
         let at_s = self.now.duration_since(SimInstant::START).as_seconds();
+        let probe = crate::profile::start();
         self.command = self
             .controller
             .step_sensors(self.now, &self.samples)
             .map_err(|source| ChainError::FlightController { at_s, source })?;
+        crate::profile::stop("chain: aviate", probe);
+        let probe = crate::profile::start();
         self.airframe.fly(&self.command)?;
+        crate::profile::stop("chain: jsbsim", probe);
         self.now = self.now.advanced(period);
         Ok(())
     }

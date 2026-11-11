@@ -213,9 +213,11 @@ impl ChainTrial {
         self.chain.advance_tick()?;
         let after = self.chain.true_state();
         let samples = *self.chain.board().last_samples();
+        let probe = sim_flight_chain::profile::start();
         let completed = self
             .nav
             .on_cycle((from, self.chain.now()), (&before, &after), &samples);
+        sim_flight_chain::profile::stop("trial: nav log", probe);
         if let Some(step) = completed {
             self.navigate(step)?;
         }
@@ -249,11 +251,13 @@ impl ChainTrial {
             .outages
             .iter()
             .any(|o| o.sensor == SensorKind::TerrainCamera && o.covers_up_to(t_s));
+        let probe = sim_flight_chain::profile::start();
         if let Some(camera) = self.camera.as_mut()
             && let Some(request) = camera.expose(step, instant, &truth, camera_out)?
         {
             self.announced = Some(request);
         }
+        sim_flight_chain::profile::stop("trial: camera expose", probe);
         if let Some(stars) = &self.stars {
             let step_s = sim_navigate::trial::step_span().as_seconds();
             let outages = &self.outages;
@@ -265,8 +269,11 @@ impl ChainTrial {
             stars.sense(&self.nav.truth, step, &mut self.nav.log, in_service)?;
         }
         for slot in &mut self.sets {
+            let probe = sim_flight_chain::profile::start();
             slot.run.advance_to(&self.nav.log, step)?;
+            sim_flight_chain::profile::stop(&format!("set: {}", slot.name), probe);
         }
+        let probe = sim_flight_chain::profile::start();
         if let Some(slot) = self.steering.and_then(|index| self.sets.get_mut(index))
             && let Some(solution) = slot.run.solution(&self.nav.log)?
         {
@@ -289,6 +296,8 @@ impl ChainTrial {
                 self.pending.terrain_fixes.push((slot.name.clone(), fixes));
             }
         }
+        sim_flight_chain::profile::stop("trial: steering + availability", probe);
+        let probe = sim_flight_chain::profile::start();
         if step.is_multiple_of(self.progress_steps) {
             // The flight controller's estimate is of the cycle's end, so it
             // meets the truth of that instant.
@@ -306,6 +315,7 @@ impl ChainTrial {
             )?;
             self.pending.records.extend(samples);
         }
+        sim_flight_chain::profile::stop("trial: progress records", probe);
         Ok(())
     }
 }

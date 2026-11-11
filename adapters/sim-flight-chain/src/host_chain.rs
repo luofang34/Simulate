@@ -165,6 +165,7 @@ where
             self.record = Some(record);
             self.next_wake = now;
         }
+        let probe = crate::profile::start();
         if now >= self.next_wake {
             self.next_wake = self
                 .core
@@ -176,6 +177,7 @@ where
                 .extend(self.core.drain_events().into_iter().map(|e| (at, e)));
         }
         self.sent = self.core.drain_uplink();
+        crate::profile::stop("chain: pilotage tick", probe);
         for frame in &self.sent {
             let accepted = self.board.uplink(frame);
             let refused = frame.len().saturating_sub(accepted) as u64;
@@ -192,8 +194,10 @@ where
             // The board has one serial link: its reports and its answers to
             // commands travel together, and each side of the host takes what
             // is addressed to it.
+            let probe = crate::profile::start();
             self.core.on_downlink(datagram, now);
             self.core.on_uplink_reply(datagram, now);
+            crate::profile::stop("chain: pilotage link", probe);
             self.counters.datagrams_from_fc = self.counters.datagrams_from_fc.wrapping_add(1);
             self.counters.bytes_from_fc = self
                 .counters

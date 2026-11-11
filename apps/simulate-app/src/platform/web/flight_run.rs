@@ -98,6 +98,7 @@ where
     let mut out = Vec::new();
     let (mut flying, mut dirty) = (true, true);
     let started_s = clock.now_s();
+    let (mut dumped_at_s, mut next_dump_s) = (0.0_f64, 30.0_f64);
     loop {
         animation_frame().await;
         let now = view.controls();
@@ -113,7 +114,9 @@ where
         }
         if flying {
             let target_s = pacer.frame(clock.now_s(), flight.sim_time_s());
+            let probe = sim_flight_chain::profile::start();
             let sliced = run_slice(&mut flight, &clock, SLICE_BUDGET_S, target_s, &mut out);
+            sim_flight_chain::profile::stop("page: slice total", probe);
             if let Ok(slice) = &sliced {
                 let held = pacer.limit();
                 pacer.observe(slice, flight.take_camera_wall_s());
@@ -138,8 +141,24 @@ where
                 }
             }
             dirty |= !out.is_empty();
+            let probe = sim_flight_chain::profile::start();
             for feed in out.drain(..) {
                 monitor.apply(feed);
+            }
+            sim_flight_chain::profile::stop("page: monitor apply", probe);
+            if flight.sim_time_s() >= next_dump_s {
+                let route_s = flight.sim_time_s() - dumped_at_s;
+                let mut rows = sim_flight_chain::profile::take();
+                rows.sort_by(|a, b| b.1.total_cmp(&a.1));
+                let table: Vec<String> = rows
+                    .iter()
+                    .map(|(label, seconds, calls)| {
+                        format!("{label}={:.1}ms/{calls}", 1000.0 * seconds / route_s)
+                    })
+                    .collect();
+                info!(route_s, table = %table.join(" | "), "PROFILE per route second");
+                dumped_at_s = flight.sim_time_s();
+                next_dump_s = dumped_at_s + 30.0;
             }
             let flown = flight.outages();
             if flown != outages {
@@ -154,7 +173,9 @@ where
                 Some(limit) => format!("{note}{}. ", pace_words(&limit)),
                 None => note.to_owned(),
             };
+            let probe = sim_flight_chain::profile::start();
             view.draw(&monitor, &controls, &note);
+            sim_flight_chain::profile::stop("page: monitor draw", probe);
             dirty = false;
         }
     }

@@ -1137,7 +1137,6 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 
 [[package]]
 name = "flate2"
@@ -3131,7 +3130,6 @@ dependencies = [
 [[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3142,7 +3140,6 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3153,7 +3150,6 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3166,7 +3162,6 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -3174,7 +3169,6 @@ dependencies = [
 [[package]]
 name = "navigate-data"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3187,7 +3181,6 @@ dependencies = [
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3199,7 +3192,6 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
@@ -3208,7 +3200,6 @@ dependencies = [
 [[package]]
 name = "navigate-guidance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3222,7 +3213,6 @@ dependencies = [
 [[package]]
 name = "navigate-onboard"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "image",
  "nalgebra",
@@ -3240,12 +3230,12 @@ dependencies = [
  "pollster 1.0.1",
  "thiserror 2.0.21",
  "tracing",
+ "web-time",
 ]
 
 [[package]]
 name = "navigate-route"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "navigate-contract",
  "navigate-geodesy",
@@ -3255,7 +3245,6 @@ dependencies = [
 [[package]]
 name = "navigate-startrack"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3268,7 +3257,6 @@ dependencies = [
 [[package]]
 name = "navigate-trajectory"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3280,7 +3268,6 @@ dependencies = [
 [[package]]
 name = "navigate-visual"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "image",
  "nalgebra",
@@ -3297,7 +3284,6 @@ dependencies = [
 [[package]]
 name = "navigate-visual-render"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1#8efefef8d83cdc4806e2c68921c3d6d3458b80f1"
 dependencies = [
  "bytemuck",
  "futures-channel",
@@ -5373,12 +5359,14 @@ dependencies = [
  "serde_json",
  "sim-chain-trial",
  "sim-core",
+ "sim-flight-chain",
  "sim-geo",
  "sim-link",
  "sim-navdata",
  "sim-navigate",
  "sim-scenery",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -5739,6 +5727,7 @@ dependencies = [
  "sim-aviate",
  "sim-chain-trial",
  "sim-core",
+ "sim-flight-chain",
  "sim-geo",
  "sim-indicate",
  "sim-input",

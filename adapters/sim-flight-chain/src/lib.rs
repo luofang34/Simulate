@@ -13,6 +13,8 @@ mod c172_vehicle;
 mod error;
 mod host_chain;
 mod hosted_board;
+/// Temporary profiling probe.
+pub mod profile;
 
 pub use airframe::{Airframe, SharedAir};
 pub use c172_airframe::{C172Airframe, C172Start};

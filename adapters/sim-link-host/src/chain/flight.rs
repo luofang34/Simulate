@@ -50,13 +50,25 @@ impl<C: Clock> ChainFlight<C> {
         })?;
         let started = self.clock.now_s();
         let [w, x, y, z] = request.camera_to_ecef_wxyz;
+        let probe = sim_flight_chain::profile::start();
         let frame = world.render(
             DVec3::from_array(request.eye_ecef),
             DQuat::from_xyzw(x, y, z, w),
             &intrinsics(request),
         )?;
+        sim_flight_chain::profile::stop("page: camera render", probe);
+        let probe = sim_flight_chain::profile::start();
         self.trial.deliver_frame(request.index, frame.pixels())?;
+        sim_flight_chain::profile::stop("page: deliver frame", probe);
         self.camera_wall_s += (self.clock.now_s() - started).max(0.0);
+        let eye = sim_geo::ecef_to_geodetic(DVec3::from_array(request.eye_ecef));
+        tracing::info!(
+            index = request.index,
+            mid_s = request.mid_s,
+            lat_rad = eye.lat_rad,
+            lon_rad = eye.lon_rad,
+            "PROFILE eye"
+        );
         Ok(())
     }
 
