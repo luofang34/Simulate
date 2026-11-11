@@ -1,8 +1,11 @@
 use mbd_core::MbdError;
 use pilotage_mission::MissionBuildError;
 use pilotage_protocol::VehicleId;
+use sim_atmosphere::AtmosphereError;
 use sim_aviate::AviateBridgeError;
 use sim_core::BlockError;
+use sim_devices::DeviceError;
+use sim_pack::PackError;
 
 /// Why the flight chain could not be built or stepped.
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +52,18 @@ pub enum ChainError {
     /// The vehicle stopped stepping earlier and its reason was already taken.
     #[error("the vehicle stopped stepping at an earlier fault")]
     Stopped,
+    /// A device of the sensor suite refused its configuration or a sample.
+    #[error("a sensor device failed")]
+    Devices(#[source] DeviceError),
+    /// The air field has no state where the vehicle is.
+    #[error("no air state at the vehicle")]
+    Air(#[source] AtmosphereError),
+    /// The vehicle package could not supply its flight model.
+    #[error("vehicle package failed")]
+    Package(#[source] Box<PackError>),
+    /// The airframe could not be trimmed for its starting flight condition.
+    #[error("no trim at the start of flight")]
+    Trim(#[source] Box<BlockError>),
     /// The rate does not divide the master clock into whole ticks.
     #[error("{rate_hz} Hz is not a whole number of master-clock ticks")]
     Rate {

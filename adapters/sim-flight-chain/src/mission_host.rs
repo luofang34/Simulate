@@ -142,8 +142,8 @@ impl MissionHost {
             .map(|fix| PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m))
             .collect();
         let plan = WaypointPlan {
-            waypoints,
-            capture_radius_m: setup.capture_radius_m,
+            capture_radius_m: Some(setup.capture_radius_m),
+            ..WaypointPlan::new(waypoints)
         };
         let first_height_m = setup.fixes.first().map_or(0.0, |fix| fix.altitude_m);
         let anchor = GeodeticPosition::new(
