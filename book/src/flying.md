@@ -17,6 +17,7 @@ directly:
 | C172 Skyhawk | JSBSim, `vehicles/c172` | Control surfaces and throttle directly |
 | Lockheed P-38G Lightning | JSBSim, `vehicles/p38g` | Control surfaces and throttle directly; opens on its period panel with the HUD and glass dock hidden |
 | X500 quadrotor | Rigid body flown by Aviate's multirotor controller in-process | Velocity: stick for horizontal speed, throttle above or below centre to climb or descend, rudder for yaw rate |
+| X500 on a Pilotage mission (desktop only) | The same rigid body and Aviate controller, commanded in MAVLink by Pilotage's mission engine | Nothing: the mission arms the controller, climbs from its pad and flies a route laid out ahead of the spawn heading. Restart flies it again; it cannot be rewound |
 | Fixed-wing fly-by-wire | JSBSim C172 flown by Aviate's fixed-wing controller in-process | Bank and pitch attitude, throttle, rudder for heading |
 | Kinematic | Kinematic 6-DoF model | Direct |
 
