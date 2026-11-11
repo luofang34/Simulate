@@ -78,13 +78,14 @@ async fn download<T: TileTransport>(
     sources: &SourceSet,
     transport: &T,
 ) -> Result<Fetched, NavdataError> {
-    let url = tile_url(sources.of(key.layer), key);
+    let source = sources.of(key.layer);
+    let url = tile_url(source, key);
     let mut message = String::new();
     for attempt in 1..=FETCH_ATTEMPTS {
         match transport.get(&url).await {
             // A server error may pass; any other status is the answer.
             Ok(answer) if answer.status >= 500 && attempt < FETCH_ATTEMPTS => {}
-            Ok(answer) => return fetched(&url, answer),
+            Ok(answer) => return fetched(source, &url, answer),
             Err(refusal) => message = refusal,
         }
     }

@@ -95,16 +95,60 @@ fn an_answer_is_a_tile_no_tile_or_a_failure() {
         status,
         body: vec![1, 2, 3],
     };
-    assert_eq!(fetched("u", answer(200)), Ok(Fetched::Tile(vec![1, 2, 3])));
-    assert_eq!(fetched("u", answer(204)), Ok(Fetched::Absent));
-    assert_eq!(fetched("u", answer(404)), Ok(Fetched::Absent));
+    let esri = &TileSource::ESRI_WORLD_IMAGERY;
+    assert_eq!(
+        fetched(esri, "u", answer(200)),
+        Ok(Fetched::Tile(vec![1, 2, 3]))
+    );
+    assert_eq!(fetched(esri, "u", answer(204)), Ok(Fetched::Absent));
+    assert_eq!(fetched(esri, "u", answer(404)), Ok(Fetched::Absent));
     for status in [301, 403, 429, 500, 503] {
         assert_eq!(
-            fetched("https://tiles.example/1/2/3", answer(status)),
+            fetched(esri, "https://tiles.example/1/2/3", answer(status)),
             Err(NavdataError::Transport {
                 url: "https://tiles.example/1/2/3".into(),
                 message: format!("HTTP status {status}"),
             })
         );
     }
+}
+
+#[test]
+fn a_no_data_picture_is_a_gap_of_its_own_source_only() {
+    let picture = b"a provider's no-data picture".to_vec();
+    let digest = navigate_data::Sha256Digest::of(&picture);
+    let declaring = TileSource {
+        no_data_bodies: Box::leak(Box::new([digest])),
+        ..TileSource::ESRI_WORLD_IMAGERY
+    };
+    let answer = |body: &[u8]| HttpAnswer {
+        status: 200,
+        body: body.to_vec(),
+    };
+    assert_eq!(
+        fetched(&declaring, "u", answer(&picture)),
+        Ok(Fetched::Absent)
+    );
+    assert_eq!(
+        fetched(&TileSource::MAPZEN_TERRARIUM, "u", answer(&picture)),
+        Ok(Fetched::Tile(picture.clone()))
+    );
+    let mut altered = picture.clone();
+    altered.push(0);
+    assert_eq!(
+        fetched(&declaring, "u", answer(&altered)),
+        Ok(Fetched::Tile(altered))
+    );
+}
+
+#[test]
+fn esri_declares_its_grey_no_data_picture() {
+    let [declared] = TileSource::ESRI_WORLD_IMAGERY.no_data_bodies else {
+        panic!("one no-data body for Esri");
+    };
+    assert_eq!(
+        declared.to_string(),
+        "9eafd300d61393184a4abc1d458564cfd1cd9b6f9c4e9c74687045c0a0e5b858"
+    );
+    assert!(TileSource::MAPZEN_TERRARIUM.no_data_bodies.is_empty());
 }

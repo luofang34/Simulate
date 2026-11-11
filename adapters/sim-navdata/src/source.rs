@@ -2,8 +2,8 @@
 
 use navigate_data::{
     Accuracy, DEFAULT_CORRELATION_ZOOM, Descriptor, Encoding, GeoidModel, HorizontalDatum,
-    LayerKey, LayerKind, LayerLabel, LayerLimits, LayerSpec, Revision, SourceKey, TileKey,
-    VerticalDatum,
+    LayerKey, LayerKind, LayerLabel, LayerLimits, LayerSpec, Revision, Sha256Digest, SourceKey,
+    TileKey, VerticalDatum,
 };
 
 #[cfg(test)]
@@ -33,7 +33,20 @@ pub struct TileSource {
     pub vertical_datum: Option<VerticalDatum>,
     /// Zoom range and tile sizes, for the resource model.
     pub limits: LayerLimits,
+    /// Digests of the bodies the source answers with status 200 where it
+    /// has no tile: a fixed "no data" picture is a gap, not ground.
+    pub no_data_bodies: &'static [Sha256Digest],
 }
+
+/// The 2521-byte grey "Map data not yet available" JPEG Esri World Imagery
+/// answers, with status 200, for every tile it has no imagery for, at any
+/// zoom. Asking with `blankTile=false` turns it into a 404, but that answer
+/// carries no CORS header, so a page cannot tell it from a failed
+/// connection.
+const ESRI_NO_DATA: Sha256Digest = Sha256Digest([
+    0x9e, 0xaf, 0xd3, 0x00, 0xd6, 0x13, 0x93, 0x18, 0x4a, 0x4a, 0xbc, 0x1d, 0x45, 0x85, 0x64, 0xcf,
+    0xd1, 0xcd, 0x9b, 0x6f, 0x9c, 0x4e, 0x9c, 0x74, 0x68, 0x70, 0x45, 0xc0, 0xa0, 0xe5, 0xb8, 0x58,
+]);
 
 impl TileSource {
     /// Esri World Imagery: JPEG orthoimagery.
@@ -48,6 +61,7 @@ impl TileSource {
         encoding: Encoding::Jpeg,
         vertical_datum: None,
         limits: LayerLimits::imagery(),
+        no_data_bodies: &[ESRI_NO_DATA],
     };
 
     /// Mapzen Terrarium: PNG elevation above mean sea level, the AWS
@@ -65,6 +79,7 @@ impl TileSource {
             geoid: GeoidModel::Egm96,
         }),
         limits: LayerLimits::terrarium(),
+        no_data_bodies: &[],
     };
 
     /// Every source this host knows.

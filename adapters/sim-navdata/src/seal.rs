@@ -24,8 +24,8 @@ pub struct SealedPackage {
     pub memory: MemoryStore,
     /// Bytes of the files in memory.
     pub memory_bytes: u64,
-    /// Tiles whose bytes equal another tile's: a provider's "no imagery"
-    /// placeholder, or open water.
+    /// Tiles whose bytes equal another tile's: open water, or a no-data
+    /// picture the source does not declare.
     pub repeated_tiles: usize,
 }
 
