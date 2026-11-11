@@ -16,6 +16,8 @@ use world_core::normal_gravity;
 use super::*;
 use crate::RotorLayout;
 
+mod gnss_denial;
+
 fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
     let g = normal_gravity(GeodeticPosition::wgs84(
         origin.lat_rad.to_degrees(),
