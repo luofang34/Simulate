@@ -1,0 +1,90 @@
+{
+  "epoch_utc": "2026-06-15T12:00:00Z",
+  "waypoints": [
+    {
+      "ident": "Z0",
+      "lat_deg": 41.7,
+      "lon_deg": -1.05,
+      "altitude_m": 2000.0
+    },
+    {
+      "ident": "Z1",
+      "lat_deg": 41.7,
+      "lon_deg": -0.8,
+      "altitude_m": 2000.0
+    },
+    {
+      "ident": "Z2",
+      "lat_deg": 41.8,
+      "lon_deg": -0.8,
+      "altitude_m": 2000.0
+    },
+    {
+      "ident": "Z3",
+      "lat_deg": 41.8,
+      "lon_deg": -1.0,
+      "altitude_m": 2000.0
+    },
+    {
+      "ident": "Z4",
+      "lat_deg": 41.74,
+      "lon_deg": -1.05,
+      "altitude_m": 2000.0
+    }
+  ],
+  "vehicle": {
+    "cruise_speed_m_s": 40.0,
+    "bank_limit_deg": 18.0,
+    "max_climb_m_s": 5.0,
+    "capture_radius_m": 100.0,
+    "guidance": "truth"
+  },
+  "imu_grade": "tactical",
+  "alignment": {
+    "position_sigma_m": 2.0,
+    "velocity_sigma_m_s": 0.1,
+    "attitude_sigma_rad": 0.001
+  },
+  "gnss": {
+    "rate_hz": 1.0,
+    "horizontal_white_sigma_m": 0.6,
+    "vertical_white_sigma_m": 1.0,
+    "horizontal_correlated_sigma_m": 1.2,
+    "vertical_correlated_sigma_m": 2.0,
+    "correlation_time_s": 300.0,
+    "velocity_sigma_m_s": 0.05
+  },
+  "baro": {
+    "rate_hz": 5.0,
+    "white_sigma_m": 0.3,
+    "bias_sigma_m": 3.0,
+    "bias_correlation_time_s": 3600.0
+  },
+  "stars": {
+    "period_s": 5.0,
+    "mount_alignment_sigma_rad": 2e-05
+  },
+  "outages": [
+    {
+      "start_s": 600.0,
+      "end_s": 900.0
+    }
+  ],
+  "sensor_sets": [],
+  "seeds": {
+    "imu": 22434,
+    "alignment": 31,
+    "gnss": 28245,
+    "baro": 47648,
+    "star_camera": 7,
+    "camera": 99
+  },
+  "output": {
+    "sample_period_s": 1.0,
+    "track_period_s": 10.0
+  },
+  "visual": {
+    "package_dir": "target/nav-trial/zaragoza/onboard",
+    "world_dir": "target/nav-trial/zaragoza/world"
+  }
+}

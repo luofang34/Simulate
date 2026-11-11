@@ -1,0 +1,31 @@
+[package]
+name = "nav-trial"
+description = "Headless route navigation trial: flies a waypoint route and scores Navigate's inertial filter under each sensor set"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nav-trial"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sim-navigate = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing-subscriber = { workspace = true }
+navigate-locate = { workspace = true, features = ["http"] }
+pollster = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

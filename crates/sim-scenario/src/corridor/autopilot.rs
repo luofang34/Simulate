@@ -37,7 +37,7 @@ const MAX_TURN_RATE_RAD_S: f64 = 0.6;
 
 /// What the path part of the autopilot follows.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Steering {
+pub enum Steering {
     /// Hold a true track, radians from north.
     Track(f64),
     /// Converge on a straight line through a point, ENU metres, along a
@@ -49,34 +49,57 @@ pub(super) enum Steering {
         bearing_rad: f64,
     },
     /// Circle a point, ENU metres, clockwise seen from above.
-    Orbit { centre_m: DVec2, radius_m: f64 },
+    Orbit {
+        /// Centre, ENU metres.
+        centre_m: DVec2,
+        /// Radius, metres.
+        radius_m: f64,
+    },
     /// Hold a bank and pitch attitude, radians.
-    Attitude { bank_rad: f64, pitch_rad: f64 },
+    Attitude {
+        /// Bank, right wing down positive.
+        bank_rad: f64,
+        /// Pitch, nose up positive.
+        pitch_rad: f64,
+    },
 }
 
 /// One instant's commands.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct Guidance {
-    pub(super) steering: Steering,
-    pub(super) height_m: f64,
-    pub(super) speed_m_s: f64,
+pub struct Guidance {
+    /// What the path part follows.
+    pub steering: Steering,
+    /// Height above the ellipsoid the path modes hold, metres.
+    pub height_m: f64,
+    /// Airspeed the throttle holds, m/s.
+    pub speed_m_s: f64,
 }
 
 /// A vehicle's flight condition against the local horizon.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct FlightReading {
-    pub(super) position_enu_m: DVec3,
-    pub(super) height_m: f64,
-    pub(super) speed_m_s: f64,
-    pub(super) track_rad: f64,
-    pub(super) flight_path_rad: f64,
-    pub(super) bank_rad: f64,
-    pub(super) pitch_rad: f64,
-    pub(super) body_rate: DVec3,
+pub struct FlightReading {
+    /// Position in the anchor's ENU axes from the origin, metres.
+    pub position_enu_m: DVec3,
+    /// Height above the ellipsoid, metres.
+    pub height_m: f64,
+    /// Speed, m/s.
+    pub speed_m_s: f64,
+    /// True track, radians from north.
+    pub track_rad: f64,
+    /// Flight-path angle, climbing positive, radians.
+    pub flight_path_rad: f64,
+    /// Bank, right wing down positive, radians.
+    pub bank_rad: f64,
+    /// Pitch, nose up positive, radians.
+    pub pitch_rad: f64,
+    /// Body rates, forward-right-down axes, rad/s.
+    pub body_rate: DVec3,
 }
 
 impl FlightReading {
-    pub(super) fn of(state: &VehicleState, origin_ecef: DVec3, anchor: &LocalFrame) -> Self {
+    /// The reading of `state`, with its position measured from
+    /// `origin_ecef` in `anchor`'s ENU axes.
+    pub fn of(state: &VehicleState, origin_ecef: DVec3, anchor: &LocalFrame) -> Self {
         let position = ecef_to_geodetic(state.position_ecef);
         let frame = LocalFrame::at(&position);
         let [north, east, up] = [frame.north(), frame.east(), frame.up()];
@@ -168,7 +191,7 @@ impl RateLoop {
 /// throttle alone: everything above the rate loops is kinematics, and the
 /// rate loops adapt to the airframe.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(super) struct Autopilot {
+pub struct Autopilot {
     roll: RateLoop,
     pitch: RateLoop,
     yaw: RateLoop,
@@ -176,7 +199,9 @@ pub(super) struct Autopilot {
 }
 
 impl Autopilot {
-    pub(super) fn update(
+    /// The stick and throttle that fly `guidance` from `reading`, `dt_s`
+    /// after the previous update.
+    pub fn update(
         &mut self,
         guidance: &Guidance,
         reading: &FlightReading,

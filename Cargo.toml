@@ -7,6 +7,7 @@ members = [
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
     "apps/ironbird",
+    "apps/nav-trial",
     "apps/simulate-app",
     "crates/sim-analysis",
     "crates/sim-analysis-contract",
@@ -99,8 +100,12 @@ navigate-celestial = { version = "0.1.0", path = "../Navigate/crates/navigate-ce
 navigate-contract = { version = "0.1.0", path = "../Navigate/crates/navigate-contract" }
 navigate-fusion = { version = "0.1.0", path = "../Navigate/crates/navigate-fusion" }
 navigate-geodesy = { version = "0.1.0", path = "../Navigate/crates/navigate-geodesy" }
+navigate-guidance = { version = "0.1.0", path = "../Navigate/crates/navigate-guidance" }
+navigate-locate = { version = "0.1.0", path = "../Navigate/crates/navigate-locate" }
+navigate-route = { version = "0.1.0", path = "../Navigate/crates/navigate-route" }
 navigate-startrack = { version = "0.1.0", path = "../Navigate/crates/navigate-startrack" }
 navigate-visual = { version = "0.1.0", path = "../Navigate/crates/navigate-visual" }
+navigate-visual-render = { version = "0.1.0", path = "../Navigate/crates/navigate-visual-render" }
 pilotage-adapter-api = { version = "0.1.0", git = "https://github.com/luofang34/Pilotage", rev = "e2714e54c480670561d2f6c91bb64e5e26b81a00" }
 pilotage-aircraft = { version = "0.1.0", git = "https://github.com/luofang34/Pilotage", rev = "e2714e54c480670561d2f6c91bb64e5e26b81a00" }
 pilotage-calibration-id = { version = "0.1.0", git = "https://github.com/luofang34/Pilotage", rev = "e2714e54c480670561d2f6c91bb64e5e26b81a00" }

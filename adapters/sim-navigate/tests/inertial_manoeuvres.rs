@@ -20,6 +20,13 @@ const ENSEMBLE: u64 = 4;
 const FINE_ALIGNMENT: [f64; 3] = [0.1, 0.01, 2e-5];
 
 #[cfg(test)]
+#[path = "trial_support/consistency.rs"]
+mod consistency;
+#[cfg(test)]
+#[path = "trial_support/ideal.rs"]
+mod ideal;
+
+#[cfg(test)]
 fn init_tracing() {
     tracing_subscriber::fmt().with_test_writer().try_init().ok();
 }
@@ -142,14 +149,14 @@ fn ideal_drift(profile: ScenarioProfile, dynamics: FlightDynamics, seconds: f64)
     drift
 }
 
-/// An ideal IMU must leave only what a parked one leaves, the 1e-4 m of the
-/// two `J2` constants: a sculling, coning or truth-integration mismatch under
-/// turn rate and acceleration shows up as centimetres to metres.
+/// The ideal-IMU level the trial's route is held to as well.
 #[cfg(test)]
 fn assert_ideal(drift: &Drift) {
-    assert!(drift.worst_horizontal_m < 1e-3, "{drift:?}");
-    assert!(drift.worst_vertical_m < 1e-3, "{drift:?}");
-    assert!(drift.worst_attitude_rad < 1e-9, "{drift:?}");
+    ideal::assert_ideal(&ideal::IdealDrift {
+        worst_horizontal_m: drift.worst_horizontal_m,
+        worst_vertical_m: drift.worst_vertical_m,
+        worst_attitude_rad: drift.worst_attitude_rad,
+    });
 }
 
 #[test]
@@ -206,11 +213,11 @@ fn grade_runs(profile: ScenarioProfile, dynamics: FlightDynamics, seconds: f64) 
             "grade under manoeuvre"
         );
         assert!(
-            (0.3..=10.0).contains(&position_nees),
+            consistency::MANOEUVRE_NEES.contains(&position_nees),
             "{grade:?} {position_nees}"
         );
         assert!(
-            (0.3..=10.0).contains(&attitude_nees),
+            consistency::MANOEUVRE_NEES.contains(&attitude_nees),
             "{grade:?} {attitude_nees}"
         );
     }
