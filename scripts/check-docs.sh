@@ -3,7 +3,7 @@
 #   1. Repository paths in inline code, links, and code blocks exist. A path anchored at a
 #      top-level directory or root file must exist as written; a bare file name or
 #      package-relative path with a known extension must end some file in the tree;
-#      `../<repo>` must name a `[workspace.metadata.external_sources]` checkout.
+#      `../<repo>` must name a repository `[workspace.dependencies]` pins by git.
 #   2. `cargo ... -p X` / `--package X` names a workspace package, unless the command
 #      carries `--manifest-path` (it then targets another workspace).
 #   3. Every `ironbird` flag and `--mode` value shown exists in apps/ironbird/src/cli.rs,
@@ -62,7 +62,11 @@ packages = set()
 for member in cargo.get("workspace", {}).get("members", []):
     with open(Path(member) / "Cargo.toml", "rb") as f:
         packages.add(tomllib.load(f)["package"]["name"])
-external = set(cargo.get("workspace", {}).get("metadata", {}).get("external_sources", {}))
+external = {
+    spec["git"].rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]
+    for spec in cargo.get("workspace", {}).get("dependencies", {}).values()
+    if isinstance(spec, dict) and "git" in spec
+}
 
 
 def split_doc(body):
@@ -99,7 +103,7 @@ def check_path(doc, token, from_link):
     if first == "..":
         repo = token.split("/")[1] if "/" in token else ""
         if repo not in external:
-            errors.append(f"{doc}: `{token}` is not a sibling checkout in external_sources")
+            errors.append(f"{doc}: `{token}` is not a sibling repository Cargo.toml pins")
         return
     if first in TOP_DIRS and "/" in token or token in ROOT_FILES:
         if not Path(token.rstrip("/")).exists():
