@@ -18,6 +18,7 @@ use crate::UniverseError;
 use crate::local::{CoastingRigidBody, LocalFactory, LocalPlant};
 
 mod checkpoints;
+mod plans;
 mod policy;
 
 /// `2027-03-01T00:00:00Z`.

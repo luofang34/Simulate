@@ -26,6 +26,8 @@ mod estimate;
 mod free_world;
 #[cfg(test)]
 mod gauge_hud_tests;
+#[cfg(test)]
+mod jwst_tests;
 mod manual;
 mod mode;
 mod pacing;

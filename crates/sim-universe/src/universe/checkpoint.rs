@@ -8,19 +8,22 @@ use sim_orbital::{UniverseSnapshot, VesselId};
 use super::{Flight, Tier, Universe};
 use crate::UniverseError;
 use crate::bus::VesselBusSnapshot;
+use crate::planning::PlannerCheckpoint;
 
 /// A [`Universe`] at one instant: its clock, every orbital vessel with its
-/// pending events and commands, and which tier each vessel was in.
+/// pending events and commands, which tier each vessel was in, and its plans:
+/// their schedules and the requests still waiting for their deadlines.
 ///
 /// A local plant's state is not in here. Whoever built the plant
 /// checkpoints it, because only they know its type, and puts it back
 /// before calling [`Universe::restore`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UniverseCheckpoint {
     now: SimInstant,
     orbital: UniverseSnapshot,
     tiers: BTreeMap<VesselId, Tier>,
     buses: BTreeMap<VesselId, VesselBusSnapshot>,
+    planner: PlannerCheckpoint,
 }
 
 impl UniverseCheckpoint {
@@ -45,6 +48,7 @@ impl Universe {
             orbital: self.orbital.capture_snapshot(),
             tiers: self.tiers(),
             buses,
+            planner: self.planner.checkpoint(),
         }
     }
 
@@ -72,6 +76,7 @@ impl Universe {
             }
         }
         self.now = checkpoint.now;
+        self.planner.restore(&checkpoint.planner);
         self.tier_changes
             .retain(|change| change.at <= checkpoint.now);
         self.state_reinitializations = self.state_reinitializations.wrapping_add(1);

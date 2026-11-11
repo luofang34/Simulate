@@ -5350,6 +5350,7 @@ dependencies = [
  "sim-orbital",
  "sim-spacetime",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

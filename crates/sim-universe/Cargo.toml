@@ -17,6 +17,7 @@ sim-geo = { workspace = true }
 sim-orbital = { workspace = true }
 sim-spacetime = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 mbd-core = { workspace = true }

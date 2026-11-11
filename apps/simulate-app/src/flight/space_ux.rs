@@ -342,8 +342,14 @@ impl Flight {
             in_proximity_group: false,
             hazard_tgo_s: tgo_s,
             on_reduced_manifold: coasting,
+            plan_wait_s: f64::INFINITY,
         };
-        Some(evaluate_global_warp_status(requested_warp, 0.25, &[input]))
+        let observatory = world.jwst_l2_warp_input();
+        Some(evaluate_global_warp_status(
+            requested_warp,
+            0.25,
+            &[input, observatory],
+        ))
     }
 
     /// Evaluates the live light-time line-of-sight link from the spaceflight ownship to

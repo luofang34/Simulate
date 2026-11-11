@@ -283,6 +283,7 @@ fn warp_governor_rest_hover_counterexample_and_global_bottleneck_verified() {
         in_proximity_group: false,
         hazard_tgo_s: 0.0,
         on_reduced_manifold: false,
+        plan_wait_s: f64::INFINITY,
     };
     let v_cruise = VesselWarpConstraintInput {
         vessel_id: VesselId(2),
@@ -292,6 +293,7 @@ fn warp_governor_rest_hover_counterexample_and_global_bottleneck_verified() {
         in_proximity_group: false,
         hazard_tgo_s: 1.0e9,
         on_reduced_manifold: true,
+        plan_wait_s: f64::INFINITY,
     };
     let status_free = evaluate_global_warp_status(100_000.0, 1.0 / 60.0, &[v_pinned, v_cruise]);
     assert_eq!(status_free.achieved_warp, 100_000.0);
@@ -310,6 +312,7 @@ fn warp_governor_rest_hover_counterexample_and_global_bottleneck_verified() {
         in_proximity_group: false,
         hazard_tgo_s: 120.0,
         on_reduced_manifold: false,
+        plan_wait_s: f64::INFINITY,
     };
     let status_capped =
         evaluate_global_warp_status(100_000.0, 1.0 / 60.0, &[v_pinned, v_cruise, v_entry]);

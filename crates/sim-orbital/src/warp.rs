@@ -266,6 +266,9 @@ pub enum WarpBottleneckReason {
     ImminentHazardCrossing,
     /// A vessel requires high-rate `FullCoupled6Dof` attitude control outside the reduced manifold.
     FullCoupledAttitudeTransient,
+    /// A plan for a vessel is still being computed and its commands are due soon;
+    /// time waits for it rather than its result landing at a wall-clock-dependent time.
+    PendingPlan,
 }
 
 /// Per-vessel constraint snapshot supplied to [`evaluate_global_warp_status`].
@@ -285,6 +288,9 @@ pub struct VesselWarpConstraintInput {
     pub hazard_tgo_s: f64,
     /// Whether this vessel satisfies the `ReducedManifoldThrust` / `Dormant` gate when thrusting.
     pub on_reduced_manifold: bool,
+    /// Simulated time (`s`) until the deadline of a plan for this vessel whose result
+    /// is not computed yet; infinite when there is none.
+    pub plan_wait_s: f64,
 }
 
 /// Authoritative global warp governor output for HUD/telemetry display.
@@ -359,6 +365,15 @@ fn single_vessel_warp_cap(
     if !v.on_reduced_manifold && 50.0 < cap {
         cap = 50.0;
         reason = WarpBottleneckReason::FullCoupledAttitudeTransient;
+    }
+
+    // A frame never carries time past a plan that is still being computed.
+    if v.plan_wait_s.is_finite() {
+        let plan_cap = (v.plan_wait_s / dt_wall).clamp(0.0, 100_000.0);
+        if plan_cap < cap {
+            cap = plan_cap;
+            reason = WarpBottleneckReason::PendingPlan;
+        }
     }
 
     // Ensure a single wall-clock frame never steps more than 25% of hazard_tgo_s:
