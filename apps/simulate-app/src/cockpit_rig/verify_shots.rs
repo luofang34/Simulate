@@ -30,6 +30,7 @@ use crate::world_surface::WorldSurfaceHandle;
 mod fidelity_audit;
 mod ground_contact;
 mod hud_audit;
+mod mission_flight;
 mod n51_audit;
 mod p38g;
 mod photomatch;
