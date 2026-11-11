@@ -75,12 +75,13 @@ pub struct MonitorView {
 impl MonitorView {
     /// The monitor in `section`, starting at `speed`. `can_switch` says
     /// whether the flight takes the visitor's switches; a recorded run
-    /// cannot. `world_note` stands beside the terrain camera's results,
-    /// and `about` closes the section.
+    /// cannot. `caveat` stands under the sets' results, `world_note` beside
+    /// the terrain camera's, and `about` closes the section.
     pub fn inside(
         section: Section,
         speed: Option<f64>,
         can_switch: bool,
+        caveat: Option<&str>,
         world_note: Option<String>,
         about: &str,
     ) -> Option<Self> {
@@ -88,6 +89,11 @@ impl MonitorView {
         let root = section.root().clone();
         let plot = Plot::under(&document, &root)?;
         let legend = append(&document, &root, "div", "legend")?;
+        if let Some(caveat) = caveat
+            && let Some(line) = append(&document, &root, "p", "detail")
+        {
+            line.set_text_content(Some(caveat));
+        }
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);

@@ -23,6 +23,9 @@ const NOTE: &str = "Flown by the vehicle's own software: Pilotage's mission host
 /// What the page says of the camera's world beside the visual results.
 const WORLD_NOTE: &str = "the camera sees the same imagery the onboard map was built from, \
     which favours visual navigation.";
+/// What the page says of the results while a known defect stands.
+const CAVEAT: &str = "The barometric and visual sets currently drift faster than expected in \
+    this page; under investigation.";
 /// What closes the section.
 const ABOUT: &str = "About this run: the same link flies the same flight in the same build of \
     this page, switches included once they are in the link. A desktop build of Simulate may \
@@ -94,8 +97,14 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         }
     };
     let world_note = world.as_ref().map(|_| WORLD_NOTE.to_owned());
-    let Some(view) = MonitorView::inside(section, Some(START_SPEED), true, world_note, ABOUT)
-    else {
+    let Some(view) = MonitorView::inside(
+        section,
+        Some(START_SPEED),
+        true,
+        Some(CAVEAT),
+        world_note,
+        ABOUT,
+    ) else {
         return;
     };
     let flight = ChainFlight::new(trial, world, PageClock::of_page());
