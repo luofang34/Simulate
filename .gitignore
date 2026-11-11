@@ -2,3 +2,4 @@
 /apps/simulate-app/dist
 /book/build
 __pycache__/
+/.cargo/config.toml

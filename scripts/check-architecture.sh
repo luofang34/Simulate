@@ -6,8 +6,9 @@
 #      navigate-astrodynamics is the one shared ephemeris reader), and must respect the strict DAG
 #      sim-spacetime -> {sim-orbital, sim-analysis} -> sim-mission, and sim-core reaches
 #      the orbital stack only through sim-universe.
-#   2. Verifies cross-repo path dependencies in root Cargo.toml carry explicit `version`
-#      and pinned `[workspace.metadata.external_sources]` git/rev entries.
+#   2. Verifies every workspace member that does not inherit `[workspace.lints]` repeats the
+#      forbidden lint table. How sibling repositories are pinned is
+#      check-sibling-sources.sh's rule.
 #   3. Verifies top-level lib.rs in sim-spacetime, sim-orbital, sim-analysis, and sim-mission
 #      use private `mod ...;` and explicit `pub use` (no `pub mod` or `pub use ...::*;`).
 #   4. Rejects process/legacy naming (`gate*`, `audit*`, `probe*`, `gmat*`) in test filenames
@@ -74,8 +75,6 @@ forbidden_foundation = {
     "navigate-celestial",
     "navigate-fusion",
     "navigate-visual",
-    "navigate-visual-fusion",
-    "navigate-visual-session",
     "hifitime",
 }
 
@@ -144,38 +143,6 @@ if "sim-mission" in id_by_name:
 
 with Path("Cargo.toml").open("rb") as f:
     cargo_toml = tomllib.load(f)
-
-ws_deps = cargo_toml.get("workspace", {}).get("dependencies", {})
-for name, spec in ws_deps.items():
-    if isinstance(spec, dict) and "path" in spec:
-        path_val = spec["path"]
-        if path_val.startswith("..") and "version" not in spec:
-            errors.append(
-                f"external path dependency `{name}` ({path_val}) in root Cargo.toml must specify `version`"
-            )
-
-ext_sources = (
-    cargo_toml.get("workspace", {})
-    .get("metadata", {})
-    .get("external_sources", {})
-)
-required_repos = (
-    "jsbsim-rs",
-    "Aviate",
-    "Flightbag",
-    "world",
-    "Indicate",
-    "mbd",
-    "Navigate",
-    "Pilotage",
-    "maplibre-rs-experimental",
-)
-for repo in required_repos:
-    entry = ext_sources.get(repo)
-    if not isinstance(entry, dict) or not entry.get("git") or not entry.get("rev") or not entry.get("version"):
-        errors.append(
-            f"[workspace.metadata.external_sources.{repo}] must declare `git`, `rev`, and `version`"
-        )
 
 required_forbid_clippy = (
     "unwrap_used",

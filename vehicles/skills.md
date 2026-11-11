@@ -148,12 +148,12 @@ JSBSim piston 以「每檔一個固定壓比 × 油門」建模增壓器，`rate
 ### 5.1 分層
 | 層 | 位置 | 職責 |
 |---|---|---|
-| 物理與機構模型 | `../mbd` 的 `mbd-airdata`（`no_std`） | ISA、可壓縮皮托關係、管路延遲、靜壓位置誤差、各儀表機構與指針二階動態 |
-| 契約與信任 | `../mbd` 的 `syspack` | `PitotStatic` 裝置、`instrument_pack` 引用、`kind: InstrumentPack` 與 `instruments.json` 驗證、零件 pin |
+| 物理與機構模型 | mbd 倉庫的 `mbd-airdata`（`no_std`） | ISA、可壓縮皮托關係、管路延遲、靜壓位置誤差、各儀表機構與指針二階動態 |
+| 契約與信任 | mbd 倉庫的 `syspack` | `PitotStatic` 裝置、`instrument_pack` 引用、`kind: InstrumentPack` 與 `instruments.json` 驗證、零件 pin |
 | 載具 | `vehicles/<id>` | 皮托靜壓裝置位置、PEC、引用哪個儀表包、座艙面板座標框 |
 | 共用儀表包 | `instruments/<pack-id>/` | 儀表清單（真實型號、量程、非線性刻度、色弧、機構常數、儀表誤差）、預設面板佈局；多機共用 |
-| 顯示 | `../Indicate`／3D 機械儀表幾何 | 只消費狀態（指針角、讀數），不計算物理 |
-| 設計 | `../ace-rs` | 新設計時估算 PEC、選擇儀表包並輸出上述資產 |
+| 顯示 | Indicate 倉庫／3D 機械儀表幾何 | 只消費狀態（指針角、讀數），不計算物理 |
+| 設計 | ace-rs 倉庫 | 新設計時估算 PEC、選擇儀表包並輸出上述資產 |
 
 ### 5.2 位置誤差 (PEC)
 `performance/pitot_static_calibration.json` 每條襟翼曲線為 `{kias, kcas}` 點，`kias` 為**水柱空速**（只含位置誤差）。試驗範圍外的點在 `reference_document` 中標示為假設。
