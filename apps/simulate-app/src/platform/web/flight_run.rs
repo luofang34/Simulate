@@ -6,14 +6,27 @@
 
 use std::fmt::Display;
 
-use sim_link_host::{Clock, FlightStepper, Monitor, Pacer, SLICE_BUDGET_S, pace_words, run_slice};
+use sim_link::SimulationLink;
+use sim_link_host::{
+    Clock, FlightStepper, Monitor, Pacer, SLICE_BUDGET_S, SwitchLog, pace_words, run_slice,
+};
+use sim_navigate::trial::SensorKind;
 use tracing::{info, warn};
 use wasm_bindgen_futures::JsFuture;
 
-use super::monitor_view::MonitorView;
+use super::monitor_view::{Controls, MonitorView};
 
 /// The wall clock of the page.
-struct PageClock(Option<web_sys::Performance>);
+#[derive(Clone)]
+pub struct PageClock(Option<web_sys::Performance>);
+
+impl PageClock {
+    /// The page's clock; one that stays at zero in a page without a
+    /// window.
+    pub fn of_page() -> Self {
+        Self(web_sys::window().and_then(|window| window.performance()))
+    }
+}
 
 impl Clock for PageClock {
     fn now_s(&self) -> f64 {
@@ -33,14 +46,52 @@ async fn animation_frame() {
     JsFuture::from(frame).await.ok();
 }
 
+/// The link of the run as flown, on the page's own address: `link` with
+/// the flight's outages, the stated and the switched, in place of its own.
+fn run_url(link: &SimulationLink, outages: &[(SensorKind, f64, Option<f64>)]) -> Option<String> {
+    let base = web_sys::window()?.location().href().ok()?;
+    let mut bare = link.clone();
+    bare.outages.clear();
+    match SwitchLog::of_outages(outages).url(&bare, &base) {
+        Ok(url) => Some(url),
+        Err(refusal) => {
+            warn!(%refusal, "the run's link cannot be written");
+            None
+        }
+    }
+}
+
+/// Hands the flight the switches the visitor changed since `before`.
+fn apply_switches<F: FlightStepper>(flight: &mut F, before: &Controls, now: &Controls) {
+    for sensor in SensorKind::ALL {
+        let (was, is) = (
+            before.withheld.contains(sensor.name()),
+            now.withheld.contains(sensor.name()),
+        );
+        if was != is {
+            info!(
+                sensor = sensor.name(),
+                on = !is,
+                "a switch the visitor changed"
+            );
+            flight.switch(sensor, !is);
+        }
+    }
+}
+
 /// Flies `flight` with `view` showing it, for as long as the page is open.
-/// `note` heads the status line: what is flying.
-pub async fn fly<F>(mut view: MonitorView, mut flight: F, note: &str)
+/// `note` heads the status line: what is flying. With `link`, the view
+/// offers the link of the run as flown.
+pub async fn fly<F>(mut view: MonitorView, mut flight: F, note: &str, link: Option<&SimulationLink>)
 where
     F: FlightStepper,
     F::Error: Display,
 {
-    let clock = PageClock(web_sys::window().and_then(|window| window.performance()));
+    let clock = PageClock::of_page();
+    let mut outages = flight.outages();
+    if let Some(link) = link {
+        view.show_run_link(run_url(link, &outages).as_deref());
+    }
     let mut monitor = Monitor::default();
     let mut controls = view.controls();
     let mut pacer = Pacer::new(controls.speed);
@@ -51,7 +102,12 @@ where
         animation_frame().await;
         let now = view.controls();
         if now != controls {
-            pacer.set_speed(now.speed);
+            if flying {
+                apply_switches(&mut flight, &controls, &now);
+            }
+            if now.speed != controls.speed {
+                pacer.set_speed(now.speed);
+            }
             controls = now;
             dirty = true;
         }
@@ -84,6 +140,13 @@ where
             dirty |= !out.is_empty();
             for feed in out.drain(..) {
                 monitor.apply(feed);
+            }
+            let flown = flight.outages();
+            if flown != outages {
+                outages = flown;
+                if let Some(link) = link {
+                    view.show_run_link(run_url(link, &outages).as_deref());
+                }
             }
         }
         if dirty {

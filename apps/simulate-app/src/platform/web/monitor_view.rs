@@ -1,6 +1,7 @@
 //! The flight monitor on the page: the status line, the error plot, a
 //! legend that shows or hides each set, a switch for each means the run
-//! uses, the pace, the terrain camera's tallies and the latest events.
+//! uses, the pace, the link of the run, the terrain camera's tallies, the
+//! mission host's reports and the latest events.
 //!
 //! The controls are read when the page draws, not listened to: the flight
 //! loop runs every animation frame anyway, so a click shows within a frame.
@@ -63,16 +64,26 @@ pub struct MonitorView {
     switches: Element,
     speeds: Element,
     terrain: Element,
+    mission: Element,
     events: Element,
+    run_link: Element,
     built_for: Vec<String>,
     can_switch: bool,
+    world_note: Option<String>,
 }
 
 impl MonitorView {
     /// The monitor in `section`, starting at `speed`. `can_switch` says
     /// whether the flight takes the visitor's switches; a recorded run
-    /// cannot.
-    pub fn inside(section: Section, speed: Option<f64>, can_switch: bool) -> Option<Self> {
+    /// cannot. `world_note` stands beside the terrain camera's results,
+    /// and `about` closes the section.
+    pub fn inside(
+        section: Section,
+        speed: Option<f64>,
+        can_switch: bool,
+        world_note: Option<String>,
+        about: &str,
+    ) -> Option<Self> {
         let document = section.document().clone();
         let root = section.root().clone();
         let plot = Plot::under(&document, &root)?;
@@ -80,8 +91,13 @@ impl MonitorView {
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);
+        let run_link = append(&document, &root, "p", "detail")?;
         let terrain = append(&document, &root, "dl", "lines")?;
+        let mission = append(&document, &root, "dl", "lines")?;
         let events = append(&document, &root, "dl", "lines")?;
+        if let Some(closing) = append(&document, &root, "p", "detail") {
+            closing.set_text_content(Some(about));
+        }
         Some(Self {
             section,
             plot,
@@ -89,10 +105,33 @@ impl MonitorView {
             switches,
             speeds,
             terrain,
+            mission,
             events,
+            run_link,
             built_for: Vec::new(),
             can_switch,
+            world_note,
         })
+    }
+
+    /// Offers `url`, the link of the run as flown so far, to open or copy;
+    /// the page's own address stays as it is, since a changed address
+    /// starts the page again.
+    pub fn show_run_link(&self, url: Option<&str>) {
+        self.run_link.set_text_content(None);
+        let Some(url) = url else {
+            return;
+        };
+        let document = self.section.document();
+        if let Some(words) = append(document, &self.run_link, "span", "") {
+            words.set_text_content(Some("Link to this run, with the switches so far: "));
+        }
+        if let Some(anchor) = append(document, &self.run_link, "a", "") {
+            anchor.set_attribute("href", url).ok();
+            anchor.set_attribute("target", "_blank").ok();
+            anchor.set_attribute("rel", "noopener").ok();
+            anchor.set_text_content(Some(url));
+        }
     }
 
     /// The section the monitor is in.
@@ -134,7 +173,7 @@ impl MonitorView {
             .draw(monitor, &|set| !controls.hidden.contains(set));
         self.legend_values(monitor);
         self.switch_states(monitor);
-        let visual: Vec<PlanLine> = monitor
+        let mut visual: Vec<PlanLine> = monitor
             .traces()
             .iter()
             .filter(|trace| trace.means.contains(&NavMeans::Visual))
@@ -143,7 +182,26 @@ impl MonitorView {
                 text: terrain_words(monitor, &trace.name),
             })
             .collect();
+        if let Some(note) = self.world_note.as_ref().filter(|_| !visual.is_empty()) {
+            visual.insert(
+                0,
+                PlanLine {
+                    label: "Camera's world".to_owned(),
+                    text: note.clone(),
+                },
+            );
+        }
         write_lines(self.section.document(), &self.terrain, &visual);
+        let mission: Vec<PlanLine> = monitor
+            .mission_events()
+            .iter()
+            .rev()
+            .map(|(t_s, event)| PlanLine {
+                label: format!("Mission {}", clock_words(*t_s)),
+                text: event.clone(),
+            })
+            .collect();
+        write_lines(self.section.document(), &self.mission, &mission);
         let events: Vec<PlanLine> = monitor
             .events()
             .iter()
@@ -177,10 +235,17 @@ impl MonitorView {
     fn legend_values(&self, monitor: &Monitor) {
         for (trace, value) in monitor.traces().iter().zip(values(&self.legend)) {
             let text = trace.latest().map_or_else(String::new, |latest| {
-                format!(
-                    "{:.1} m off the truth, {:.1} m one-sigma",
-                    latest.horizontal_error_m, latest.sigma_horizontal_m
-                )
+                if latest.sigma_horizontal_m > 0.0 {
+                    format!(
+                        "{:.1} m off the truth, {:.1} m one-sigma",
+                        latest.horizontal_error_m, latest.sigma_horizontal_m
+                    )
+                } else {
+                    format!(
+                        "{:.1} m off the truth, no uncertainty stated",
+                        latest.horizontal_error_m
+                    )
+                }
             });
             value.set_text_content(Some(&text));
         }

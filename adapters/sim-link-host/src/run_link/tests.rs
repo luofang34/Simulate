@@ -74,3 +74,17 @@ fn a_switch_back_at_the_same_instant_leaves_no_outage() {
     assert!(log.is_empty());
     assert_eq!(log.link_of_run(&link), link);
 }
+
+#[test]
+fn a_flights_outages_rebuild_the_same_spans() {
+    let link = decode_fragment(FIRST).unwrap();
+    let log = SwitchLog::of_outages(&[
+        (SensorKind::Gnss, 120.004, Some(300.5)),
+        (SensorKind::TerrainCamera, 600.0, None),
+    ]);
+    assert!(
+        log.url(&link, BASE)
+            .unwrap()
+            .contains("&out=gnss:120.004-300.5;cam:600-&")
+    );
+}

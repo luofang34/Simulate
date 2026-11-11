@@ -7,13 +7,11 @@ use std::sync::Arc;
 use glam::{DQuat, DVec3};
 use navigate_data::{MemoryStore, Sha256Digest};
 use sim_geo::SensorIntrinsics;
-use sim_navigate::trial::{MapStore, NamedStores, OpenedPackage, PackageRef};
+use sim_navigate::trial::{OpenedPackage, PackageRef};
 use sim_scenery::{CatalogScenery, LumaImage, render_luma_view};
 
 use crate::HostError;
-
-/// The name the page registers its one package under.
-const PAGE_STORE: &str = "page";
+use crate::chain::{PAGE_STORE, page_stores};
 
 /// The world the terrain camera sees.
 #[derive(Debug, Clone)]
@@ -31,8 +29,7 @@ impl CameraWorld {
     /// [`HostError::Trial`] for a package the trial refuses or cannot
     /// decode.
     pub fn open_blocking(store: MemoryStore, identity: Sha256Digest) -> Result<Self, HostError> {
-        let mut stores = NamedStores::new();
-        stores.insert(PAGE_STORE, MapStore::new(store));
+        let stores = page_stores(store);
         let reference = PackageRef {
             store: PAGE_STORE.to_owned(),
             package: identity.to_string(),

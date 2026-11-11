@@ -1,6 +1,5 @@
 //! What the page does with a simulation link in its address: decode it,
-//! show its plan or why it is refused, build its map package, and say what
-//! of the flight this build of the page cannot do yet.
+//! show its plan or why it is refused, build its map package, and fly it.
 
 use sim_link::decode_url;
 use sim_link_host::{HostError, hosted_request, plan_lines, plan_summary, refusal_lines};
@@ -8,14 +7,6 @@ use tracing::{info, warn};
 
 use super::package_run::{LinkPlan, build_package};
 use super::progress_surface::ProgressSurface;
-
-/// What stands in the flight's place until the vehicle's own software runs
-/// in the browser.
-#[cfg(not(feature = "monitor-replay"))]
-const FLIGHT_NOT_YET: &str = "The flight is flown by the vehicle's own software: Pilotage's \
-    mission host, Aviate's flight controller for the C172 and Navigate's navigator. They are \
-    not linked into this build of the page, so it stops here. The plan and the map package \
-    above are what they are handed.";
 
 /// Shows the link in the page's address on `surface`. Returns whether the
 /// address carried one, valid or not: such a page is that simulation's, and
@@ -77,10 +68,5 @@ async fn continue_with(surface: ProgressSurface, plan: LinkPlan) {
     let Some(flight) = surface.section("Flight") else {
         return;
     };
-    #[cfg(feature = "monitor-replay")]
-    {
-        super::replay_start::fly_recorded(flight).await;
-    }
-    #[cfg(not(feature = "monitor-replay"))]
-    flight.settled(FLIGHT_NOT_YET);
+    super::chain_start::fly_link(flight, &plan, sealed.as_ref()).await;
 }

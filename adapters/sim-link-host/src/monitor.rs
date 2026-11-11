@@ -40,6 +40,13 @@ pub enum MonitorFeed {
     Progress(ProgressRecord),
     /// The mission phase, as the mission host names it.
     Phase(String),
+    /// Something the mission host reported, in its own words.
+    Mission {
+        /// Route time, seconds.
+        t_s: f64,
+        /// What it said.
+        event: String,
+    },
     /// A set's running tally of terrain-camera fixes, keyed as the trial
     /// result keys them: `accepted`, `rejected:<reason>`,
     /// `unused:<reason>:matched` or `:unmatched`, `context:<kind>`.
@@ -68,6 +75,7 @@ pub struct Monitor {
     fixes: BTreeMap<String, BTreeMap<String, u64>>,
     phase: Option<String>,
     events: Vec<EventRecord>,
+    mission: Vec<(f64, String)>,
     planned_duration_s: Option<f64>,
     sim_time_s: f64,
     finished: bool,
@@ -79,6 +87,11 @@ impl Monitor {
         match feed {
             MonitorFeed::Progress(record) => self.progress(record),
             MonitorFeed::Phase(phase) => self.phase = Some(phase),
+            MonitorFeed::Mission { t_s, event } => {
+                self.mission.push((t_s, event));
+                let over = self.mission.len().saturating_sub(EVENTS_KEPT);
+                self.mission.drain(..over);
+            }
             MonitorFeed::TerrainFixes { set, fixes } => {
                 self.fixes.insert(set, fixes);
             }
@@ -133,6 +146,12 @@ impl Monitor {
     /// The latest events, oldest first.
     pub fn events(&self) -> &[EventRecord] {
         &self.events
+    }
+
+    /// The mission host's latest reports with their route times, oldest
+    /// first.
+    pub fn mission_events(&self) -> &[(f64, String)] {
+        &self.mission
     }
 
     /// The waypoint the flight last sequenced, with its index in fly order.

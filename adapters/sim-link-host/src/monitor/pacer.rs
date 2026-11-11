@@ -7,6 +7,8 @@
 //! What a route second costs on the wall clock is measured as the flight
 //! goes, and the pace is held to what the page can afford.
 
+use sim_navigate::trial::SensorKind;
+
 use super::MonitorFeed;
 
 /// Wall time one slice may take before the page gets the thread back,
@@ -61,6 +63,17 @@ pub trait FlightStepper {
     /// when they are what holds it back.
     fn take_camera_wall_s(&mut self) -> f64 {
         0.0
+    }
+
+    /// Takes `sensor`'s device out of service, or returns it, from the
+    /// next tick on; a flight that cannot be changed, such as a recorded
+    /// one, ignores it.
+    fn switch(&mut self, _sensor: SensorKind, _on: bool) {}
+
+    /// Every device outage of the flight so far, the stated and the
+    /// switched: sensor, start and end, route seconds, open while out.
+    fn outages(&self) -> Vec<(SensorKind, f64, Option<f64>)> {
+        Vec::new()
     }
 }
 

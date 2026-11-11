@@ -1,5 +1,6 @@
 //! Why a link that decodes still cannot be hosted.
 
+use sim_chain_trial::ChainTrialError;
 use sim_navigate::trial::TrialError;
 use thiserror::Error;
 
@@ -44,5 +45,12 @@ pub enum HostError {
     Render {
         /// The renderer's refusal.
         detail: String,
+    },
+    /// The vehicle's control chain refused the link or failed in flight.
+    #[error("the flight on the vehicle's own software stopped: {source}")]
+    Chain {
+        /// The chain trial's error.
+        #[from]
+        source: ChainTrialError,
     },
 }

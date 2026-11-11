@@ -15,12 +15,16 @@
 //!   [`sealed_lines`] word its plan, its progress and its result;
 //!   [`world_memory_bytes`] is what the camera's world of the package takes
 //!   in the tab once decoded, checked against [`WORLD_MEMORY_CEILING_BYTES`].
+//! - [`chain_spec`] maps the link onto the vehicle's own control chain, and
+//!   [`ChainFlight`] steps that chain as the page's flight, rendering its
+//!   terrain camera's frames when asked.
 //! - [`SwitchLog`] writes the visitor's switches into the link of the run,
 //!   so the link reopens the same flight.
 //! - [`Monitor`] is what the page shows while the link flies, fed by the
 //!   flight; [`run_slice`] and [`Pacer`] step a [`FlightStepper`] in slices
 //!   a page can draw between, and [`Replay`] flies a recorded run again.
 
+mod chain;
 mod error;
 mod monitor;
 mod package;
@@ -33,6 +37,10 @@ mod world;
 #[cfg(test)]
 mod tests;
 
+pub use chain::{
+    ASSUMED_ACCURACY, ChainFlight, MAX_STEP_S, OVERRUN_S, PAGE_STORE, chain_spec, link_outages,
+    page_stores,
+};
 pub use error::HostError;
 pub use monitor::{
     Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, MeansSwitch, Monitor,

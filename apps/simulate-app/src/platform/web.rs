@@ -8,15 +8,12 @@ use winit::window::{Window, WindowAttributes};
 
 use crate::app::{AppEvent, FlightApp, GpuReady};
 
-#[cfg(feature = "monitor-replay")]
+mod chain_start;
 mod flight_run;
 mod link_start;
-#[cfg(feature = "monitor-replay")]
 mod monitor_view;
 mod package_run;
 mod progress_surface;
-#[cfg(feature = "monitor-replay")]
-mod replay_start;
 mod section;
 
 use progress_surface::ProgressSurface;

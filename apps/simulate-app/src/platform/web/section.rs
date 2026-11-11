@@ -70,13 +70,11 @@ impl Section {
     }
 
     /// The section's element, for content of its own after its lines.
-    #[cfg(feature = "monitor-replay")]
     pub(super) const fn root(&self) -> &Element {
         &self.root
     }
 
     /// The page.
-    #[cfg(feature = "monitor-replay")]
     pub(super) const fn document(&self) -> &Document {
         &self.document
     }

@@ -60,6 +60,19 @@ impl SwitchLog {
         }
     }
 
+    /// The log of a flight's outages as it reports them: each sensor out
+    /// from its start to its end, open while it stays out.
+    pub fn of_outages(outages: &[(SensorKind, f64, Option<f64>)]) -> Self {
+        let mut log = Self::default();
+        for (sensor, start_s, end_s) in outages {
+            log.off(*sensor, *start_s);
+            if let Some(end_s) = end_s {
+                log.on(*sensor, *end_s);
+            }
+        }
+        log
+    }
+
     /// Whether the visitor switched nothing.
     pub fn is_empty(&self) -> bool {
         self.spans.values().all(Vec::is_empty)
