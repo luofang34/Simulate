@@ -13,6 +13,7 @@ use crate::{
     c172_sensor_suite,
 };
 
+mod navigator_feed;
 mod zaragoza;
 
 /// The first shareable link's route, degrees north and east.
@@ -194,7 +195,6 @@ fn fly(
 
 /// Ninety simulated seconds from the link's start.
 #[test]
-#[ignore = "Pilotage's host core loses the motion lease while it waits a heartbeat for the arm"]
 fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -226,7 +226,6 @@ fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
 /// The plan handed over at power-up: the host core must wait for the
 /// flight controller to come up before it gives up on the arm.
 #[test]
-#[ignore = "Pilotage's host core gives up on the arm before the flight controller is ready"]
 fn a_plan_loaded_at_power_up_arms_once_the_flight_controller_is_ready() {
     let mut chain = HostChain::new(c172(1), &route(0.0)).unwrap();
     let run = fly(&mut chain, 30.0);

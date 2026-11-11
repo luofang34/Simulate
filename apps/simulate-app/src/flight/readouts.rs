@@ -69,7 +69,7 @@ impl Flight {
                 | FreeFlightVehicle::AviateFixedWingDirect
                 | FreeFlightVehicle::Kinematic => Some(cached_c172_specs()),
                 FreeFlightVehicle::JsbsimP38g => Some(cached_p38_specs()),
-                FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission => None,
+                FreeFlightVehicle::AviateX500Direct => None,
             },
             Mode::Space(_) => None,
             Mode::Scenario(run) => match run.profile() {

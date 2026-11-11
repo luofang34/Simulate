@@ -60,6 +60,10 @@ struct Watched {
     worst_pitch_error_deg: f64,
     /// The largest difference of estimated and true heading, degrees.
     worst_heading_error_deg: f64,
+    /// The worst roll, pitch and heading error, degrees, while turning.
+    turn_rph_deg: [f64; 3],
+    /// The same after the roll-out.
+    after_rph_deg: [f64; 3],
     /// The lowest and highest height above the board's origin, metres.
     lowest_m: f64,
     highest_m: f64,
@@ -71,6 +75,13 @@ fn heading_deg(attitude: glam::DQuat, at: DVec3) -> f64 {
     let frame = LocalFrame::at(&ecef_to_geodetic(at));
     let forward = frame.ecef_to_ned_vector(attitude * DVec3::X);
     forward.y.atan2(forward.x).to_degrees()
+}
+
+fn roll_deg(attitude: glam::DQuat, at: DVec3) -> f64 {
+    let frame = LocalFrame::at(&ecef_to_geodetic(at));
+    let right = frame.ecef_to_ned_vector(attitude * DVec3::Y);
+    let down = frame.ecef_to_ned_vector(attitude * DVec3::Z);
+    right.z.atan2(down.z).to_degrees()
 }
 
 fn pitch_deg(attitude: glam::DQuat, at: DVec3) -> f64 {
@@ -178,6 +189,20 @@ fn turn_on_arming(board: &mut C172Board) -> Watched {
             .worst_pitch_error_deg
             .max((pitches.0 - pitches.1).abs());
         watched.worst_heading_error_deg = watched.worst_heading_error_deg.max(heading_error);
+        if let Some(estimate) = board.estimated_state() {
+            let truth = board.true_state();
+            let roll_error = (roll_deg(estimate.attitude, truth.position_ecef)
+                - roll_deg(truth.attitude, truth.position_ecef))
+            .abs();
+            let errors = [roll_error, (pitches.0 - pitches.1).abs(), heading_error];
+            let phase = match watched.rolled_out_s {
+                None => &mut watched.turn_rph_deg,
+                Some(_) => &mut watched.after_rph_deg,
+            };
+            for (worst, error) in phase.iter_mut().zip(errors) {
+                *worst = worst.max(error);
+            }
+        }
         if error_deg > watched.worst_attitude_error_deg {
             watched.worst_attitude_error_deg = error_deg;
             watched.worst_at_s = t_s;

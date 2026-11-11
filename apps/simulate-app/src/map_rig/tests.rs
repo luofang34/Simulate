@@ -80,7 +80,6 @@ fn the_ownship_airframe_follows_the_scenario_then_the_free_flight_plant() {
         (None, Some(V::AviateFixedWingDirect), K::C172),
         (None, Some(V::Kinematic), K::FixedWingUav),
         (None, Some(V::AviateX500Direct), K::QuadrotorX500),
-        (None, Some(V::X500Mission), K::QuadrotorX500),
         (None, None, K::Raketa),
     ] {
         assert_eq!(

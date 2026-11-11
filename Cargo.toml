@@ -120,17 +120,17 @@ navigate-onboard = { git = "https://github.com/luofang34/Navigate", rev = "8efef
 navigate-route = { git = "https://github.com/luofang34/Navigate", rev = "8efefef8d83cdc4806e2c68921c3d6d3458b80f1" }
 navigate-startrack = { git = "https://github.com/luofang34/Navigate", rev = "8efefef8d83cdc4806e2c68921c3d6d3458b80f1" }
 navigate-visual = { git = "https://github.com/luofang34/Navigate", rev = "8efefef8d83cdc4806e2c68921c3d6d3458b80f1" }
-pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-adapter-aviate = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a", default-features = false }
-pilotage-control-feel = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-host-core = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-aircraft = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-calibration-id = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-camera-calibration = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-mission = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-mavlink = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a", default-features = false }
-pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
-pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "940552a03726eaa307cd8791bcbeee494718c79a" }
+pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-adapter-aviate = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291", default-features = false }
+pilotage-control-feel = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-host-core = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-aircraft = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-calibration-id = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-camera-calibration = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-mission = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-mavlink = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291", default-features = false }
+pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
+pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "449f9aa968a26e499e2f4b19ab34d21f1e72f291" }
 syspack = { git = "https://github.com/luofang34/mbd", rev = "4ece01c9d007f736a7d09f6111cd262ab552c756" }
 maplibre = { git = "https://github.com/luofang34/maplibre-rs-experimental", rev = "312d788430d9aa182c75e3842acc6e2522fafe7b", default-features = false, features = ["headless", "raster", "geojson", "experimental"] }
 
