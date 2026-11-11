@@ -234,19 +234,19 @@ impl MonitorView {
 
     fn legend_values(&self, monitor: &Monitor) {
         for (trace, value) in monitor.traces().iter().zip(values(&self.legend)) {
-            let text = trace.latest().map_or_else(String::new, |latest| {
-                if latest.sigma_horizontal_m > 0.0 {
-                    format!(
-                        "{:.1} m off the truth, {:.1} m one-sigma",
-                        latest.horizontal_error_m, latest.sigma_horizontal_m
-                    )
-                } else {
-                    format!(
-                        "{:.1} m off the truth, no uncertainty stated",
-                        latest.horizontal_error_m
-                    )
-                }
-            });
+            let text =
+                trace
+                    .latest()
+                    .map_or_else(String::new, |latest| match latest.sigma_horizontal_m {
+                        Some(sigma) => format!(
+                            "{:.1} m off the truth, {sigma:.1} m one-sigma",
+                            latest.horizontal_error_m
+                        ),
+                        None => format!(
+                            "{:.1} m off the truth, no uncertainty stated",
+                            latest.horizontal_error_m
+                        ),
+                    });
             value.set_text_content(Some(&text));
         }
     }

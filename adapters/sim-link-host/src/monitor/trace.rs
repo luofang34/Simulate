@@ -12,8 +12,9 @@ pub struct TracePoint {
     pub t_s: f64,
     /// Horizontal distance from the truth, metres.
     pub horizontal_error_m: f64,
-    /// The set's own one-sigma horizontal uncertainty, metres.
-    pub sigma_horizontal_m: f64,
+    /// The set's own one-sigma horizontal uncertainty, metres; `None` for
+    /// a set that states none.
+    pub sigma_horizontal_m: Option<f64>,
 }
 
 /// What one column of a plot covers.
@@ -23,8 +24,8 @@ pub struct Column {
     pub min_m: f64,
     /// The largest error in the column, metres.
     pub max_m: f64,
-    /// The largest one-sigma uncertainty in the column, metres.
-    pub sigma_m: f64,
+    /// The largest one-sigma uncertainty stated in the column, metres.
+    pub sigma_m: Option<f64>,
 }
 
 /// A set and its samples in route-time order.
@@ -100,7 +101,10 @@ impl SetTrace {
                 Some(seen) => Column {
                     min_m: seen.min_m.min(error),
                     max_m: seen.max_m.max(error),
-                    sigma_m: seen.sigma_m.max(point.sigma_horizontal_m),
+                    sigma_m: match (seen.sigma_m, point.sigma_horizontal_m) {
+                        (Some(a), Some(b)) => Some(a.max(b)),
+                        (a, b) => a.or(b),
+                    },
                 },
             });
         }

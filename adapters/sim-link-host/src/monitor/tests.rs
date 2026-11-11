@@ -158,7 +158,7 @@ fn a_trace_reduces_to_columns() {
     assert_eq!(columns[0], None);
     assert_eq!(columns[1].unwrap().max_m, 2.0);
     assert_eq!(columns[2].unwrap().min_m, 5.0);
-    assert_eq!(columns[3].unwrap().sigma_m, 18.0);
+    assert_eq!(columns[3].unwrap().sigma_m, Some(18.0));
     let squeezed = trace.columns(1.0, 3.0, 1);
     let only = squeezed[0].unwrap();
     assert_eq!((only.min_m, only.max_m), (2.0, 9.0));
