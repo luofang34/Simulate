@@ -157,17 +157,40 @@ fn grades_order_every_statistic() {
     // Accelerometer white noise does not set the grade: a tactical unit's
     // velocity random walk is no better than a good MEMS part's.
     assert!(tactical.accel.noise_density > navigation.accel.noise_density);
+    let total = |triad: TriadErrorSpec| triad.turn_on_bias_sigma.hypot(triad.bias.sigma);
     for (worse, better) in [(consumer, tactical), (tactical, navigation)] {
         assert!(worse.gyro.noise_density > better.gyro.noise_density);
-        assert!(worse.accel.bias.sigma > better.accel.bias.sigma);
-        assert!(worse.gyro.bias.sigma > better.gyro.bias.sigma);
+        assert!(total(worse.accel) > total(better.accel));
+        assert!(total(worse.gyro) > total(better.gyro));
     }
-    let consumer_gyro_bias_deg_s = consumer.gyro.bias.sigma.to_degrees();
-    assert!((consumer_gyro_bias_deg_s - 0.5).abs() < 1e-12);
+    let consumer_gyro_turn_on_deg_s = consumer.gyro.turn_on_bias_sigma.to_degrees();
+    assert!((consumer_gyro_turn_on_deg_s - 0.5).abs() < 1e-12);
     let tactical_gyro_bias_deg_h = tactical.gyro.bias.sigma.to_degrees() * 3_600.0;
     assert!((tactical_gyro_bias_deg_h - 1.0).abs() < 1e-12);
     let navigation_gyro_bias_deg_h = navigation.gyro.bias.sigma.to_degrees() * 3_600.0;
     assert!((navigation_gyro_bias_deg_h - 0.01).abs() < 1e-4);
+}
+
+/// A consumer part's large turn-on bias holds for the power-up; only its
+/// small in-run instability wanders.
+#[test]
+fn the_turn_on_bias_is_a_constant_for_the_power_up() {
+    let spec = ImuGrade::ConsumerMems.spec();
+    let mut unit = ImuErrorModel::new(spec, 7).unwrap();
+    let turn_on = unit.gyro_turn_on_bias_rad_s();
+    let first = unit.gyro_bias_rad_s();
+    assert!(turn_on.length() > 0.0);
+    for _ in 0..6_000 {
+        unit.sense(&increment(DVec3::ZERO, DVec3::ZERO)).unwrap();
+    }
+    assert_eq!(unit.gyro_turn_on_bias_rad_s(), turn_on);
+    let wandered = (unit.gyro_bias_rad_s() - first).length();
+    assert!(
+        wandered < 6.0 * spec.gyro.bias.sigma,
+        "a minute wandered {wandered} rad/s"
+    );
+    let other = ImuErrorModel::new(spec, 8).unwrap();
+    assert_ne!(other.gyro_turn_on_bias_rad_s(), turn_on);
 }
 
 #[test]

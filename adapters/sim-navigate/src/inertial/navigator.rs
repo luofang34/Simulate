@@ -35,17 +35,24 @@ pub fn inertial_config(spec: &ImuErrorSpec) -> InertialConfig {
     }
 }
 
+/// The filter's first-order Gauss–Markov bias for `triad`: its spread is
+/// the turn-on constant and the in-run wander together, and its correlation
+/// time is stretched so that its process noise is the in-run wander's
+/// alone, `2·σ_in²/τ`. The turn-on constant adds spread and no wander.
 fn filter_bias(triad: &TriadErrorSpec) -> FogmBias {
     let GaussMarkov { tau_s, sigma } = triad.bias;
     let walk = triad.bias_random_walk_density;
-    match (tau_s.is_finite() && tau_s > 0.0, walk > 0.0) {
-        (true, _) => FogmBias::new(tau_s, (sigma * sigma + walk * walk * tau_s / 2.0).sqrt()),
-        (false, false) => FogmBias::new(0.0, sigma),
-        (false, true) => FogmBias::new(
-            RANDOM_WALK_TAU_S,
-            (sigma * sigma + walk * walk * RANDOM_WALK_TAU_S / 2.0).sqrt(),
-        ),
+    let turn_on = triad.turn_on_bias_sigma * triad.turn_on_bias_sigma;
+    let tau = match (tau_s.is_finite() && tau_s > 0.0, walk > 0.0) {
+        (true, _) => tau_s,
+        (false, true) => RANDOM_WALK_TAU_S,
+        (false, false) => return FogmBias::new(0.0, (turn_on + sigma * sigma).sqrt()),
+    };
+    let in_run = sigma * sigma + walk * walk * tau / 2.0;
+    if in_run <= 0.0 {
+        return FogmBias::new(0.0, turn_on.sqrt());
     }
+    FogmBias::new(tau * (turn_on + in_run) / in_run, (turn_on + in_run).sqrt())
 }
 
 /// Navigate's 22-state [`InertialNavigationFilter`] on the WGS84 Earth surface,
