@@ -352,7 +352,17 @@ impl SetRun {
                     .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
-            let data = baro_altitude_data(&logged.reading)?;
+            let Some(position) = self.navigator.solution(now).map(|s| s.position) else {
+                return Err(TrialError::InvalidRequest {
+                    field: "baro",
+                    detail: format!("a barometric sample at {time_s} s before any solution"),
+                });
+            };
+            let data = baro_altitude_data(
+                &logged.reading,
+                position.latitude_rad,
+                position.longitude_rad,
+            )?;
             self.ingest(BARO_SOURCE, (now, now), data)?;
             let verdicts = verdicts(&self.records);
             self.ledger
