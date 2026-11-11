@@ -38,6 +38,31 @@ pub enum DeviceError {
         /// Its value.
         value: f64,
     },
+    /// An error statistic or a sampling period of a device is not usable.
+    #[error("{device} {field} of {value} is not usable")]
+    InvalidStatistic {
+        /// The device.
+        device: &'static str,
+        /// The offending field.
+        field: &'static str,
+        /// Its value.
+        value: f64,
+    },
+    /// The geomagnetic model has no field for the position or date.
+    #[error(
+        "no magnetic field at latitude {lat_deg} deg, longitude {lon_deg} deg in {decimal_year}"
+    )]
+    NoMagneticField {
+        /// Latitude asked for.
+        lat_deg: f64,
+        /// Longitude asked for.
+        lon_deg: f64,
+        /// Date asked for, decimal years.
+        decimal_year: f64,
+        /// The model's reason.
+        #[source]
+        source: world_geomag::GeomagError,
+    },
     /// An ideal inertial increment is not finite, or its interval is not
     /// finite and positive.
     #[error("inertial increment over {dt_s} s is not usable")]
