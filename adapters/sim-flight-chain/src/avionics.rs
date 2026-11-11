@@ -8,8 +8,8 @@
 #[cfg(test)]
 mod tests;
 
-use aviate_core::control::ControlMode;
 use aviate_core::control::fixed_wing::FixedWingController;
+use aviate_core::control::{ControlMode, Setpoint};
 use aviate_core::mixer::Mixer;
 use glam::DVec3;
 use sim_core::{SimInstant, VehicleState};
@@ -53,14 +53,14 @@ pub struct FcAirData {
     pub fresh: bool,
 }
 
-/// The targets of the setpoint the flight controller executed.
+/// The targets the flight controller resolved from the setpoint it executed.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct FcTargets {
     /// Heading, radians clockwise from north.
     pub heading_rad: Option<f64>,
     /// Height above the WGS84 ellipsoid, metres. The controller holds a
-    /// height above its frame's datum, the configured origin's ellipsoidal
-    /// height, which this adds back.
+    /// height above the plane of its navigation frame, which lies at the
+    /// frame origin's ellipsoidal height; this adds that height back.
     pub altitude_m: Option<f64>,
     /// Indicated airspeed, m/s.
     pub airspeed_m_s: Option<f64>,
@@ -90,8 +90,9 @@ where
             .filter(|increment| increment.dt_s > 0.0)
             .map(|increment| increment.delta_velocity_m_s / increment.dt_s);
         let command = board.last_effective_command();
-        let setpoint = &command.setpoint;
-        let datum_m = self.origin().height_m;
+        // The setpoint's height is above the plane of the frame the estimate is in;
+        // the frame's origin moves with the vehicle but stays on the datum height.
+        let datum_m = board.navigation_frame().origin.ellipsoidal_height_m;
         FcAvionics {
             at: self.now(),
             estimate: runner.estimated_state(),
@@ -99,12 +100,34 @@ where
             air,
             mode: command.mode,
             armed: runner.is_armed(),
-            targets: FcTargets {
-                heading_rad: setpoint.heading.map(|h| f64::from(h.0)),
-                altitude_m: setpoint.altitude.map(|h| datum_m + f64::from(h.0)),
-                airspeed_m_s: setpoint.airspeed.map(|v| f64::from(v.0)),
-                vertical_speed_m_s: setpoint.vertical_speed.map(|v| -f64::from(v.0)),
-            },
+            targets: targets(&command.setpoint, datum_m),
         }
+    }
+}
+
+/// The targets the fixed-wing law resolves from `setpoint`, the frame's plane
+/// lying at `datum_m` above the ellipsoid: a heading, else the course of the
+/// velocity; an airspeed, else the speed of the velocity; a height, else a
+/// climb rate, else the velocity's.
+fn targets(setpoint: &Setpoint, datum_m: f64) -> FcTargets {
+    let velocity = setpoint.velocity.map(|v| v.map(|c| f64::from(c.0)));
+    let horizontal = velocity
+        .map(|[north, east, _]| (north, east))
+        .filter(|(north, east)| north.hypot(*east) > f64::from(f32::EPSILON));
+    FcTargets {
+        heading_rad: setpoint
+            .heading
+            .map(|h| f64::from(h.0))
+            .or(horizontal.map(|(north, east)| east.atan2(north))),
+        altitude_m: setpoint.altitude.map(|h| datum_m + f64::from(h.0)),
+        airspeed_m_s: setpoint
+            .airspeed
+            .map(|v| f64::from(v.0))
+            .or(horizontal.map(|(north, east)| north.hypot(east))),
+        vertical_speed_m_s: setpoint
+            .vertical_speed
+            .map(|v| f64::from(v.0))
+            .or(velocity.map(|[_, _, down]| down))
+            .map(|down| -down),
     }
 }

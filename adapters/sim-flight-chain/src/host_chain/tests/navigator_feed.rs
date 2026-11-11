@@ -87,9 +87,9 @@ fn the_true_track_moves_against_an_offset_in_the_navigators_solution() {
     let seconds = 150.0;
     let honest = fly_on_navigator(DVec3::ZERO, seconds);
     // The navigator reports the aeroplane 30 m north of and 10 m above where
-    // it is, so it flies 30 m south of the route. Pilotage asks a fixed wing
-    // for a heading and a height, and the flight controller holds the height
-    // on its own air data, so the navigator's height error moves nothing.
+    // it is, so it flies 30 m south of the route. Pilotage asks the fixed
+    // wing for a heading, a speed and a climb rate, and its climb rate does
+    // not follow the navigator's height, so that error moves nothing.
     let offset = DVec3::new(30.0, 0.0, -10.0);
     let displaced = fly_on_navigator(offset, seconds);
     let moved = displaced - honest;
