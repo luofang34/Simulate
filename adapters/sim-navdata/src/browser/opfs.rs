@@ -154,6 +154,19 @@ impl ReadPort for OpfsStore {
     }
 }
 
+/// Writes `bytes` through `stream` and commits them. The bytes go over in
+/// a buffer of their own rather than as a view into the module's memory,
+/// so nothing the browser keeps for the write refers to that memory.
+async fn write_and_close(
+    stream: &FileSystemWritableFileStream,
+    bytes: &[u8],
+) -> Result<(), JsValue> {
+    let copy = js_sys::Uint8Array::from(bytes);
+    JsFuture::from(stream.write_with_buffer_source(&copy)?).await?;
+    JsFuture::from(stream.close()).await?;
+    Ok(())
+}
+
 impl WritePort for OpfsStore {
     async fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
         let failed = store_error(path);
@@ -177,11 +190,15 @@ impl WritePort for OpfsStore {
             .await
             .map_err(&failed)?
             .unchecked_into();
-        JsFuture::from(stream.write_with_u8_array(bytes).map_err(&failed)?)
-            .await
-            .map_err(&failed)?;
-        JsFuture::from(stream.close()).await.map_err(&failed)?;
-        Ok(())
+        match write_and_close(&stream, bytes).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // An open stream keeps the browser's swap file for it; only
+                // an abort lets it go.
+                JsFuture::from(stream.abort()).await.ok();
+                Err(failed(error))
+            }
+        }
     }
 
     async fn contains(&self, path: &str) -> Result<bool, DataError> {
