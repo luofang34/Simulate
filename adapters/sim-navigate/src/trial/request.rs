@@ -343,6 +343,33 @@ pub struct SeedSpec {
     pub terrain_camera: Option<u64>,
 }
 
+impl SeedSpec {
+    /// Every sensor's seed from one master seed: the successive outputs of
+    /// SplitMix64 (Steele, Lea and Flood, "Fast splittable pseudorandom
+    /// number generators", OOPSLA 2014) started at `master`, taken in the
+    /// order IMU, alignment, GNSS, barometer, star camera, terrain camera.
+    /// The order is part of the contract: the same master gives the same
+    /// seeds, and so the same noise, in every host.
+    pub fn from_master(master: u64) -> Self {
+        let mut state = master;
+        let mut next = || {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
+        Self {
+            imu: next(),
+            alignment: next(),
+            gnss: next(),
+            baro: next(),
+            star_camera: next(),
+            terrain_camera: Some(next()),
+        }
+    }
+}
+
 /// How densely the result and the progress stream sample the run.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

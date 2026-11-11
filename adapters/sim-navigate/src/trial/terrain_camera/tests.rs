@@ -15,6 +15,7 @@ use sim_geo::{Geodetic, LocalFrame, UtcTime, geodetic_to_ecef};
 
 use super::{CameraBand, CameraMountSpec, RadiometrySpec, TerrainCamera, TerrainCameraSpec};
 use crate::trial::TrialError;
+use crate::trial::map_store::DirectoryStores;
 use crate::trial::maps::{OpenedPackage, PackageRef, PackageRefusal};
 
 const LAT_DEG: f64 = 39.0;
@@ -88,10 +89,11 @@ fn nadir() -> TerrainCameraSpec {
         band: CameraBand::Visible,
         width: 64,
         height: 48,
-        fx_px: 64.0,
-        fy_px: 64.0,
-        cx_px: 32.0,
-        cy_px: 24.0,
+        fx_px: Some(64.0),
+        horizontal_fov_deg: None,
+        fy_px: None,
+        cx_px: Some(32.0),
+        cy_px: Some(24.0),
         mount: CameraMountSpec {
             offset_body_m: [0.0, 0.0, 0.0],
             roll_deg: 0.0,
@@ -124,7 +126,7 @@ fn state(east_m: f64) -> VehicleState {
 }
 
 fn camera(package: &PackageRef, start_unix_s: f64) -> TerrainCamera {
-    let opened = OpenedPackage::open_blocking(package, "maps.world").unwrap();
+    let opened = OpenedPackage::open_blocking(package, &DirectoryStores, "maps.world").unwrap();
     let world = Arc::new(opened.scenery_blocking().unwrap());
     TerrainCamera::new(world, nadir(), 11, UtcTime::from_unix_seconds(start_unix_s)).unwrap()
 }
@@ -143,7 +145,7 @@ fn spread(pixels: &[u8]) -> f64 {
 fn a_package_opens_only_under_its_own_identity() {
     let dir = tempfile::tempdir().unwrap();
     let package = world(dir.path());
-    let opened = OpenedPackage::open_blocking(&package, "maps.world").unwrap();
+    let opened = OpenedPackage::open_blocking(&package, &DirectoryStores, "maps.world").unwrap();
     let report = opened.report_blocking("world").unwrap();
     assert_eq!(report.manifest_sha256, package.package);
     assert_eq!((report.imagery_zoom, report.imagery_tiles), (ZOOM, 9));
@@ -151,11 +153,14 @@ fn a_package_opens_only_under_its_own_identity() {
         (3.0..4.0).contains(&report.imagery_ground_sample_m),
         "{report:?}"
     );
-    let refusal =
-        |reference: &PackageRef| match OpenedPackage::open_blocking(reference, "maps.world") {
-            Err(TrialError::Package { reason, .. }) => reason,
-            other => panic!("{other:?}"),
-        };
+    let refusal = |reference: &PackageRef| match OpenedPackage::open_blocking(
+        reference,
+        &DirectoryStores,
+        "maps.world",
+    ) {
+        Err(TrialError::Package { reason, .. }) => reason,
+        other => panic!("{other:?}"),
+    };
     let mut wrong = package.clone();
     wrong.package = "0".repeat(64);
     assert_eq!(refusal(&wrong), PackageRefusal::Missing);
@@ -268,7 +273,7 @@ fn the_maps_report_states_both_packages() {
         world: package.clone(),
         geoid: None,
     };
-    let report = crate::trial::maps::maps_report_blocking(&maps).unwrap();
+    let report = crate::trial::maps::maps_report_blocking(&maps, &DirectoryStores).unwrap();
     assert!(report.world_is_onboard);
     assert_eq!(report.onboard.manifest_sha256, report.world.manifest_sha256);
     assert_eq!(
@@ -277,4 +282,29 @@ fn the_maps_report_states_both_packages() {
     );
     assert_eq!(report.navigator_geoid, "none");
     assert!(report.world_geoid.contains("5 degree"));
+}
+
+/// A camera given only its geometry takes the documented defaults: square
+/// pixels from the field of view, the principal point at the image centre
+/// with pixel centres on integers, straight down, visible, 2 ms, 5° of Sun.
+#[test]
+fn a_camera_of_geometry_alone_takes_the_defaults() {
+    let spec: TerrainCameraSpec = serde_json::from_str(
+        r#"{ "width": 400, "height": 300, "horizontal_fov_deg": 90.0, "period_s": 1.0 }"#,
+    )
+    .unwrap();
+    spec.validate().unwrap();
+    let i = spec.intrinsics();
+    assert!((i.fx - 200.0).abs() < 1e-9 && i.fy == i.fx, "{i:?}");
+    assert_eq!((i.cx, i.cy), (199.5, 149.5));
+    assert_eq!(spec.band, CameraBand::Visible);
+    assert_eq!(spec.mount.pitch_deg, -90.0);
+    assert_eq!((spec.exposure_s, spec.min_sun_elevation_deg), (0.002, 5.0));
+    assert_eq!(spec.radiometry.noise_dn, 2.0);
+    let mut both = spec;
+    both.fx_px = Some(200.0);
+    assert!(both.validate().is_err());
+    let mut neither = spec;
+    neither.horizontal_fov_deg = None;
+    assert!(neither.validate().is_err());
 }

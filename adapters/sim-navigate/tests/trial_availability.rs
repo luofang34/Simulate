@@ -19,8 +19,6 @@ mod requests;
 
 /// The interval each fork test withholds its sensor over, seconds.
 const INTERVAL: (f64, f64) = (60.0, 120.0);
-/// Longer than any route here, seconds.
-const WHOLE_ROUTE_S: f64 = 1.0e6;
 
 #[cfg(test)]
 fn init_tracing() {
@@ -53,9 +51,9 @@ fn request() -> TrialRequest {
     let mut request = requests::request(requests::straight(3.0), ImuGradeName::Tactical, sets);
     request.stars.period_s = 10.0;
     request.availability = vec![
-        requests::schedule("no-gnss", SensorKind::Gnss, 0.0, WHOLE_ROUTE_S),
-        requests::schedule("no-baro", SensorKind::Baro, 0.0, WHOLE_ROUTE_S),
-        requests::schedule("no-stars", SensorKind::Stars, 0.0, WHOLE_ROUTE_S),
+        requests::schedule_from("no-gnss", SensorKind::Gnss, 0.0),
+        requests::schedule_from("no-baro", SensorKind::Baro, 0.0),
+        requests::schedule_from("no-stars", SensorKind::Stars, 0.0),
         requests::schedule("baro-out", SensorKind::Baro, INTERVAL.0, INTERVAL.1),
         requests::schedule("cloud", SensorKind::Stars, INTERVAL.0, INTERVAL.1),
     ];

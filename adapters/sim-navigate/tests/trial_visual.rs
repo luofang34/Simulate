@@ -223,3 +223,40 @@ fn a_featureless_world_gives_no_fix() {
     let outcome = barren(requests::NOON_UTC, &visual_world::world().featureless);
     assert_no_visual_effect(&outcome, "featureless");
 }
+
+/// A host's own store serves as the directory does: the synthetic world
+/// copied into a navigate-data memory store, registered by name, gives
+/// every set the same result.
+#[test]
+fn a_store_the_host_keeps_in_memory_serves_like_the_directory() {
+    init_tracing();
+    use sim_navigate::trial::{MapStore, NamedStores, NoProgress, run_trial_with_stores};
+    let world = visual_world::world();
+    let mut memory = navigate_data::MemoryStore::default();
+    let root = world.dir.path();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let logical = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+                memory.replace(&logical, &std::fs::read(&path).unwrap());
+            }
+        }
+    }
+    let mut stores = NamedStores::new();
+    stores.insert("memory", MapStore::new(memory));
+    let mut in_memory = world.textured.clone();
+    in_memory.store = "memory".into();
+    let request = request(requests::NOON_UTC, &in_memory);
+    let (report, _) = run_trial_with_stores(&request, &stores, &mut NoProgress).unwrap();
+    let (_, _, outcome) = day();
+    assert_eq!(report.sensor_sets, outcome.report.sensor_sets);
+}
