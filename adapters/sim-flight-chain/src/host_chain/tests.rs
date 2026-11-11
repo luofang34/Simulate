@@ -13,6 +13,8 @@ use crate::{
     c172_sensor_suite,
 };
 
+mod zaragoza;
+
 /// The first shareable link's route, degrees north and east.
 const FIXES: [(f64, f64); 5] = [
     (41.70, -1.05),
