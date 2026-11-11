@@ -67,7 +67,17 @@ fn the_plan_says_what_the_link_asks_for() {
         texts(&lines, "Map package"),
         ["at most 200 MB, built and flown without asking"]
     );
-    assert!(texts(&lines, "Camera")[0].ends_with("(the vehicle's own)"));
+    assert_eq!(
+        texts(&lines, "Camera"),
+        [
+            "800 x 600 pixels, 67.4° across, looking straight down, 1 frame a second (the vehicle's own)"
+        ]
+    );
+    let stated = self::lines(&DAY.replace("&go=1", "&cam=1600x1200,90,45.5,2&go=1"));
+    assert_eq!(
+        texts(&stated, "Camera"),
+        ["1600 x 1200 pixels, 90° across, looking 45.5° below the horizon, 2 frames a second"]
+    );
 }
 
 #[test]

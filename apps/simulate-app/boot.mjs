@@ -8,6 +8,9 @@ export default function bootProgress() {
   const fill = document.getElementById("boot-fill");
   const detail = document.getElementById("boot-detail");
   const megabytes = (bytes) => (bytes / 1048576).toFixed(1);
+  // The app reads the link in the address once, at start: another fragment
+  // is another simulation.
+  window.addEventListener("hashchange", () => window.location.reload());
   return {
     onStart() {
       phase.textContent = "Downloading the simulator";

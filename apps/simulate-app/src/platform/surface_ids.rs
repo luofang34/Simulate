@@ -1,7 +1,8 @@
 //! Ids of the page's progress surface, shared by `index.html`, `boot.mjs`
 //! and the browser platform code.
 
-/// The surface; its `data-state` is `loading`, `failed` or `done`.
+/// The surface; its `data-state` is `loading`, `failed`, `done`, `plan` or
+/// `refused`.
 pub const ROOT: &str = "boot";
 /// The line saying what is happening.
 pub const PHASE: &str = "boot-phase";
@@ -11,6 +12,9 @@ pub const BAR: &str = "boot-bar";
 pub const FILL: &str = "boot-fill";
 /// The line of numbers or of an error's text.
 pub const DETAIL: &str = "boot-detail";
+
+/// The list of labelled lines: a link's plan, or why it is refused.
+pub const LINES: &str = "boot-lines";
 
 #[cfg(test)]
 mod tests;

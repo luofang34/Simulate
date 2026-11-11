@@ -12,7 +12,7 @@ fn links() -> Vec<&'static str> {
         .lines()
         .filter(|line| !line.is_empty())
         .collect();
-    assert_eq!(links.len(), 6);
+    assert_eq!(links.len(), 7);
     links
 }
 
@@ -21,13 +21,11 @@ fn every_reference_link_decodes() {
     for link in links() {
         let decoded = decode_url(link).unwrap_or_else(|refusal| panic!("{link}: {refusal}"));
         let decoded = decoded.unwrap();
-        assert_eq!(decoded.route.len(), 3, "{link}");
-        let names: Vec<_> = decoded
-            .route
-            .iter()
-            .map(|w| w.name.as_deref().unwrap())
-            .collect();
-        assert_eq!(names, ["LEZG", "Z1", "Z_2_A"]);
+        assert!(
+            decoded.route.iter().all(|waypoint| waypoint.name.is_some()),
+            "{link}"
+        );
+        assert!(decoded.default_height.is_some(), "{link}");
     }
 }
 
@@ -47,8 +45,8 @@ fn the_reference_links_say_what_the_encoder_was_asked() {
         .into_iter()
         .map(|link| decode_url(link).unwrap().unwrap())
         .collect();
-    let [day, night, plain, quad, busy, south] = decoded.as_slice() else {
-        panic!("six links");
+    let [day, night, plain, quad, busy, south, first_flight] = decoded.as_slice() else {
+        panic!("seven links");
     };
     assert_eq!(day.default_height, Some(Milli::from_scaled(1_981_200)));
     assert_eq!(day.start.unwrap().heading, Some(Milli::from_whole(75)));
@@ -78,6 +76,18 @@ fn the_reference_links_say_what_the_encoder_was_asked() {
 
     assert_eq!(south.start.unwrap().lat_deg(), -41.5);
     assert_eq!(south.sets[0].0.len(), 5);
+
+    // The land route of the first closed-loop flight in the browser.
+    let names: Vec<_> = first_flight
+        .route
+        .iter()
+        .map(|w| w.name.as_deref().unwrap())
+        .collect();
+    assert_eq!(names, ["ZA1", "ZA2", "ZA3", "ZA4", "ZA5"]);
+    assert_eq!(first_flight.time.compact(), "20260615T120400Z");
+    assert_eq!(first_flight.steering().unwrap().text(), "ins.baro.gnss");
+    assert!(first_flight.outages.is_empty() && first_flight.auto_start);
+    assert_eq!(first_flight.budget_mb, 200);
 }
 
 #[test]

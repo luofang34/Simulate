@@ -11,11 +11,12 @@
          then the app drives the same elements until it has something to draw. */
       #boot {
         position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
-        background: #02020a; color: #d7dbe6;
+        overflow: auto; background: #02020a; color: #d7dbe6;
         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       #boot[data-state="done"] { display: none; }
-      #boot-card { width: min(34rem, calc(100vw - 3rem)); }
+      #boot-card { width: min(34rem, calc(100vw - 3rem)); padding: 2rem 0; }
+      #boot[data-state="plan"] #boot-card, #boot[data-state="refused"] #boot-card { width: min(52rem, calc(100vw - 3rem)); }
       #boot h1 { margin: 0 0 1.2rem; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8f98ad; }
       #boot-phase { margin: 0 0 0.6rem; font-size: 1.05rem; color: #f2f4f8; }
       #boot-bar { height: 6px; border-radius: 3px; background: #1b2030; overflow: hidden; }
@@ -23,8 +24,14 @@
       #boot-bar[data-unknown] #boot-fill { width: 30%; animation: boot-sweep 1.4s ease-in-out infinite; }
       @keyframes boot-sweep { from { margin-left: -30%; } to { margin-left: 100%; } }
       #boot-detail { margin: 0.6rem 0 0; min-height: 1.5em; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
-      #boot[data-state="failed"] #boot-bar { display: none; }
-      #boot[data-state="failed"] #boot-phase { color: #ff8a80; }
+      #boot[data-state="failed"] #boot-bar, #boot[data-state="plan"] #boot-bar, #boot[data-state="refused"] #boot-bar { display: none; }
+      #boot[data-state="failed"] #boot-phase, #boot[data-state="refused"] #boot-phase { color: #ff8a80; }
+      /* Labelled lines the app writes: the plan of a link, or why it is refused. */
+      #boot-lines { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin: 1rem 0 0; }
+      #boot-lines:empty { display: none; }
+      #boot-lines dt { color: #8f98ad; }
+      #boot-lines dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; font-variant-numeric: tabular-nums; }
+      #boot[data-state="refused"] #boot-lines dd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
       @media (prefers-reduced-motion: reduce) { #boot-bar[data-unknown] #boot-fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     <link data-trunk rel="rust" data-bin="simulate-app" data-initializer="boot.mjs" />
@@ -36,6 +43,7 @@
         <p id="boot-phase">Loading the simulator</p>
         <div id="boot-bar" data-unknown><div id="boot-fill"></div></div>
         <p id="boot-detail"></p>
+        <dl id="boot-lines"></dl>
       </div>
     </div>
     <noscript>Simulate needs JavaScript and WebAssembly.</noscript>

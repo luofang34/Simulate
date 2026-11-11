@@ -5435,6 +5435,8 @@ dependencies = [
  "sim-geo",
  "sim-indicate",
  "sim-input",
+ "sim-link",
+ "sim-link-host",
  "sim-maplibre",
  "sim-navigate",
  "sim-orbital",

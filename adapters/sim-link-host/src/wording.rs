@@ -4,7 +4,7 @@ use sim_link::{
     HeightDatum, Means, NavSet, Outage, Refusal, Sensor, SimulationLink, Turn, resolve_escapes,
 };
 
-use crate::{HostedRequest, Light, PlanSummary};
+use crate::{CameraGeometry, HostedRequest, Light, PlanSummary};
 
 #[cfg(test)]
 mod tests;
@@ -109,22 +109,7 @@ pub fn plan_lines(
     }
     lines.extend(sun_words(link, summary).map(|words| line("Sun", words)));
     if let Some(camera) = request.camera {
-        let whose = if link.camera.is_some() {
-            ""
-        } else {
-            " (the vehicle's own)"
-        };
-        lines.push(line(
-            "Camera",
-            format!(
-                "{} x {} pixels, {}° across, looking {}° below the horizon, {} frame(s) a second{whose}",
-                camera.width_px,
-                camera.height_px,
-                camera.horizontal_fov_deg,
-                camera.depression_deg,
-                camera.rate_hz
-            ),
-        ));
+        lines.push(line("Camera", camera_words(camera, link.camera.is_none())));
     }
     lines.push(line("Sensor seed", link.seed.to_string()));
     let then = if link.auto_start {
@@ -137,6 +122,28 @@ pub fn plan_lines(
         format!("at most {} MB, {then}", link.budget_mb),
     ));
     lines
+}
+
+fn camera_words(camera: CameraGeometry, vehicles_own: bool) -> String {
+    let looking = if camera.depression_deg == 90.0 {
+        "looking straight down".to_owned()
+    } else {
+        format!("looking {}° below the horizon", camera.depression_deg)
+    };
+    let rate = if camera.rate_hz == 1.0 {
+        "1 frame a second".to_owned()
+    } else {
+        format!("{} frames a second", camera.rate_hz)
+    };
+    let whose = if vehicles_own {
+        " (the vehicle's own)"
+    } else {
+        ""
+    };
+    format!(
+        "{} x {} pixels, {}° across, {looking}, {rate}{whose}",
+        camera.width_px, camera.height_px, camera.horizontal_fov_deg
+    )
 }
 
 fn waypoint_lines<'a>(

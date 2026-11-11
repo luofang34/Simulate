@@ -120,3 +120,29 @@ fn the_sun_moves_with_the_planned_time_of_passing() {
     );
     assert!(summary.sun[2].elevation_deg > summary.sun[1].elevation_deg + 0.5);
 }
+
+#[test]
+fn the_first_flight_link_is_a_noon_land_circuit_of_fifty_six_kilometres() {
+    let fragment = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3;\
+41.800000,-1.000000,,,ZA4;41.740000,-1.050000,,,ZA5&h=2000.0&hd=msl&t=20260615T120400Z&veh=c172\
+&seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.gnss&go=1&mb=200";
+    let (_, summary) = summary(fragment);
+    assert_eq!(summary.legs.len(), 4);
+    assert!(
+        (summary.length_m / 1000.0 - 56.3).abs() < 0.2,
+        "{} m",
+        summary.length_m
+    );
+    assert!(
+        (summary.duration_s / 60.0 - 17.1).abs() < 0.2,
+        "{} s",
+        summary.duration_s
+    );
+    assert_eq!(summary.light_range(), Some((Light::Day, Light::Day)));
+    assert!(
+        summary
+            .sun
+            .iter()
+            .all(|sample| (70.0..73.0).contains(&sample.elevation_deg))
+    );
+}

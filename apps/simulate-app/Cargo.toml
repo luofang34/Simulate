@@ -54,6 +54,8 @@ tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = { workspace = true }
+sim-link = { workspace = true }
+sim-link-host = { workspace = true }
 tracing-wasm = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["Document", "Element", "Window"] }
+web-sys = { workspace = true, features = ["Document", "Element", "Location", "Window"] }
