@@ -21,6 +21,9 @@ const GNSS_SIGMAS: f64 = 3.0;
 /// How closely the true miss at a declared capture must equal the
 /// navigation error then.
 const LOST_MISS_TOLERANCE: f64 = 0.10;
+/// A capture radius no estimate comes within, so every fly-over fix is
+/// passed beside, metres.
+const PASSAGE_CAPTURE_RADIUS_M: f64 = 0.01;
 /// Time after GNSS returns within which true cross-track must be back under
 /// the GNSS-aided bound, seconds.
 const PULL_BACK_S: f64 = 120.0;
@@ -134,10 +137,8 @@ fn long_fly_over_route() -> Vec<WaypointSpec> {
 
 /// (b) With no position aid the navigator still declares the first
 /// fly-over waypoint captured while the vehicle is truly as far from it as
-/// the navigator is lost. The jittering estimate then passes the later
-/// fly-over fixes outside the capture radius, and the executor sequences
-/// each on the perpendicular through the fix, reporting the navigator's
-/// cross-track: the flight completes, kilometres from where it believes.
+/// the navigator is lost, and the flight completes kilometres from where
+/// it believes.
 #[test]
 fn a_lost_navigator_declares_captures_it_truly_missed() {
     init_tracing();
@@ -176,15 +177,44 @@ fn a_lost_navigator_declares_captures_it_truly_missed() {
         );
     }
     assert!(closed.completed && closed.termination.is_none());
-    let capture_m = request.vehicle.capture_radius_m;
-    let passed: Vec<f64> = closed
-        .waypoints
-        .iter()
-        .filter_map(|waypoint| waypoint.passed_cross_track_m)
-        .collect();
-    assert!(!passed.is_empty(), "{:?}", closed.waypoints);
-    assert!(passed.iter().all(|xt| xt.abs() > capture_m), "{passed:?}");
     assert!(closed.final_arrival_error_m.unwrap() > first.capture_threshold_m);
+}
+
+/// (b') A fly-over fix the estimate passes beside, outside a capture radius
+/// too small to enter, is sequenced on the perpendicular through it, and
+/// the report carries the navigator's cross-track at the passage.
+#[test]
+fn a_fly_over_fix_passed_beside_is_sequenced_on_its_perpendicular() {
+    init_tracing();
+    use NavMeans::{Barometric, DeadReckoning, Gnss};
+    let mut points = requests::four_waypoints();
+    for point in points.iter_mut().skip(1) {
+        point.fly_over = true;
+    }
+    let mut request = closed(requests::request(
+        points,
+        ImuGradeName::Tactical,
+        vec![requests::set(
+            "gnss+baro+ins",
+            &[DeadReckoning, Barometric, Gnss],
+        )],
+    ));
+    // The start fix is exact enough to sequence the origin inside that
+    // radius; after it, GNSS keeps the estimate metres off every fix.
+    request.vehicle.capture_radius_m = PASSAGE_CAPTURE_RADIUS_M;
+    request.alignment.position_sigma_m = PASSAGE_CAPTURE_RADIUS_M / 100.0;
+    let report = run_trial_blocking(&request).unwrap();
+    let set = &report.sensor_sets[0];
+    log(set);
+    let closed = set.closed_loop.as_ref().unwrap();
+    assert!(closed.completed && closed.termination.is_none());
+    for waypoint in closed.waypoints.iter().skip(1) {
+        let xt = waypoint.passed_cross_track_m;
+        assert!(
+            xt.is_some_and(|xt| xt.abs() > PASSAGE_CAPTURE_RADIUS_M),
+            "{waypoint:?}"
+        );
+    }
 }
 
 /// (c) A GNSS outage on a straight leg lets the true track wander, and GNSS

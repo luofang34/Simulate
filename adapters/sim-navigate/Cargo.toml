@@ -30,6 +30,7 @@ navigate-visual = { workspace = true }
 sim-render = { workspace = true }
 sim-scenario = { workspace = true }
 sim-scenery = { workspace = true }
+sim-atmosphere = { workspace = true }
 sim-devices = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

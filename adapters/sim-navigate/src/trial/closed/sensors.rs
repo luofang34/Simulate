@@ -11,10 +11,12 @@
 
 use glam::DVec3;
 use sim_core::{SimInstant, VehicleState};
+use sim_devices::GnssReceiver;
 use sim_render::StarCameraConfig;
 
-use crate::trial::gnss::{BaroAltimeter, GnssReceiver};
+use crate::trial::devices::{StaticPort, receiver};
 use crate::trial::record::{Logged, SensorLog, period_steps, star_scene};
+use crate::trial::route::step_seconds;
 use crate::trial::stars::{StarScene, exposure_steps, render_frame, star_camera_config};
 use crate::trial::{TrialError, TrialRequest};
 use crate::{SimulatedImu, Truth};
@@ -30,7 +32,7 @@ pub(super) struct LiveSensors {
     imu: SimulatedImu,
     gnss: GnssReceiver,
     gnss_period: usize,
-    baro: BaroAltimeter,
+    baro: StaticPort,
     baro_period: usize,
     stars: Option<LiveStars>,
 }
@@ -51,9 +53,9 @@ impl LiveSensors {
         };
         Ok(Self {
             imu: SimulatedImu::new(request.imu_grade.grade().spec(), request.seeds.imu)?,
-            gnss: GnssReceiver::new(request.gnss, request.seeds.gnss)?,
+            gnss: receiver(request)?,
             gnss_period: period_steps("gnss", request.gnss.rate_hz)?,
-            baro: BaroAltimeter::new(request.baro, request.seeds.baro)?,
+            baro: StaticPort::new(request)?,
             baro_period: period_steps("baro", request.baro.rate_hz)?,
             stars: live_stars,
         })
@@ -85,12 +87,14 @@ impl LiveSensors {
             rate = increment.delta_theta_rad / increment.dt_s;
             log.imu.push(increment);
         }
-        if step.is_multiple_of(self.gnss_period) {
-            let reading = self.gnss.measure(&state);
+        if step.is_multiple_of(self.gnss_period)
+            && let Some(reading) = self.gnss.measure(&state, step_seconds(self.gnss_period))
+        {
             log.gnss.push(Logged { step, reading });
         }
         if step.is_multiple_of(self.baro_period) {
-            let reading = self.baro.measure(&state);
+            let period_s = step_seconds(self.baro_period);
+            let reading = self.baro.sense(&state, step_seconds(step), period_s)?;
             log.baro.push(Logged { step, reading });
         }
         if let Some(stars) = &self.stars {
