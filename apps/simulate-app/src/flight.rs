@@ -315,7 +315,11 @@ impl Flight {
         self.last_frame = Some(now);
         let before_s = seconds(self.now());
         let epoch = self.discontinuity;
-        self.advance_by(elapsed_s, controls, time_scale)?;
+        let (sim_elapsed_s, time_scale) =
+            self.page_due_s().map_or((elapsed_s, time_scale), |due_s| {
+                (due_s, SimTimeScale::RealTime)
+            });
+        self.advance_by(sim_elapsed_s, controls, time_scale)?;
         if !matches!(time_scale, SimTimeScale::Paused) && epoch == self.discontinuity {
             self.pacing
                 .record(elapsed_s, seconds(self.now()) - before_s);

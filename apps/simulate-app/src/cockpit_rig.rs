@@ -38,6 +38,7 @@ pub struct CockpitRig {
     pixel_ratio: f64,
     show_instruments: bool,
     show_conformal_hud: bool,
+    avionics_sourced: bool,
     surface: WorldSurfaceHandle,
 }
 
@@ -102,6 +103,7 @@ impl CockpitRig {
             pixel_ratio: 1.0,
             show_instruments: true,
             show_conformal_hud: true,
+            avionics_sourced: true,
             surface,
         })
     }
@@ -311,7 +313,10 @@ impl CockpitRig {
             (false, false, None, None)
         };
 
-        let show_hud = self.show_conformal_hud && viewport_mode == OperatorViewportMode::Cockpit;
+        self.avionics_sourced = flight.onboard_avionics_shown();
+        let show_hud = self.show_conformal_hud
+            && viewport_mode == OperatorViewportMode::Cockpit
+            && self.avionics_sourced;
         let traffic = if show_hud {
             self.supervisor.belief_entities(ViewSlotMask::ALL)
         } else {
@@ -415,7 +420,7 @@ impl CockpitRig {
     }
 
     fn dock_panel_px(&self, earth: bool, mode: OperatorViewportMode) -> Option<[u32; 2]> {
-        if !self.show_instruments {
+        if !self.show_instruments || !self.avionics_sourced {
             return None;
         }
         let has_dock_chart = earth
@@ -454,7 +459,7 @@ impl CockpitRig {
         {
             quads.push(OverlayQuad::vector_overlay(ViewportRect::FULL, hud));
         }
-        if !self.show_instruments {
+        if !self.show_instruments || !self.avionics_sourced {
             return quads;
         }
         let maps = self.maps.as_ref().filter(|_| earth);

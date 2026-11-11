@@ -47,7 +47,10 @@ fn a_flight_shown_a_page_mission_flies_the_pages_chain() {
     trial.step_until(2.0).unwrap();
     let feed = PageFeed::new(1_781_524_800.0, ChainSnapshot::of(&trial, None));
     let mut flight = crate::flight::Flight::new().unwrap();
+    assert!(flight.onboard_avionics_shown());
     flight.show_page_mission(feed).unwrap();
+    // The app's sensors over the page's truth are not the page's flight controller.
+    assert!(!flight.onboard_avionics_shown());
     assert_eq!(flight.vehicle_state(), trial.chain().true_state());
     assert!(flight.chain_readout().is_some());
 }

@@ -140,6 +140,22 @@ impl Flight {
         )
     }
 
+    /// Route time the page's flight is ahead of this flight's clock, seconds, when this
+    /// flight shows a page's: the page sets the pace, so sky, Sun and everything timed on
+    /// this clock follow the route.
+    pub(super) fn page_due_s(&self) -> Option<f64> {
+        let feed = self.page.as_ref()?;
+        Some((feed.latest().route_s - super::seconds(self.now())).max(0.0))
+    }
+
+    /// Whether the onboard instruments have a source to draw: a page's flight states none
+    /// of its flight controller's own yet, and the app's sensors over the page's truth are
+    /// not that flight controller.
+    #[must_use]
+    pub fn onboard_avionics_shown(&self) -> bool {
+        self.page.is_none()
+    }
+
     /// Draws the C172 a link's page flies, from what the page publishes on `feed`: the
     /// page steps the one trial, and this flight only shows it.
     #[cfg(any(target_arch = "wasm32", test))]
