@@ -6,8 +6,7 @@ use sim_core::{SimInstant, VehicleState};
 use sim_geo::ecef_to_geodetic;
 
 use super::{
-    RecordedTrial, SetContext, SetResult, TrialOutcome, sample_periods, set_run, star_pair_table,
-    trial_report, whole_steps,
+    RecordedTrial, SetResult, TrialOutcome, replay_set, sample_periods, trial_report, whole_steps,
 };
 use crate::trial::progress::{EventKind, EventRecord, ProgressSink, Scored, Slices};
 use crate::trial::record::SensorLog;
@@ -27,15 +26,10 @@ pub(super) fn open_trial(
     sink: &mut dyn ProgressSink,
 ) -> Result<TrialOutcome, TrialError> {
     let (sample_steps, progress_steps) = sample_periods(request)?;
-    let pairs = star_pair_table(request)?;
-    let context = SetContext {
-        pairs: pairs.as_ref(),
-        sample_steps,
-    };
     let mut replays = request
         .sensor_sets
         .iter()
-        .map(|set| OpenSet::new(request, set, context, &recorded.log))
+        .map(|set| OpenSet::new(request, set, &recorded.log))
         .collect::<Result<Vec<_>, _>>()?;
     let known = waypoint_events(&recorded.flight);
     let mut slices = Slices::new(sink, request, progress_steps, known)?;
@@ -110,23 +104,22 @@ fn cross_track_at(flight: &RouteFlight, step: usize) -> Option<f64> {
 }
 
 /// One set's replay of a recorded flight and its scores so far.
-struct OpenSet<'p> {
-    run: SetRun<'p>,
+struct OpenSet {
+    run: SetRun,
     origin: NavigationOrigin,
     evaluation: AblationEvaluation,
     series: Vec<SeriesSample>,
     published: Vec<Estimate<(SimInstant, NavigationSolution)>>,
 }
 
-impl<'p> OpenSet<'p> {
+impl OpenSet {
     fn new(
         request: &TrialRequest,
         set: &SensorSetSpec,
-        context: SetContext<'p>,
         log: &SensorLog,
     ) -> Result<Self, TrialError> {
         Ok(Self {
-            run: set_run(request, set, context, log)?,
+            run: replay_set(request, set, log)?,
             origin: NavigationOrigin::Fused(set.ablation_set()),
             evaluation: AblationEvaluation::default(),
             series: Vec::new(),

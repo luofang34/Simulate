@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use sim_navigate::trial::{
     GnssSpec, ImuGradeName, IntervalErrors, RecordedTrial, SensorKind, SetAvailability, SetReport,
-    SetRun, SetSelection, TrialReport, TrialRequest, evaluate, record_trial, trial_inertial_config,
+    SetSelection, TrialReport, TrialRequest, evaluate, record_trial, replay_set,
 };
 use sim_navigate::{AblationSet, NavMeans, compare_with_truth};
 
@@ -248,22 +248,14 @@ fn the_result_flags_a_diverged_consumer_ins() {
 #[test]
 fn an_outage_leaves_the_filter_unaided_until_gnss_returns() {
     init_tracing();
-    use NavMeans::{Barometric, DeadReckoning, Gnss};
+    use NavMeans::{Barometric, DeadReckoning};
     let (request, recorded, report) = default_run();
     let outage = the_outage(report);
     let selection = |means: &[NavMeans], availability: SetAvailability| SetSelection {
         means: means.iter().fold(AblationSet::EMPTY, |s, m| s.with(*m)),
         availability,
     };
-    let jammed = SetAvailability::resolve(request, &request.sensor_sets[1]).unwrap();
-    let config = trial_inertial_config(&request.imu_grade.grade().spec(), &request.baro);
-    let mut run = SetRun::new(
-        &recorded.log,
-        selection(&[DeadReckoning, Barometric, Gnss], jammed),
-        config,
-        None,
-    )
-    .unwrap();
+    let mut run = replay_set(request, &request.sensor_sets[1], &recorded.log).unwrap();
     let step = |seconds: f64| (seconds * 120.0).round() as usize;
     run.advance_to(&recorded.log, step(OUTAGE.0)).unwrap();
     let mut fork = run.fork(selection(

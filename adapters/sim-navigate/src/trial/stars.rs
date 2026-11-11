@@ -1,6 +1,6 @@
 //! The star camera's scene side: frames rendered from the true poses on the
 //! scenario clock, and the centroids Navigate's detector finds in them.
-//! What the navigator does with a frame is in [`sighting`].
+//! The navigator receives the centroids and does the rest.
 
 use glam::DVec3;
 use navigate_camera::{ImageView, Pixels};
@@ -12,8 +12,6 @@ use sim_render::{CameraPose, StarCamera, StarCameraConfig};
 use super::TrialError;
 use super::sky::{SkySample, sky_brightness, sun_direction_ecef};
 use crate::{Truth, camera_stars};
-
-pub(super) mod sighting;
 
 /// Faintest star the scene renders, Johnson V: fainter than the navigator's
 /// catalogue, so the detector also meets stars it cannot identify.

@@ -1,6 +1,6 @@
 use navigate_contract::IdentError;
 use navigate_guidance::GuidanceRefusal;
-use navigate_route::PlanActivationError;
+use navigate_onboard::OnboardError;
 use navigate_startrack::StarTrackError;
 use sim_core::BlockError;
 
@@ -84,9 +84,10 @@ pub enum TrialError {
         #[source]
         source: IdentError,
     },
-    /// Navigate's route executor refused the plan.
-    #[error("flight plan refused")]
-    Plan(#[source] PlanActivationError),
+    /// The linked navigator or flight director refused a configuration,
+    /// an alignment or an input.
+    #[error("onboard")]
+    Onboard(#[from] OnboardError),
     /// Navigate's guidance refused the truth solution.
     #[error("guidance refused at {time_s} s")]
     Guidance {
@@ -113,8 +114,8 @@ pub enum TrialError {
         /// The stage.
         what: String,
     },
-    /// Navigate's star tracker refused its configuration or a frame.
-    #[error("star tracker")]
+    /// The star catalogue refused the trial epoch.
+    #[error("star catalogue")]
     StarTrack(#[source] StarTrackError),
     /// A result number is not finite, which JSON cannot carry.
     #[error("{what} holds a non-finite number")]

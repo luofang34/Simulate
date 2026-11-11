@@ -5,7 +5,7 @@
 //! first frame lost in space and later ones with an attitude prior taken from
 //! the navigator's own solution and covariance at mid-exposure; solves; and
 //! at readout feeds each sighting, stamped at mid-exposure, as a line of
-//! sight to the inertial filter. The same IMU
+//! sight to the inertial filter, all inside Navigate's reference navigator. The same IMU
 //! stream also runs unaided, and both are scored against truth outside the
 //! filters.
 //!
@@ -17,16 +17,20 @@
 
 use glam::DVec3;
 use navigate_contract::SourceId;
-use navigate_startrack::PairCatalogue;
+use navigate_onboard::{
+    AcceptanceRecord, Alignment, ErrorBudget, Navigator, Outcome, ReferenceNavigator, SensorData,
+    SensorInput, SensorKind, SensorSpec, SensorSuite, StarCatalogueConfig,
+};
 use sim_core::{SimInstant, VehicleState};
 use sim_devices::ImuGrade;
 use sim_geo::UtcTime;
 use sim_navigate::trial::{
-    StarExposure, StarFrame, StarScene, StarSighting, StarSky, pair_table, render_star_frames,
+    StarExposure, StarFrame, StarScene, StarSky, render_star_frames, roof_star_mount,
+    star_camera_config,
 };
 use sim_navigate::{
-    InertialNavigator, InitialAlignment, MasterClockBridge, SimulatedImu, Truth,
-    compare_attitude_with_truth, compare_with_truth, inertial_config,
+    InitialAlignment, MASTER_CLOCK_DOMAIN, MasterClockBridge, SimulatedImu, Truth,
+    compare_attitude_with_truth, compare_with_truth, imager_model, inertial_config, navigate_mount,
 };
 use sim_scenario::{CorridorRun, FlightDynamics, ScenarioProfile};
 
@@ -112,21 +116,21 @@ impl Flown {
     }
 }
 
-/// Navigate's tracker on one frame, through the trial's star sighting,
+/// What the navigator did with one frame, from its acceptance records,
 /// with the frame's scene truth kept for the bookkeeping.
 #[cfg(test)]
-fn aid(
-    sighting: &mut StarSighting<'_>,
-    frame: &StarFrame,
-    navigator: &mut InertialNavigator,
-    now: SimInstant,
-    flown: &mut Flown,
-) {
+fn tally(records: &[AcceptanceRecord], frame: &StarFrame, flown: &mut Flown) {
     let first = flown.frames_solved + flown.frames_unsolved == 0;
-    let outcome = sighting.aid(&frame.image, navigator, now).unwrap();
-    flown.lost_in_space_tried += u64::from(outcome.lost_in_space);
     let streak_px = frame.truth.get().streak_px;
-    if !outcome.solved {
+    let lost = records
+        .iter()
+        .any(|record| record.context == Some("lost_in_space"));
+    flown.lost_in_space_tried += u64::from(lost);
+    let unused = records.iter().find_map(|record| match record.outcome {
+        Outcome::Unused(reason) => Some(reason),
+        _ => None,
+    });
+    if unused.is_some() {
         flown.frames_unsolved += 1;
         let shortest = flown.shortest_unsolved_streak_px.get_or_insert(streak_px);
         *shortest = shortest.min(streak_px);
@@ -134,10 +138,51 @@ fn aid(
     }
     flown.longest_solved_streak_px = flown.longest_solved_streak_px.max(streak_px);
     flown.frames_solved += 1;
-    flown.lost_in_space_solved += u64::from(outcome.lost_in_space);
+    flown.lost_in_space_solved += u64::from(lost);
     flown.first_frame_solved |= first;
-    flown.admitted += outcome.accepted;
-    flown.refused += outcome.rejected.len() as u64;
+    for record in records {
+        match record.outcome {
+            Outcome::Accepted => flown.admitted += 1,
+            Outcome::Rejected(_) => flown.refused += 1,
+            Outcome::Unused(_) => {}
+        }
+    }
+}
+
+/// Navigate's reference navigator for the IMU of `grade`, with the roof
+/// star camera when `stars`.
+#[cfg(test)]
+fn navigator(grade: ImuGrade, stars: bool) -> ReferenceNavigator {
+    let imu = inertial_config(&grade.spec());
+    let mut sensors = vec![SensorSpec {
+        id: IMU_SOURCE,
+        kind: SensorKind::Imu,
+        imager: None,
+        mount: None,
+        rate_hz: STEP_HZ,
+        budget: ErrorBudget::Imu {
+            accel_noise_mps2_sqrt_hz: imu.accel_noise_sigma_mps2_sqrt_hz,
+            gyro_noise_rad_s_sqrt_hz: imu.gyro_noise_sigma_rad_s_sqrt_hz,
+            accel_bias: imu.accel_bias,
+            gyro_bias: imu.gyro_bias,
+        },
+    }];
+    if stars {
+        let (mount, cg_body_m) = roof_star_mount();
+        sensors.push(SensorSpec {
+            id: STAR_SOURCE,
+            kind: SensorKind::StarCamera,
+            imager: Some(imager_model(&star_camera_config().intrinsics).unwrap()),
+            mount: Some(navigate_mount(&mount, cg_body_m)),
+            rate_hz: 1.0,
+            budget: ErrorBudget::StarCamera {
+                mount_alignment_sigma_rad: MOUNT_ALIGNMENT_RAD,
+            },
+        });
+    }
+    let catalogue = stars.then(|| StarCatalogueConfig::with_utc_at_zero(START_UNIX_S));
+    let suite = SensorSuite::new(sensors).unwrap();
+    ReferenceNavigator::new(suite, MASTER_CLOCK_DOMAIN, catalogue).unwrap()
 }
 
 /// Flies `truth` on `grade`, star-aided from `frames` when given.
@@ -145,41 +190,68 @@ fn aid(
 fn fly(
     truth: &[Truth<(SimInstant, VehicleState)>],
     grade: ImuGrade,
-    frames: Option<(&[StarFrame], &PairCatalogue)>,
+    frames: Option<&[StarFrame]>,
 ) -> Flown {
-    let spec = grade.spec();
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, IMU_SEED).unwrap();
-    let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
+    let now = |at: SimInstant| clock.to_monotonic(at).unwrap();
+    let mut imu = SimulatedImu::new(grade.spec(), IMU_SEED).unwrap();
+    let mut navigator = navigator(grade, frames.is_some());
     let (start, initial) = *truth[0].get();
+    let fix = ALIGNMENT.measure(&initial);
     navigator
-        .align(&ALIGNMENT.measure(&initial), start)
+        .align(&Alignment {
+            position: fix.position,
+            velocity: fix.velocity,
+            attitude: fix.attitude,
+            position_cov: fix.position_cov,
+            velocity_cov: fix.velocity_cov,
+            attitude_cov: fix.attitude_cov,
+            at: now(start),
+        })
         .unwrap();
     assert!(imu.sense(start, &initial).unwrap().is_none());
-    let (frames, pairs) = frames.map_or((&[][..], None), |(f, p)| (f, Some(p)));
-    let start = UtcTime::from_unix_seconds(START_UNIX_S);
-    let mut tracker = pairs
-        .map(|pairs| StarSighting::new(pairs, start, STAR_SOURCE, MOUNT_ALIGNMENT_RAD).unwrap());
+    let frames = frames.unwrap_or_default();
     let mut opening = frames.iter().peekable();
     let mut reading = frames.iter().peekable();
     let mut flown = Flown::default();
+    let mut records = Vec::new();
+    let mut give =
+        |navigator: &mut ReferenceNavigator, sensor, times: (SimInstant, SimInstant), data| {
+            records.clear();
+            let input = SensorInput {
+                sensor,
+                acquired_at: now(times.0),
+                delivered_at: now(times.1),
+                data,
+            };
+            navigator.ingest(&input, &mut records).unwrap();
+            records.clone()
+        };
     for (step, sample) in truth.iter().enumerate().skip(1) {
         let (at, vehicle) = *sample.get();
         let increment = imu.sense(at, &vehicle).unwrap().unwrap();
-        navigator.ingest(&increment, at).unwrap();
-        if let Some(tracker) = tracker.as_mut() {
-            if opening
-                .next_if(|frame| frame.image.mid_step == step)
-                .is_some()
-            {
-                tracker.hold_prior(&mut navigator, at).unwrap();
-            }
-            if let Some(frame) = reading.next_if(|frame| frame.image.end_step == step) {
-                aid(tracker, frame, &mut navigator, at, &mut flown);
-            }
+        let data = SensorData::ImuIncrement {
+            dt_s: increment.dt_s,
+            delta_theta_rad: increment.delta_theta_rad.to_array(),
+            delta_velocity_m_s: increment.delta_velocity_m_s.to_array(),
+        };
+        give(&mut navigator, IMU_SOURCE, (at, at), data);
+        if opening.next_if(|f| f.image.mid_step == step).is_some() {
+            give(
+                &mut navigator,
+                STAR_SOURCE,
+                (at, at),
+                SensorData::StarExposureMid,
+            );
+        }
+        if let Some(frame) = reading.next_if(|f| f.image.end_step == step) {
+            let centroids = frame.image.centroids.clone();
+            let data = SensorData::StarCentroids { centroids };
+            let records = give(&mut navigator, STAR_SOURCE, (frame.image.mid, at), data);
+            tally(&records, frame, &mut flown);
         }
         if step % SCORE_PERIOD_STEPS == 0 || step == truth.len() - 1 {
-            score(&mut flown, &mut navigator, at, &vehicle);
+            score(&mut flown, &mut navigator, now(at), &vehicle);
         }
     }
     flown
@@ -188,11 +260,11 @@ fn fly(
 #[cfg(test)]
 fn score(
     flown: &mut Flown,
-    navigator: &mut InertialNavigator,
-    at: SimInstant,
+    navigator: &mut ReferenceNavigator,
+    now: navigate_contract::MonotonicNanos,
     truth: &VehicleState,
 ) {
-    let solution = navigator.solution(at).unwrap().unwrap();
+    let solution = navigator.solution(now).unwrap();
     let position = compare_with_truth(&solution, truth.position_ecef).unwrap();
     let attitude = compare_attitude_with_truth(&solution, truth.attitude).unwrap();
     flown.final_horizontal_m = position.horizontal_error_m;
@@ -233,7 +305,7 @@ fn log(profile: ScenarioProfile, grade: ImuGrade, means: &str, flown: &Flown) {
 /// Flies `profile` with and without stars on each grade and checks what the
 /// stars can bound; returns the star-aided runs.
 #[cfg(test)]
-fn compare(profile: ScenarioProfile, exposure: StarExposure, pairs: &PairCatalogue) -> Vec<Flown> {
+fn compare(profile: ScenarioProfile, exposure: StarExposure) -> Vec<Flown> {
     let truth = flight(profile);
     let scene = StarScene {
         start: UtcTime::from_unix_seconds(START_UNIX_S),
@@ -247,7 +319,7 @@ fn compare(profile: ScenarioProfile, exposure: StarExposure, pairs: &PairCatalog
     let mut aided_runs = Vec::new();
     for grade in [ImuGrade::Tactical, ImuGrade::ConsumerMems] {
         let unaided = fly(&truth, grade, None);
-        let aided = fly(&truth, grade, Some((&frames, pairs)));
+        let aided = fly(&truth, grade, Some(&frames));
         log(profile, grade, "dead reckoning", &unaided);
         log(profile, grade, &format!("star + INS, {exposure:?}"), &aided);
         // The first frame locks on with no prior at all.
@@ -293,7 +365,6 @@ fn stars_bound_attitude_through_the_aggressive_bank() {
     let aided = compare(
         ScenarioProfile::CorridorAggressiveBank,
         StarExposure::Moving,
-        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
     );
     // The bank turns the camera fast enough to smear most frames away.
     assert!(aided.iter().all(|flown| flown.frames_unsolved > 0));
@@ -313,7 +384,6 @@ fn a_frozen_exposure_solves_every_frame_of_the_bank() {
     let aided = compare(
         ScenarioProfile::CorridorAggressiveBank,
         StarExposure::Frozen,
-        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
     );
     assert!(aided.iter().all(|flown| flown.frames_unsolved == 0));
 }
@@ -321,9 +391,5 @@ fn a_frozen_exposure_solves_every_frame_of_the_bank() {
 #[test]
 fn stars_bound_attitude_in_cruise() {
     init_tracing();
-    compare(
-        ScenarioProfile::CorridorNominalCruise,
-        StarExposure::Moving,
-        &pair_table(UtcTime::from_unix_seconds(START_UNIX_S)).unwrap(),
-    );
+    compare(ScenarioProfile::CorridorNominalCruise, StarExposure::Moving);
 }

@@ -181,11 +181,12 @@ fn count_one(tally: &mut ObservationTally, reading: &Reading<'_>) {
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StarAvailability {
-    /// Frames handed to the tracker.
+    /// Frames handed to the navigator.
     pub frames_attempted: u64,
-    /// Frames identified and solved.
+    /// Frames whose lines of sight the navigator offered to its filter:
+    /// identified and solved.
     pub frames_solved: u64,
-    /// Frames the tracker tried lost in space.
+    /// Frames the navigator identified lost in space, with no prior.
     pub lost_in_space_attempted: u64,
     /// Of those, solved.
     pub lost_in_space_solved: u64,

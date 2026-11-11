@@ -54,6 +54,7 @@ impl<'w> Flight<'w> {
                 estimated_distance_at_sequence_m: None,
                 navigation_error_at_sequence_m: None,
                 truly_within_threshold: None,
+                passed_cross_track_m: None,
                 closest_true_approach_m: f64::INFINITY,
             })
             .collect();
@@ -171,7 +172,7 @@ impl<'w> Flight<'w> {
 
     fn sequenced(
         &mut self,
-        event: super::PilotEvent,
+        event: navigate_onboard::DirectorEvent,
         estimate: &NavigationSolution,
         state: &VehicleState,
         position: &GeodeticPosition,
@@ -193,6 +194,10 @@ impl<'w> Flight<'w> {
             .ok()
             .map(|c| c.horizontal_error_m);
         outcome.truly_within_threshold = Some(miss <= outcome.capture_threshold_m);
+        outcome.passed_cross_track_m = match event.cause {
+            navigate_onboard::SequenceCause::Passed { cross_track_m } => Some(cross_track_m),
+            _ => None,
+        };
         self.last_event_step = step;
         if event.plan_complete {
             self.completed = true;

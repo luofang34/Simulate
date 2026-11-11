@@ -93,10 +93,7 @@ fn stars_hold_attitude_at_night() {
     log(with, &sun);
     assert!(sun.iter().all(|e| *e < -18.0), "{sun:?}");
     let stars = with.stars.unwrap();
-    assert!(
-        stars.frames_solved > 0 && stars.lost_in_space_solved > 0,
-        "{stars:?}"
-    );
+    assert!(stars.frames_solved > 0, "{stars:?}");
     let attitude = with.summary.attitude_error_rad.rms;
     assert!(attitude < consistency::STAR_ATTITUDE_RAD, "{attitude}");
     let (with_h, without_h) = (

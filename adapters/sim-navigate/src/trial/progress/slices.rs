@@ -164,7 +164,7 @@ impl Scored<'_> {
     pub(in crate::trial) fn record(
         &self,
         set: &str,
-        run: &SetRun<'_>,
+        run: &SetRun,
         cross_track_true_m: Option<f64>,
     ) -> ProgressRecord {
         let t_s = self.sample.time_s;

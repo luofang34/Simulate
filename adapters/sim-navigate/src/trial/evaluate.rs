@@ -10,24 +10,22 @@ mod flights;
 mod replays;
 
 use navigate_contract::NavigationSolution;
-use navigate_startrack::PairCatalogue;
 use sha2::{Digest, Sha256};
 use sim_core::SimInstant;
 
 use super::availability::{ScheduledInterval, SetAvailability};
 use super::closed::{ClosedLoopOutcome, ClosedLoopReport};
 use super::comparison::comparison;
-use super::epoch::parse_utc;
 use super::gnss::GnssReceiver;
+use super::onboard::trial_navigator;
 use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
-use super::replay::{STAR_SOURCE, SensorTallies, SetRun, SetSelection, StarAvailability};
+use super::replay::{SensorTallies, SetRun, SetSelection, StarAvailability};
 use super::report::{
     InputIdentity, REPORT_SCHEMA, RouteReport, SeriesSample, SetReport, TrialReport,
 };
 use super::route::{RouteFlight, STEP_HZ, fly_route};
 use super::score::summarise;
-use super::stars::sighting::{StarSighting, pair_table};
 use super::vertical::vertical_plan;
 use super::{GuidanceSource, SensorSetSpec, TrialError, TrialRequest, model_statements};
 use crate::{Estimate, NavMeans};
@@ -62,8 +60,7 @@ pub struct ClosedTrialOutcome {
 
 /// What every set of a run shares.
 #[derive(Clone, Copy)]
-pub(super) struct SetContext<'p> {
-    pub(super) pairs: Option<&'p PairCatalogue>,
+pub(super) struct SetContext {
     pub(super) sample_steps: usize,
 }
 
@@ -150,57 +147,18 @@ fn sample_periods(request: &TrialRequest) -> Result<(usize, usize), TrialError> 
     Ok((sample, progress))
 }
 
-/// The lost-in-space pair table when any set of `request` takes stars.
-pub fn star_pair_table(request: &TrialRequest) -> Result<Option<PairCatalogue>, TrialError> {
-    if request.uses_stars() {
-        Ok(Some(pair_table(parse_utc(&request.epoch_utc)?)?))
-    } else {
-        Ok(None)
-    }
-}
-
-/// The navigator `set` of `request` replays `log` with, aligned, its star
-/// tracker on `pairs` when the set takes stars: what a trial runs, for
-/// stepping by hand.
-pub fn replay_set<'p>(
+/// The navigator of `set` of `request`, aligned from `log`: what a trial
+/// runs, for stepping by hand.
+pub fn replay_set(
     request: &TrialRequest,
     set: &SensorSetSpec,
-    pairs: Option<&'p PairCatalogue>,
     log: &SensorLog,
-) -> Result<SetRun<'p>, TrialError> {
-    let context = SetContext {
-        pairs,
-        sample_steps: 1,
-    };
-    set_run(request, set, context, log)
-}
-
-/// The navigator of `set`, aligned from `log`.
-pub(super) fn set_run<'p>(
-    request: &TrialRequest,
-    set: &SensorSetSpec,
-    context: SetContext<'p>,
-    log: &SensorLog,
-) -> Result<SetRun<'p>, TrialError> {
-    let means = set.ablation_set();
-    let sighting = match context
-        .pairs
-        .filter(|_| means.contains(NavMeans::Celestial))
-    {
-        Some(pairs) => Some(StarSighting::new(
-            pairs,
-            parse_utc(&request.epoch_utc)?,
-            STAR_SOURCE,
-            request.stars.mount_alignment_sigma_rad,
-        )?),
-        None => None,
-    };
+) -> Result<SetRun, TrialError> {
     let selection = SetSelection {
-        means,
+        means: set.ablation_set(),
         availability: SetAvailability::resolve(request, set)?,
     };
-    let config = super::trial_inertial_config(&request.imu_grade.grade().spec(), &request.baro);
-    SetRun::new(log, selection, config, sighting)
+    SetRun::new(log, selection, trial_navigator(request, set)?)
 }
 
 /// What a set's run leaves for its report.

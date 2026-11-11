@@ -81,6 +81,11 @@ pub struct WaypointOutcome {
     pub navigation_error_at_sequence_m: Option<f64>,
     /// Whether the true position was inside the capture threshold then.
     pub truly_within_threshold: Option<bool>,
+    /// The navigator's own signed cross-track from the inbound course,
+    /// metres, right positive, when the executor sequenced the fix because
+    /// the estimate passed it outside the capture distance; `None` for a
+    /// capture.
+    pub passed_cross_track_m: Option<f64>,
     /// Closest true approach over the whole flight, metres.
     pub closest_true_approach_m: f64,
 }

@@ -7,7 +7,7 @@ use sim_geo::{LocalFrame, ecef_to_geodetic};
 
 use super::TrialError;
 use super::availability::ScheduledInterval;
-use super::replay::IMU_SOURCE;
+use super::onboard::IMU_SOURCE;
 use super::replay::SensorTallies;
 use super::report::{
     ConsistencyNote, ErrorStats, IntervalErrors, IntervalReport, SeriesSample, SetSummary,

@@ -20,6 +20,7 @@ navigate-contract = { workspace = true }
 navigate-fusion = { workspace = true }
 navigate-geodesy = { workspace = true }
 navigate-guidance = { workspace = true }
+navigate-onboard = { workspace = true }
 navigate-route = { workspace = true }
 navigate-startrack = { workspace = true }
 navigate-visual = { workspace = true }

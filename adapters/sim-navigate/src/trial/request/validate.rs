@@ -8,7 +8,6 @@ use super::{SIMULATED_MEANS, TrialRequest, WaypointSpec};
 use crate::trial::availability::{check_schedules, check_set};
 use crate::trial::epoch::parse_utc;
 use crate::trial::sky::sun_direction_ecef;
-use crate::trial::stars::sighting::CATALOGUE_FAINTEST_V;
 use crate::trial::vertical::{check_reachable, vertical_plan};
 use crate::trial::{TrialError, VehicleSpec};
 use crate::{NavMeans, star_camera_epoch};
@@ -182,10 +181,9 @@ fn check_sky_coverage(request: &TrialRequest, start: sim_geo::UtcTime) -> Result
     );
     sun_direction_ecef(start, SimInstant::START, geodetic_to_ecef(&first))
         .map_err(|error| outside(error.to_string()))?;
-    catalogue_ecef(
-        star_camera_epoch(start, SimInstant::START),
-        CATALOGUE_FAINTEST_V,
-    )
-    .map_err(|error| outside(error.to_string()))?;
+    let faintest = navigate_onboard::StarCatalogueConfig::with_utc_at_zero(start.unix_seconds())
+        .catalogue_faintest_v;
+    catalogue_ecef(star_camera_epoch(start, SimInstant::START), faintest)
+        .map_err(|error| outside(error.to_string()))?;
     Ok(())
 }
