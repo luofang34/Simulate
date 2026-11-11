@@ -63,6 +63,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-navigate` | `adapters/sim-navigate` | Navigate visual navigation and fusion |
 | `sim-pilotage` | `adapters/sim-pilotage` | Pilotage vehicle and camera bridge |
 | `ironbird` | `apps/ironbird` | Headless XIL, calibration, and design-estimation runner |
+| `nav-trial` | `apps/nav-trial` | Headless route navigation trial: Navigate's filter scored per sensor set |
 | `simulate-app` | `apps/simulate-app` | Interactive cockpit for desktop and browser |
 
 `vehicles/c172` is a data-only package with no crate of its own. A vehicle

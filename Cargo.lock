@@ -3016,6 +3016,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nav-trial"
+version = "0.1.0"
+dependencies = [
+ "sim-navigate",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
 dependencies = [
@@ -3074,6 +3085,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-guidance"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
+ "navigate-route",
+ "navigate-trajectory",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-route"
+version = "0.1.0"
+dependencies = [
+ "navigate-contract",
+ "navigate-geodesy",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-startrack"
 version = "0.1.0"
 dependencies = [
@@ -3082,6 +3115,17 @@ dependencies = [
  "navigate-celestial",
  "navigate-contract",
  "navigate-fusion",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-trajectory"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
  "thiserror 2.0.21",
 ]
 
@@ -4988,8 +5032,12 @@ dependencies = [
  "navigate-contract",
  "navigate-fusion",
  "navigate-geodesy",
+ "navigate-guidance",
+ "navigate-route",
  "navigate-startrack",
  "navigate-visual",
+ "serde",
+ "serde_json",
  "sha2 0.11.1",
  "sim-core",
  "sim-devices",
@@ -5784,9 +5832,9 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "1.1.2+spec-1.1.0"
+version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b86d767906c6c42421dcba507eb9d203e779497710a47782a224bb871653053"
+checksum = "173f25c883cd2176a2d8212155638c0a60d484a9d84546d270866f40f56b6e49"
 dependencies = [
  "serde_core",
 ]
