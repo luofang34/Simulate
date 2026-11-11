@@ -20,7 +20,7 @@ mod x500_plant;
 pub use aviate_vehicle::{AviateVehicleConfig, AviateX500Vehicle, FLIGHT_RATE_HZ};
 pub use chain::{ChainSetup, FlightChain, MISSION_FRAME_HZ};
 pub use error::ChainError;
-pub use mission_host::{FrameReport, MissionHost, MissionSetup, RouteFix};
+pub use mission_host::{FrameReport, MissionHost, MissionSetup, OwnshipFeed, RouteFix};
 pub use pilotage_mission::{MissionEvent, MissionState};
 pub use pilotage_protocol::VehicleId;
 pub use sim_aviate::DirectNoiseTier;

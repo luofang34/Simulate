@@ -4,12 +4,17 @@
 //!
 //! The mission engine is Pilotage's own and so is the guidance it runs.
 //! This host stands in for Pilotage's session host: there are no sessions,
-//! leases or wire, and one holder owns the motion scope throughout. It reads
-//! the flight controller's estimate and never the simulation's truth sample.
+//! leases or wire, and one holder owns the motion scope throughout. The
+//! mission flies on the flight controller's estimate or on a navigator's
+//! solution, as [`OwnshipFeed`] says, and never on the simulation's truth
+//! sample.
 
 mod route;
 
-use navigate_contract::{ClockDomainId, DurationNanos, GeodeticPosition, MonotonicNanos};
+use navigate_contract::{
+    AttitudeQuaternion, ClockDomainId, DurationNanos, GeodeticPosition, MonotonicNanos,
+    NavigationSolution,
+};
 use pilotage_adapter_api::{
     AdapterCapabilities, AvionicsAttitudeSample, AvionicsSample, Disposition, IntentCapability,
     TelemetrySample, VehicleAdapter,
@@ -18,7 +23,7 @@ use pilotage_mavlink::link::estimator::QUALITY_DEGRADED;
 use pilotage_mavlink::sampling::yaw_of;
 use pilotage_mission::{
     MissionAction, MissionConfig, MissionEngine, MissionEvent, MissionLimits, MissionOutput,
-    MissionPlanRecord, MissionState, OwnshipSample, OwnshipSource, TruthRole,
+    MissionPlanRecord, MissionState, OwnshipAltitude, OwnshipSample, OwnshipSource, TruthRole,
 };
 use pilotage_protocol::{
     ControlAction, ControlIntent, ControlPayload, DIRECT_SCOPE, Generation, IntentFamily,
@@ -43,6 +48,18 @@ const ARMED: u32 = 2;
 /// heartbeats and a margin.
 const ARM_CONFIRMATION: DurationNanos = DurationNanos::from_millis(2_500);
 
+/// Whose navigation the mission flies on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OwnshipFeed {
+    /// The flight controller's own estimate, read from its telemetry.
+    #[default]
+    FlightController,
+    /// A navigator outside the flight controller, whose solutions the
+    /// caller hands to [`MissionHost::offer_navigation`]. The flight
+    /// controller's estimate then steers nothing in the mission.
+    Navigator,
+}
+
 /// A route and how the mission flies it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissionSetup {
@@ -59,6 +76,8 @@ pub struct MissionSetup {
     pub cruise_mps: f64,
     /// Climb rate to the cruise height, m/s.
     pub climb_rate_mps: f64,
+    /// Whose navigation the mission flies on.
+    pub ownship: OwnshipFeed,
 }
 
 /// What one mission frame did.
@@ -90,6 +109,7 @@ pub struct MissionHost {
     engine: Box<MissionEngine>,
     record: MissionPlanRecord,
     vehicle: VehicleId,
+    ownship: OwnshipFeed,
     sequence: u32,
     pending_arm: Option<PendingArm>,
     last_estimate: Option<(u32, Option<u32>)>,
@@ -135,6 +155,7 @@ impl MissionHost {
             engine: Box::new(engine),
             record,
             vehicle: setup.vehicle,
+            ownship: setup.ownship,
             sequence: 0,
             pending_arm: None,
             last_estimate: None,
@@ -170,7 +191,9 @@ impl MissionHost {
             .iter()
             .find(|sample| sample.vehicle == self.vehicle);
         if let Some(sample) = sample {
-            self.offer_estimate(sample, now);
+            if self.ownship == OwnshipFeed::FlightController {
+                self.offer_estimate(sample, now);
+            }
             self.settle_arm(sample, now);
         }
         let output = self.engine.tick(now);
@@ -181,6 +204,34 @@ impl MissionHost {
             intent: output.intent,
             disposition,
         }
+    }
+
+    /// Offers a navigator's solution as the mission's ownship. Ignored unless
+    /// the mission flies on [`OwnshipFeed::Navigator`].
+    ///
+    /// Pilotage has no ownship source for a navigator's solution, so it
+    /// enters through the vehicle-estimate source: the engine flies its
+    /// position, velocity and heading, and re-declares its uncertainty and
+    /// composition as that source's.
+    pub fn offer_navigation(&mut self, solution: &NavigationSolution, now: MonotonicNanos) {
+        if self.ownship != OwnshipFeed::Navigator {
+            return;
+        }
+        let position = solution.position;
+        let velocity = solution.velocity;
+        let ownship = OwnshipSample {
+            ned: self.engine.ned_of(
+                position.latitude_rad,
+                position.longitude_rad,
+                OwnshipAltitude::Ellipsoid(position.altitude_m),
+            ),
+            ned_velocity: [velocity.north_mps, velocity.east_mps, velocity.down_mps],
+            yaw_rad: solution.attitude.map(heading_of),
+            role: TruthRole::OperationalEstimate,
+            acquired_at: solution.stamp.solved_at,
+            sequence: solution.stamp.sequence.get(),
+        };
+        self.engine.on_ownship(&ownship, now);
     }
 
     /// Offers the flight controller's estimate when it carries a new,
@@ -276,6 +327,12 @@ impl MissionHost {
             action_ids: action.iter().map(|(_, id)| *id).collect(),
         }
     }
+}
+
+/// Heading of a body-to-NED attitude, radians clockwise from north.
+fn heading_of(attitude: AttitudeQuaternion) -> f64 {
+    let AttitudeQuaternion { w, x, y, z, .. } = attitude;
+    (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z))
 }
 
 /// The velocity envelope `capabilities` advertises on the motion scope of

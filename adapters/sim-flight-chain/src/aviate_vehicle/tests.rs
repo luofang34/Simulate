@@ -116,3 +116,78 @@ fn mavlink_frames_arm_lift_and_fly_the_x500() {
     assert!(speed < 1.0, "still moving at {speed} m/s");
     assert_eq!(vehicle.refused_uplink_bytes(), 0);
 }
+
+fn direct_frame(sequence: u32, pitch_rad: f64, thrust: f32) -> ScopedControlFrame {
+    let (sin, cos) = (pitch_rad / 2.0).sin_cos();
+    let intent = ControlIntent::AttitudeThrust(pilotage_protocol::AttitudeThrustIntent {
+        frame: ReferenceFrame::LocalNed,
+        qw: cos as f32,
+        qx: 0.0,
+        qy: sin as f32,
+        qz: 0.0,
+        thrust,
+    });
+    ScopedControlFrame {
+        scope: ScopeId::new(DIRECT_SCOPE),
+        ..frame(sequence, Some(intent), Vec::new())
+    }
+}
+
+/// Sends `direct` frames at 20 Hz for `seconds`.
+fn fly_direct(vehicle: &mut AviateX500Vehicle, seconds: u32, pitch_rad: f64, thrust: f32) {
+    for sequence in 0..seconds * 20 {
+        let outcome = vehicle.apply_control(&direct_frame(sequence, pitch_rad, thrust));
+        assert_eq!(outcome.disposition, Disposition::Accepted);
+        vehicle.step(StepBudget { ticks: FRAME_TICKS });
+    }
+}
+
+#[test]
+fn a_controller_denied_gnss_still_flies_attitude_and_thrust() {
+    let mut vehicle = vehicle(DirectNoiseTier::Industrial);
+    while vehicle.downlink.pose().is_none() {
+        vehicle.step(StepBudget { ticks: 48 });
+    }
+    let arm = frame(1, None, vec![ControlAction::Arm]);
+    while vehicle.reports_armed() != Some(true) {
+        vehicle.apply_control(&arm);
+        vehicle.step(StepBudget { ticks: 240 });
+    }
+    let mut sequence = 1_u32;
+    fly(&mut vehicle, &mut sequence, 10, 0.0, -2.0);
+    assert_eq!(vehicle.flight_mode(), ControlMode::VelocityControl);
+    let (_, _, hover_up) = north_east_up(&vehicle);
+
+    vehicle.silence_gnss();
+    let mut refused = 0_u32;
+    for _ in 0..7 * 20 {
+        sequence = sequence.wrapping_add(1);
+        let outcome = vehicle.apply_control(&frame(sequence, body_velocity(0.0, 0.0), Vec::new()));
+        if outcome.disposition == Disposition::Rejected(RejectReason::MeasurementUnavailable) {
+            refused += 1;
+        }
+        vehicle.step(StepBudget { ticks: FRAME_TICKS });
+    }
+    // Its position no longer vouched for, the adapter sends no velocity; the
+    // controller, hearing nothing, starts its link-loss descent.
+    assert!(refused > 0, "velocity frames were still taken");
+    assert_eq!(vehicle.flight_mode(), ControlMode::AltitudeHold);
+    let (_, _, sinking_from) = north_east_up(&vehicle);
+
+    fly_direct(&mut vehicle, 4, 0.0, 0.75);
+    let (_, _, up) = north_east_up(&vehicle);
+    assert!(
+        sinking_from < hover_up,
+        "descending: {sinking_from} m from {hover_up} m"
+    );
+    assert!(
+        up > sinking_from + 3.0,
+        "climbed from {sinking_from} m to {up} m on thrust"
+    );
+
+    fly_direct(&mut vehicle, 5, -10_f64.to_radians(), 0.62);
+    let (north, east, _) = north_east_up(&vehicle);
+    assert!(north > 10.0, "nose down flew {north} m north");
+    assert!(east.abs() < 5.0, "and {east} m east");
+    assert_eq!(vehicle.flight_mode(), ControlMode::Attitude);
+}

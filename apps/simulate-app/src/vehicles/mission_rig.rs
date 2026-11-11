@@ -6,8 +6,8 @@
 use glam::DVec3;
 use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_flight_chain::{
-    ChainSetup, DirectNoiseTier, FLIGHT_RATE_HZ, FlightChain, MissionSetup, MissionState, RouteFix,
-    VehicleId,
+    ChainSetup, DirectNoiseTier, FLIGHT_RATE_HZ, FlightChain, MissionSetup, MissionState,
+    OwnshipFeed, RouteFix, VehicleId,
 };
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 use tracing::info;
@@ -64,6 +64,7 @@ pub(super) fn build_mission_rig(
             cruise_height_m: CRUISE_HEIGHT_M,
             cruise_mps: CRUISE_M_S,
             climb_rate_mps: CLIMB_M_S,
+            ownship: OwnshipFeed::FlightController,
         },
         heading_rad,
         noise: DirectNoiseTier::Industrial,

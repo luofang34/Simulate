@@ -8,7 +8,9 @@ use pilotage_protocol::{ScopeId, ScopedControlFrame, VehicleId};
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
 use super::*;
-use crate::RouteFix;
+use crate::{OwnshipFeed, RouteFix};
+
+mod navigator_feed;
 
 const VEHICLE: VehicleId = VehicleId::new(7);
 const CRUISE_HEIGHT_M: f64 = 60.0;
@@ -47,6 +49,7 @@ fn setup() -> ChainSetup {
             cruise_height_m: CRUISE_HEIGHT_M,
             cruise_mps: 12.0,
             climb_rate_mps: 3.0,
+            ownship: OwnshipFeed::FlightController,
         },
         heading_rad: 0.0,
         noise: DirectNoiseTier::Industrial,

@@ -29,7 +29,8 @@ use pilotage_protocol::{
 };
 use pilotage_timing::SimTick;
 use sim_aviate::{
-    AviateDirectConfig, AviateDirectRunner, DirectNoiseTier, build_direct_x500_kernel,
+    AviateDirectConfig, AviateDirectRunner, DirectNoiseTier, DirectSensorRates,
+    build_direct_x500_kernel,
 };
 use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_geo::Geodetic;
@@ -151,6 +152,17 @@ impl AviateX500Vehicle {
         self.controller.estimated_state()
     }
 
+    /// Silences the flight controller's satellite receiver from now on: it
+    /// produces no further fix, which is how the controller is denied GNSS.
+    pub fn silence_gnss(&mut self) {
+        self.controller
+            .board_mut()
+            .set_sensor_rates(DirectSensorRates {
+                gnss_period_us: u64::MAX,
+                ..DirectSensorRates::default()
+            });
+    }
+
     /// Command bytes the flight controller's receive ring had no room for.
     pub const fn refused_uplink_bytes(&self) -> u64 {
         self.refused_uplink_bytes
@@ -189,6 +201,46 @@ impl AviateX500Vehicle {
                 _ => ActionResult::rejected(*action, "Aviate takes only arm and disarm"),
             })
             .collect()
+    }
+
+    fn accepted(&self, action_results: Vec<ActionResult>) -> ApplyOutcome {
+        ApplyOutcome {
+            tick: self.tick,
+            disposition: Disposition::Accepted,
+            action_results,
+        }
+    }
+
+    /// The motion scope: velocity on the flight controller's own pose. Like
+    /// Pilotage's Aviate adapter, nothing is commanded without that pose,
+    /// because the heading every frame is built on comes from it.
+    fn apply_motion(&mut self, frame: &ScopedControlFrame) -> ApplyOutcome {
+        let Some(pose) = self.downlink.pose() else {
+            return self.refuse(RejectReason::MeasurementUnavailable);
+        };
+        let action_results = self.send_actions(&frame.actions);
+        if let Some(ControlIntent::Velocity(velocity)) = frame.intent {
+            let yaw_rad = f64::from(pose.yaw_rad);
+            let bytes = self.uplink.velocity_frame(&velocity, yaw_rad, self.now);
+            self.send(&bytes);
+        }
+        self.accepted(action_results)
+    }
+
+    /// The direct scope: attitude and thrust, which need the flight
+    /// controller's attitude and nothing of its position. Pilotage's Aviate
+    /// adapter asks this scope for an authorized position as well, and so
+    /// cannot command a controller that has lost GNSS.
+    fn apply_direct(&mut self, frame: &ScopedControlFrame) -> ApplyOutcome {
+        if !self.downlink.attitude_authorized() {
+            return self.refuse(RejectReason::MeasurementUnavailable);
+        }
+        let action_results = self.send_actions(&frame.actions);
+        if let Some(ControlIntent::AttitudeThrust(attitude)) = frame.intent {
+            let bytes = self.uplink.attitude_frame(&attitude, self.now);
+            self.send(&bytes);
+        }
+        self.accepted(action_results)
     }
 
     fn step_once(&mut self) -> Result<(), ChainError> {
@@ -289,33 +341,15 @@ impl VehicleAdapter for AviateX500Vehicle {
         if scope != MOTION_SCOPE && scope != DIRECT_SCOPE {
             return self.refuse(RejectReason::UnknownScope);
         }
-        // Like Pilotage's own Aviate adapter, nothing is commanded without
-        // the flight controller's authorized pose: the heading every frame
-        // is built on comes from it.
-        let Some(pose) = self.downlink.pose() else {
-            return self.refuse(RejectReason::MeasurementUnavailable);
-        };
-        let action_results = self.send_actions(&frame.actions);
         match (scope, frame.intent) {
-            (_, None) => {}
-            (MOTION_SCOPE, Some(ControlIntent::Velocity(velocity))) => {
-                let yaw_rad = f64::from(pose.yaw_rad);
-                let bytes = self.uplink.velocity_frame(&velocity, yaw_rad, self.now);
-                self.send(&bytes);
-            }
-            (DIRECT_SCOPE, Some(ControlIntent::AttitudeThrust(attitude))) => {
-                let bytes = self.uplink.attitude_frame(&attitude, self.now);
-                self.send(&bytes);
+            (MOTION_SCOPE, None | Some(ControlIntent::Velocity(_))) => self.apply_motion(frame),
+            (DIRECT_SCOPE, None | Some(ControlIntent::AttitudeThrust(_))) => {
+                self.apply_direct(frame)
             }
             _ => {
                 let detail = "intent family does not belong to this scope".to_owned();
-                return self.refuse(RejectReason::Other(detail));
+                self.refuse(RejectReason::Other(detail))
             }
-        }
-        ApplyOutcome {
-            tick: self.tick,
-            disposition: Disposition::Accepted,
-            action_results,
         }
     }
 

@@ -5,7 +5,7 @@
 mod tests;
 
 use aviate_core::control::ControlMode;
-use navigate_contract::MonotonicNanos;
+use navigate_contract::{MonotonicNanos, NavigationSolution};
 use pilotage_adapter_api::{StepBudget, VehicleAdapter};
 use pilotage_mission::MissionState;
 use sim_aviate::DirectNoiseTier;
@@ -85,6 +85,24 @@ impl FlightChain {
         self.vehicle.flight_mode()
     }
 
+    /// Hands a navigator's solution to the mission as its ownship; see
+    /// [`MissionHost::offer_navigation`].
+    pub fn offer_navigation(&mut self, solution: &NavigationSolution) {
+        let now = self.mission_now();
+        self.host.offer_navigation(solution, now);
+    }
+
+    /// Silences the flight controller's satellite receiver from now on.
+    pub fn silence_gnss(&mut self) {
+        self.vehicle.silence_gnss();
+    }
+
+    /// The present instant on the mission's clock.
+    fn mission_now(&self) -> MonotonicNanos {
+        let elapsed_s = self.now().duration_since(SimInstant::START).as_seconds();
+        MonotonicNanos::from_nanos((elapsed_s * NANOS_PER_SECOND).round() as u64)
+    }
+
     /// The mission phase after the last frame.
     pub fn mission_state(&self) -> MissionState {
         self.host.engine().state()
@@ -93,11 +111,8 @@ impl FlightChain {
     /// One cycle of the flight controller and the airframe, after a mission
     /// frame when one is due. Returns that frame's report.
     pub fn advance_tick(&mut self) -> Result<Option<FrameReport>, ChainError> {
-        let report = (self.ticks_into_frame == 0).then(|| {
-            let elapsed_s = self.now().duration_since(SimInstant::START).as_seconds();
-            let now = MonotonicNanos::from_nanos((elapsed_s * NANOS_PER_SECOND).round() as u64);
-            self.host.frame(&mut self.vehicle, now)
-        });
+        let now = self.mission_now();
+        let report = (self.ticks_into_frame == 0).then(|| self.host.frame(&mut self.vehicle, now));
         if self.vehicle.step(StepBudget { ticks: 1 }).advanced == 0 {
             return Err(self.vehicle.take_fault().unwrap_or(ChainError::Stopped));
         }

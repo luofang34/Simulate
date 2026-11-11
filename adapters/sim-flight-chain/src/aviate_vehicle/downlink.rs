@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use pilotage_adapter_api::TelemetrySample;
 use pilotage_mavlink::codec::{FcMessage, FrameSource, parse_datagram};
 use pilotage_mavlink::link::apply_messages_at;
+use pilotage_mavlink::link::estimator::QUALITY_DEGRADED;
 use pilotage_mavlink::sampling::{
     ArmTracker, OperationalPose, estimate_batch, fc_state_sample, operational_pose,
     report_only_sample,
@@ -20,6 +21,8 @@ use sim_core::SimInstant;
 /// Source-clock lag admitted between the attitude and position streams,
 /// which Aviate publishes at different rates.
 const INTER_GROUP_SKEW_MS: u32 = 300;
+/// Attitude, as Pilotage numbers the estimate groups.
+const ATTITUDE_VALID: u32 = 0b0001;
 /// How far ahead of the wall clock received frames are stamped.
 const RECEIVE_LEAD: Duration = Duration::from_secs(10 * 365 * 86_400);
 
@@ -75,6 +78,22 @@ impl Downlink {
     pub(super) fn pose(&self) -> Option<OperationalPose> {
         let latest = self.state.lock().ok()?;
         operational_pose(&latest)
+    }
+
+    /// Whether the flight controller authorizes its attitude estimate in
+    /// the present source epoch, whatever it says of its position.
+    pub(super) fn attitude_authorized(&self) -> bool {
+        let Ok(latest) = self.state.lock() else {
+            return false;
+        };
+        let current = |epoch: u32| epoch == latest.source_epoch;
+        let status = latest.estimator_status_stamp();
+        latest.attitude.is_some_and(|attitude| {
+            attitude.valid_flags & ATTITUDE_VALID != 0
+                && attitude.quality <= QUALITY_DEGRADED
+                && current(attitude.stamp.source_epoch)
+                && status.is_some_and(|stamp| current(stamp.source_epoch))
+        })
     }
 
     /// Whether the flight controller's last heartbeat reported it armed.
