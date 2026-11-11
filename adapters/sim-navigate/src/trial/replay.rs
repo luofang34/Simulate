@@ -20,7 +20,9 @@ use tally::{Reading, sensor_state};
 
 use super::TrialError;
 use super::availability::{ScheduledInterval, SensorKind, SensorState, SetAvailability};
-use super::onboard::{BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE};
+use super::onboard::{
+    BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, baro_altitude_data, gnss_fix_data,
+};
 use super::route::{STEP_HZ, step_seconds};
 use super::stars::{exposure_steps, star_camera_config};
 use crate::{AblationSet, Estimate, MasterClockBridge, NavMeans};
@@ -320,14 +322,7 @@ impl SetRun {
                     .record(SensorKind::Gnss, window, &Reading::Withheld);
                 continue;
             }
-            let fix = logged.reading;
-            let data = SensorData::GnssFix {
-                position: fix.position,
-                velocity: Some(fix.velocity),
-                position_cov: Some(fix.position_cov),
-                velocity_cov: Some(fix.velocity_cov),
-            };
-            self.ingest(GNSS_SOURCE, (now, now), data)?;
+            self.ingest(GNSS_SOURCE, (now, now), gnss_fix_data(&logged.reading))?;
             let verdicts = verdicts(&self.records);
             self.ledger
                 .record(SensorKind::Gnss, window, &Reading::Offered(&verdicts));
@@ -357,9 +352,7 @@ impl SetRun {
                     .record(SensorKind::Baro, window, &Reading::Withheld);
                 continue;
             }
-            let data = SensorData::BaroAltitude {
-                altitude_m: logged.reading.altitude_m,
-            };
+            let data = baro_altitude_data(&logged.reading)?;
             self.ingest(BARO_SOURCE, (now, now), data)?;
             let verdicts = verdicts(&self.records);
             self.ledger

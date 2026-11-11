@@ -38,9 +38,9 @@
   },
   "baro": {
     "rate_hz": 5.0,
-    "white_sigma_m": 0.3,
-    "bias_sigma_m": 3.0,
-    "bias_correlation_time_s": 3600.0
+    "white_sigma_pa": 3.0,
+    "bias_sigma_pa": 20.0,
+    "bias_correlation_time_s": 600.0
   },
   "stars": {
     "period_s": 10.0,

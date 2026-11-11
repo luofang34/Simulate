@@ -5018,10 +5018,13 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "mbd-core",
+ "sim-atmosphere",
  "sim-core",
  "sim-geo",
  "sim-spacetime",
  "thiserror 2.0.21",
+ "world-core",
+ "world-geomag",
 ]
 
 [[package]]
@@ -5146,6 +5149,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "sim-atmosphere",
  "sim-core",
  "sim-devices",
  "sim-geo",
