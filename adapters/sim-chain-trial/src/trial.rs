@@ -26,7 +26,7 @@ use sets::{SetSlot, has_sensor};
 pub use sets::FLIGHT_CONTROLLER_SET;
 
 /// The C172 under Pilotage's host core.
-type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
+pub type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
 
 /// A navigation trial flown by the vehicle's own control chain.
 ///
@@ -114,6 +114,12 @@ impl ChainTrial {
             progress_steps,
             pending: Outputs::default(),
         })
+    }
+
+    /// The control chain the trial flies: the board, its airframe and
+    /// Pilotage's host, for drawing and readouts.
+    pub fn chain(&self) -> &C172Chain {
+        &self.chain
     }
 
     /// Route time, seconds.

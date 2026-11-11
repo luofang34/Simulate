@@ -54,6 +54,7 @@ pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
     match vehicle {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::AviateFixedWingDirect
+        | FreeFlightVehicle::C172Mission
         | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
         FreeFlightVehicle::JsbsimP38g => {
             CameraMount::oblique(p38g_eye_frd_m(), 0.0, -2.5_f64.to_radians(), 0.0)
@@ -94,6 +95,7 @@ pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
         Some(
             FreeFlightVehicle::JsbsimC172
             | FreeFlightVehicle::AviateFixedWingDirect
+            | FreeFlightVehicle::C172Mission
             | FreeFlightVehicle::Kinematic,
         )
         | None => svs_nose_mount(),

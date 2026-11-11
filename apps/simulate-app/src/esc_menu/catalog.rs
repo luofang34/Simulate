@@ -41,9 +41,9 @@ impl FdmEngine {
     pub const fn of(vehicle: FreeFlightVehicle) -> Self {
         match vehicle {
             FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimP38g => Self::Jsbsim,
-            FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::AviateFixedWingDirect => {
-                Self::AviateXil
-            }
+            FreeFlightVehicle::AviateX500Direct
+            | FreeFlightVehicle::AviateFixedWingDirect
+            | FreeFlightVehicle::C172Mission => Self::AviateXil,
             FreeFlightVehicle::Kinematic => Self::RigidBody,
         }
     }
@@ -187,6 +187,7 @@ impl VehicleDescriptor {
                 vec![
                     FreeFlightVehicle::JsbsimC172,
                     FreeFlightVehicle::AviateFixedWingDirect,
+                    FreeFlightVehicle::C172Mission,
                 ],
                 HangarModel::C172,
             ),
@@ -253,6 +254,7 @@ pub const fn mode_label(vehicle: FreeFlightVehicle) -> &'static str {
         FreeFlightVehicle::AviateFixedWingDirect => "AVIATE FBW",
         FreeFlightVehicle::Kinematic => "KINEMATIC",
         FreeFlightVehicle::AviateX500Direct => "AVIATE DIRECT",
+        FreeFlightVehicle::C172Mission => "PILOTAGE MISSION",
     }
 }
 

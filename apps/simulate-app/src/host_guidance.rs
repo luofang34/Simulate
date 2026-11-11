@@ -184,6 +184,12 @@ fn autopilot_summary(flight: &Flight) -> AutopilotModeSummary {
             armed_approach: false,
             engaged,
         },
+        (Some(FreeFlightVehicle::C172Mission), Some(engaged)) => AutopilotModeSummary {
+            lateral: ident("MSN"),
+            vertical: ident("VEL"),
+            armed_approach: false,
+            engaged,
+        },
         (Some(FreeFlightVehicle::AviateFixedWingDirect), Some(engaged)) => AutopilotModeSummary {
             lateral: ident("FBW ATT"),
             vertical: ident("FBW THR"),

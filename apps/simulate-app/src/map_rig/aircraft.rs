@@ -139,9 +139,14 @@ pub const fn ownship_visual(
             ),
             _,
         )
-        | (None, Some(FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::AviateFixedWingDirect)) => {
-            OwnshipVisualKind::C172
-        }
+        | (
+            None,
+            Some(
+                FreeFlightVehicle::JsbsimC172
+                | FreeFlightVehicle::AviateFixedWingDirect
+                | FreeFlightVehicle::C172Mission,
+            ),
+        ) => OwnshipVisualKind::C172,
         (None, None) => OwnshipVisualKind::Raketa,
         (None, Some(FreeFlightVehicle::JsbsimP38g)) => OwnshipVisualKind::P38g,
         (None, Some(FreeFlightVehicle::Kinematic)) => OwnshipVisualKind::FixedWingUav,

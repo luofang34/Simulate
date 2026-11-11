@@ -85,6 +85,17 @@ impl C172Airframe {
         })
     }
 
+    /// The JSBSim flight model, to read its articulation and systems.
+    pub const fn fdm(&self) -> &JsbsimFdmBlock {
+        &self.fdm
+    }
+
+    /// The specific force of the last step, body forward-right-down axes,
+    /// m/s².
+    pub const fn specific_force_body_m_s2(&self) -> DVec3 {
+        self.specific_force_body_m_s2
+    }
+
     /// The controls JSBSim trimmed level flight with: the throttle that
     /// holds the starting speed, and the stick with the pitch trim taken up.
     pub const fn trim(&self) -> ControlInputs {

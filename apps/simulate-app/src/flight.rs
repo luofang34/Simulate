@@ -55,6 +55,7 @@ pub use manual::SpawnMode;
 use mode::{FreeSpawn, Mode};
 pub use pacing::{PacingMonitor, PacingSession, PacingStats};
 use panel_gauges::PanelGauges;
+pub use readouts::ChainReadout;
 use rewind::{FlightCheckpoint, RewindHistory, seconds};
 use sensors::ScenarioSensorClock;
 pub use space_ux::{SpaceHudChrome, SpaceLinkStatus, SpaceReferenceFrame};

@@ -67,3 +67,43 @@ fn an_airborne_p38g_spawns_with_both_engines_turning() {
         art.propeller_right.rpm
     );
 }
+
+/// Steps the C172 mission plant for `seconds` under `stick`, which nothing in its chain
+/// reads.
+fn fly_c172_mission(seconds: f64, stick: ControlInputs) -> FreeFlightPlant {
+    let world = crate::world_surface::WorldSurfaceHandle::new();
+    let spawn = Geodetic::from_degrees(39.1582, -75.5244, 15.0);
+    let mut plant =
+        FreeFlightPlant::new_on_ground(FreeFlightVehicle::C172Mission, spawn, 0.6, false)
+            .expect("at the first link's start");
+    let periods = (seconds / plant.period().as_seconds()) as usize;
+    for _ in 0..periods {
+        plant.step(stick, &world).expect("step");
+    }
+    plant
+}
+
+/// The C172 mission starts where the first link says, is armed by Pilotage and sets out
+/// on the route with nobody at the controls, and a pilot's stick changes nothing.
+#[test]
+fn the_c172_mission_flies_the_first_link_and_ignores_the_stick() {
+    let hands_off = fly_c172_mission(12.0, ControlInputs::default());
+    assert_eq!(hands_off.aviate_armed(), Some(true));
+    let position = ecef_to_geodetic(hands_off.state().position_ecef);
+    assert!(
+        (position.lat_deg() - 41.70).abs() < 0.01 && position.lon_deg() > -1.07,
+        "near Zaragoza, heading east: {position:?}"
+    );
+    let (phase, standings) = hands_off.chain_readout().expect("a chain plant");
+    assert_eq!(phase, Some("Enroute"));
+    assert!(standings.contains_key("ins.baro.gnss") && standings.contains_key("flight-controller"));
+
+    let full_stick = ControlInputs {
+        roll: 1.0,
+        pitch: -1.0,
+        yaw: 1.0,
+        throttle: 1.0,
+    };
+    let stirred = fly_c172_mission(12.0, full_stick);
+    assert_eq!(stirred.state(), hands_off.state());
+}

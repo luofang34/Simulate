@@ -12,12 +12,14 @@
 //! its own words, and each set's terrain-camera fixes.
 
 mod error;
+mod first_link;
 mod nav_log;
 mod output;
 mod spec;
 mod trial;
 
 pub use error::ChainTrialError;
+pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, StepOutcome};
 pub use spec::{CalibrationName, ChainTrialSpec, DeviceOutage, StartSpec, Steering};
-pub use trial::{ChainTrial, FLIGHT_CONTROLLER_SET};
+pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET};

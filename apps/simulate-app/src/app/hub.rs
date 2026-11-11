@@ -98,6 +98,7 @@ pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::JsbsimP38g
         | FreeFlightVehicle::AviateFixedWingDirect
+        | FreeFlightVehicle::C172Mission
         | FreeFlightVehicle::Kinematic => VehicleClass::FixedWing,
     }
 }

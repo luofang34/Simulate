@@ -27,6 +27,7 @@ use crate::sky_rig::SkyFrame;
 use crate::vehicles::FreeFlightVehicle;
 use crate::world_surface::WorldSurfaceHandle;
 
+mod c172_mission;
 mod fidelity_audit;
 mod ground_contact;
 mod hud_audit;

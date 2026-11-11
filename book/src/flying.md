@@ -18,6 +18,7 @@ directly:
 | Lockheed P-38G Lightning | JSBSim, `vehicles/p38g` | Control surfaces and throttle directly; opens on its period panel with the HUD and glass dock hidden |
 | X500 quadrotor | Rigid body flown by Aviate's multirotor controller in-process | Velocity: stick for horizontal speed, throttle above or below centre to climb or descend, rudder for yaw rate |
 | Fixed-wing fly-by-wire | JSBSim C172 flown by Aviate's fixed-wing controller in-process | Bank and pitch attitude, throttle, rudder for heading |
+| C172 on a Pilotage mission | The same JSBSim C172 and Aviate controller, commanded in MAVLink by Pilotage's host core, with Navigate's navigation sets beside it on the same sensors | Nothing: it starts in the air near Zaragoza on the first shareable link's route, Pilotage arms and flies it, and the window title shows the mission phase and each navigation set's error. Restart flies it again; it cannot be rewound |
 | Kinematic | Kinematic 6-DoF model | Direct |
 
 The hangar's Raketa starts a spaceflight instead. The rocket stands on Launch

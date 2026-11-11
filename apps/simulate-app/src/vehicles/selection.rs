@@ -10,6 +10,10 @@ pub enum FreeFlightVehicle {
     AviateX500Direct,
     /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving the JSBSim C172.
     AviateFixedWingDirect,
+    /// The C172 on the vehicle's own control chain: Pilotage's host core flies the first
+    /// shareable link's route through the Aviate flight controller, Navigate's sets
+    /// navigating on the same devices.
+    C172Mission,
     /// Fast kinematic 6-DoF free-flight model.
     Kinematic,
 }
@@ -30,7 +34,8 @@ impl FreeFlightVehicle {
             Self::JsbsimP38g => Self::JsbsimC172,
             Self::AviateX500Direct => Self::JsbsimP38g,
             Self::AviateFixedWingDirect => Self::AviateX500Direct,
-            Self::Kinematic => Self::AviateFixedWingDirect,
+            Self::C172Mission => Self::AviateFixedWingDirect,
+            Self::Kinematic => Self::C172Mission,
         }
     }
 
@@ -41,7 +46,8 @@ impl FreeFlightVehicle {
             Self::JsbsimC172 => Self::JsbsimP38g,
             Self::JsbsimP38g => Self::AviateX500Direct,
             Self::AviateX500Direct => Self::AviateFixedWingDirect,
-            Self::AviateFixedWingDirect => Self::Kinematic,
+            Self::AviateFixedWingDirect => Self::C172Mission,
+            Self::C172Mission => Self::Kinematic,
             Self::Kinematic => Self::JsbsimC172,
         }
     }
@@ -60,6 +66,7 @@ impl FreeFlightVehicle {
             Self::JsbsimP38g => "Lockheed P-38G Lightning (JSBSim)",
             Self::AviateX500Direct => "X500 Quadrotor (Aviate Direct)",
             Self::AviateFixedWingDirect => "Fixed-Wing FBW (Aviate + JSBSim)",
+            Self::C172Mission => "C172 Mission (Pilotage -> Aviate)",
             Self::Kinematic => "Kinematic Free Flight",
         }
     }
