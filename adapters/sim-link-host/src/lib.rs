@@ -16,6 +16,9 @@ mod request;
 mod summary;
 mod wording;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::HostError;
 pub use request::{
     CameraGeometry, HostedRequest, StartState, UNTIL_END_S, VEHICLE_CAMERA, hosted_request,
