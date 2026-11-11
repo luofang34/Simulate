@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     ComparisonRow, ImuGradeName, RecordedTrial, SensorKind, SensorSetSpec, SetAvailability,
-    SetSelection, TrialOutcome, TrialRequest, evaluate, record_trial, replay_set,
+    SetSelection, TrialOutcome, TrialRequest, evaluate_blocking, record_trial_blocking,
+    replay_set_blocking,
 };
 
 #[cfg(test)]
@@ -68,8 +69,8 @@ fn run() -> &'static (TrialRequest, RecordedTrial, TrialOutcome) {
     static RUN: OnceLock<(TrialRequest, RecordedTrial, TrialOutcome)> = OnceLock::new();
     RUN.get_or_init(|| {
         let request = request();
-        let recorded = record_trial(&request).unwrap();
-        let outcome = evaluate(&request, &recorded).unwrap();
+        let recorded = record_trial_blocking(&request).unwrap();
+        let outcome = evaluate_blocking(&request, &recorded).unwrap();
         (request, recorded, outcome)
     })
 }
@@ -87,7 +88,7 @@ fn assert_fork_equal(set: &SensorSetSpec, sensor: SensorKind, schedule: &str) {
     let (request, recorded, _) = run();
     let mut scheduled_set = set.clone();
     scheduled_set.availability.insert(sensor, schedule.into());
-    let mut run = replay_set(request, &scheduled_set, &recorded.log).unwrap();
+    let mut run = replay_set_blocking(request, &scheduled_set, &recorded.log).unwrap();
     run.advance_to(&recorded.log, step(INTERVAL.0)).unwrap();
     let mut fork = run.fork(SetSelection {
         means: set.ablation_set().without(sensor.means()),

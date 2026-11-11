@@ -12,7 +12,7 @@ use sim_core::{SimInstant, VehicleState};
 use super::flight::Flight;
 use super::sensors::LiveSensors;
 use super::{Autopilot, ClosedLoopOutcome, PilotInput, PilotOutput};
-use crate::trial::evaluate::{SetContext, replay_set};
+use crate::trial::evaluate::{SetContext, replay_set_blocking};
 use crate::trial::onboard::trial_director;
 use crate::trial::progress::{EventKind, EventRecord, ProgressRecord, Scored};
 use crate::trial::record::{SensorLog, initial_alignment};
@@ -70,7 +70,7 @@ impl<'a> ClosedSet<'a> {
         let mut sensors = LiveSensors::new(request, means.contains(NavMeans::Celestial))?;
         sensors.start(SimInstant::START, &start)?;
         let log = empty_log(request, &start);
-        let run = replay_set(request, set, &log)?;
+        let run = replay_set_blocking(request, set, &log)?;
         Ok(Self {
             request,
             name: &set.name,

@@ -6,7 +6,7 @@ use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     Autopilot, ClosedLoopReport, EventKind, GuidanceSource, ImuGradeName, ProgressRecord,
     QualityFloor, SetReport, TerminationSpec, TrialRequest, WaypointSpec, plan_waypoints,
-    run_closed_trial, run_trial, run_trial_with_progress, trial_director,
+    run_closed_trial, run_trial_blocking, run_trial_with_progress_blocking, trial_director,
 };
 
 #[cfg(test)]
@@ -85,7 +85,7 @@ fn gnss_aided_closed_loop_flies_the_route() {
         ImuGradeName::Tactical,
         vec![requests::reference_sets().remove(0)],
     ));
-    let report = run_trial(&request).unwrap();
+    let report = run_trial_blocking(&request).unwrap();
     let set = &report.sensor_sets[0];
     log(set);
     let closed = set.closed_loop.as_ref().unwrap();
@@ -154,7 +154,7 @@ fn a_lost_navigator_declares_captures_it_truly_missed() {
         corridor_half_width_m: 100_000.0,
         ..TerminationSpec::default()
     });
-    let report = run_trial(&request).unwrap();
+    let report = run_trial_blocking(&request).unwrap();
     let set = &report.sensor_sets[0];
     log(set);
     let closed = set.closed_loop.as_ref().unwrap();
@@ -204,7 +204,7 @@ fn an_outage_lets_the_track_wander_and_gnss_pulls_it_back() {
     ));
     let outage_interval = outage.unavailable[0].clone();
     request.availability = vec![outage];
-    let report = run_trial(&request).unwrap();
+    let report = run_trial_blocking(&request).unwrap();
     let set = &report.sensor_sets[0];
     log(set);
     let closed = set.closed_loop.as_ref().unwrap();
@@ -262,7 +262,7 @@ fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
         records.push(record.clone());
         Ok(())
     };
-    let second = run_trial_with_progress(&paired, &mut sink).unwrap();
+    let second = run_trial_with_progress_blocking(&paired, &mut sink).unwrap();
     check_closed_stream(&records, &paired);
     let bytes = |set: &SetReport| serde_json::to_string(set).unwrap();
     assert!(bytes(&first.report.sensor_sets[0]) == bytes(&second.sensor_sets[0]));
