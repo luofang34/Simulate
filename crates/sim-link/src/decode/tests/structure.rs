@@ -1,5 +1,5 @@
 use super::{FULL, refusal, with, without};
-use crate::{MAX_LINK_CHARS, Parameter, Reason, decode_fragment, decode_url};
+use crate::{MAX_LINK_CHARS, Parameter, Reason, decode_fragment, decode_url, resolve_escapes};
 
 #[test]
 fn another_version_is_refused_before_anything_else_is_judged() {
@@ -158,6 +158,7 @@ fn a_refusal_points_into_the_resolved_fragment() {
     let refused = refusal(&escaped);
     assert_eq!(refused.parameter, Parameter::Mb);
     assert_eq!(refused.offset, resolved.len() - 1);
+    assert_eq!(resolve_escapes(&escaped).unwrap(), resolved);
 }
 
 #[test]

@@ -3,6 +3,9 @@
 use crate::{HeightDatum, Means, Milli, Sensor, Turn, Vehicle, decode_fragment, decode_url};
 
 const REFERENCE_LINKS: &str = include_str!("../../../fixtures/reference-v1.txt");
+/// Links in which the encoder passed the user's digits through, or printed a
+/// negative zero: valid, but not the written form.
+const OTHER_FORMS: &str = include_str!("../../../fixtures/reference-v1-other-forms.txt");
 
 fn links() -> Vec<&'static str> {
     let links: Vec<&str> = REFERENCE_LINKS
@@ -75,4 +78,36 @@ fn the_reference_links_say_what_the_encoder_was_asked() {
 
     assert_eq!(south.start.unwrap().lat_deg(), -41.5);
     assert_eq!(south.sets[0].0.len(), 5);
+}
+
+#[test]
+fn reference_links_in_other_forms_decode_to_the_value_their_written_form_gives() {
+    let links: Vec<&str> = OTHER_FORMS
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
+    let [digits, zero] = links.as_slice() else {
+        panic!("two links");
+    };
+    for (link, given, written) in [
+        (
+            digits,
+            "out=gnss:300.0-600.0&cam=800x600,90.0,45.00,1.0",
+            "out=gnss:300-600&cam=800x600,90,45,1",
+        ),
+        (zero, "h=-0.0&", "h=0.0&"),
+        (
+            zero,
+            "fly=ins.baro&out=baro:007-8.500",
+            "fly=ins.baro&out=baro:7-8.5",
+        ),
+    ] {
+        let decoded = decode_url(link).unwrap().unwrap();
+        let fragment = decoded.fragment().unwrap();
+        assert!(
+            link.contains(given) && fragment.contains(written),
+            "{link} -> {fragment}"
+        );
+        assert_eq!(decode_fragment(&fragment), Ok(decoded));
+    }
 }

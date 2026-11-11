@@ -52,6 +52,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-xil` | `crates/sim-xil` | External SITL/HITL wire protocols: MAVLink v2 HIL and Betaflight SITL |
 | `sim-pack` | `crates/sim-pack` | Binds verified vehicle packages to the simulator; calibration and performance estimation |
 | `sim-input` | `crates/sim-input` | Gamepad, joystick, and yoke mapping |
+| `sim-link` | `crates/sim-link` | The shareable simulation link: one URL fragment describing a navigation simulation, decoded and encoded with typed refusals |
 | `sim-scenery` | `crates/sim-scenery` | Elevation, imagery, and airport data |
 | `sim-render` | `crates/sim-render` | wgpu renderer and offscreen sensor apertures |
 | `sim-scenario` | `crates/sim-scenario` | Deterministic scripted scenarios and the simulation supervisor |

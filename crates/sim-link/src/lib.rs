@@ -39,7 +39,7 @@ mod fixed;
 mod link;
 mod refusal;
 
-pub use decode::{decode_fragment, decode_url};
+pub use decode::{decode_fragment, decode_url, resolve_escapes};
 pub use fixed::{Fixed, Micro, Milli, NumberFault};
 pub use link::{
     Camera, HeightDatum, MAX_LINK_CHARS, MAX_WAYPOINTS, Means, NavSet, Outage, Sensor,

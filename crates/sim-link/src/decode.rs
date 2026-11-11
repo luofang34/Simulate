@@ -46,7 +46,7 @@ pub fn decode_fragment(fragment: &str) -> Result<SimulationLink, Refusal> {
     if length > MAX_LINK_CHARS {
         return Err(too_long(length));
     }
-    let text = unescape(fragment)?;
+    let text = resolve_escapes(fragment)?;
     let pairs = pairs(&text)?;
     version(&pairs, text.len())?;
     let mut fields = BTreeMap::new();
@@ -79,10 +79,15 @@ fn too_long(length: usize) -> Refusal {
     )
 }
 
-/// Resolves percent escapes, which chat tools put in place of `;`, `,` and
-/// `:`. Every character of a link is ASCII, so the result is too and byte
-/// offsets count characters.
-fn unescape(fragment: &str) -> Result<String, Refusal> {
+/// Resolves the percent escapes of a fragment, which chat tools put in place
+/// of `;`, `,` and `:`. A [`Refusal`]'s offset counts characters of this
+/// text. Every character of a link is ASCII, so the result is too.
+///
+/// # Errors
+///
+/// Refuses a character outside ASCII and an escape that is not `%` and two
+/// hex digits of an ASCII character.
+pub fn resolve_escapes(fragment: &str) -> Result<String, Refusal> {
     let refuse = |offset: usize, text: String| {
         Site::of(Parameter::Link).refuse(offset, Reason::BadEscape { text })
     };

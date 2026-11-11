@@ -1,0 +1,2 @@
+https://luofang34.github.io/Simulate/#v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1;41.600000,-0.620000,,,Z_2_A&h=1000.0&hd=msl&t=20260615T120000Z&veh=c172&spd=55&seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.visual&out=gnss:300.0-600.0&cam=800x600,90.0,45.00,1.0&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1;41.600000,-0.620000,,,Z_2_A&h=-0.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro&out=baro:007-8.500&go=1&mb=200
