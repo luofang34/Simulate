@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use sim_chain_trial::{ChainTrial, TruthSnapshot};
 use sim_flight_chain::FcAvionics;
 
+use crate::page_map::PageMapLink;
+
 /// The chain at one instant: the truth for the world outside, the flight controller's
 /// account for the displays, and Pilotage's mission phase.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +45,7 @@ impl PageSnapshot {
 pub struct PageFeed {
     latest: Arc<Mutex<PageSnapshot>>,
     epoch_utc_s: f64,
+    map: PageMapLink,
 }
 
 impl PageFeed {
@@ -53,6 +56,7 @@ impl PageFeed {
         Self {
             latest: Arc::new(Mutex::new(first)),
             epoch_utc_s,
+            map: PageMapLink::default(),
         }
     }
 
@@ -69,6 +73,12 @@ impl PageFeed {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    /// The link to the page's own map canvas, which the app's EFB map draws on.
+    #[must_use]
+    pub const fn map(&self) -> &PageMapLink {
+        &self.map
     }
 
     /// The flight's civil time at its start, Unix seconds.

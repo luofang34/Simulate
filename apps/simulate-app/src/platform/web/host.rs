@@ -17,6 +17,8 @@ pub struct PageView {
     pub canvas: HtmlCanvasElement,
     /// The line under the canvas.
     pub line: Element,
+    /// The page's own map canvas, which shows the app's EFB map expanded.
+    pub map_canvas: Option<HtmlCanvasElement>,
 }
 
 /// Where the app is shown.
@@ -69,6 +71,14 @@ impl Host {
                 }
             }
             Self::View(view) => view.line.set_text_content(Some(title)),
+        }
+    }
+
+    /// The page's map canvas, when the app is a view inside a page that has one.
+    pub fn map_canvas(&self) -> Option<HtmlCanvasElement> {
+        match self {
+            Self::Page => None,
+            Self::View(view) => view.map_canvas.clone(),
         }
     }
 

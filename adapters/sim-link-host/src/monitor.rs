@@ -77,6 +77,8 @@ pub struct Monitor {
     traces: Vec<SetTrace>,
     truth: Vec<(f64, (f64, f64))>,
     waypoints: Vec<(String, (f64, f64))>,
+    altitudes_m: Vec<f64>,
+    sequenced: Option<(usize, bool)>,
     camera: CameraLog,
     sensors: BTreeMap<String, SensorStates>,
     fixes: BTreeMap<String, BTreeMap<String, u64>>,
@@ -114,7 +116,9 @@ impl Monitor {
     fn progress(&mut self, record: ProgressRecord) {
         match record {
             ProgressRecord::Started(started) => {
+                let altitudes_m = started.route.waypoints.iter().map(|w| w.altitude_m);
                 *self = Self {
+                    altitudes_m: altitudes_m.collect(),
                     traces: started.sets.into_iter().map(SetTrace::new).collect(),
                     waypoints: started
                         .route
@@ -144,6 +148,14 @@ impl Monitor {
             }
             ProgressRecord::Event(event) => {
                 self.sim_time_s = self.sim_time_s.max(event.t_s);
+                if let EventKind::WaypointSequenced {
+                    waypoint_index,
+                    plan_complete,
+                    ..
+                } = &event.kind
+                {
+                    self.sequenced = Some((*waypoint_index, *plan_complete));
+                }
                 self.events.push(event);
                 let over = self.events.len().saturating_sub(EVENTS_KEPT);
                 self.events.drain(..over);
@@ -167,6 +179,17 @@ impl Monitor {
     /// degrees.
     pub fn waypoints(&self) -> &[(String, (f64, f64))] {
         &self.waypoints
+    }
+
+    /// Each waypoint's height above the WGS84 ellipsoid, metres, in fly order.
+    pub fn waypoint_altitudes_m(&self) -> &[f64] {
+        &self.altitudes_m
+    }
+
+    /// The waypoint the mission host last sequenced, its index in fly order, and
+    /// whether that completed the plan; kept however many events follow.
+    pub const fn sequenced(&self) -> Option<(usize, bool)> {
+        self.sequenced
     }
 
     /// The terrain camera's latest frame, its outcomes and the fix marks.

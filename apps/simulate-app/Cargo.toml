@@ -66,15 +66,21 @@ tracing-wasm = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
+    "AddEventListenerOptions",
     "CanvasRenderingContext2d",
     "Document",
     "Element",
+    "Event",
     "EventTarget",
     "HtmlCanvasElement",
+    "HtmlCollection",
     "HtmlInputElement",
     "ImageData",
     "Location",
+    "MouseEvent",
     "NodeList",
     "Performance",
+    "PointerEvent",
+    "WheelEvent",
     "Window",
 ] }

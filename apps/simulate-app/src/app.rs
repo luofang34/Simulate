@@ -55,6 +55,9 @@ pub struct GpuReady {
     pub hud_pass: VectorScenePass,
     /// Vector pass for the `Esc` menu.
     pub menu_pass: VectorScenePass,
+    /// The surface of a page's own map canvas, when the app is a view inside a page
+    /// that has one.
+    pub page_map: Option<sim_render::CanvasPresenter>,
 }
 
 impl GpuReady {
@@ -67,6 +70,7 @@ impl GpuReady {
             renderer,
             hud_pass,
             menu_pass,
+            page_map: None,
         })
     }
 }
@@ -83,6 +87,7 @@ pub struct FlightApp {
     proxy: EventLoopProxy<AppEvent>,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
+    page_map: Option<sim_render::CanvasPresenter>,
     cockpit_rig: Option<CockpitRig>,
     menu_overlay: Option<MenuOverlay>,
     esc_menu: EscMenu,
@@ -130,6 +135,7 @@ impl FlightApp {
             proxy,
             window: None,
             renderer: None,
+            page_map: None,
             cockpit_rig: None,
             menu_overlay: None,
             esc_menu,
@@ -191,6 +197,7 @@ impl FlightApp {
             mut renderer,
             hud_pass,
             menu_pass,
+            page_map,
         } = gpu;
         let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor());
         if let Some(window) = &self.window {
@@ -201,6 +208,8 @@ impl FlightApp {
         match CockpitRig::from_renderer(&renderer, hud_pass, self.flight.world_surface().clone()) {
             Ok(mut rig) => {
                 rig.set_pixel_ratio(scale_factor);
+                rig.set_page_map_px(page_map.as_ref().map(sim_render::CanvasPresenter::size));
+                self.page_map = page_map;
                 let code = rig
                     .supervisor()
                     .effective_aerodrome(self.flight.profile())
@@ -297,7 +306,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             Ok(window) => {
                 let window = Arc::new(window);
                 self.window = Some(Arc::clone(&window));
-                platform::spawn_renderer(window, self.proxy.clone());
+                platform::spawn_renderer(window, self.proxy.clone(), &self.host);
             }
             Err(err) => self.fail(event_loop, "creating the window failed", &err),
         }

@@ -43,6 +43,7 @@ struct Drawn {
 /// The map's canvas and the picture under it.
 pub struct TrackMap {
     canvas: HtmlCanvasElement,
+    key: Option<Element>,
     context: CanvasRenderingContext2d,
     world: Option<CameraWorld>,
     picture: Option<HtmlCanvasElement>,
@@ -68,11 +69,13 @@ impl TrackMap {
             )
             .ok();
         let context = canvas.get_context("2d").ok()??.dyn_into().ok()?;
-        if let Some(key) = append(document, parent, "p", "detail") {
+        let key = append(document, parent, "p", "detail");
+        if let Some(key) = &key {
             key.set_text_content(Some(&key_words(world.is_some())));
         }
         Some(Self {
             canvas,
+            key,
             context,
             world,
             picture: None,
@@ -80,6 +83,14 @@ impl TrackMap {
             aspect: None,
             drawn: None,
         })
+    }
+
+    /// Takes the map and its key off the page, for good: the app's map shows the flight.
+    pub fn retire(&self) {
+        self.canvas.set_attribute("hidden", "").ok();
+        if let Some(key) = &self.key {
+            key.set_attribute("hidden", "").ok();
+        }
     }
 
     /// Draws `monitor` with the sets `hidden` names left out, when anything

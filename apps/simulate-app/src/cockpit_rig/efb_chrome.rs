@@ -5,7 +5,7 @@
 //! The chrome is laid out once per frame in window fractions; drawing and mouse hit
 //! testing read the same rectangles, so a click acts on exactly what is drawn.
 
-use sim_maplibre::EfbDisplayMode;
+use sim_maplibre::{EfbBasemap, EfbDisplayMode};
 use sim_render::ViewportRect;
 
 use crate::map_rig::{EfbCommand, EfbStatus};
@@ -223,10 +223,14 @@ fn compact(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
     }
 }
 
-fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
-    let [mx, my, mw, mh] = map;
-    let toolbar_y = my - 26.0;
-    let chips: [(EfbCommand, String, bool); 8] = [
+/// The tablet toolbar's chips: command, label, and whether it reads as on.
+fn tablet_chips(status: &EfbStatus) -> [(EfbCommand, String, bool); 9] {
+    let basemap = if status.satellite {
+        EfbBasemap::Chart
+    } else {
+        EfbBasemap::Satellite
+    };
+    [
         (EfbCommand::ZoomBy(-ZOOM_STEP), "-".to_owned(), false),
         (EfbCommand::ZoomBy(ZOOM_STEP), "+".to_owned(), false),
         (
@@ -249,13 +253,24 @@ fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
             on_off("DIAG", status.diagram_shown),
             status.diagram_shown,
         ),
+        (
+            EfbCommand::SetBasemap(basemap),
+            on_off("SAT", status.satellite),
+            status.satellite,
+        ),
         (EfbCommand::Recenter, "CENTER".to_owned(), !status.free_pan),
         (
             EfbCommand::SetMode(EfbDisplayMode::CompactCorner),
             "MINIMIZE".to_owned(),
             false,
         ),
-    ];
+    ]
+}
+
+fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
+    let [mx, my, mw, mh] = map;
+    let toolbar_y = my - 26.0;
+    let chips = tablet_chips(status);
     // A narrow (portrait) tablet wraps the toolbar into two rows, the second under the map.
     let gap = 4.0;
     let width_of = |per_row: usize| (mw - gap * (per_row as f32 - 1.0)) / per_row as f32;

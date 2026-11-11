@@ -213,3 +213,21 @@ fn the_map_view_projects_and_keeps_its_shape() {
     let m = view.metres_per_pixel(800.0);
     assert!((20.0..40.0).contains(&m), "{m}");
 }
+
+#[test]
+fn the_coverage_outline_is_the_unshared_edges_of_the_tiles() {
+    use std::collections::BTreeSet;
+    // An L of three tiles: 8 unit edges around it.
+    let tiles: BTreeSet<(u32, u32)> = [(10, 10), (11, 10), (10, 11)].into_iter().collect();
+    let edges = super::coverage::outline_edges(&tiles, 5);
+    assert_eq!(edges.len(), 8);
+    // The shared edge between (10, 10) and (11, 10) is not drawn.
+    let shared = super::unmercator(11.0 / 32.0, 10.0 / 32.0);
+    let shared = [shared.0, shared.1];
+    let vertical_at_shared = edges
+        .iter()
+        .filter(|[a, b]| *a == shared && (b[1] - a[1]).abs() < 1e-12)
+        .count();
+    assert_eq!(vertical_at_shared, 0);
+    assert!(super::coverage::outline_edges(&BTreeSet::new(), 5).is_empty());
+}

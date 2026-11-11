@@ -148,6 +148,21 @@ fn the_event_log_keeps_the_latest() {
 }
 
 #[test]
+fn the_last_sequenced_waypoint_outlives_the_event_log() {
+    let mut monitor = Monitor::default();
+    monitor.apply(record(STARTED));
+    assert_eq!(monitor.sequenced(), None);
+    assert_eq!(monitor.waypoint_altitudes_m(), [2000.0, 2000.0]);
+    monitor.apply(record(&waypoint(1.0, 0, "Z0")));
+    let outage = r#"{"type":"event","t_s":2.0,"set":null,"kind":"availability_start","sensor":"gnss","schedule":"s","reason":null}"#;
+    for _ in 0..EVENTS_KEPT + 3 {
+        monitor.apply(record(outage));
+    }
+    assert_eq!(monitor.last_waypoint(), None, "the log no longer holds it");
+    assert_eq!(monitor.sequenced(), Some((0, false)));
+}
+
+#[test]
 fn a_trace_reduces_to_columns() {
     let mut monitor = Monitor::default();
     for line in stream().lines() {

@@ -8,6 +8,7 @@
 //! loop runs every animation frame anyway, so a click shows within a frame.
 
 mod frame_panel;
+mod page_map;
 mod plot;
 mod track_map;
 
@@ -24,13 +25,16 @@ use web_sys::{Document, Element, HtmlInputElement};
 
 use super::section::{Section, append, write_lines};
 use frame_panel::FramePanel;
+use page_map::PageMap;
+pub use page_map::PageMapSetup;
 use plot::Plot;
 use track_map::TrackMap;
 
 /// The colours of the sets, in the run's order, for the page's dark
-/// surface; checked together for colour-blind separation.
+/// surface. None is magenta, which the map keeps for the active leg, nor the
+/// map's pale yellow true track.
 const SERIES: [&str; 8] = [
-    "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767",
+    "#3987e5", "#d95926", "#199e70", "#c98500", "#2bb5c9", "#008300", "#9085e9", "#e66767",
 ];
 /// The colour of a set past the eighth, which gets no hue of its own.
 const SERIES_OTHER: &str = "#8f98ad";
@@ -66,6 +70,7 @@ pub struct MonitorView {
     section: Section,
     plot: Plot,
     map: TrackMap,
+    page_map: Option<PageMap>,
     frame: FramePanel,
     legend: Element,
     switches: Element,
@@ -92,6 +97,7 @@ impl MonitorView {
         caveat: Option<&str>,
         (world, world_note): (Option<CameraWorld>, Option<String>),
         about: &str,
+        page_map: Option<PageMapSetup>,
     ) -> Option<Self> {
         let document = section.document().clone();
         let root = section.root().clone();
@@ -102,6 +108,7 @@ impl MonitorView {
         {
             line.set_text_content(Some(caveat));
         }
+        let page_map = page_map.and_then(|setup| PageMap::under(&document, &root, setup));
         let map = TrackMap::under(&document, &root, world)?;
         let frame = FramePanel::under(&document, &root)?;
         let switches = append(&document, &root, "div", "switches")?;
@@ -118,6 +125,7 @@ impl MonitorView {
             section,
             plot,
             map,
+            page_map,
             frame,
             legend,
             switches,
@@ -190,7 +198,7 @@ impl MonitorView {
         self.plot
             .draw(monitor, &|set| !controls.hidden.contains(set));
         self.legend_values(monitor);
-        self.map.draw(monitor, &controls.hidden);
+        self.draw_map(monitor, &controls.hidden);
         self.frame.draw(monitor);
         self.switch_states(monitor);
         let mut visual: Vec<PlanLine> = monitor
@@ -232,6 +240,18 @@ impl MonitorView {
             })
             .collect();
         write_lines(self.section.document(), &self.events, &events);
+    }
+
+    /// The app's map once it draws, the page's own drawing until then.
+    fn draw_map(&mut self, monitor: &Monitor, hidden: &BTreeSet<String>) {
+        if let Some(page_map) = self.page_map.as_mut() {
+            page_map.draw(monitor, hidden);
+            if page_map.live() {
+                self.map.retire();
+                return;
+            }
+        }
+        self.map.draw(monitor, hidden);
     }
 
     /// Builds the legend and the switches when the run's sets change.

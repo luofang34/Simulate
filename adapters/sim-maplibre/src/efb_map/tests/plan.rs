@@ -115,7 +115,7 @@ fn the_route_document_has_every_leg_and_fix_with_its_state() {
 }
 
 #[test]
-fn tracks_and_marks_carry_their_colours_and_outlines_close() {
+fn tracks_and_marks_carry_their_colours_and_outlines_are_lines() {
     let tracks = EfbTracks {
         lines: vec![
             TrackLine {
@@ -135,16 +135,20 @@ fn tracks_and_marks_carry_their_colours_and_outlines_close() {
             colour: [0x39, 0x87, 0xe5],
             filled: false,
         }],
-        outlines: vec![vec![[40.0, -74.0], [40.0, -73.0], [41.0, -73.0]]],
+        outlines: vec![vec![[40.0, -74.0], [40.0, -73.0]], vec![[41.0, -73.0]]],
     };
     let document = tracks.geojson();
     let features = document["features"].as_array().expect("features");
     assert_eq!(features.len(), 2, "a one-point track draws no line");
     assert_eq!(features[0]["properties"]["colour"], "#ffe066");
     assert_eq!(features[1]["properties"]["filled"], false);
-    let outline = &tracks.outlines_geojson()["features"][0]["geometry"]["coordinates"];
-    assert_eq!(outline.as_array().map(Vec::len), Some(4));
-    assert_eq!(outline[0], outline[3]);
+    let outlines = tracks.outlines_geojson();
+    let lines = outlines["features"].as_array().expect("features");
+    assert_eq!(lines.len(), 1, "a one-point outline draws nothing");
+    assert_eq!(
+        lines[0]["geometry"]["coordinates"][1][0].as_f64(),
+        Some(-73.0)
+    );
 }
 
 /// An EFB map over the sample catalog.

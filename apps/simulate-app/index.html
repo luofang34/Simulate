@@ -41,6 +41,19 @@
       /* The flight monitor: its plot, the sets' legend, the means' switches and the pace. */
       .plot { display: block; width: 100%; height: 260px; margin-top: 1rem; }
       .world-view { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; margin-top: 1rem; border-radius: 4px; background: #0b0e17; }
+      /* The page's map: the app's EFB map on its own canvas, with fix labels, buttons and the picked fix's card laid over it. */
+      .page-map-frame { position: relative; margin-top: 1rem; overflow: hidden; border-radius: 4px; }
+      .page-map { display: block; width: 100%; height: auto; aspect-ratio: 1 / 0.62; background: #0b0e17; touch-action: none; cursor: grab; }
+      .page-map:active { cursor: grabbing; }
+      .page-map-labels { position: absolute; inset: 0; pointer-events: none; }
+      .fix-label { position: absolute; transform: translate(8px, -130%); font: 600 12px/1 system-ui, sans-serif; color: #ffffff; text-shadow: 0 0 3px #05070b, 0 0 3px #05070b; white-space: nowrap; }
+      .fix-label.active { color: #ff40ff; }
+      .fix-label.flown { color: #9aa1b2; }
+      .page-map-card { position: absolute; transform: translate(-50%, 14px); min-width: 11rem; padding: 0.5rem 0.7rem; border: 1px solid #2b3245; border-radius: 6px; background: rgba(11, 14, 23, 0.94); font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; pointer-events: none; }
+      .page-map-card .ident { font-weight: 600; color: #f2f4f8; }
+      .page-map-buttons { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; max-width: calc(100% - 1rem); }
+      .section .page-map-buttons button { margin: 0; padding: 0.3rem 0.6rem; min-width: 2.2rem; border-color: #2b3245; background: rgba(11, 14, 23, 0.85); font-size: 13px; }
+      .section .page-map-buttons button:disabled { opacity: 0.4; cursor: default; }
       .track-map { display: block; width: 100%; height: auto; margin-top: 1rem; border-radius: 4px; }
       .frame-panel { display: flex; flex-wrap: wrap; gap: 1rem 1.2rem; margin-top: 1rem; align-items: flex-start; }
       .frame-panel > div { flex: 1 1 14rem; min-width: 0; }

@@ -54,7 +54,7 @@ pub struct EfbTracks {
     pub rings: Vec<SigmaRing>,
     /// Marks at points.
     pub marks: Vec<PointMark>,
-    /// Closed outlines, each `[lat, lon]` vertices in order, degrees.
+    /// Outlines of areas, as lines of `[lat, lon]` vertices in order, degrees.
     pub outlines: Vec<Vec<[f64; 2]>>,
 }
 
@@ -95,18 +95,15 @@ impl EfbTracks {
         json!({ "type": "FeatureCollection", "features": lines.chain(marks).collect::<Vec<_>>() })
     }
 
-    /// The outlines as GeoJSON closed lines.
+    /// The outlines as GeoJSON lines.
     #[must_use]
     pub fn outlines_geojson(&self) -> Value {
         let features: Vec<Value> = self
             .outlines
             .iter()
-            .filter(|outline| outline.len() >= 3)
+            .filter(|outline| outline.len() >= 2)
             .map(|outline| {
-                let mut coordinates: Vec<[f64; 2]> = outline.iter().copied().map(lon_lat).collect();
-                if let Some(first) = coordinates.first().copied() {
-                    coordinates.push(first);
-                }
+                let coordinates: Vec<[f64; 2]> = outline.iter().copied().map(lon_lat).collect();
                 json!({
                     "type": "Feature",
                     "properties": {},

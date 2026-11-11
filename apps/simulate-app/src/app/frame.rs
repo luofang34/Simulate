@@ -174,6 +174,9 @@ impl FlightApp {
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
         let environment = sky.environment;
+        if let (Some(link), Some(rig)) = (self.flight.page_map(), self.cockpit_rig.as_mut()) {
+            rig.take_page_map(link);
+        }
         let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
             (Some(renderer), Some(rig)) => match rig.prepare_frame(
                 renderer.queue(),
@@ -235,7 +238,15 @@ impl FlightApp {
         );
         match renderer.render_composite(globe, &quads) {
             Ok(FrameOutcome::Presented | FrameOutcome::Skipped) => {}
-            Err(err) => self.fail(event_loop, "rendering failed", &err),
+            Err(err) => return self.fail(event_loop, "rendering failed", &err),
+        }
+        if let (Some(presenter), Some(rig), Some(link)) = (
+            self.page_map.as_mut(),
+            self.cockpit_rig.as_mut(),
+            self.flight.page_map(),
+        ) && let Err(err) = rig.present_page_map(presenter, renderer.queue(), link)
+        {
+            tracing::warn!(error = %err, "the page map was not drawn");
         }
     }
 }

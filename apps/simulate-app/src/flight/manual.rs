@@ -154,6 +154,12 @@ impl Flight {
         self.page.is_some()
     }
 
+    /// The link to the page's own map canvas, when this flight shows a page's.
+    #[must_use]
+    pub fn page_map(&self) -> Option<&crate::page_map::PageMapLink> {
+        self.page.as_ref().map(crate::vehicles::PageFeed::map)
+    }
+
     /// Whether the onboard instruments have a source to draw. A page's flight draws its
     /// flight controller's own account, which the C172 mission's displays read; nothing
     /// else in a page has an onboard source, and the app's sensors over the page's truth

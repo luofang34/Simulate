@@ -122,3 +122,5 @@ fn the_hub_globe_centres_on_the_selection_and_picks_it_back() -> Result<(), AppS
     gpu.check_device()?;
     Ok(())
 }
+
+mod page_map;
