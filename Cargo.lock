@@ -5141,6 +5141,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-navdata"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "image",
+ "js-sys",
+ "navigate-data",
+ "pollster 0.4.0",
+ "thiserror 2.0.21",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "sim-navigate"
 version = "0.1.0"
 dependencies = [

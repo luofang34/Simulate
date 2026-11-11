@@ -63,6 +63,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-indicate` | `adapters/sim-indicate` | Indicate instruments, PFD/HSI, and HUD |
 | `sim-link-host` | `adapters/sim-link-host` | Hosts a simulation link: maps it to the trial request, summarises the plan with the Sun along the route, words it for a page or a terminal |
 | `sim-maplibre` | `adapters/sim-maplibre` | `maplibre-rs` out-the-window scene and instrument maps |
+| `sim-navdata` | `adapters/sim-navdata` | Host side of Navigate's data ports: tile sources, persistent tile cache, package plan and budget, prefetch with progress, sealing through Navigate's `prepare`; browser fetch and OPFS bindings |
 | `sim-navigate` | `adapters/sim-navigate` | Navigate visual navigation and fusion |
 | `sim-pilotage` | `adapters/sim-pilotage` | Pilotage vehicle and camera bridge |
 | `ironbird` | `apps/ironbird` | Headless XIL, calibration, and design-estimation runner |

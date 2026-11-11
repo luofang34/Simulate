@@ -1,0 +1,39 @@
+[package]
+name = "sim-navdata"
+description = "The host side of Navigate's data ports: tile sources, a persistent tile cache, the plan and budget of a map package, prefetch with progress, and sealing through Navigate's own prepare; with browser fetch and OPFS bindings"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+futures-util = { workspace = true }
+image = { workspace = true }
+navigate-data = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true, features = [
+    "Blob",
+    "DomException",
+    "File",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "FileSystemGetDirectoryOptions",
+    "FileSystemGetFileOptions",
+    "FileSystemWritableFileStream",
+    "Navigator",
+    "Response",
+    "StorageEstimate",
+    "StorageManager",
+    "Window",
+    "WritableStream",
+] }
+
+[dev-dependencies]
+pollster = { workspace = true }

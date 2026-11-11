@@ -5,6 +5,7 @@ members = [
     "adapters/sim-indicate",
     "adapters/sim-link-host",
     "adapters/sim-maplibre",
+    "adapters/sim-navdata",
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
     "apps/ironbird",
@@ -59,6 +60,7 @@ sim-link = { path = "crates/sim-link" }
 sim-link-host = { path = "adapters/sim-link-host" }
 sim-maplibre = { path = "adapters/sim-maplibre" }
 sim-mission = { path = "crates/sim-mission" }
+sim-navdata = { path = "adapters/sim-navdata" }
 sim-navigate = { path = "adapters/sim-navigate" }
 sim-orbital = { path = "crates/sim-orbital" }
 sim-pack = { path = "crates/sim-pack" }
@@ -127,10 +129,12 @@ async-trait = "0.1"
 bytemuck = "1.25"
 cgmath = "0.18"
 console_error_panic_hook = "0.1.7"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 gilrs = "0.11.2"
 glam = "0.33"
 hifitime = "4.3.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+js-sys = "0.3.106"
 libm = "0.2"
 memory-stats = "1.2"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
@@ -147,6 +151,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-wasm = "0.2.1"
+wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.79"
 web-sys = "0.3.106"
 web-time = "1"
