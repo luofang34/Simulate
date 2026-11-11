@@ -1,31 +1,31 @@
 # Getting Started
 
-## Check out the sibling repositories
+## Sibling repositories
 
-The workspace depends on several sibling repositories by relative path
-(`../Aviate`, `../jsbsim-rs`, and so on). `Cargo.toml` lists them, each with
-its git URL, pinned `rev`, and `path`, under
-`[workspace.metadata.external_sources]`. Entries without a `path` are git
-dependencies that Cargo fetches itself.
+The workspace takes crates from sibling repositories (Navigate, Indicate,
+Aviate, and so on) as git dependencies, each pinned to a full commit `rev` in
+`Cargo.toml`. Cargo fetches them on the first build, so a plain clone builds
+with nothing checked out beside it. `scripts/check-sibling-sources.sh` keeps
+every entry for one repository on one `rev` and requires `Cargo.lock` to build
+each repository from that one revision; to move a sibling, change its `rev` on
+every line that names the repository and run any `cargo` command.
 
-Run this from the repository root to clone every path dependency at its pinned
-revision:
+To build against local checkouts while changing a sibling, run
 
 ```sh
-python3 - <<'PY'
-import subprocess, tomllib
-with open("Cargo.toml", "rb") as f:
-    sources = tomllib.load(f)["workspace"]["metadata"]["external_sources"]
-for name, src in sources.items():
-    if "path" in src:
-        subprocess.run(["git", "clone", src["git"], src["path"]], check=True)
-        subprocess.run(["git", "-C", src["path"], "checkout", src["rev"]], check=True)
-PY
+scripts/use-local-siblings.sh Navigate Indicate=~/Indicate-analog   # or --all
 ```
 
-Each `path` is relative to the checkout, so a `git worktree` has to live in the
-same directory as the main checkout to find the siblings. A worktree nested
-inside the checkout will not resolve them.
+It writes a git-ignored Cargo config in this checkout (.cargo/config.toml, so
+each worktree chooses for itself) that patches every crate taken from those
+repositories to the directory given as `<Repo>=<dir>` (any checkout or
+worktree of that repository), else to `../<Repo>`, or to `$SIBLINGS_DIR/<Repo>`
+when `SIBLINGS_DIR` is set. It refuses a directory that does not track those
+crates and prints where each repository now builds from. The patch rewrites
+`Cargo.lock`, so `scripts/check-sibling-sources.sh` and every `--locked` CI
+build fail until `scripts/use-local-siblings.sh --none` removes the override
+and restores the pinned sources. To land a cross-repository change, merge the
+sibling first, move the `rev` to that commit, then run `--none`.
 
 The toolchain comes from `rust-toolchain.toml`. `rustup` installs it on the
 first `cargo` command.

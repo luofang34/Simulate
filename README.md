@@ -15,10 +15,11 @@ bit for bit.
 ## Prerequisites
 
 - The Rust toolchain named in `rust-toolchain.toml`.
-- The sibling repositories listed under `[workspace.metadata.external_sources]`
-  in `Cargo.toml`. The workspace depends on them by relative path, so each one
-  must be checked out next to this repository at its pinned `rev`.
-  [Getting Started](book/src/getting-started.md) has a script that clones them.
+- Network access to GitHub on the first build: the sibling repositories
+  (Navigate, Indicate, Aviate, and the others in `Cargo.toml`) are git
+  dependencies pinned to a commit `rev`, and Cargo fetches them itself.
+  [Getting Started](book/src/getting-started.md) covers building against local
+  checkouts of them instead.
 - For the browser build: [trunk](https://trunkrs.dev) and the
   `wasm32-unknown-unknown` target.
 
