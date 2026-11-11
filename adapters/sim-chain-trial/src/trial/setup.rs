@@ -4,13 +4,13 @@
 
 use glam::DVec3;
 use sha2::{Digest, Sha256};
-use sim_atmosphere::{GeoidStandardAtmosphere, geometric_to_geopotential_m, isa_at_geopotential};
+use sim_atmosphere::{StandardAtmosphere, geometric_to_geopotential_m, isa_at_geopotential};
 use sim_core::VehicleState;
 use sim_flight_chain::{
     C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
     c172_pilotage_airframe, c172_sensor_suite_with,
 };
-use sim_geo::{Geodetic, UtcTime, egm96_undulation_m};
+use sim_geo::{Geodetic, UtcTime};
 use sim_navigate::InitialAlignment;
 use sim_navigate::trial::{ImuGradeName, TrialRequest, parse_utc};
 
@@ -21,6 +21,9 @@ use crate::{ChainTrialError, ChainTrialSpec, Steering};
 const ISA_RHO0_KG_M3: f64 = 1.225;
 /// Seconds of a mean Julian year, for the geomagnetic date.
 const SECONDS_PER_YEAR: f64 = 31_557_600.0;
+/// When the crew hands the plan to Pilotage's host after the flight
+/// controller powers up, seconds.
+const PLAN_LOADED_AT_S: f64 = 2.0;
 /// Climb rate the mission may ask for toward a higher fix, m/s.
 const CLIMB_RATE_M_S: f64 = 2.0;
 
@@ -29,7 +32,6 @@ pub(super) struct Resolved {
     pub(super) request: TrialRequest,
     pub(super) utc: UtcTime,
     pub(super) start: Geodetic,
-    pub(super) undulation_m: f64,
     pub(super) digest: String,
 }
 
@@ -43,7 +45,6 @@ pub(super) fn resolve(spec: &ChainTrialSpec) -> Result<Resolved, ChainTrialError
     let start = Geodetic::from_degrees(s.lat_deg, s.lon_deg, s.height_m);
     let bytes = serde_json_digest_input(spec)?;
     Ok(Resolved {
-        undulation_m: egm96_undulation_m(start.lat_rad, start.lon_rad),
         digest: Sha256::digest(&bytes)
             .iter()
             .map(|byte| format!("{byte:02x}"))
@@ -65,11 +66,7 @@ pub(super) fn chain(
     spec: &ChainTrialSpec,
     resolved: &Resolved,
 ) -> Result<C172Chain, ChainTrialError> {
-    let true_m_s = true_airspeed_m_s(
-        spec.start.indicated_m_s,
-        &resolved.start,
-        resolved.undulation_m,
-    )?;
+    let true_m_s = true_airspeed_m_s(spec.start.indicated_m_s, &resolved.start)?;
     let decimal_year = 1970.0 + resolved.utc.unix_seconds() / SECONDS_PER_YEAR;
     let seed = resolved.request.seeds.imu;
     let setup = C172Setup {
@@ -83,10 +80,9 @@ pub(super) fn chain(
         seed,
     };
     let suite = c172_sensor_suite_with(decimal_year, seed, spec.calibration.calibration());
-    // The air the devices sense is the standard atmosphere entered at mean
-    // sea level, so the altimeter's pressure altitude is a height above the
-    // geoid, as it is in flight.
-    let air = SharedAir::new(GeoidStandardAtmosphere::default());
+    // The trial's air: the standard atmosphere entered at the ellipsoidal
+    // height, the same air the navigation trial's devices and JSBSim fly in.
+    let air = SharedAir::new(StandardAtmosphere);
     let board = c172_board(&setup, &suite, air)?;
     let route = ChainRoute {
         fixes: resolved
@@ -108,6 +104,7 @@ pub(super) fn chain(
         },
         class: VehicleClass::FixedWing,
         airframe: c172_pilotage_airframe()?,
+        plan_loaded_at_s: PLAN_LOADED_AT_S,
         utc: resolved.utc,
     };
     Ok(C172Chain::new(board, &route)?)
@@ -115,12 +112,8 @@ pub(super) fn chain(
 
 /// The true airspeed that reads `indicated_m_s` at `start` in the standard
 /// atmosphere, the air the aeroplane starts in.
-fn true_airspeed_m_s(
-    indicated_m_s: f64,
-    start: &Geodetic,
-    undulation_m: f64,
-) -> Result<f64, ChainTrialError> {
-    let geopotential = geometric_to_geopotential_m(start.height_m - undulation_m);
+fn true_airspeed_m_s(indicated_m_s: f64, start: &Geodetic) -> Result<f64, ChainTrialError> {
+    let geopotential = geometric_to_geopotential_m(start.height_m);
     let air = isa_at_geopotential(geopotential).map_err(|error| ChainTrialError::Invalid {
         detail: format!("no standard air at the start: {error}"),
     })?;

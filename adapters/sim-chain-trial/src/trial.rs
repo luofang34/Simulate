@@ -53,7 +53,7 @@ impl ChainTrial {
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
         let alignment = setup::alignment(&resolved.request, &start);
-        let nav = NavLog::new(start, alignment, resolved.undulation_m);
+        let nav = NavLog::new(start, alignment);
         let request = &resolved.request;
         let sets = request
             .sensor_sets

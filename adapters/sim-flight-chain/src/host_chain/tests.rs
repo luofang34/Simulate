@@ -32,6 +32,9 @@ const INDICATED_M_S: f64 = 55.0;
 const TRUE_M_S: f64 = 60.7;
 /// 2026-06-15 12:04 UTC.
 const START_UNIX_S: f64 = 1_781_525_040.0;
+/// When the crew hands the plan to the host after the flight controller
+/// powers up, seconds.
+const PLAN_LOADED_AT_S: f64 = 2.0;
 
 /// Height above the ellipsoid of the route at `lat_deg`, `lon_deg`: the link
 /// states mean sea level, and the chain flies ellipsoidal heights.
@@ -59,6 +62,7 @@ fn route() -> ChainRoute {
         ownship: OwnshipFeed::FlightController,
         class: VehicleClass::FixedWing,
         airframe: crate::c172_pilotage_airframe().unwrap(),
+        plan_loaded_at_s: PLAN_LOADED_AT_S,
         utc: UtcTime::from_unix_seconds(START_UNIX_S),
     }
 }
@@ -105,6 +109,15 @@ struct Run {
     unknown_ids: u64,
     events: Vec<(f64, String)>,
     last_state: Option<MissionState>,
+    /// The link's bytes, one line per frame or datagram, when captured.
+    capture: Option<Vec<String>>,
+}
+
+/// How much of a run the byte capture keeps, seconds.
+const CAPTURE_S: f64 = 60.0;
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn seconds(at: SimInstant) -> f64 {
@@ -121,7 +134,10 @@ fn fly(
     chain: &mut HostChain<C172Airframe, FixedWingController, FixedWingMixer>,
     seconds_to_fly: f64,
 ) -> Run {
-    let mut run = Run::default();
+    let mut run = Run {
+        capture: std::env::var_os("CHAIN_LINK_CAPTURE").map(|_| Vec::new()),
+        ..Run::default()
+    };
     let mut parsed = Vec::new();
     for _ in 0..(seconds_to_fly * C172_RATE_HZ as f64) as u64 {
         let frames_before = chain.counters().frames_to_fc;
@@ -139,6 +155,17 @@ fn fly(
         }
         if line.velocity_control.is_none() && chain.flight_mode() == ControlMode::VelocityControl {
             line.velocity_control = Some(t);
+        }
+        if let Some(capture) = run.capture.as_mut()
+            && t <= CAPTURE_S
+        {
+            let ns = (t * 1e9).round() as u64;
+            for frame in chain.last_uplink() {
+                capture.push(format!("{ns} to_fc {}", hex(frame)));
+            }
+            if !chain.last_downlink().is_empty() {
+                capture.push(format!("{ns} from_fc {}", hex(chain.last_downlink())));
+            }
         }
         parsed.clear();
         let stats = parse_datagram(chain.last_downlink(), &mut parsed);
@@ -164,7 +191,7 @@ fn fly(
 
 /// Ninety simulated seconds from the link's start.
 #[test]
-#[ignore = "Aviate's board reports itself a quadrotor, so Pilotage's fixed-wing adapter refuses the arm"]
+#[ignore = "Pilotage's host core loses the motion lease while it waits a heartbeat for the arm"]
 fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -173,7 +200,18 @@ fn the_host_core_arms_the_c172_and_sets_out_on_the_route() {
         .ok();
     let mut chain = chain(1);
     let run = fly(&mut chain, 90.0);
-    tracing::info!(?run, counters = ?chain.counters(), status = ?chain.status());
+    if let (Some(path), Some(lines)) = (std::env::var_os("CHAIN_LINK_CAPTURE"), &run.capture) {
+        std::fs::write(path, lines.join("\n")).unwrap();
+    }
+    tracing::info!(
+        timeline = ?run.timeline,
+        messages = ?run.messages,
+        crc_failures = run.crc_failures,
+        unknown_ids = run.unknown_ids,
+        events = ?run.events,
+        counters = ?chain.counters(),
+        status = ?chain.status()
+    );
     assert_eq!(run.crc_failures, 0);
     assert!(
         run.timeline.arm_confirmed.is_some(),

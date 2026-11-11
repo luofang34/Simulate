@@ -2,27 +2,16 @@
 //!
 //! The flight controller takes the suite's samples cycle by cycle; the
 //! navigators take the same samples on their own step: the inertial
-//! increments regrouped at the step boundaries, every receiver fix, and the
-//! static port's pressure read as an altitude. Nothing here reads truth
-//! except the truth record kept for scoring.
+//! increments regrouped at the step boundaries, every receiver fix, and
+//! every air-data sample, whose pressure each navigator reads as an
+//! altitude itself. Nothing here reads truth except the truth record kept
+//! for scoring.
 
 use glam::DVec3;
-use navigate_contract::{GeodeticPosition, NedVelocity, SymmetricCov3};
 use sim_core::{SimInstant, TickSpan, VehicleState};
-use sim_devices::{DeviceSamples, GnssReading, InertialIncrement};
+use sim_devices::{AirDataSample, DeviceSamples, GnssReading, InertialIncrement};
 use sim_navigate::AlignmentFix;
-use sim_navigate::trial::{BaroReading, GnssFix, Logged, SensorLog, step_span};
-
-/// Sea-level standard temperature, kelvin.
-const ISA_T0_K: f64 = 288.15;
-/// Tropospheric lapse rate, kelvin per geopotential metre.
-const ISA_LAPSE_K_M: f64 = 0.0065;
-/// Sea-level standard pressure, pascals.
-const ISA_P0_PA: f64 = 101_325.0;
-/// `R·L/g0` of the standard troposphere.
-const ISA_EXPONENT: f64 = 0.190_263;
-/// Earth radius of the geopotential definition, metres.
-const GEOPOTENTIAL_RADIUS_M: f64 = 6_356_766.0;
+use sim_navigate::trial::{Logged, SensorLog, step_span};
 
 /// The log the sets replay, grown cycle by cycle, with truth at each step.
 pub(crate) struct NavLog {
@@ -31,15 +20,13 @@ pub(crate) struct NavLog {
     pub(crate) truth: Vec<VehicleState>,
     step_ticks: u128,
     pending_imu: InertialIncrement,
-    pending_gnss: Vec<Logged<GnssFix>>,
-    pending_baro: Vec<Logged<BaroReading>>,
-    /// Geoid height the altimeter adds to its pressure altitude, metres.
-    undulation_m: f64,
+    pending_gnss: Vec<Logged<GnssReading>>,
+    pending_baro: Vec<Logged<AirDataSample>>,
 }
 
 impl NavLog {
     /// An empty log starting at `start`, the sets aligned by `alignment`.
-    pub(crate) fn new(start: VehicleState, alignment: AlignmentFix, undulation_m: f64) -> Self {
+    pub(crate) fn new(start: VehicleState, alignment: AlignmentFix) -> Self {
         Self {
             log: SensorLog {
                 instants: vec![SimInstant::START],
@@ -56,7 +43,6 @@ impl NavLog {
             pending_imu: empty_increment(),
             pending_gnss: Vec::new(),
             pending_baro: Vec::new(),
-            undulation_m,
         }
     }
 
@@ -95,18 +81,11 @@ impl NavLog {
         // A reading delivered at the cycle's end reaches the sets at the
         // first step at or after it.
         let due = to.ticks_u128().div_ceil(self.step_ticks.max(1)) as usize;
-        if let Some(reading) = samples.gnss.as_ref() {
-            self.pending_gnss.push(Logged {
-                step: due,
-                reading: gnss_fix(reading),
-            });
+        if let Some(reading) = samples.gnss {
+            self.pending_gnss.push(Logged { step: due, reading });
         }
-        if let Some(air) = samples.air_data.as_ref() {
-            let altitude_m = pressure_altitude_m(air.static_pressure_pa) + self.undulation_m;
-            self.pending_baro.push(Logged {
-                step: due,
-                reading: BaroReading { altitude_m },
-            });
+        if let Some(reading) = samples.air_data {
+            self.pending_baro.push(Logged { step: due, reading });
         }
         let logged = self.last_step();
         move_due(&mut self.pending_gnss, &mut self.log.gnss, logged);
@@ -158,30 +137,4 @@ fn interpolate(before: &VehicleState, after: &VehicleState, fraction: f64) -> Ve
 fn move_due<T>(pending: &mut Vec<Logged<T>>, log: &mut Vec<Logged<T>>, logged: usize) {
     let ready = pending.iter().take_while(|r| r.step <= logged).count();
     log.extend(pending.drain(..ready));
-}
-
-/// A receiver fix as the navigators take it, with the receiver's own
-/// stated accuracy.
-fn gnss_fix(reading: &GnssReading) -> GnssFix {
-    let p = reading.position_sigma_ned_m * reading.position_sigma_ned_m;
-    let v = reading.velocity_sigma_m_s * reading.velocity_sigma_m_s;
-    let velocity = reading.velocity_ned_m_s;
-    GnssFix {
-        position: GeodeticPosition::new(
-            reading.position.lat_rad,
-            reading.position.lon_rad,
-            reading.position.height_m,
-        ),
-        position_cov: SymmetricCov3::from_diagonal(p.x, p.y, p.z),
-        velocity: NedVelocity::new(velocity.x, velocity.y, velocity.z),
-        velocity_cov: SymmetricCov3::from_diagonal(v, v, v),
-    }
-}
-
-/// The geometric height of `pressure_pa` in the standard troposphere: the
-/// altimeter's own reading, made on board without knowing the weather.
-fn pressure_altitude_m(pressure_pa: f64) -> f64 {
-    let geopotential =
-        ISA_T0_K / ISA_LAPSE_K_M * (1.0 - (pressure_pa / ISA_P0_PA).powf(ISA_EXPONENT));
-    GEOPOTENTIAL_RADIUS_M * geopotential / (GEOPOTENTIAL_RADIUS_M - geopotential)
 }

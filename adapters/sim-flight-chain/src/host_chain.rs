@@ -48,6 +48,10 @@ pub struct ChainRoute {
     /// What the flight controller flies, as Pilotage's adapter bounds its
     /// demands.
     pub airframe: AviateAirframe,
+    /// Route time at which the plan is loaded into the host, seconds: when
+    /// the crew hands the mission over after powering the flight
+    /// controller. The host flies nothing before it.
+    pub plan_loaded_at_s: f64,
     /// The civil time the run starts at, which fixes the magnetic field.
     pub utc: UtcTime,
 }
@@ -74,10 +78,15 @@ where
     board: HostedBoard<A, C, M>,
     /// On the heap: the core carries the mission engine by value.
     core: Box<HostCore>,
-    record: WaypointPlanRecord,
+    record: Option<WaypointPlanRecord>,
+    /// The plan, until it is loaded at `load_at`.
+    plan: Option<WaypointPlan>,
+    load_at: MonotonicNanos,
     next_wake: MonotonicNanos,
     transmit: Vec<u8>,
     transmit_len: usize,
+    /// The frames the host sent toward the controller in the last cycle.
+    sent: Vec<Vec<u8>>,
     events: Vec<(SimInstant, HostEvent)>,
     counters: LinkCounters,
 }
@@ -96,15 +105,17 @@ where
         let config = host_config(&board, route)?;
         // The core counts time from this instant and reads no clock; any
         // instant serves, and the run depends on none.
-        let mut core = HostCore::new(config, web_time::Instant::now()).map_err(host)?;
-        let record = core.load_mission(waypoint_plan(route)).map_err(host)?;
+        let core = HostCore::new(config, web_time::Instant::now()).map_err(host)?;
         Ok(Self {
             board,
             core: Box::new(core),
-            record,
+            record: None,
+            plan: Some(waypoint_plan(route)),
+            load_at: nanos_of(route.plan_loaded_at_s),
             next_wake: MonotonicNanos::from_nanos(0),
             transmit: vec![0; TRANSMIT_RING_BYTES],
             transmit_len: 0,
+            sent: Vec::new(),
             events: Vec::new(),
             counters: LinkCounters::default(),
         })
@@ -116,6 +127,16 @@ where
     /// in the cycle reaches the host at the cycle's end.
     pub fn advance_tick(&mut self) -> Result<(), ChainError> {
         let now = self.host_now();
+        if now >= self.load_at
+            && let Some(plan) = self.plan.take()
+        {
+            let record = self
+                .core
+                .load_mission(plan)
+                .map_err(|source| ChainError::Host(Box::new(source)))?;
+            self.record = Some(record);
+            self.next_wake = now;
+        }
         if now >= self.next_wake {
             self.next_wake = self
                 .core
@@ -126,8 +147,9 @@ where
             self.events
                 .extend(self.core.drain_events().into_iter().map(|e| (at, e)));
         }
-        for frame in self.core.drain_uplink() {
-            let accepted = self.board.uplink(&frame);
+        self.sent = self.core.drain_uplink();
+        for frame in &self.sent {
+            let accepted = self.board.uplink(frame);
             let refused = frame.len().saturating_sub(accepted) as u64;
             self.counters.frames_to_fc = self.counters.frames_to_fc.wrapping_add(1);
             self.counters.refused_bytes_to_fc =
@@ -171,9 +193,9 @@ where
         self.core.status()
     }
 
-    /// The record of the loaded plan: its waypoints and identity.
-    pub const fn record(&self) -> &WaypointPlanRecord {
-        &self.record
+    /// The record of the plan once it is loaded: its waypoints and identity.
+    pub const fn record(&self) -> Option<&WaypointPlanRecord> {
+        self.record.as_ref()
     }
 
     /// What crossed the link so far.
@@ -184,6 +206,12 @@ where
     /// What the flight controller transmitted in the last cycle.
     pub fn last_downlink(&self) -> &[u8] {
         self.transmit.get(..self.transmit_len).unwrap_or_default()
+    }
+
+    /// The frames the host sent toward the flight controller in the last
+    /// cycle, in send order.
+    pub fn last_uplink(&self) -> &[Vec<u8>] {
+        &self.sent
     }
 
     /// The board and its airframe.
@@ -263,6 +291,10 @@ where
         mission,
         magnetic_epoch_unix_s: route.utc.unix_seconds().round() as i64,
     })
+}
+
+fn nanos_of(seconds: f64) -> MonotonicNanos {
+    MonotonicNanos::from_nanos((seconds.max(0.0) * NANOS_PER_SECOND).round() as u64)
 }
 
 fn waypoint_plan(route: &ChainRoute) -> WaypointPlan {
