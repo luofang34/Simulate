@@ -7,6 +7,7 @@
 //! words, and each set's running tally of terrain-camera fixes. It derives
 //! nothing about the flight that the feed does not say.
 
+mod camera;
 mod pacer;
 mod replay;
 mod trace;
@@ -20,6 +21,7 @@ use std::collections::BTreeMap;
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
 
+pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
 pub use pacer::{
     Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
     StepState, run_slice,
@@ -56,6 +58,8 @@ pub enum MonitorFeed {
         /// The tally so far.
         fixes: BTreeMap<String, u64>,
     },
+    /// A terrain-camera frame the flight delivered.
+    Frame(CameraShot),
 }
 
 /// A sensor a visitor can switch, because some set of the run uses it.
@@ -71,6 +75,9 @@ pub struct MeansSwitch {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Monitor {
     traces: Vec<SetTrace>,
+    truth: Vec<(f64, (f64, f64))>,
+    waypoints: Vec<(String, (f64, f64))>,
+    camera: CameraLog,
     sensors: BTreeMap<String, SensorStates>,
     fixes: BTreeMap<String, BTreeMap<String, u64>>,
     phase: Option<String>,
@@ -93,8 +100,14 @@ impl Monitor {
                 self.mission.drain(..over);
             }
             MonitorFeed::TerrainFixes { set, fixes } => {
+                let index = self.traces.iter().position(|t| t.name == set);
+                if let Some(index) = index {
+                    self.camera
+                        .tallied((&set, index), self.fixes.get(&set), &fixes);
+                }
                 self.fixes.insert(set, fixes);
             }
+            MonitorFeed::Frame(shot) => self.camera.deliver(shot),
         }
     }
 
@@ -103,6 +116,12 @@ impl Monitor {
             ProgressRecord::Started(started) => {
                 *self = Self {
                     traces: started.sets.into_iter().map(SetTrace::new).collect(),
+                    waypoints: started
+                        .route
+                        .waypoints
+                        .into_iter()
+                        .map(|w| (w.ident, (w.lat_deg, w.lon_deg)))
+                        .collect(),
                     planned_duration_s: Some(started.route.planned_duration_s),
                     ..Self::default()
                 };
@@ -110,11 +129,16 @@ impl Monitor {
             ProgressRecord::Sample(sample) => {
                 self.sim_time_s = self.sim_time_s.max(sample.t_s);
                 self.sensors.insert(sample.set.clone(), sample.sensors);
+                let truth = (sample.truth.lat_deg, sample.truth.lon_deg);
+                if self.truth.last().is_none_or(|(t_s, _)| sample.t_s > *t_s) {
+                    self.truth.push((sample.t_s, truth));
+                }
                 if let Some(trace) = self.traces.iter_mut().find(|t| t.name == sample.set) {
                     trace.push(TracePoint {
                         t_s: sample.t_s,
                         horizontal_error_m: sample.horizontal_error_m,
                         sigma_horizontal_m: sample.sigma_horizontal_m,
+                        estimate_deg: (sample.estimate.lat_deg, sample.estimate.lon_deg),
                     });
                 }
             }
@@ -131,6 +155,23 @@ impl Monitor {
     /// Every set's trace, in the run's order.
     pub fn traces(&self) -> &[SetTrace] {
         &self.traces
+    }
+
+    /// TRUTH: the simulator's latitude and longitude over route time,
+    /// degrees, one point per sampled instant.
+    pub fn truth(&self) -> &[(f64, (f64, f64))] {
+        &self.truth
+    }
+
+    /// The route's waypoints in fly order, latitude and longitude in
+    /// degrees.
+    pub fn waypoints(&self) -> &[(String, (f64, f64))] {
+        &self.waypoints
+    }
+
+    /// The terrain camera's latest frame, its outcomes and the fix marks.
+    pub const fn camera(&self) -> &CameraLog {
+        &self.camera
     }
 
     /// The sensors of `set` at its latest sample.

@@ -15,6 +15,8 @@ pub struct TracePoint {
     /// The set's own one-sigma horizontal uncertainty, metres; `None` for
     /// a set that states none.
     pub sigma_horizontal_m: Option<f64>,
+    /// The set's estimated latitude and longitude, degrees.
+    pub estimate_deg: (f64, f64),
 }
 
 /// What one column of a plot covers.

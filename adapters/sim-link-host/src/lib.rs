@@ -43,10 +43,10 @@ pub use chain::{
 };
 pub use error::HostError;
 pub use monitor::{
-    Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, MeansSwitch, Monitor,
-    MonitorFeed, PaceLimit, Pacer, Replay, SLICE_BUDGET_S, SetTrace, Slice, StepState, TracePoint,
-    clock_words, event_words, pace_words, run_slice, sensor_words, state_words, status_words,
-    terrain_words,
+    CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark, FlightStepper,
+    MAX_FRAME_S, MeansSwitch, Monitor, MonitorFeed, PaceLimit, Pacer, Replay, SLICE_BUDGET_S,
+    SetTrace, Slice, StepState, TracePoint, clock_words, event_words, outcome_words, pace_words,
+    run_slice, sensor_words, state_words, status_words, terrain_words,
 };
 pub use package::{
     BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,
@@ -59,5 +59,6 @@ pub use run_link::SwitchLog;
 pub use summary::{LegSummary, Light, PlanSummary, SunSample, plan_summary};
 pub use wording::{PlanLine, outage_words, plan_lines, refusal_lines};
 pub use world::{
-    CameraWorld, WORLD_MEMORY_CEILING_BYTES, world_line, world_memory_bytes, world_memory_refusal,
+    CameraWorld, MapView, WORLD_MEMORY_CEILING_BYTES, mercator, unmercator, world_line,
+    world_memory_bytes, world_memory_refusal,
 };

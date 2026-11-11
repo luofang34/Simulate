@@ -40,6 +40,11 @@
       .section button:hover { background: #17305a; }
       /* The flight monitor: its plot, the sets' legend, the means' switches and the pace. */
       .plot { display: block; width: 100%; height: 260px; margin-top: 1rem; }
+      .track-map { display: block; width: 100%; height: auto; margin-top: 1rem; border-radius: 4px; }
+      .frame-panel { display: flex; flex-wrap: wrap; gap: 1rem 1.2rem; margin-top: 1rem; align-items: flex-start; }
+      .frame-panel > div { flex: 1 1 14rem; min-width: 0; }
+      .frame-panel .detail { margin-top: 0; }
+      .frame { display: block; width: 400px; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
       .legend, .switches { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
       .series { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; }
       .swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }

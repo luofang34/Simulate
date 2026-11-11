@@ -4,10 +4,11 @@
 
 use glam::{DQuat, DVec3};
 use sim_chain_trial::{ChainTrial, FrameRequest, StepOutcome};
+use sim_geo::ecef_to_geodetic;
 use sim_navigate::trial::{ProgressRecord, SensorKind};
 
 use super::{feeds, finished, intrinsics};
-use crate::{CameraWorld, Clock, FlightStepper, HostError, MonitorFeed, StepState};
+use crate::{CameraShot, CameraWorld, Clock, FlightStepper, HostError, MonitorFeed, StepState};
 
 /// Route time one call of the chain may cover, seconds: a call returns to
 /// the page's slice no later than this, whatever the target.
@@ -43,20 +44,30 @@ impl<C: Clock> ChainFlight<C> {
         }
     }
 
-    /// Renders and delivers the frame `request` asks for.
-    fn develop(&mut self, request: &FrameRequest) -> Result<(), HostError> {
+    /// Renders and delivers the frame `request` asks for, and hands the
+    /// monitor a copy.
+    fn develop(
+        &mut self,
+        request: &FrameRequest,
+        out: &mut Vec<MonitorFeed>,
+    ) -> Result<(), HostError> {
         let world = self.world.as_ref().ok_or_else(|| HostError::Render {
             detail: format!("frame {} wanted and no world to render", request.index),
         })?;
         let started = self.clock.now_s();
         let [w, x, y, z] = request.camera_to_ecef_wxyz;
-        let frame = world.render(
-            DVec3::from_array(request.eye_ecef),
-            DQuat::from_xyzw(x, y, z, w),
-            &intrinsics(request),
-        )?;
+        let eye = DVec3::from_array(request.eye_ecef);
+        let frame = world.render(eye, DQuat::from_xyzw(x, y, z, w), &intrinsics(request))?;
         self.trial.deliver_frame(request.index, frame.pixels())?;
         self.camera_wall_s += (self.clock.now_s() - started).max(0.0);
+        let at = ecef_to_geodetic(eye);
+        out.push(MonitorFeed::Frame(CameraShot {
+            index: request.index,
+            mid_s: request.mid_s,
+            size: request.size,
+            luma: frame.pixels().to_vec(),
+            at_deg: (at.lat_rad.to_degrees(), at.lon_rad.to_degrees()),
+        }));
         Ok(())
     }
 
@@ -92,7 +103,7 @@ impl<C: Clock> FlightStepper for ChainFlight<C> {
             StepOutcome::Advanced(outputs) => feeds(outputs, out),
             StepOutcome::FrameWanted(request, outputs) => {
                 feeds(outputs, out);
-                self.develop(&request)?;
+                self.develop(&request, out)?;
             }
         }
         self.watch(out.get(from..).unwrap_or_default());

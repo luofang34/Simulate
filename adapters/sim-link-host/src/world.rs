@@ -9,11 +9,13 @@ use crate::PlanLine;
 use crate::wording::line;
 
 mod camera;
+mod overview;
 
 #[cfg(test)]
 mod tests;
 
 pub use camera::CameraWorld;
+pub use overview::{MapView, mercator, unmercator};
 
 /// The most of a tab's memory the decoded world may take, bytes. A
 /// browser grants a page's WebAssembly a few gigabytes at best and less on

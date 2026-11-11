@@ -1,18 +1,21 @@
 //! The flight monitor on the page: the status line, the error plot, a
 //! legend that shows or hides each set, a switch for each means the run
-//! uses, the pace, the link of the run, the terrain camera's tallies, the
-//! mission host's reports and the latest events.
+//! uses, the track map, the terrain camera's latest frame, the pace, the
+//! link of the run, the terrain camera's tallies, the mission host's
+//! reports and the latest events.
 //!
 //! The controls are read when the page draws, not listened to: the flight
 //! loop runs every animation frame anyway, so a click shows within a frame.
 
+mod frame_panel;
 mod plot;
+mod track_map;
 
 use std::collections::BTreeSet;
 
 use sim_link_host::{
-    MeansSwitch, Monitor, PlanLine, clock_words, event_words, sensor_words, state_words,
-    status_words, terrain_words,
+    CameraWorld, MeansSwitch, Monitor, PlanLine, clock_words, event_words, sensor_words,
+    state_words, status_words, terrain_words,
 };
 use sim_navigate::NavMeans;
 use sim_navigate::trial::SensorKind;
@@ -20,7 +23,9 @@ use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlInputElement};
 
 use super::section::{Section, append, write_lines};
+use frame_panel::FramePanel;
 use plot::Plot;
+use track_map::TrackMap;
 
 /// The colours of the sets, in the run's order, for the page's dark
 /// surface; checked together for colour-blind separation.
@@ -60,6 +65,8 @@ pub struct Controls {
 pub struct MonitorView {
     section: Section,
     plot: Plot,
+    map: TrackMap,
+    frame: FramePanel,
     legend: Element,
     switches: Element,
     speeds: Element,
@@ -76,13 +83,14 @@ impl MonitorView {
     /// The monitor in `section`, starting at `speed`. `can_switch` says
     /// whether the flight takes the visitor's switches; a recorded run
     /// cannot. `caveat` stands under the sets' results, `world_note` beside
-    /// the terrain camera's, and `about` closes the section.
+    /// the terrain camera's, and `about` closes the section. The track map
+    /// lies over `world` when there is one.
     pub fn inside(
         section: Section,
         speed: Option<f64>,
         can_switch: bool,
         caveat: Option<&str>,
-        world_note: Option<String>,
+        (world, world_note): (Option<CameraWorld>, Option<String>),
         about: &str,
     ) -> Option<Self> {
         let document = section.document().clone();
@@ -94,6 +102,8 @@ impl MonitorView {
         {
             line.set_text_content(Some(caveat));
         }
+        let map = TrackMap::under(&document, &root, world)?;
+        let frame = FramePanel::under(&document, &root)?;
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);
@@ -107,6 +117,8 @@ impl MonitorView {
         Some(Self {
             section,
             plot,
+            map,
+            frame,
             legend,
             switches,
             speeds,
@@ -178,6 +190,8 @@ impl MonitorView {
         self.plot
             .draw(monitor, &|set| !controls.hidden.contains(set));
         self.legend_values(monitor);
+        self.map.draw(monitor, &controls.hidden);
+        self.frame.draw(monitor);
         self.switch_states(monitor);
         let mut visual: Vec<PlanLine> = monitor
             .traces()

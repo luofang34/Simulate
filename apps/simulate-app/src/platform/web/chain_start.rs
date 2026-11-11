@@ -102,7 +102,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         Some(START_SPEED),
         true,
         Some(CAVEAT),
-        world_note,
+        (world.clone(), world_note),
         ABOUT,
     ) else {
         return;
