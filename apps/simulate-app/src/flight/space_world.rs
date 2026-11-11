@@ -22,9 +22,7 @@ use sim_orbital::{
 use sim_raketa::{RAKETA_CG_Y_M, RAKETA_PLANT_PERIOD, RaketaCommand, RaketaPlant};
 use sim_scenario::ScenarioWorld;
 use sim_spacetime::SimEpoch;
-use sim_universe::{
-    L2StationKeeper, Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry,
-};
+use sim_universe::{Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry};
 
 use super::free_world::SolarSystem;
 use crate::error::AppSimError;
@@ -57,6 +55,24 @@ const RAKETA_FROM_AIRCRAFT: DMat3 = DMat3::from_cols(
     DVec3::new(0.0, -1.0, 0.0),
 );
 
+/// Plan-job slices run per frame where jobs run on the stepping thread; one
+/// lookahead leg of a holding solve costs about a millisecond and a half in an
+/// optimised build.
+const PLAN_SLICES_PER_FRAME: u32 = 1;
+
+/// Where a spaceflight's plans are computed: a thread of their own where there are
+/// threads, a slice per frame where there are not.
+fn plan_executor() -> Box<dyn sim_universe::PlanExecutor> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Box::new(sim_universe::ThreadPlanExecutor::default())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Box::new(sim_universe::SlicedPlanExecutor::default())
+    }
+}
+
 /// A spaceflight's universe and what the cockpit shows of it.
 pub(super) struct SpaceWorld {
     universe: Universe,
@@ -67,7 +83,6 @@ pub(super) struct SpaceWorld {
     nose_icrf: Option<DVec3>,
     ascent_guidance: bool,
     panel: CockpitInstrumentPanel,
-    jwst_keeper: L2StationKeeper,
     epoch_clamped: bool,
 }
 
@@ -90,9 +105,11 @@ impl SpaceWorld {
             &site,
         )
         .map_err(|e| universe_error(UniverseError::LocalPlant(Box::new(e))))?;
-        let mut universe =
-            Universe::new(epoch.clone(), solar.context()).with_tier_policy(TierPolicy::standard());
-        let jwst_keeper = spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
+        let mut universe = Universe::new(epoch.clone(), solar.context())
+            .with_tier_policy(TierPolicy::standard())
+            .with_plan_executor(plan_executor());
+        let keeper = spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
+        universe.attach_plan_schedule(Box::new(keeper));
         universe
             .insert_local(OWNSHIP, Box::new(plant), RaketaPlant::factory(environment))
             .map_err(universe_error)?;
@@ -106,7 +123,6 @@ impl SpaceWorld {
             nose_icrf: None,
             ascent_guidance: true,
             panel: CockpitInstrumentPanel::new(SimInstant::START),
-            jwst_keeper,
             epoch_clamped,
         };
         world.observe();
@@ -164,25 +180,35 @@ impl SpaceWorld {
         !self.flown(controls.clamped()) && self.tier() == Tier::Orbital
     }
 
-    /// Carries a coasting vessel `span` on in orbital propagation, letting the
-    /// `JWST_L2` keeper look every few hours for a due maintenance burn. The first
-    /// look makes the insertion burn; an epoch that falls due while the pilot flies is
-    /// made at the next look.
+    /// Carries a coasting vessel up to `span` on in orbital propagation, stopping
+    /// short of the deadline of a plan whose result is still being computed so the
+    /// frame never waits for it; time resumes once the plan is ready.
     pub(super) fn coast(&mut self, span: TickSpan) -> Result<(), AppSimError> {
-        let target = self.universe.now().advanced(span);
-        let look_every = TickSpan::from_seconds_and_subsec_ticks(6 * 3_600, 0);
-        while self.universe.now() < target {
-            let remaining = target.duration_since(self.universe.now());
-            let step = if remaining > look_every {
-                look_every
-            } else {
-                remaining
-            };
-            let next = self.universe.now().advanced(step);
-            self.universe.advance_to(next).map_err(universe_error)?;
-            self.maintain_jwst_l2();
+        let now = self.universe.now();
+        let mut target = now.advanced(span);
+        if let Some(free) = self.universe.plan_free_until() {
+            target = target.min(free.max(now));
         }
+        self.universe.advance_to(target).map_err(universe_error)?;
+        self.maintain_jwst_l2();
         self.settle()
+    }
+
+    /// Gives plans computed on the stepping thread their share of this frame.
+    pub(super) fn pump_plans(&mut self) {
+        self.universe.pump_plans(PLAN_SLICES_PER_FRAME);
+    }
+
+    /// Simulated time (`s`) until a plan still being computed is due; infinite when
+    /// none is.
+    pub(super) fn plan_wait_s(&self) -> f64 {
+        match self.universe.plan_hold() {
+            Some(hold) if !hold.ready => hold
+                .deadline
+                .duration_since(self.universe.now())
+                .as_seconds(),
+            Some(_) | None => f64::INFINITY,
+        }
     }
 
     fn flown(&self, controls: ControlInputs) -> bool {
@@ -322,6 +348,7 @@ impl SpaceWorld {
         }
         let next = self.universe.now().advanced(RAKETA_PLANT_PERIOD);
         self.universe.advance_to(next).map_err(universe_error)?;
+        self.maintain_jwst_l2();
         self.settle()
     }
 
