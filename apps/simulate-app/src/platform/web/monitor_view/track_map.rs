@@ -95,7 +95,12 @@ impl TrackMap {
         if self.drawn.as_ref() == Some(&drawn) {
             return;
         }
-        let Some(view) = self.fit(monitor, width) else {
+        // A set shown or hidden refits the map to what is shown, so hiding a
+        // set that drifted far brings the route back to size.
+        if self.drawn.as_ref().is_some_and(|d| d.hidden != *hidden) {
+            self.view = None;
+        }
+        let Some(view) = self.fit(monitor, hidden, width) else {
             return;
         };
         let height = width * self.aspect.unwrap_or(ASPECT.0);
@@ -124,9 +129,9 @@ impl TrackMap {
         self.drawn = Some(drawn);
     }
 
-    /// The view that holds everything to draw, grown and its picture made
+    /// The view that holds everything shown, grown and its picture made
     /// again only when something left the current one.
-    fn fit(&mut self, monitor: &Monitor, width: f64) -> Option<MapView> {
+    fn fit(&mut self, monitor: &Monitor, hidden: &BTreeSet<String>, width: f64) -> Option<MapView> {
         // The flight may start off the route; a view fitted before its
         // first sample would have to grow at once.
         if monitor.truth().is_empty() {
@@ -141,6 +146,7 @@ impl TrackMap {
                 monitor
                     .traces()
                     .iter()
+                    .filter(|t| !hidden.contains(&t.name))
                     .flat_map(|t| t.points().iter().map(|p| p.estimate_deg)),
             );
         // The view must hold the points, not their margin: a track along the

@@ -23,9 +23,12 @@ const NOTE: &str = "Flown by the vehicle's own software: Pilotage's mission host
 /// What the page says of the camera's world beside the visual results.
 const WORLD_NOTE: &str = "the camera sees the same imagery the onboard map was built from, \
     which favours visual navigation.";
-/// What the page says of the results while a known defect stands.
-const CAVEAT: &str = "The barometric and visual sets currently drift faster than expected in \
-    this page; under investigation.";
+/// What the page says of the results: a set with nothing to fix its
+/// position drifts, and says so through its own uncertainty.
+const CAVEAT: &str = "ins.baro has nothing to fix its horizontal position, so its error grows \
+    as the inertial sensors drift: kilometres within minutes on this vehicle's consumer-grade \
+    unit, with its stated uncertainty growing alongside. Hide a set in the legend to fit the \
+    map to the others.";
 /// What closes the section.
 const ABOUT: &str = "About this run: the same link flies the same flight in the same build of \
     this page, switches included once they are in the link. A desktop build of Simulate may \
