@@ -127,6 +127,11 @@ impl SensorSuite {
         &self.spec
     }
 
+    /// The inertial unit, to read or set its biases.
+    pub const fn imu_mut(&mut self) -> &mut ImuErrorModel {
+        &mut self.imu
+    }
+
     /// The GNSS receiver, to take the sky from it or displace its fixes.
     pub const fn receiver_mut(&mut self) -> &mut GnssReceiver {
         &mut self.receiver

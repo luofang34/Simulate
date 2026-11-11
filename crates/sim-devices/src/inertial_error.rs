@@ -211,6 +211,15 @@ impl ImuErrorModel {
         self.accel.bias()
     }
 
+    /// Puts the accelerometer bias the next interval carries at `bias`,
+    /// m/s², in place of the turn-on draw, so a case found under one draw
+    /// can be flown again with that very unit. The bias wanders on from
+    /// there by its model.
+    pub fn set_accel_bias_m_s2(&mut self, bias: DVec3) {
+        self.accel.markov = bias;
+        self.accel.walk = DVec3::ZERO;
+    }
+
     /// The gyroscope bias the next interval carries, rad/s.
     pub fn gyro_bias_rad_s(&self) -> DVec3 {
         self.gyro.bias()
