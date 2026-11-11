@@ -1,16 +1,16 @@
+use aviate_airframe_fixed_wing::FixedWingAirframe;
+use aviate_core::control::ConfigMode;
 use aviate_core::control::cascade_gains::CascadeGains;
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::control::multirotor::MultirotorController;
-use aviate_core::control::{AxisCommand, ConfigMode};
 use aviate_core::ekf::Ekf;
 use aviate_core::kernel::DefaultAviateKernel;
 use aviate_core::kernel::builder::AviateKernelBuilder;
 use aviate_core::kernel::config::{ActuatorCurveKind, MixerGeometry, ResolvedKernelConfig};
-use aviate_core::mixer::{
-    ActuatorCmd, MAX_ACTUATORS, Mixer, ModeConfig, QuadXMixerX500, Sanitizer,
-};
+use aviate_core::mixer::fixed_wing::FixedWingMixer;
+use aviate_core::mixer::{ModeConfig, QuadXMixerX500, Sanitizer};
 use aviate_core::time::{TimeSource, Timestamp};
-use aviate_core::types::{Normalized, NormalizedThrust};
+use aviate_core::types::NormalizedThrust;
 use aviate_xil_direct::DirectActuatorCmd;
 use sim_core::ControlInputs;
 
@@ -56,68 +56,28 @@ pub fn build_direct_x500_kernel() -> Option<DirectX500Kernel> {
     Some(kernel)
 }
 
-/// Four-channel fixed-wing pass-through mixer encoding `[throttle, roll, pitch, yaw]`
-/// onto `outputs[0..4]` in `[0.0, 1.0]`.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PassthroughFixedWingMixer;
-
-impl Mixer for PassthroughFixedWingMixer {
-    const ALGORITHM_ID: u64 = 0x5349_4D5F_4657_4D58;
-    const GEOMETRY: MixerGeometry = MixerGeometry::QuadX;
-
-    fn mix(&self, axis: &AxisCommand) -> ActuatorCmd {
-        let mut outputs = [Normalized(0.0); MAX_ACTUATORS];
-        if let Some(s) = outputs.get_mut(0) {
-            *s = Normalized(axis.collective.0.clamp(0.0, 1.0));
-        }
-        if let Some(s) = outputs.get_mut(1) {
-            *s = Normalized((0.5 + 0.5 * axis.roll.0).clamp(0.0, 1.0));
-        }
-        if let Some(s) = outputs.get_mut(2) {
-            *s = Normalized((0.5 + 0.5 * axis.pitch.0).clamp(0.0, 1.0));
-        }
-        if let Some(s) = outputs.get_mut(3) {
-            *s = Normalized((0.5 + 0.5 * axis.yaw.0).clamp(0.0, 1.0));
-        }
-        ActuatorCmd {
-            outputs,
-            active_mask: 0b1111,
-            sequence: 0,
-            timestamp: zero_internal_timestamp(),
-            fallback_mask: 0,
-            sanitized: false,
-        }
-    }
-}
-
 /// Concrete `DefaultAviateKernel` type produced by [`build_direct_fixed_wing_kernel`].
-pub type DirectFixedWingKernel =
-    DefaultAviateKernel<FixedWingController, PassthroughFixedWingMixer>;
+pub type DirectFixedWingKernel = DefaultAviateKernel<FixedWingController, FixedWingMixer>;
 
-/// Builds an in-process Aviate fixed-wing kernel (`Ekf` + `FixedWingController` +
-/// [`PassthroughFixedWingMixer`]) for closed-loop fixed-wing simulation.
-pub fn build_direct_fixed_wing_kernel() -> Option<DirectFixedWingKernel> {
-    let cfg = ResolvedKernelConfig {
-        mixer_geometry: MixerGeometry::QuadX,
-        mode_config: ModeConfig {
-            mode: ConfigMode::Cruise,
-            groups: &[],
-        },
-        ..ResolvedKernelConfig::default()
-    };
+/// Builds an in-process Aviate fixed-wing kernel for `airframe`: `Ekf`, the
+/// fixed-wing control law on the airframe's description, and the four-lane
+/// mixer (throttle, aileron, elevator, rudder; surfaces neutral at 0.5).
+pub fn build_direct_fixed_wing_kernel(
+    airframe: &FixedWingAirframe,
+) -> Option<DirectFixedWingKernel> {
     let mut kernel = AviateKernelBuilder::new()
         .estimator(Ekf::default())
-        .controller(FixedWingController)
-        .mixer(PassthroughFixedWingMixer)
+        .controller(airframe.controller().ok()?)
+        .mixer(FixedWingAirframe::mixer(zero_internal_timestamp))
         .sanitizer(Sanitizer)
-        .config(cfg)
+        .config(airframe.kernel_config())
         .build()
         .ok()?;
     kernel.state.checks.pre_arm.update_throttle(true);
     Some(kernel)
 }
 
-/// Decodes a [`PassthroughFixedWingMixer`] [`DirectActuatorCmd`] into pilot-sense
+/// Decodes a fixed-wing [`DirectActuatorCmd`] into pilot-sense
 /// [`ControlInputs`]. Disarmed commands hold neutral surfaces and zero throttle.
 #[must_use]
 pub fn direct_fixed_wing_controls(cmd: &DirectActuatorCmd) -> ControlInputs {

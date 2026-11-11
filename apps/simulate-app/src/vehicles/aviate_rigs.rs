@@ -61,7 +61,7 @@ pub struct AviateFixedWingRig {
     pub(super) specific_force_frd_m_s2: DVec3,
     pub(super) runner: AviateDirectRunner<
         aviate_core::control::fixed_wing::FixedWingController,
-        sim_aviate::PassthroughFixedWingMixer,
+        aviate_core::mixer::fixed_wing::FixedWingMixer,
     >,
     sim_clock_offset: SimInstant,
     origin: Geodetic,
@@ -280,9 +280,11 @@ pub(super) fn build_aviate_fixed_wing(
     let (fdm, specific_force_frd_m_s2) =
         build_jsbsim_fdm(&pkg, origin, heading_rad, 52.0, field_elev_m)?;
     let kernel: DirectFixedWingKernel =
-        build_direct_fixed_wing_kernel().ok_or(AppSimError::AviateKernel {
-            detail: "fixed_wing",
-        })?;
+        build_direct_fixed_wing_kernel(&sim_aviate::c172_airframe()).ok_or(
+            AppSimError::AviateKernel {
+                detail: "fixed_wing",
+            },
+        )?;
     let mut runner = AviateDirectRunner::new(kernel, AviateDirectConfig::industrial(origin))?;
     let mut at = SimInstant::START;
     let state = fdm.output();
@@ -461,10 +463,12 @@ impl AviateFixedWingRig {
         self.fdm
             .set_terrain_elevation_m(snap.field_elev_m)
             .map_err(sim_scenario::ScenarioError::from)?;
-        let kernel: DirectFixedWingKernel =
-            build_direct_fixed_wing_kernel().ok_or(AppSimError::AviateKernel {
-                detail: "fixed_wing",
-            })?;
+        let kernel: DirectFixedWingKernel = build_direct_fixed_wing_kernel(
+            &sim_aviate::c172_airframe(),
+        )
+        .ok_or(AppSimError::AviateKernel {
+            detail: "fixed_wing",
+        })?;
         let mut runner =
             AviateDirectRunner::new(kernel, AviateDirectConfig::industrial(snap.origin))?;
         let state = self.fdm.output();

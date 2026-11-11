@@ -12,9 +12,11 @@ mod direct;
 mod endpoint;
 mod error;
 mod frame;
+mod host_sensors;
 mod rotors;
 mod wire;
 
+pub use aviate_airframe_fixed_wing::{FixedWingAirframe, c172 as c172_airframe};
 pub use aviate_xil_contract::SharedStateV2;
 pub use aviate_xil_direct::{
     DirectActuatorCmd, DirectBoardConfig, DirectNoiseTier, DirectSensorRates, DirectTelemetryRates,
@@ -22,8 +24,8 @@ pub use aviate_xil_direct::{
 };
 pub use direct::{
     AviateDirectConfig, AviateDirectRunner, DirectCgStimulus, DirectFixedWingKernel,
-    DirectX500Kernel, NedWorld, PassthroughFixedWingMixer, build_direct_fixed_wing_kernel,
-    build_direct_x500_kernel, direct_fixed_wing_controls,
+    DirectX500Kernel, NedWorld, build_direct_fixed_wing_kernel, build_direct_x500_kernel,
+    direct_fixed_wing_controls,
 };
 pub use endpoint::{
     AviateExecutionBoundary, AviateSharedMemoryEndpoint, AviateStimulus, AviateXilBridge,

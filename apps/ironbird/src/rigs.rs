@@ -199,7 +199,8 @@ pub fn run_tier0_package_cruise(
     let mut rig = RigSession::new(plant, ControlInputs::default())?;
     let period = rig.period();
     let total_steps = steps_for(duration_s, period.as_seconds());
-    let kernel = build_direct_fixed_wing_kernel().ok_or(IronbirdError::FixedWingKernelBuild)?;
+    let kernel = build_direct_fixed_wing_kernel(&sim_aviate::c172_airframe())
+        .ok_or(IronbirdError::FixedWingKernelBuild)?;
     let mut fc = AviateDirectRunner::new(
         kernel,
         AviateDirectConfig {
