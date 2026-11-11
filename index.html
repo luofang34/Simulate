@@ -40,6 +40,11 @@
       .section button:hover { background: #17305a; }
       /* The flight monitor: its plot, the sets' legend, the means' switches and the pace. */
       .plot { display: block; width: 100%; height: 260px; margin-top: 1rem; }
+      .track-map { display: block; width: 100%; height: auto; margin-top: 1rem; border-radius: 4px; }
+      .frame-panel { display: flex; flex-wrap: wrap; gap: 1rem 1.2rem; margin-top: 1rem; align-items: flex-start; }
+      .frame-panel > div { flex: 1 1 14rem; min-width: 0; }
+      .frame-panel .detail { margin-top: 0; }
+      .frame { display: block; width: 400px; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
       .legend, .switches { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
       .series { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; }
       .swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
@@ -116,10 +121,10 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 }
 
 
-import init, * as bindings from '/Simulate/simulate-app-ef827c7fbab35c33.js';
+import init, * as bindings from '/Simulate/simulate-app-c2a02ed198261b00.js';
 import initializer from '/Simulate/b1e1f53c347e862e-boot.mjs';
 
-const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-ef827c7fbab35c33_bg.wasm', 33362381, initializer(), true);
+const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-c2a02ed198261b00_bg.wasm', 33635757, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -128,7 +133,7 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-  <link rel="modulepreload" href="/Simulate/simulate-app-ef827c7fbab35c33.js" crossorigin="anonymous" integrity="sha384-sSmKnNbPpg6qq47W+qwHrPMOKhm+GZpEsiTQMU09TK28idEHyDzuF798fn/aGv6c"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-ef827c7fbab35c33_bg.wasm" crossorigin="anonymous" integrity="sha384-iePz5mIICFMg5PgJgSaFzeQfSO9UnNc1jz0sL1ZG7D3xFoXXV7X4tXBjtQWYAAtW" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/Simulate/simulate-app-c2a02ed198261b00.js" crossorigin="anonymous" integrity="sha384-9jpTUS1SCXPs9Bnz6YjV6qhDyQf2fJN2/V8Vi1whifug7UezsIp71T2/lM3BY6jd"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-c2a02ed198261b00_bg.wasm" crossorigin="anonymous" integrity="sha384-2/hXBK0Rx5Up/B3M9srpGM0Adt0iyFqZvzdWFk2DFTvYxU4Pn/wifn+tH8kd6jbG" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" data-state="loading" role="status" aria-live="polite">
       <div id="boot-card">
