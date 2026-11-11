@@ -2,6 +2,7 @@
 //! controller's account for the avionics, and the truth for the world
 //! outside, kept apart.
 
+use glam::DVec3;
 use sim_core::{AirframeArticulation, EngineStatus, SimInstant, TICKS_PER_SECOND, VehicleState};
 use sim_flight_chain::FcAvionics;
 
@@ -16,6 +17,8 @@ pub struct TruthSnapshot {
     pub at: SimInstant,
     /// The true state.
     pub state: VehicleState,
+    /// The true specific force at the centre of gravity, body forward-right-down, m/s².
+    pub specific_force_body_m_s2: DVec3,
     /// The flight model's surfaces, gear and propeller.
     pub articulation: AirframeArticulation,
     /// The flight model's engine.
@@ -28,6 +31,7 @@ pub(super) fn truth(chain: &C172Chain) -> TruthSnapshot {
     TruthSnapshot {
         at: chain.now(),
         state: chain.true_state(),
+        specific_force_body_m_s2: chain.board().airframe().specific_force_body_m_s2(),
         articulation: fdm.articulation(),
         engine: fdm.engine_status(),
     }
