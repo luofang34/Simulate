@@ -451,3 +451,25 @@ fn detect_soi_switch_target(
     }
     None
 }
+
+/// The radii (`m`) about each body at which [`detect_soi_switch_target`] switches a
+/// vessel flying about `primary` to another origin.
+pub(crate) fn soi_switch_radii_m(primary: NaifId) -> Vec<(NaifId, f64)> {
+    if primary == NaifId::EARTH {
+        vec![
+            (NaifId::MOON, MOON_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
+            (NaifId::EARTH, EARTH_SOI_RADIUS_M * SOI_EXIT_FACTOR),
+        ]
+    } else if primary == NaifId::MOON {
+        vec![(NaifId::MOON, MOON_SOI_RADIUS_M * SOI_EXIT_FACTOR)]
+    } else if primary == NaifId::MARS {
+        vec![(NaifId::MARS, MARS_SOI_RADIUS_M * SOI_EXIT_FACTOR)]
+    } else if primary == NaifId::SSB {
+        vec![
+            (NaifId::EARTH, EARTH_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
+            (NaifId::MARS, MARS_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
+        ]
+    } else {
+        Vec::new()
+    }
+}

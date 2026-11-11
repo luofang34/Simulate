@@ -5,6 +5,7 @@
 //! stale-event invalidation, zero-time loop protection, and manifest-verified snapshots.
 
 mod error;
+mod horizon;
 mod mutations;
 mod parallel;
 mod queries;
@@ -199,7 +200,7 @@ impl OrbitalUniverse {
             if tl.frontier_instant() < min_coverage_instant
                 && tl.speculative.len() < MAX_SPECULATIVE_SEGMENTS
             {
-                let horizon = self.next_canonical_horizon(tl.frontier_instant());
+                let horizon = self.speculation_horizon(tl);
                 reqs.push((
                     tl.frontier_checkpoint.clone(),
                     tl.config,
