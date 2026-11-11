@@ -49,6 +49,7 @@ world-core = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 image = { workspace = true }
+sim-flight-chain = { workspace = true }
 pollster = { workspace = true }
 tracing-subscriber = { workspace = true }
 

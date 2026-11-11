@@ -85,7 +85,9 @@ struct PendingArm {
 /// Pilotage's mission engine and the state of its conversation with one
 /// vehicle.
 pub struct MissionHost {
-    engine: MissionEngine,
+    /// On the heap: the engine is tens of kilobytes, and a host is moved by
+    /// value through its owners.
+    engine: Box<MissionEngine>,
     record: MissionPlanRecord,
     vehicle: VehicleId,
     sequence: u32,
@@ -130,7 +132,7 @@ impl MissionHost {
         let (engine, record) =
             MissionEngine::new(&snapshot, provenance, config).map_err(mission)?;
         Ok(Self {
-            engine,
+            engine: Box::new(engine),
             record,
             vehicle: setup.vehicle,
             sequence: 0,

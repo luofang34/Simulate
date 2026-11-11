@@ -12,10 +12,14 @@ use crate::world_surface::WorldSurfaceHandle;
 
 mod aviate_rigs;
 mod jsbsim;
+#[cfg(not(target_arch = "wasm32"))]
+mod mission_rig;
+mod selection;
 mod structural;
 #[cfg(test)]
 mod tests;
 
+pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
 
 /// Height the X500 hovers over a ground spawn, metres.
@@ -61,67 +65,6 @@ use aviate_rigs::{
 };
 use jsbsim::{build_jsbsim_parked, build_jsbsim_plant, step_jsbsim_with_force};
 
-/// Selectable interactive free-flight vehicle and flight-control plant.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum FreeFlightVehicle {
-    /// SHA-256-verified JSBSim Cessna 172 Skyhawk (`vehicles/c172`) with `SystemControls`.
-    #[default]
-    JsbsimC172,
-    /// SHA-256-verified JSBSim Lockheed P-38G Lightning (`vehicles/p38g`) twin-boom fighter.
-    JsbsimP38g,
-    /// Tier-0 `AviateDirectRunner` (`Ekf` + `MultirotorController` + `QuadXMixerX500`) on 6-DoF X500.
-    AviateX500Direct,
-    /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving the JSBSim C172.
-    AviateFixedWingDirect,
-    /// Fast kinematic 6-DoF free-flight model.
-    Kinematic,
-}
-
-impl FreeFlightVehicle {
-    /// Whether the airframe predates head-up and glass displays, so its cockpit
-    /// opens on its own panel with the conformal HUD and glass dock hidden.
-    #[must_use]
-    pub const fn period_cockpit(self) -> bool {
-        matches!(self, Self::JsbsimP38g)
-    }
-
-    /// Cycles to the previous free-flight vehicle.
-    #[must_use]
-    pub const fn prev(self) -> Self {
-        match self {
-            Self::JsbsimC172 => Self::Kinematic,
-            Self::JsbsimP38g => Self::JsbsimC172,
-            Self::AviateX500Direct => Self::JsbsimP38g,
-            Self::AviateFixedWingDirect => Self::AviateX500Direct,
-            Self::Kinematic => Self::AviateFixedWingDirect,
-        }
-    }
-
-    /// Cycles to the next free-flight vehicle.
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::JsbsimC172 => Self::JsbsimP38g,
-            Self::JsbsimP38g => Self::AviateX500Direct,
-            Self::AviateX500Direct => Self::AviateFixedWingDirect,
-            Self::AviateFixedWingDirect => Self::Kinematic,
-            Self::Kinematic => Self::JsbsimC172,
-        }
-    }
-
-    /// Short title displayed in the window title bar and logs.
-    #[must_use]
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::JsbsimC172 => "C172 Skyhawk (JSBSim)",
-            Self::JsbsimP38g => "Lockheed P-38G Lightning (JSBSim)",
-            Self::AviateX500Direct => "X500 Quadrotor (Aviate Direct)",
-            Self::AviateFixedWingDirect => "Fixed-Wing FBW (Aviate + JSBSim)",
-            Self::Kinematic => "Kinematic Free Flight",
-        }
-    }
-}
-
 /// Everything a [`FreeFlightPlant`] needs to fly the same bits again from one instant.
 #[derive(Debug, Clone)]
 pub enum PlantSnapshot {
@@ -138,6 +81,10 @@ pub enum PlantSnapshot {
     AviateX500(Box<X500Snapshot>),
     /// Aviate fixed-wing JSBSim aircraft and attitude target.
     AviateFixedWing(Box<FixedWingSnapshot>),
+    /// A Pilotage mission flight, whose engine and flight controller keep no rewindable
+    /// state: the marker only says which plant it came from.
+    #[cfg(not(target_arch = "wasm32"))]
+    X500Mission,
     /// Kinematic model state.
     Kinematic(Box<KinematicModel>),
 }
@@ -155,6 +102,9 @@ pub enum FreeFlightPlant {
     AviateX500(Box<AviateX500Rig>),
     /// Tier-0 Aviate fixed-wing controller closed around a `120 Hz` JSBSim plant.
     AviateFixedWing(Box<AviateFixedWingRig>),
+    /// Pilotage's mission engine commanding the Aviate X500 in MAVLink.
+    #[cfg(not(target_arch = "wasm32"))]
+    X500Mission(Box<mission_rig::MissionRig>),
     /// Lightweight kinematic model.
     Kinematic(KinematicModel),
 }
@@ -196,6 +146,13 @@ impl FreeFlightPlant {
                     heading_rad,
                 )?)))
             }
+            FreeFlightVehicle::X500Mission => Self::on_mission_pad(
+                Geodetic {
+                    height_m: field_elev_m,
+                    ..spawn
+                },
+                heading_rad,
+            ),
             FreeFlightVehicle::AviateFixedWingDirect => Ok(Self::AviateFixedWing(Box::new(
                 build_aviate_fixed_wing(spawn, heading_rad, field_elev_m)?,
             ))),
@@ -203,6 +160,21 @@ impl FreeFlightPlant {
                 VehicleState::level_flight(&spawn, heading_rad, 55.0),
             ))),
         }
+    }
+
+    /// The X500 on a pad at `pad`, about to fly its Pilotage mission.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn on_mission_pad(pad: Geodetic, heading_rad: f64) -> Result<Self, AppSimError> {
+        let rig = mission_rig::build_mission_rig(pad, heading_rad)?;
+        Ok(Self::X500Mission(Box::new(rig)))
+    }
+
+    /// The mission chain is not built for the browser.
+    #[cfg(target_arch = "wasm32")]
+    fn on_mission_pad(_pad: Geodetic, _heading_rad: f64) -> Result<Self, AppSimError> {
+        Err(AppSimError::DesktopOnly {
+            vehicle: FreeFlightVehicle::X500Mission.title(),
+        })
     }
 
     /// Instantiates `vehicle` at rest on the ground at `spawn` (whose height is the ground
@@ -246,6 +218,7 @@ impl FreeFlightPlant {
                     heading_rad,
                 )?)))
             }
+            FreeFlightVehicle::X500Mission => Self::on_mission_pad(spawn, heading_rad),
             FreeFlightVehicle::AviateFixedWingDirect => Self::new_at(
                 vehicle,
                 Geodetic {
@@ -275,6 +248,8 @@ impl FreeFlightPlant {
             Self::Jsbsim { fdm, .. } => fdm.period(),
             Self::AviateX500(rig) => rig.body.period(),
             Self::AviateFixedWing(rig) => rig.fdm.period(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => rig.period(),
             Self::Kinematic(model) => model.period(),
         }
     }
@@ -286,6 +261,8 @@ impl FreeFlightPlant {
             Self::Jsbsim { fdm, .. } => fdm.output(),
             Self::AviateX500(rig) => rig.body.output(),
             Self::AviateFixedWing(rig) => rig.fdm.output(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => rig.state(),
             Self::Kinematic(model) => model.output(),
         }
     }
@@ -300,6 +277,8 @@ impl FreeFlightPlant {
             } => Some(*specific_force_frd_m_s2),
             Self::AviateX500(rig) => Some(rig.body.specific_force_cg_body()),
             Self::AviateFixedWing(rig) => Some(rig.specific_force_frd_m_s2),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => Some(rig.specific_force_frd_m_s2()),
             Self::Kinematic(_) => None,
         }
     }
@@ -310,7 +289,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => Some(fdm.system_controls()),
             Self::AviateFixedWing(rig) => Some(rig.fdm.system_controls()),
-            Self::AviateX500(_) | Self::Kinematic(_) => None,
+            _ => None,
         }
     }
 
@@ -319,7 +298,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.set_system_controls(controls),
             Self::AviateFixedWing(rig) => rig.fdm.set_system_controls(controls),
-            Self::AviateX500(_) | Self::Kinematic(_) => {}
+            _ => {}
         }
     }
 
@@ -330,7 +309,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => Some(fdm.cg_structural_in()),
             Self::AviateFixedWing(rig) => Some(rig.fdm.cg_structural_in()),
-            Self::AviateX500(_) | Self::Kinematic(_) => None,
+            _ => None,
         }
     }
 
@@ -340,7 +319,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.last_ground_sync_m(),
             Self::AviateFixedWing(rig) => rig.fdm.last_ground_sync_m(),
-            Self::AviateX500(_) | Self::Kinematic(_) => None,
+            _ => None,
         }
     }
 
@@ -350,7 +329,7 @@ impl FreeFlightPlant {
         match self {
             Self::Jsbsim { fdm, .. } => Some(fdm.engine_status()),
             Self::AviateFixedWing(rig) => Some(rig.fdm.engine_status()),
-            Self::AviateX500(_) | Self::Kinematic(_) => None,
+            _ => None,
         }
     }
 
@@ -367,6 +346,17 @@ impl FreeFlightPlant {
                     pitch: 0.0,
                     yaw: 0.0,
                     throttle: 0.55,
+                },
+                elapsed_s,
+            ),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => AirframeArticulation::from_kinematic(
+                &rig.state(),
+                ControlInputs {
+                    roll: 0.0,
+                    pitch: 0.0,
+                    yaw: 0.0,
+                    throttle: if rig.armed() { 0.55 } else { 0.0 },
                 },
                 elapsed_s,
             ),
@@ -389,6 +379,8 @@ impl FreeFlightPlant {
         match self {
             Self::AviateX500(rig) => Some(rig.runner.is_armed()),
             Self::AviateFixedWing(rig) => Some(rig.runner.is_armed()),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => Some(rig.armed()),
             Self::Jsbsim { .. } | Self::Kinematic(_) => None,
         }
     }
@@ -407,6 +399,8 @@ impl FreeFlightPlant {
             },
             Self::AviateX500(rig) => PlantSnapshot::AviateX500(Box::new(rig.snapshot())),
             Self::AviateFixedWing(rig) => PlantSnapshot::AviateFixedWing(Box::new(rig.snapshot())),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(_) => PlantSnapshot::X500Mission,
             Self::Kinematic(model) => PlantSnapshot::Kinematic(Box::new(model.snapshot())),
         }
     }
@@ -440,6 +434,13 @@ impl FreeFlightPlant {
                 model.restore(saved);
                 Ok(())
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            (Self::X500Mission(_), PlantSnapshot::X500Mission) => {
+                Err(sim_scenario::ScenarioError::Unsupported {
+                    detail: "a Pilotage mission flight cannot be rewound; restart it",
+                }
+                .into())
+            }
             _ => Err(sim_scenario::ScenarioError::SnapshotMismatch {
                 detail: "the snapshot was taken from another free-flight plant",
             }
@@ -461,6 +462,8 @@ impl FreeFlightPlant {
             } => step_jsbsim_with_force(fdm, specific_force_frd_m_s2, controls, surface),
             Self::AviateX500(rig) => step_aviate_x500(rig, controls),
             Self::AviateFixedWing(rig) => step_aviate_fixed_wing(rig, controls, surface),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::X500Mission(rig) => rig.step(),
             Self::Kinematic(model) => {
                 model
                     .step(&KinematicInput { controls })

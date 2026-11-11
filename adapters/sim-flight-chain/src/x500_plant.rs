@@ -100,13 +100,23 @@ impl X500Plant {
         self.on_pad
     }
 
+    /// Specific force at the centre of gravity in body forward-right-down
+    /// axes, m/s²: the pad's reaction while it carries the vehicle.
+    pub fn specific_force_frd_m_s2(&self) -> DVec3 {
+        if self.on_pad {
+            DVec3::new(0.0, 0.0, -self.gravity_m_s2)
+        } else {
+            self.body.specific_force_cg_body()
+        }
+    }
+
     /// What the flight controller's sensors feel now.
     pub fn stimulus(&self) -> Result<PlantStimulus, ChainError> {
         let vehicle = self.body.output();
         if self.on_pad {
             return Ok(PlantStimulus::Resting {
                 vehicle,
-                specific_force_frd_m_s2: DVec3::new(0.0, 0.0, -self.gravity_m_s2),
+                specific_force_frd_m_s2: self.specific_force_frd_m_s2(),
             });
         }
         let site = self

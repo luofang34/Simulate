@@ -17,6 +17,7 @@ mod tests;
 use aviate_core::control::ControlMode;
 use aviate_core::control::multirotor::MultirotorController;
 use aviate_core::mixer::QuadXMixerX500;
+use glam::DVec3;
 use pilotage_adapter_api::{
     ActionCapability, ActionResult, AdapterCapabilities, ApplyOutcome, Disposition, ExecutionMode,
     IntentCapability, LinkLossEnactError, LinkLossPolicy, RejectReason, ScopeDescriptor,
@@ -66,7 +67,8 @@ pub struct AviateVehicleConfig {
 pub struct AviateX500Vehicle {
     config: AviateVehicleConfig,
     plant: X500Plant,
-    controller: AviateDirectRunner<MultirotorController, QuadXMixerX500>,
+    /// On the heap: the board carries its rings and filter by value.
+    controller: Box<AviateDirectRunner<MultirotorController, QuadXMixerX500>>,
     uplink: Uplink,
     downlink: Downlink,
     truth: TruthReporter,
@@ -87,15 +89,17 @@ impl AviateX500Vehicle {
         let period = TickSpan::from_ticks(TICKS_PER_SECOND / FLIGHT_RATE_HZ);
         let plant = X500Plant::on_pad(config.pad, config.heading_rad, period)?;
         let kernel = build_direct_x500_kernel().ok_or(ChainError::KernelBuild)?;
-        let controller = AviateDirectRunner::new(
-            kernel,
-            AviateDirectConfig {
-                noise: config.noise,
-                noise_seed: config.noise_seed,
-                ..AviateDirectConfig::ideal(config.pad)
-            },
-        )
-        .map_err(|source| ChainError::FlightController { at_s: 0.0, source })?;
+        let controller = Box::new(
+            AviateDirectRunner::new(
+                kernel,
+                AviateDirectConfig {
+                    noise: config.noise,
+                    noise_seed: config.noise_seed,
+                    ..AviateDirectConfig::ideal(config.pad)
+                },
+            )
+            .map_err(|source| ChainError::FlightController { at_s: 0.0, source })?,
+        );
         Ok(Self {
             truth: TruthReporter::new(&config),
             config,
@@ -123,6 +127,12 @@ impl AviateX500Vehicle {
     /// Whether the pad still carries the vehicle.
     pub const fn is_on_pad(&self) -> bool {
         self.plant.is_on_pad()
+    }
+
+    /// The true specific force at the centre of gravity in body
+    /// forward-right-down axes, m/s².
+    pub fn true_specific_force_frd_m_s2(&self) -> DVec3 {
+        self.plant.specific_force_frd_m_s2()
     }
 
     /// Whether the flight controller's last heartbeat reported it armed.

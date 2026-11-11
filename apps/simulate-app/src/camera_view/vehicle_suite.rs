@@ -43,7 +43,7 @@ pub fn vehicle_camera_suite(vehicle: FreeFlightVehicle) -> &'static VehicleCamer
         FreeFlightVehicle::JsbsimP38g => {
             P38_SUITE.get_or_init(|| suite(vehicle, package_views("p38g", builtin_p38g_package())))
         }
-        FreeFlightVehicle::AviateX500Direct => {
+        FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::X500Mission => {
             X500_SUITE.get_or_init(|| suite(vehicle, CameraViewSet::derived(X500_SPAN_M)))
         }
     }
