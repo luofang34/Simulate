@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "adapters/sim-aviate",
+    "adapters/sim-chain-trial",
     "adapters/sim-flight-chain",
     "adapters/sim-indicate",
     "adapters/sim-maplibre",
@@ -50,6 +51,7 @@ sim-analysis = { path = "crates/sim-analysis" }
 sim-analysis-contract = { path = "crates/sim-analysis-contract" }
 sim-atmosphere = { path = "crates/sim-atmosphere" }
 sim-aviate = { path = "adapters/sim-aviate" }
+sim-chain-trial = { path = "adapters/sim-chain-trial" }
 sim-flight-chain = { path = "adapters/sim-flight-chain" }
 sim-devices = { path = "crates/sim-devices" }
 sim-geo = { path = "crates/sim-geo" }

@@ -58,8 +58,8 @@ pub use progress::{
     SensorStates, StartedRecord,
 };
 pub use terrain_camera::{
-    CameraBand, CameraMountSpec, RadiometrySpec, TerrainCamera, TerrainCameraSpec, TerrainFrame,
-    TerrainFrameTruth,
+    CameraBand, CameraMountSpec, RadiometrySpec, TerrainCamera, TerrainCameraSpec, TerrainExposer,
+    TerrainExposure, TerrainFrame, TerrainFrameTruth,
 };
 pub use terrain_report::{MapLayerReport, MapLoadReport, TerrainSetReport, WorkingCameraReport};
 pub use timing::{SetTiming, TrialTiming};
@@ -69,6 +69,7 @@ pub use closed::{
     Autopilot, ClosedLoopOutcome, ClosedLoopReport, CrossTrackSample, PilotInput, PilotOutput,
     TerminationReport, WaypointOutcome,
 };
+pub use epoch::parse_utc;
 pub use error::TrialError;
 pub use evaluate::{
     ClosedTrialOutcome, RecordedTrial, TrialOutcome, evaluate_blocking,
@@ -92,7 +93,7 @@ pub use request::{
     AlignmentSpec, BaroSpec, GnssSpec, GuidanceSource, ImuGradeName, OutputSpec, QualityFloor,
     SeedSpec, SensorSetSpec, StarSpec, TerminationSpec, TrialRequest, VehicleSpec, WaypointSpec,
 };
-pub use route::{RouteEvent, RouteFlight, execution_config, fly_route, plan_waypoints};
+pub use route::{RouteEvent, RouteFlight, execution_config, fly_route, plan_waypoints, step_span};
 pub use sky::SkySample;
 pub use stars::{
     StarExposure, StarFrame, StarFrameTruth, StarImage, StarScene, StarSky, render_star_frames,

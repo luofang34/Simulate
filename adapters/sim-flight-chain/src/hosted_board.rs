@@ -17,6 +17,16 @@ use sim_geo::Geodetic;
 
 use crate::{Airframe, ChainError};
 
+/// Devices of the suite that are out of service: they deliver nothing to
+/// any consumer, as a failed or switched-off device would.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeviceOutages {
+    /// The GNSS receiver.
+    pub gnss: bool,
+    /// The air-data unit: the static port and the pitot.
+    pub air_data: bool,
+}
+
 /// An airframe, its sensor suite and the Aviate kernel that flies it.
 pub struct HostedBoard<A, C, M>
 where
@@ -30,6 +40,7 @@ where
     origin: Geodetic,
     now: SimInstant,
     samples: DeviceSamples,
+    outages: DeviceOutages,
     command: DirectActuatorCmd,
 }
 
@@ -62,6 +73,7 @@ where
             origin,
             now: SimInstant::START,
             samples: DeviceSamples::default(),
+            outages: DeviceOutages::default(),
             command: DirectActuatorCmd::default(),
         })
     }
@@ -75,6 +87,12 @@ where
             .suite
             .sense(&truth, period.as_seconds())
             .map_err(ChainError::Devices)?;
+        if self.outages.gnss {
+            self.samples.gnss = None;
+        }
+        if self.outages.air_data {
+            self.samples.air_data = None;
+        }
         let at_s = self.now.duration_since(SimInstant::START).as_seconds();
         self.command = self
             .controller
@@ -131,7 +149,17 @@ where
         self.controller.pop_mavlink_tx(buffer)
     }
 
-    /// What the devices sampled in the last cycle.
+    /// Takes devices out of service, or returns them, from the next cycle.
+    pub const fn set_outages(&mut self, outages: DeviceOutages) {
+        self.outages = outages;
+    }
+
+    /// The devices out of service.
+    pub const fn outages(&self) -> DeviceOutages {
+        self.outages
+    }
+
+    /// What the devices delivered in the last cycle.
     pub const fn last_samples(&self) -> &DeviceSamples {
         &self.samples
     }

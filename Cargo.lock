@@ -5309,6 +5309,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-chain-trial"
+version = "0.1.0"
+dependencies = [
+ "aviate-core",
+ "glam 0.33.12",
+ "navigate-contract 0.1.0 (git+https://github.com/luofang34/Navigate?rev=8efefef8d83cdc4806e2c68921c3d6d3458b80f1)",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-atmosphere",
+ "sim-core",
+ "sim-devices",
+ "sim-flight-chain",
+ "sim-geo",
+ "sim-navigate",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "sim-core"
 version = "0.1.0"
 dependencies = [
