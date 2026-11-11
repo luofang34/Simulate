@@ -14,6 +14,7 @@
 
 mod aperture;
 mod camera;
+mod canvas_presenter;
 mod compositor;
 mod environment;
 mod error;
@@ -39,6 +40,7 @@ pub use aperture::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use aperture::{THERMAL_KELVIN_FORMAT, ThermalSceneTarget};
 pub use camera::{Camera, CameraPose};
+pub use canvas_presenter::CanvasPresenter;
 pub use compositor::{
     ColorTransfer, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS, OverlayQuad, QuadFilter,
     RgbaPanelTexture, ViewportRect,

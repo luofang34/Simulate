@@ -143,6 +143,26 @@ impl EfbCamera {
         }
     }
 
+    /// This camera, looking the same way, for `mode`'s view.
+    pub(super) fn with_mode(&self, mode: EfbDisplayMode) -> Self {
+        Self {
+            mode,
+            ..self.clone()
+        }
+    }
+
+    /// This camera with the zoom `cameras[index]` keeps for its own view.
+    pub(super) fn with_zoom_of(mut self, cameras: &[Self; 2], index: usize) -> Self {
+        let kept = cameras
+            .get(index)
+            .and_then(|camera| camera.zooms.get(index))
+            .copied();
+        if let (Some(kept), Some(zoom)) = (kept, self.zooms.get_mut(index)) {
+            *zoom = kept;
+        }
+        self
+    }
+
     const fn mode_index(&self) -> usize {
         match self.mode {
             EfbDisplayMode::CompactCorner => 0,

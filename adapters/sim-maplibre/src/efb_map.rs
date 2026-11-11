@@ -3,45 +3,35 @@
 //! approach plate, the airport surface diagram, airspace, and ownship, route and traffic
 //! symbology.
 //!
-//! Both views are slots of one `maplibre` map, so they share every loaded tile: switching
-//! between them renders the other slot at once with nothing to reload. Only the shown view
-//! is drawn each frame.
+//! Both views are slots of one `maplibre` map, so they share every loaded tile and every
+//! layer: switching between them renders the other slot at once with nothing to reload.
+//! Each view has its own camera. A cockpit shows one view at a time; a host with room for
+//! both (a page with its own map canvas) shows both, and each frame draws every view shown.
 
 use std::{sync::Arc, time::Duration};
 
 use maplibre::{
-    background::BackgroundPlugin,
-    coords::{LatLon, Zoom},
-    headless::{
-        CoveringPolicy, MultiViewFrame, SlotView, ViewSlotConfig, ViewSlotEntry, ViewSlotId,
-        environment::HeadlessEnvironment, map::HeadlessMap,
-    },
-    hillshade::HillshadePlugin,
-    overlay::OverlayPlugin,
-    plugin::Plugin,
-    raster::{DefaultRasterTransferables, RasterPlugin},
-    render::{RenderPlugin, view_state::NavigationMode},
-    terrain::{TerrainPlugin, transferables::DefaultDemTransferables},
-    vector::{DefaultVectorTransferables, VectorPlugin},
+    headless::{ViewSlotConfig, ViewSlotId, map::HeadlessMap},
+    render::view_state::NavigationMode,
 };
 use serde_json::{Value, json};
 
 use crate::{
-    ChartAssetStore, ChartSymbologyInput, CockpitDeviceTier, MapAdapterError, SceneryEndpoints,
-    SharedMapRuntime, build_chart_symbology_scaled, chart_url,
-    geodesy::wrap_lon_deg,
-    runtime::{
-        DrapeBudgetPlugin, EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin, pixel_ratio_update,
-        resolve_or_strip_tile_json, validate_size,
-    },
+    ChartAssetStore, MapAdapterError, SceneryEndpoints, SharedMapRuntime, chart_url,
+    runtime::{pixel_ratio_update, resolve_or_strip_tile_json, validate_size},
 };
 
 mod camera;
 mod pacing;
+mod plan;
+mod plan_style;
 mod plate;
+mod route;
 mod style;
 #[cfg(test)]
 mod tests;
+mod tracks;
+mod views;
 
 pub(crate) use camera::effective_globe_zoom;
 pub use camera::{
@@ -49,7 +39,11 @@ pub use camera::{
     EfbLayerFlags, EfbRefreshPolicy,
 };
 pub use pacing::EfbPacer;
+pub use plan::{EfbBasemap, FixPick};
+pub use plan_style::{ACTIVE_MAGENTA, FLOWN_GREY, FUTURE_WHITE, OUTLINE_GREEN};
 pub use plate::{ApproachPlateOverlay, ProceduralPlateSpec, generate_procedural_approach_plate};
+pub use route::{FixId, FlightPlan, LegState, RouteFix, RouteLeg, RouteProgress, leg_state};
+pub use tracks::{EfbTracks, MIN_RING_PX, PointMark, Rgb, SigmaRing, TrackLine, css_colour};
 
 use camera::EfbCamera;
 use style::{
@@ -87,13 +81,19 @@ pub struct EfbMapSurface {
     charts: ChartAssetStore,
     slots: [ViewSlotId; 2],
     sizes: [[u32; 2]; 2],
-    camera: EfbCamera,
+    /// Cameras of `[compact, expanded]`.
+    cameras: [EfbCamera; 2],
+    /// The view commands address, and in a cockpit the one shown.
+    focus: EfbDisplayMode,
+    /// Whether every view is drawn each frame, not only the focused one.
+    all_views: bool,
     layers: EfbLayerFlags,
     aerodrome_layers: Vec<String>,
     plate: Option<ApproachPlateOverlay>,
     plate_opacity: f32,
     pixel_ratio: Option<f64>,
     frames: u64,
+    plan: plan::PlanState,
 }
 
 impl EfbMapSurface {
@@ -109,7 +109,7 @@ impl EfbMapSurface {
     ) -> Result<Self, MapAdapterError> {
         let compact = size(config.compact_size)?;
         let expanded = size(config.expanded_size)?;
-        charts.put_chart_png(NO_PLATE_CHART_ID, transparent_pixel_png()?);
+        charts.put_chart_png(NO_PLATE_CHART_ID, style::transparent_pixel_png()?);
         let (kernel, renderer) = runtime.create_renderer(
             16,
             16,
@@ -122,7 +122,9 @@ impl EfbMapSurface {
         let aerodrome_layers = style::aerodrome_layer_ids(&style);
         let tier = runtime.device_tier();
         let mut map = runtime
-            .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins(tier)))
+            .with_runtime_context(|| {
+                HeadlessMap::new(style, renderer, kernel, style::plugins(tier))
+            })
             .map_err(|source| MapAdapterError::Assemble { source })?;
         map.set_available_memory(runtime.device_tier().available_memory_bytes());
         map.set_navigation_mode(NavigationMode::FreeGlobe)
@@ -135,19 +137,26 @@ impl EfbMapSurface {
         };
         let slots = [register(compact), register(expanded)];
         let [lat, lon] = config.initial_center;
+        let camera = EfbCamera::new(lat, lon);
         Ok(Self {
             runtime: runtime.clone(),
             map,
             charts,
             slots,
             sizes: [config.compact_size, config.expanded_size],
-            camera: EfbCamera::new(lat, lon),
+            cameras: [
+                camera.with_mode(EfbDisplayMode::CompactCorner),
+                camera.with_mode(EfbDisplayMode::ExpandedEfb),
+            ],
+            focus: EfbDisplayMode::CompactCorner,
+            all_views: false,
             layers: EfbLayerFlags::default(),
             aerodrome_layers,
             plate: None,
             plate_opacity: style::DEFAULT_PLATE_OPACITY,
             pixel_ratio: None,
             frames: 0,
+            plan: plan::PlanState::default(),
         })
     }
 
@@ -166,20 +175,31 @@ impl EfbMapSurface {
         self.pixel_ratio.unwrap_or(1.0)
     }
 
-    /// The shown view.
+    /// The shown view, or with every view shown the one commands address.
     #[must_use]
     pub const fn display_mode(&self) -> EfbDisplayMode {
-        self.camera.mode
+        self.focus
     }
 
-    /// Shows `mode`'s view from the next frame; its tiles are already resident.
+    /// Shows `mode`'s view from the next frame, looking where the view shown before
+    /// looked (each view keeps its own zoom); its tiles are already resident.
     pub fn set_display_mode(&mut self, mode: EfbDisplayMode) {
-        self.camera.mode = mode;
+        if mode != self.focus {
+            let index = mode_index(mode);
+            let moved = self
+                .camera()
+                .with_mode(mode)
+                .with_zoom_of(&self.cameras, index);
+            if let Some(camera) = self.cameras.get_mut(index) {
+                *camera = moved;
+            }
+            self.focus = mode;
+        }
     }
 
     /// Switches between the compact and expanded views; returns the view now shown.
     pub fn toggle_expanded(&mut self) -> EfbDisplayMode {
-        let next = match self.camera.mode {
+        let next = match self.focus {
             EfbDisplayMode::CompactCorner => EfbDisplayMode::ExpandedEfb,
             EfbDisplayMode::ExpandedEfb => EfbDisplayMode::CompactCorner,
         };
@@ -189,55 +209,55 @@ impl EfbMapSurface {
 
     /// How the camera follows ownship.
     #[must_use]
-    pub const fn follow_mode(&self) -> EfbFollowMode {
-        self.camera.follow
+    pub fn follow_mode(&self) -> EfbFollowMode {
+        self.camera().follow
     }
 
     /// Whether the map is rotated to a custom gesture bearing (either centred or panned).
     #[must_use]
-    pub const fn has_custom_bearing(&self) -> bool {
-        self.camera.has_custom_bearing()
+    pub fn has_custom_bearing(&self) -> bool {
+        self.camera().has_custom_bearing()
     }
 
     /// Sets how the camera follows ownship.
     pub fn set_follow_mode(&mut self, mode: EfbFollowMode) {
-        self.camera.set_follow(mode);
+        self.camera_mut().set_follow(mode);
     }
 
     /// Follows ownship again, in the follow mode last chosen.
     pub fn recenter_ownship(&mut self) {
-        self.camera.recenter();
+        self.camera_mut().recenter();
     }
 
     /// The shown view's zoom.
     #[must_use]
     pub fn zoom(&self) -> f64 {
-        self.camera.zoom()
+        self.camera().zoom()
     }
 
     /// Changes the shown view's zoom by `delta`, within [`EFB_ZOOM_RANGE`].
     pub fn zoom_by(&mut self, delta: f64) {
-        self.camera.zoom_by(delta);
+        self.camera_mut().zoom_by(delta);
     }
 
     /// Rotates the shown view by `delta_deg` (`> 0` rotates map features counter-clockwise),
     /// staying centred on ownship unless panned free.
     pub fn rotate_by_deg(&mut self, delta_deg: f64) {
-        self.camera.rotate_by_deg(delta_deg);
+        self.camera_mut().rotate_by_deg(delta_deg);
     }
 
     /// Pans the shown view by physical texture pixels (`dx` right, `dy` down) and stops
     /// following ownship until [`Self::recenter_ownship`].
     pub fn pan_by_pixels(&mut self, dx_px: f32, dy_px: f32) {
         let ratio = self.pixel_ratio();
-        self.camera
+        self.camera_mut()
             .pan_by_pixels(f64::from(dx_px) / ratio, f64::from(dy_px) / ratio);
     }
 
     /// `(lat_deg, lon_deg, bearing_deg)` the shown view is centred on and rotated to.
     #[must_use]
     pub fn camera_center_and_bearing(&self) -> (f64, f64, f64) {
-        let spec = self.camera.spec();
+        let spec = self.camera().spec();
         (spec.center_lat_deg, spec.center_lon_deg, spec.bearing_deg)
     }
 
@@ -325,53 +345,6 @@ impl EfbMapSurface {
             })
     }
 
-    /// Draws the shown view: follows ownship per the follow mode and draws the symbology
-    /// of `symbology` (its camera and viewport are replaced by the EFB's own).
-    pub fn render(
-        &mut self,
-        symbology: &ChartSymbologyInput<'_>,
-    ) -> Result<Option<&wgpu::TextureView>, MapAdapterError> {
-        self.camera.follow_ownship(symbology.ownship.as_ref());
-        let spec = self.camera.spec();
-        let route = self.layers.route_and_traffic;
-        let mesh = build_chart_symbology_scaled(
-            &ChartSymbologyInput {
-                camera: spec,
-                viewport_px: self.active_size(),
-                ownship: symbology.ownship,
-                runway: symbology.runway.filter(|_| route),
-                traffic: if route { symbology.traffic } else { &[] },
-            },
-            self.pixel_ratio(),
-        );
-        let slot = self.active_slot();
-        self.map
-            .set_view_slot_overlay(slot, mesh)
-            .map_err(|source| MapAdapterError::MultiView { source })?;
-        self.frames = self.frames.wrapping_add(1);
-        let center_lat = spec.center_lat_deg.clamp(-90.0, 90.0);
-        let frame = MultiViewFrame {
-            timestamp: FRAME_INTERVAL
-                .saturating_mul(u32::try_from(self.frames).unwrap_or(u32::MAX)),
-            opaque_environment: true,
-            request_overscan: 1.0,
-            slots: vec![ViewSlotEntry {
-                slot,
-                view: SlotView::Camera {
-                    center: LatLon::new(center_lat, wrap_lon_deg(spec.center_lon_deg)),
-                    zoom: Zoom::new(effective_globe_zoom(spec.zoom, center_lat)),
-                    bearing_deg: spec.bearing_deg,
-                    pitch_deg: 0.0,
-                },
-                policy: CoveringPolicy::Independent,
-            }],
-        };
-        self.runtime
-            .with_runtime_context(|| self.map.run_multi_view_frame(frame))
-            .map_err(|source| MapAdapterError::MultiView { source })?;
-        Ok(self.map.view_slot_color_view(slot))
-    }
-
     /// Resizes the expanded EFB page; zero or unchanged sizes are ignored.
     pub fn resize_expanded(&mut self, size_px: [u32; 2]) -> Result<(), MapAdapterError> {
         let [compact, expanded] = self.sizes;
@@ -389,11 +362,13 @@ impl EfbMapSurface {
     /// The shown view's size, physical pixels.
     #[must_use]
     pub fn active_size(&self) -> [u32; 2] {
-        let [compact, expanded] = self.sizes;
-        match self.camera.mode {
-            EfbDisplayMode::CompactCorner => compact,
-            EfbDisplayMode::ExpandedEfb => expanded,
-        }
+        self.size_of(self.focus)
+    }
+
+    /// `mode`'s view size, physical pixels.
+    #[must_use]
+    pub fn size_of(&self, mode: EfbDisplayMode) -> [u32; 2] {
+        self.sizes.get(mode_index(mode)).copied().unwrap_or([1, 1])
     }
 
     /// Whether background requests or arrived tiles remain unsettled.
@@ -422,8 +397,29 @@ impl EfbMapSurface {
     }
 
     fn active_slot(&self) -> ViewSlotId {
+        self.slot_of(self.focus)
+    }
+
+    fn slot_of(&self, mode: EfbDisplayMode) -> ViewSlotId {
         let [compact, expanded] = self.slots;
-        match self.camera.mode {
+        match mode {
+            EfbDisplayMode::CompactCorner => compact,
+            EfbDisplayMode::ExpandedEfb => expanded,
+        }
+    }
+
+    /// The focused view's camera.
+    fn camera(&self) -> &EfbCamera {
+        let [compact, expanded] = &self.cameras;
+        match self.focus {
+            EfbDisplayMode::CompactCorner => compact,
+            EfbDisplayMode::ExpandedEfb => expanded,
+        }
+    }
+
+    fn camera_mut(&mut self) -> &mut EfbCamera {
+        let [compact, expanded] = &mut self.cameras;
+        match self.focus {
             EfbDisplayMode::CompactCorner => compact,
             EfbDisplayMode::ExpandedEfb => expanded,
         }
@@ -470,28 +466,10 @@ fn size([width, height]: [u32; 2]) -> Result<maplibre::window::PhysicalSize, Map
     validate_size(width, height)
 }
 
-fn plugins(tier: CockpitDeviceTier) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
-    vec![
-        Box::new(RenderPlugin),
-        Box::new(BackgroundPlugin),
-        Box::new(RasterPlugin::<DefaultRasterTransferables>::default()),
-        Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
-        Box::new(HillshadePlugin),
-        Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
-        Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
-        Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
-        Box::new(OverlayPlugin),
-    ]
-}
-
-/// A 1 × 1 transparent PNG for the plate source while no plate is shown.
-fn transparent_pixel_png() -> Result<Arc<[u8]>, MapAdapterError> {
-    let mut cursor = std::io::Cursor::new(Vec::new());
-    image::RgbaImage::new(1, 1)
-        .write_to(&mut cursor, image::ImageFormat::Png)
-        .map_err(|error| MapAdapterError::ChartRaster {
-            chart_id: NO_PLATE_CHART_ID.to_owned(),
-            detail: error.to_string(),
-        })?;
-    Ok(Arc::from(cursor.into_inner()))
+/// Index of `mode` in the `[compact, expanded]` arrays.
+const fn mode_index(mode: EfbDisplayMode) -> usize {
+    match mode {
+        EfbDisplayMode::CompactCorner => 0,
+        EfbDisplayMode::ExpandedEfb => 1,
+    }
 }

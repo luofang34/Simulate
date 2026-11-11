@@ -9,7 +9,7 @@ use super::{
     *,
 };
 use crate::{
-    ChartOwnship, HybridTileLoader, belief_aviation_chart_style,
+    ChartOwnship, ChartSymbologyInput, HybridTileLoader, belief_aviation_chart_style,
     geodesy::destination,
     tests::gpu::{sample_scenery_and_runtime, try_host_gpu},
 };
@@ -333,7 +333,7 @@ fn polar_nzsp_globe_frame_renders_non_empty_chart() {
     };
     let rwy_geom = sim_scenery::LandingRunwayGeometry::from_runway_end_spec(&rwy);
     let sym = ChartSymbologyInput {
-        camera: efb.camera.spec(),
+        camera: efb.camera().spec(),
         viewport_px: [128, 96],
         ownship: Some(polar_own),
         runway: Some(&rwy_geom),
@@ -363,3 +363,5 @@ fn polar_nzsp_globe_frame_renders_non_empty_chart() {
         .count();
     assert!(bright > 20 && dark > 200, "bright={bright}, dark={dark}");
 }
+
+mod plan;
