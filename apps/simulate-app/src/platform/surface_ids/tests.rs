@@ -27,8 +27,24 @@ fn the_loader_drives_the_elements_of_the_download() {
 
 #[test]
 fn the_page_styles_what_the_app_builds_by_class() {
-    for class in [".section", ".bar", ".fill", ".detail", ".lines"] {
-        assert!(PAGE.contains(&format!("{class} ")), "{class} in index.html");
+    for class in [
+        ".section",
+        ".bar",
+        ".fill",
+        ".detail",
+        ".lines",
+        ".plot",
+        ".legend",
+        ".switches",
+        ".series",
+        ".swatch",
+        ".value",
+        ".speeds",
+    ] {
+        let styled = [" ", ","]
+            .iter()
+            .any(|end| PAGE.contains(&format!("{class}{end}")));
+        assert!(styled, "{class} in index.html");
     }
 }
 

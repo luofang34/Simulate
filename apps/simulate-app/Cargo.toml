@@ -8,6 +8,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Flies a recorded native trial's progress stream (`progress-replay.ndjson`
+# beside the page) through the flight monitor in place of the flight, so the
+# monitor can be seen before the vehicle's software runs in the page. A
+# development build only: the deployed page never carries it.
+monitor-replay = []
+
 [dependencies]
 aviate-core = { workspace = true }
 aviate-hal-io = { workspace = true }
@@ -61,4 +68,16 @@ sim-link-host = { workspace = true }
 sim-navdata = { workspace = true }
 tracing-wasm = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["Document", "Element", "EventTarget", "Location", "Window"] }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = [
+    "CanvasRenderingContext2d",
+    "Document",
+    "Element",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlInputElement",
+    "Location",
+    "NodeList",
+    "Performance",
+    "Window",
+] }

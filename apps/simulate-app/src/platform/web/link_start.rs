@@ -11,6 +11,7 @@ use super::progress_surface::ProgressSurface;
 
 /// What stands in the flight's place until the vehicle's own software runs
 /// in the browser.
+#[cfg(not(feature = "monitor-replay"))]
 const FLIGHT_NOT_YET: &str = "The flight is flown by the vehicle's own software: Pilotage's \
     mission host, Aviate's flight controller for the C172 and Navigate's navigator. They are \
     not linked into this build of the page, so it stops here. The plan and the map package \
@@ -73,7 +74,13 @@ async fn continue_with(surface: ProgressSurface, plan: LinkPlan) {
     if needs_package && sealed.is_none() {
         return;
     }
-    if let Some(flight) = surface.section("Flight") {
-        flight.settled(FLIGHT_NOT_YET);
+    let Some(flight) = surface.section("Flight") else {
+        return;
+    };
+    #[cfg(feature = "monitor-replay")]
+    {
+        super::replay_start::fly_recorded(flight).await;
     }
+    #[cfg(not(feature = "monitor-replay"))]
+    flight.settled(FLIGHT_NOT_YET);
 }

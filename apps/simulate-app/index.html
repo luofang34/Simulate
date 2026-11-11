@@ -38,6 +38,15 @@
       .section [hidden] { display: none; }
       .section button { margin-top: 1rem; padding: 0.5rem 1.1rem; border: 1px solid #5aa2ff; border-radius: 4px; background: #10203a; color: #f2f4f8; font: inherit; cursor: pointer; }
       .section button:hover { background: #17305a; }
+      /* The flight monitor: its plot, the sets' legend, the means' switches and the pace. */
+      .plot { display: block; width: 100%; height: 260px; margin-top: 1rem; }
+      .legend, .switches { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
+      .series { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; }
+      .swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
+      .value { color: #8f98ad; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      .speeds { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 1rem; color: #8f98ad; }
+      .speeds label { display: flex; gap: 0.3rem; align-items: center; color: #d7dbe6; cursor: pointer; }
+      .section input { accent-color: #5aa2ff; }
       @media (prefers-reduced-motion: reduce) { .bar[data-unknown] .fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     <link data-trunk rel="rust" data-bin="simulate-app" data-initializer="boot.mjs" />

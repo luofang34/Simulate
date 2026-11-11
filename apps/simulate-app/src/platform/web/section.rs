@@ -33,17 +33,25 @@ pub(super) fn write_lines(document: &Document, lines: &Element, content: &[PlanL
     }
 }
 
+/// A new `tag` element of `class` (none when empty) at the end of `parent`.
+pub(super) fn append(
+    document: &Document,
+    parent: &Element,
+    tag: &str,
+    class: &str,
+) -> Option<Element> {
+    let element = document.create_element(tag).ok()?;
+    if !class.is_empty() {
+        attribute(&element, "class", Some(class));
+    }
+    parent.append_child(&element).ok()?;
+    Some(element)
+}
+
 impl Section {
     /// A new section at the end of `parent`.
     pub(super) fn under(document: &Document, parent: &Element, heading: &str) -> Option<Self> {
-        let child = |parent: &Element, tag: &str, class: &str| {
-            let element = document.create_element(tag).ok()?;
-            if !class.is_empty() {
-                attribute(&element, "class", Some(class));
-            }
-            parent.append_child(&element).ok()?;
-            Some(element)
-        };
+        let child = |parent: &Element, tag: &str, class: &str| append(document, parent, tag, class);
         let root = child(parent, "section", "section")?;
         let title = child(&root, "h2", "")?;
         title.set_text_content(Some(heading));
@@ -59,6 +67,18 @@ impl Section {
             bar,
         };
         Some(section)
+    }
+
+    /// The section's element, for content of its own after its lines.
+    #[cfg(feature = "monitor-replay")]
+    pub(super) const fn root(&self) -> &Element {
+        &self.root
+    }
+
+    /// The page.
+    #[cfg(feature = "monitor-replay")]
+    pub(super) const fn document(&self) -> &Document {
+        &self.document
     }
 
     /// Says what the section is doing, as work with no measure.
