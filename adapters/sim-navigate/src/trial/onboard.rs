@@ -12,7 +12,6 @@ use std::sync::Arc;
 use navigate_camera::{CameraMount as NavigateMount, ImagerModel, Intrinsics};
 use navigate_contract::{Ellipsoid, SolutionQuality, SourceId, Waypoint};
 use navigate_data::{DayNumber, GeoidModel};
-use navigate_fusion::FogmBias;
 use navigate_geodesy::GeoidUndulation;
 use navigate_guidance::GuidanceConfig;
 use navigate_onboard::{
@@ -28,6 +27,9 @@ use super::stars::{roof_star_mount, star_camera_config};
 use super::terrain_camera::TerrainCameraSpec;
 use super::{QualityFloor, SensorSetSpec, TrialError, TrialRequest, VehicleSpec};
 use crate::{MASTER_CLOCK_DOMAIN, NavMeans, imager_model, inertial_config, navigate_mount};
+pub(super) use readings::{altimeter_budget, baro_altitude_data, gnss_fix_data};
+
+mod readings;
 
 /// The trial's IMU.
 pub const IMU_SOURCE: SourceId = SourceId::new(90);
@@ -80,13 +82,7 @@ pub fn sensor_suite(
             imager: None,
             mount: None,
             rate_hz: request.baro.rate_hz,
-            budget: ErrorBudget::Barometer {
-                white_sigma_m: request.baro.white_sigma_m,
-                bias: FogmBias::new(
-                    request.baro.bias_correlation_time_s,
-                    request.baro.bias_sigma_m,
-                ),
-            },
+            budget: altimeter_budget(&request.baro, planned_height_m(request))?,
         },
     ];
     if let (true, Some(camera)) = (
@@ -145,6 +141,11 @@ pub fn trial_navigator_with_stores(
         load_onboard_map(request, &mut navigator, stores)?;
     }
     Ok(Box::new(navigator))
+}
+
+/// The height the altimeter's budget is declared at: the route's start.
+fn planned_height_m(request: &TrialRequest) -> f64 {
+    request.waypoints.first().map_or(0.0, |w| w.altitude_m)
 }
 
 /// The terrain camera as the navigator is told of it: pinhole intrinsics

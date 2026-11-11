@@ -19,7 +19,6 @@ use super::availability::{ScheduledInterval, SetAvailability};
 use super::closed::{ClosedLoopOutcome, ClosedLoopReport};
 use super::comparison::comparison;
 use super::epoch::parse_utc;
-use super::gnss::GnssReceiver;
 use super::map_store::{DirectoryStores, MapStores};
 use super::maps::OpenedPackage;
 use super::onboard::trial_navigator_with_stores;
@@ -304,7 +303,7 @@ fn trial_report(
         seeds: request.seeds,
         route,
         availability: request.availability.clone(),
-        gnss_horizontal_sigma_m: GnssReceiver::horizontal_sigma_m(&request.gnss),
+        gnss_horizontal_sigma_m: request.gnss.horizontal_sigma_m(),
         comparison: comparison(&sensor_sets, request.output.horizontal_error_threshold_m),
         maps,
         sensor_sets,

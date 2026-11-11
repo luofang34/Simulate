@@ -5433,6 +5433,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "sim-atmosphere",
  "sim-core",
  "sim-devices",
  "sim-geo",

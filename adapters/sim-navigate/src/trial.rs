@@ -19,10 +19,10 @@ mod availability;
 mod closed;
 mod comparison;
 mod defaults;
+mod devices;
 mod epoch;
 mod error;
 mod evaluate;
-mod gnss;
 mod map_store;
 mod maps;
 mod models;
@@ -77,7 +77,6 @@ pub use evaluate::{
     replay_set_blocking, replay_set_with_stores, run_closed_trial, run_trial_blocking,
     run_trial_timed_blocking, run_trial_with_progress_blocking, run_trial_with_stores,
 };
-pub use gnss::{BaroReading, GnssFix};
 use models::model_statements;
 pub use onboard::{
     BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, sensor_suite, star_catalogue,
