@@ -59,20 +59,14 @@ pub fn build_direct_x500_kernel() -> Option<DirectX500Kernel> {
 /// Concrete `DefaultAviateKernel` type produced by [`build_direct_fixed_wing_kernel`].
 pub type DirectFixedWingKernel = DefaultAviateKernel<FixedWingController, FixedWingMixer>;
 
-/// Builds an in-process Aviate fixed-wing kernel for `airframe`: `Ekf`, the
-/// fixed-wing control law on the airframe's description, and the four-lane
-/// mixer (throttle, aileron, elevator, rudder; surfaces neutral at 0.5).
+/// Builds an in-process Aviate fixed-wing kernel for `airframe` as the airframe
+/// assembles it: its estimator with air-data aiding, the fixed-wing control law,
+/// the four-lane mixer (throttle, aileron, elevator, rudder; surfaces neutral at
+/// 0.5) and the fixed-wing pre-arm checks.
 pub fn build_direct_fixed_wing_kernel(
     airframe: &FixedWingAirframe,
 ) -> Option<DirectFixedWingKernel> {
-    let mut kernel = AviateKernelBuilder::new()
-        .estimator(Ekf::default())
-        .controller(airframe.controller().ok()?)
-        .mixer(FixedWingAirframe::mixer(zero_internal_timestamp))
-        .sanitizer(Sanitizer)
-        .config(airframe.kernel_config())
-        .build()
-        .ok()?;
+    let mut kernel = airframe.kernel(zero_internal_timestamp).ok()?;
     kernel.state.checks.pre_arm.update_throttle(true);
     Some(kernel)
 }

@@ -71,11 +71,11 @@ sim-universe = { path = "crates/sim-universe" }
 sim-core = { path = "crates/sim-core" }
 sim-xil = { path = "crates/sim-xil" }
 
-aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "2f128ec17e51900e42f4720e4a78c0237ec12c21" }
-aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "2f128ec17e51900e42f4720e4a78c0237ec12c21", default-features = false, features = ["mc", "fw"] }
-aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "2f128ec17e51900e42f4720e4a78c0237ec12c21" }
-aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "2f128ec17e51900e42f4720e4a78c0237ec12c21" }
-aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "2f128ec17e51900e42f4720e4a78c0237ec12c21" }
+aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "0315e727a2142c609e82755f62995d6b07c0b07a" }
+aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "0315e727a2142c609e82755f62995d6b07c0b07a", default-features = false, features = ["mc", "fw"] }
+aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "0315e727a2142c609e82755f62995d6b07c0b07a" }
+aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "0315e727a2142c609e82755f62995d6b07c0b07a" }
+aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "0315e727a2142c609e82755f62995d6b07c0b07a" }
 flightbag = { git = "https://github.com/luofang34/Flightbag", rev = "60d74f362fedbe497ba3064f61961e03b6b16ffc" }
 flightbag-core = { git = "https://github.com/luofang34/Flightbag", rev = "60d74f362fedbe497ba3064f61961e03b6b16ffc" }
 world = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2", features = ["moving"] }

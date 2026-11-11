@@ -30,6 +30,18 @@ fn render_c172_mission_flight() -> Result<(), AppSimError> {
     h.rig.set_show_instruments(false);
     h.rig.set_show_conformal_hud(false);
     h.flight.select_vehicle(FreeFlightVehicle::C172Mission)?;
+    // The link's epoch, 2026-06-15 12:04 UTC, not the host's clock.
+    let start = h
+        .flight
+        .sim_epoch()
+        .start_utc()
+        .map_err(|e| AppSimError::Screenshot {
+            detail: e.to_string(),
+        })?;
+    assert!(
+        (start.unix_seconds() - 1_781_525_040.0).abs() < 1.0,
+        "{start:?}"
+    );
     h.rig
         .supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::Chase);
