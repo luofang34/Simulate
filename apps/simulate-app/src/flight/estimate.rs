@@ -6,7 +6,7 @@
 
 use glam::DVec3;
 use sim_apollo::CockpitInstrumentSnapshot;
-use sim_core::VehicleState;
+use sim_core::{SimInstant, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_indicate::AirDataReading;
 use sim_scenario::ScenarioProfile;
@@ -102,6 +102,16 @@ impl Flight {
             .map_or(truth, |errors| errors.estimate(body, &truth))
     }
 
+    /// The instant the onboard displays draw. On the real chain every reading they take
+    /// is the flight controller's account, stamped at its cycle, so the displays draw at
+    /// that cycle: a host whose own clock runs ahead of or behind the controller's (a
+    /// page that paces the flight) would otherwise skew one frame's readings apart.
+    #[must_use]
+    pub fn display_instant(&self) -> SimInstant {
+        self.chain_avionics()
+            .map_or_else(|| self.now(), |(avionics, _)| avionics.at)
+    }
+
     /// Every onboard reading for the current display frame.
     #[must_use]
     pub fn onboard_sensors(&self) -> OnboardSensorSnapshot {
@@ -111,7 +121,7 @@ impl Flight {
             return OnboardSensorSnapshot {
                 estimated_vehicle: held,
                 air_data: chain_avionics::air_data_reading(&avionics),
-                cockpit: sensed_cockpit(cockpit, &held),
+                cockpit: at_instant(sensed_cockpit(cockpit, &held), avionics.at),
                 specific_force_frd_m_s2: avionics.specific_force_body_m_s2,
             };
         }
@@ -146,4 +156,15 @@ impl Flight {
             specific_force_frd_m_s2: sensed_specific_force(force, &errors),
         }
     }
+}
+
+/// `cockpit` with every reading the displays take stamped at `at`: the instant of the
+/// flight controller's account the readings were taken from.
+fn at_instant(mut cockpit: CockpitInstrumentSnapshot, at: SimInstant) -> CockpitInstrumentSnapshot {
+    cockpit.timestamp = at;
+    cockpit.attitude.timestamp = at;
+    cockpit.pgns_attitude.timestamp = at;
+    cockpit.ags_attitude.timestamp = at;
+    cockpit.body_rate_rad_s.timestamp = at;
+    cockpit
 }
