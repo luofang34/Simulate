@@ -39,4 +39,10 @@ pub enum HostError {
         #[source]
         source: TrialError,
     },
+    /// The terrain camera's renderer refused a pose or its world.
+    #[error("the terrain camera cannot render this frame: {detail}")]
+    Render {
+        /// The renderer's refusal.
+        detail: String,
+    },
 }

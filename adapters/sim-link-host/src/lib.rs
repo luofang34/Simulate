@@ -12,7 +12,9 @@
 //! - [`plan_lines`] words the link and its summary in plain language.
 //! - [`package_route_msl`] and [`package_camera`] say what the map package
 //!   is planned for, and [`package_plan_lines`], [`progress_words`] and
-//!   [`sealed_lines`] word its plan, its progress and its result.
+//!   [`sealed_lines`] word its plan, its progress and its result;
+//!   [`world_memory_bytes`] is what the camera's world of the package takes
+//!   in the tab once decoded, checked against [`WORLD_MEMORY_CEILING_BYTES`].
 //! - [`Monitor`] is what the page shows while the link flies, fed by the
 //!   flight; [`run_slice`] and [`Pacer`] step a [`FlightStepper`] in slices
 //!   a page can draw between, and [`Replay`] flies a recorded run again.
@@ -23,15 +25,17 @@ mod package;
 mod request;
 mod summary;
 mod wording;
+mod world;
 
 #[cfg(test)]
 mod tests;
 
 pub use error::HostError;
 pub use monitor::{
-    Clock, Column, EVENTS_KEPT, FlightStepper, MAX_FRAME_S, MeansSwitch, Monitor, MonitorFeed,
-    Pacer, Replay, SLICE_BUDGET_S, SetTrace, Slice, StepState, TracePoint, clock_words,
-    event_words, run_slice, sensor_words, state_words, status_words, terrain_words,
+    Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, MeansSwitch, Monitor,
+    MonitorFeed, PaceLimit, Pacer, Replay, SLICE_BUDGET_S, SetTrace, Slice, StepState, TracePoint,
+    clock_words, event_words, pace_words, run_slice, sensor_words, state_words, status_words,
+    terrain_words,
 };
 pub use package::{
     BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,
@@ -42,3 +46,6 @@ pub use request::{
 };
 pub use summary::{LegSummary, Light, PlanSummary, SunSample, plan_summary};
 pub use wording::{PlanLine, outage_words, plan_lines, refusal_lines};
+pub use world::{
+    CameraWorld, WORLD_MEMORY_CEILING_BYTES, world_line, world_memory_bytes, world_memory_refusal,
+};

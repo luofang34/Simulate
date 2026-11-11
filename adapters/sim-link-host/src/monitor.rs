@@ -21,11 +21,14 @@ use sim_navigate::NavMeans;
 use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
 
 pub use pacer::{
-    Clock, FlightStepper, MAX_FRAME_S, Pacer, SLICE_BUDGET_S, Slice, StepState, run_slice,
+    Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
+    StepState, run_slice,
 };
 pub use replay::Replay;
 pub use trace::{Column, SetTrace, TracePoint};
-pub use words::{clock_words, event_words, sensor_words, state_words, status_words, terrain_words};
+pub use words::{
+    clock_words, event_words, pace_words, sensor_words, state_words, status_words, terrain_words,
+};
 
 /// Events the monitor keeps for its log; older ones drop off.
 pub const EVENTS_KEPT: usize = 12;

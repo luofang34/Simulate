@@ -5081,13 +5081,18 @@ dependencies = [
 name = "sim-link-host"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.12",
+ "image",
  "navigate-celestial",
  "navigate-data",
+ "pollster 0.4.0",
  "serde_json",
+ "sim-core",
  "sim-geo",
  "sim-link",
  "sim-navdata",
  "sim-navigate",
+ "sim-scenery",
  "thiserror 2.0.21",
 ]
 

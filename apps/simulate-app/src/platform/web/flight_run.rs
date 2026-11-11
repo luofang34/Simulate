@@ -6,7 +6,7 @@
 
 use std::fmt::Display;
 
-use sim_link_host::{Clock, FlightStepper, Monitor, Pacer, SLICE_BUDGET_S, run_slice};
+use sim_link_host::{Clock, FlightStepper, Monitor, Pacer, SLICE_BUDGET_S, pace_words, run_slice};
 use tracing::{info, warn};
 use wasm_bindgen_futures::JsFuture;
 
@@ -57,7 +57,13 @@ where
         }
         if flying {
             let target_s = pacer.frame(clock.now_s(), flight.sim_time_s());
-            match run_slice(&mut flight, &clock, SLICE_BUDGET_S, target_s, &mut out) {
+            let sliced = run_slice(&mut flight, &clock, SLICE_BUDGET_S, target_s, &mut out);
+            if let Ok(slice) = &sliced {
+                let held = pacer.limit();
+                pacer.observe(slice, flight.take_camera_wall_s());
+                dirty |= pacer.limit() != held;
+            }
+            match sliced {
                 Ok(slice) if slice.finished => {
                     flying = false;
                     info!(wall_s = clock.now_s() - started_s, "the flight has ended");
@@ -81,7 +87,11 @@ where
             }
         }
         if dirty {
-            view.draw(&monitor, &controls, note);
+            let note = match pacer.limit() {
+                Some(limit) => format!("{note}{}. ", pace_words(&limit)),
+                None => note.to_owned(),
+            };
+            view.draw(&monitor, &controls, &note);
             dirty = false;
         }
     }

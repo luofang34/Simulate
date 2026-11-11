@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorState};
 
 use super::{clock_words, event_words, state_words, status_words, terrain_words};
-use crate::{Monitor, MonitorFeed};
+use crate::{Monitor, MonitorFeed, PaceLimit, pace_words};
 
 fn event(set: Option<&str>, kind: EventKind) -> EventRecord {
     EventRecord {
@@ -98,5 +98,22 @@ fn the_terrain_tally_names_each_reason() {
     assert_eq!(
         terrain_words(&monitor, "v"),
         "3 accepted; unused: outside_coverage 2"
+    );
+}
+
+#[test]
+fn a_held_pace_says_why() {
+    let camera = PaceLimit {
+        speed: 3.24,
+        by_camera: true,
+    };
+    assert!(pace_words(&camera).starts_with("pace limited to 3.2x by the terrain camera"));
+    let flight = PaceLimit {
+        speed: 0.8,
+        by_camera: false,
+    };
+    assert_eq!(
+        pace_words(&flight),
+        "pace limited to 0.8x by the cost of the flight"
     );
 }

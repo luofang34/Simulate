@@ -5,8 +5,8 @@ use std::convert::Infallible;
 use sim_navigate::trial::{ProgressRecord, SensorKind, SensorState};
 
 use super::{
-    Clock, EVENTS_KEPT, FlightStepper, MAX_FRAME_S, Monitor, MonitorFeed, Pacer, Replay, StepState,
-    run_slice,
+    Clock, EVENTS_KEPT, FlightStepper, MAX_FRAME_S, Monitor, MonitorFeed, PaceLimit, Pacer, Replay,
+    Slice, StepState, run_slice,
 };
 
 const STARTED: &str = r#"{"type":"started","schema":1,"request_sha256":"00","epoch_utc":"2026-06-15T12:00:00Z","route":{"waypoints":[{"ident":"Z0","lat_deg":41.7,"lon_deg":-1.05,"altitude_m":2000.0},{"ident":"Z1","lat_deg":41.7,"lon_deg":-0.8,"altitude_m":2000.0}],"planned_duration_s":500.0},"sets":[{"name":"ins+baro","means":["dead_reckoning","barometric"]},{"name":"ins+baro+visual","means":["dead_reckoning","visual","barometric"]}],"guidance":"truth"}"#;
@@ -171,17 +171,20 @@ fn a_replay_hands_over_one_recorded_instant_a_step() {
     let mut replay = Replay::from_lines(&format!("{}\n\n", stream())).unwrap();
     assert_eq!(replay.len(), 10);
     let mut out = Vec::new();
-    assert_eq!(replay.step(&mut out), Ok(StepState::Running));
+    assert_eq!(replay.step(f64::INFINITY, &mut out), Ok(StepState::Running));
     assert_eq!((out.len(), replay.sim_time_s()), (2, 0.0));
     let mut times = vec![replay.sim_time_s()];
-    while replay.step(&mut out) == Ok(StepState::Running) {
+    while replay.step(f64::INFINITY, &mut out) == Ok(StepState::Running) {
         times.push(replay.sim_time_s());
     }
     times.push(replay.sim_time_s());
     assert_eq!(times, [0.0, 1.0, 2.0, 2.5, 3.0]);
     let all: Vec<MonitorFeed> = stream().lines().map(record).collect();
     assert_eq!(out, all);
-    assert_eq!(replay.step(&mut out), Ok(StepState::Finished));
+    assert_eq!(
+        replay.step(f64::INFINITY, &mut out),
+        Ok(StepState::Finished)
+    );
     assert_eq!(out.len(), all.len());
 }
 
@@ -208,7 +211,11 @@ impl FlightStepper for Ticks {
         f64::from(self.tick) * 0.1
     }
 
-    fn step(&mut self, out: &mut Vec<MonitorFeed>) -> Result<StepState, Infallible> {
+    fn step(
+        &mut self,
+        _target_s: f64,
+        out: &mut Vec<MonitorFeed>,
+    ) -> Result<StepState, Infallible> {
         self.tick = self.tick.wrapping_add(1);
         out.push(MonitorFeed::Phase(self.tick.to_string()));
         Ok(if self.tick >= self.ticks {
@@ -310,7 +317,11 @@ impl FlightStepper for Seconds {
         f64::from(self.0)
     }
 
-    fn step(&mut self, _out: &mut Vec<MonitorFeed>) -> Result<StepState, Infallible> {
+    fn step(
+        &mut self,
+        _target_s: f64,
+        _out: &mut Vec<MonitorFeed>,
+    ) -> Result<StepState, Infallible> {
         self.0 = self.0.wrapping_add(1);
         Ok(StepState::Running)
     }
@@ -346,4 +357,58 @@ fn a_tick_longer_than_a_frame_still_keeps_the_pace() {
         "{} route seconds",
         flight.0
     );
+}
+
+#[test]
+fn the_pace_is_held_to_what_the_page_can_afford() {
+    let slice = |route_s: f64, wall_s: f64| Slice {
+        steps: 1,
+        finished: false,
+        route_s,
+        wall_s,
+    };
+    let mut pacer = Pacer::new(Some(16.0));
+    // One route second costs 0.25 s of wall time, 0.2 s of it rendering.
+    pacer.observe(&slice(1.0, 0.25), 0.2);
+    assert_eq!(pacer.limit(), None, "too little measured yet");
+    for _ in 0..40 {
+        pacer.observe(&slice(1.0, 0.25), 0.2);
+    }
+    let limit = pacer.limit().unwrap();
+    assert!((limit.speed - 2.0).abs() < 1e-9, "{limit:?}");
+    assert!(limit.by_camera);
+    // Held: ten wall seconds at 60 frames move the target 20 route seconds.
+    let mut target = pacer.frame(0.0, 0.0);
+    for frame in 1..=600 {
+        target = pacer.frame(f64::from(frame) / 60.0, target);
+    }
+    assert!((target - 20.0).abs() < 1e-6, "{target}");
+    // A pace the page affords is not held, nor is as fast as possible.
+    pacer.set_speed(Some(1.0));
+    assert_eq!(pacer.limit(), None);
+    pacer.set_speed(None);
+    assert_eq!(pacer.limit(), None);
+    let cheap: Option<PaceLimit> = {
+        let mut cheap = Pacer::new(Some(16.0));
+        for _ in 0..40 {
+            cheap.observe(&slice(1.0, 0.25), 0.01);
+        }
+        cheap.limit()
+    };
+    assert_eq!(cheap.map(|limit| limit.by_camera), Some(false));
+}
+
+#[test]
+fn a_slice_reports_what_it_stepped_and_what_it_took() {
+    let clock = Costly {
+        now: Cell::new(0.0),
+        cost_s: 0.001,
+    };
+    let mut flight = Ticks {
+        tick: 0,
+        ticks: 100,
+    };
+    let slice = run_slice(&mut flight, &clock, 1.0, 0.5, &mut Vec::new()).unwrap();
+    assert!((slice.route_s - 0.5).abs() < 1e-9, "{slice:?}");
+    assert!(slice.wall_s > 0.0);
 }

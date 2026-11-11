@@ -71,8 +71,13 @@ impl FlightStepper for Replay {
     }
 
     /// Hands over the records up to and including the next recorded
-    /// instant, with the start before it and the end after the last.
-    fn step(&mut self, out: &mut Vec<MonitorFeed>) -> Result<StepState, Infallible> {
+    /// instant, with the start before it and the end after the last: a
+    /// recorded instant is the replay's tick, so the target asks no more.
+    fn step(
+        &mut self,
+        _target_s: f64,
+        out: &mut Vec<MonitorFeed>,
+    ) -> Result<StepState, Infallible> {
         let mut instant = None;
         while let Some(record) = self.records.get(self.next) {
             match (record_time(record), instant) {

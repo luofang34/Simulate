@@ -7,7 +7,7 @@ use sim_link::SimulationLink;
 use sim_link_host::{
     BYTES_PER_MB, HostError, HostedRequest, PlanLine, PlanSummary, budget_bytes,
     budget_refusal_lines, package_camera, package_plan_lines, package_route_msl, progress_words,
-    sealed_lines,
+    sealed_lines, world_line, world_memory_refusal,
 };
 use sim_navdata::browser::{
     BrowserTransport, OpfsStore, StorageQuota, request_persistence, storage_quota,
@@ -39,6 +39,9 @@ enum Stop {
     Link(HostError),
     /// The package host refused or failed.
     Package(NavdataError),
+    /// The camera's world, decoded, does not fit the tab: the reason and
+    /// the visitor's choices.
+    World(Vec<PlanLine>),
     /// The browser's quota cannot hold the plan's upper bound.
     Storage {
         /// The plan's upper bound, bytes.
@@ -115,6 +118,10 @@ fn refusal(link: &SimulationLink, stop: &Stop) -> (&'static str, Vec<PlanLine>) 
             };
             (heading, budget_refusal_lines(link, error))
         }
+        Stop::World(lines) => (
+            "The map package does not fit this tab's memory",
+            lines.clone(),
+        ),
         Stop::Link(error) => (
             "The map package could not be planned",
             vec![text_line("Reason", error.to_string())],
@@ -157,11 +164,15 @@ async fn package<S: ReadPort + WritePort>(
     let package_plan = plan_package(&route, camera, &sources, &ground)?;
     let budget = budget_bytes(&plan.link);
     let mut lines = package_plan_lines(&plan.link, &plan.summary, &package_plan);
+    lines.push(world_line(&package_plan, &sources));
     lines.extend(storage_line(quota));
     lines.push(text_line("Sources", sources_words(&sources)));
     section.lines(&lines);
     package_plan.within(budget)?;
     storage_verdict(&package_plan, quota)?;
+    if let Some(refusal) = world_memory_refusal(&package_plan, &sources) {
+        return Err(Stop::World(refusal));
+    }
     if plan.link.auto_start {
         info!("the link asks to build the map package without asking");
     } else {

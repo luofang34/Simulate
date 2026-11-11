@@ -9,11 +9,18 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+glam = { workspace = true }
 navigate-celestial = { workspace = true }
 navigate-data = { workspace = true }
+serde_json = { workspace = true }
 sim-geo = { workspace = true }
 sim-link = { workspace = true }
 sim-navdata = { workspace = true }
-serde_json = { workspace = true }
 sim-navigate = { workspace = true }
+sim-scenery = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+image = { workspace = true }
+pollster = { workspace = true }
+sim-core = { workspace = true }

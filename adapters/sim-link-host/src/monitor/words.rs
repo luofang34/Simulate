@@ -3,7 +3,7 @@
 
 use sim_navigate::trial::{EventKind, EventRecord, SensorKind, SensorState};
 
-use super::Monitor;
+use super::{Monitor, PaceLimit};
 
 #[cfg(test)]
 mod tests;
@@ -113,4 +113,14 @@ pub fn status_words(monitor: &Monitor) -> String {
         words.push_str("; the run has ended");
     }
     words
+}
+
+/// Why the flight runs slower than the pace chosen.
+pub fn pace_words(limit: &PaceLimit) -> String {
+    let by = if limit.by_camera {
+        "the terrain camera, whose frames this page renders on its own thread"
+    } else {
+        "the cost of the flight"
+    };
+    format!("pace limited to {:.1}x by {by}", limit.speed)
 }
