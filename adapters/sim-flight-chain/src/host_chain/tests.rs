@@ -58,6 +58,7 @@ fn route() -> ChainRoute {
         max_horizontal_mps: INDICATED_M_S,
         ownship: OwnshipFeed::FlightController,
         class: VehicleClass::FixedWing,
+        airframe: crate::c172_pilotage_airframe().unwrap(),
         utc: UtcTime::from_unix_seconds(START_UNIX_S),
     }
 }

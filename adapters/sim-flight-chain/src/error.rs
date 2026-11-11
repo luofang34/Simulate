@@ -67,9 +67,9 @@ pub enum ChainError {
     /// Pilotage's host core refused its configuration, the plan or a tick.
     #[error("the Pilotage host core failed")]
     Host(#[source] Box<pilotage_host_core::HostCoreError>),
-    /// The control-feel law built for the vehicle is not a valid one.
-    #[error("the vehicle's control-feel law is invalid: {detail}")]
-    ControlFeel {
+    /// The envelope stated for the vehicle is not a valid one.
+    #[error("the vehicle's envelope is invalid: {detail}")]
+    Envelope {
         /// Pilotage's reason.
         detail: String,
     },

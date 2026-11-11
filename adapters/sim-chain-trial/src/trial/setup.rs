@@ -8,7 +8,7 @@ use sim_atmosphere::{GeoidStandardAtmosphere, geometric_to_geopotential_m, isa_a
 use sim_core::VehicleState;
 use sim_flight_chain::{
     C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
-    c172_sensor_suite_with,
+    c172_pilotage_airframe, c172_sensor_suite_with,
 };
 use sim_geo::{Geodetic, UtcTime, egm96_undulation_m};
 use sim_navigate::InitialAlignment;
@@ -107,6 +107,7 @@ pub(super) fn chain(
             Steering::Set(_) => OwnshipFeed::Navigator,
         },
         class: VehicleClass::FixedWing,
+        airframe: c172_pilotage_airframe()?,
         utc: resolved.utc,
     };
     Ok(C172Chain::new(board, &route)?)

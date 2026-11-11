@@ -38,6 +38,8 @@ pub(super) struct Downlink {
     /// staleness is judged on the simulation clock by whoever reads the
     /// measurement stamps.
     epoch: Instant,
+    /// When the last frames arrived, on the same placement as `epoch`.
+    received: Instant,
     arm: ArmTracker,
     messages: Vec<(FrameSource, FcMessage)>,
 }
@@ -55,6 +57,7 @@ impl Downlink {
         Self {
             state: Arc::new(Mutex::new(state)),
             epoch,
+            received: epoch,
             arm: ArmTracker::default(),
             messages: Vec::new(),
         }
@@ -66,6 +69,7 @@ impl Downlink {
         let stats = parse_datagram(bytes, &mut self.messages);
         let elapsed = Duration::from_secs_f64(at.duration_since(SimInstant::START).as_seconds());
         let received = self.epoch.checked_add(elapsed).unwrap_or(self.epoch);
+        self.received = received;
         apply_messages_at(
             &self.state,
             &self.messages,
@@ -78,7 +82,7 @@ impl Downlink {
     /// The flight controller's authorized pose, when it reports one.
     pub(super) fn pose(&self) -> Option<OperationalPose> {
         let latest = self.state.lock().ok()?;
-        operational_pose(&latest)
+        operational_pose(&latest, self.received)
     }
 
     /// Whether the flight controller authorizes its attitude estimate in
@@ -104,7 +108,7 @@ impl Downlink {
 
     /// The estimate and the flight controller's own state as one sample.
     pub(super) fn sample(&mut self, vehicle: VehicleId, tick: SimTick) -> TelemetrySample {
-        let mut sample = estimate_batch(vehicle, &self.state)
+        let mut sample = estimate_batch(vehicle, &self.state, self.received)
             .samples
             .pop()
             .unwrap_or_else(|| report_only_sample(vehicle, tick));

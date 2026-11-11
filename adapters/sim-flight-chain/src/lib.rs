@@ -27,7 +27,7 @@ pub use aviate_vehicle::{
 pub use c172_airframe::{C172Airframe, C172Start};
 pub use c172_vehicle::{
     AccelCalibration, C172_RATE_HZ, C172Board, C172Setup, C172Vehicle, c172_board,
-    c172_sensor_suite, c172_sensor_suite_with, c172_vehicle,
+    c172_pilotage_airframe, c172_sensor_suite, c172_sensor_suite_with, c172_vehicle,
 };
 pub use chain::{ChainSetup, ChainVehicle, FlightChain, MISSION_FRAME_HZ};
 pub use error::ChainError;

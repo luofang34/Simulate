@@ -4,6 +4,8 @@
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use glam::DVec3;
+use pilotage_adapter_aviate::AviateAirframe;
+use pilotage_control_feel::{FixedWingEnvelope, ValidatedFixedWingEnvelope};
 use pilotage_protocol::{VehicleClass, VehicleId};
 use sim_aviate::{build_direct_fixed_wing_kernel, c172_airframe};
 use sim_core::{TICKS_PER_SECOND, TickSpan};
@@ -132,6 +134,17 @@ pub fn c172_board(
     let airframe = C172Airframe::trimmed(&start, air)?;
     let kernel = build_direct_fixed_wing_kernel(&c172_airframe()).ok_or(ChainError::KernelBuild)?;
     HostedBoard::new(airframe, suite, kernel, setup.origin, setup.decimal_year)
+}
+
+/// The C172 as Pilotage's Aviate adapter knows it: a fixed wing flown by
+/// the flight controller's own law, its demands bounded by Pilotage's C172
+/// envelope.
+pub fn c172_pilotage_airframe() -> Result<AviateAirframe, ChainError> {
+    ValidatedFixedWingEnvelope::new(FixedWingEnvelope::C172)
+        .map(AviateAirframe::FixedWing)
+        .map_err(|source| ChainError::Envelope {
+            detail: source.to_string(),
+        })
 }
 
 /// [`c172_board`] behind Pilotage's adapter.

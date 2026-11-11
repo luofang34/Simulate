@@ -13,8 +13,7 @@ use aviate_core::control::{ControlMode, VehicleController};
 use aviate_core::mixer::Mixer;
 use navigate_contract::{GeodeticPosition, MonotonicNanos, NavigationSolution};
 use pilotage_adapter_api::SourceIncarnation;
-use pilotage_adapter_aviate::EmbeddedIncarnations;
-use pilotage_control_feel::{FlightFeelProfile, ValidatedFlightFeelProfile};
+use pilotage_adapter_aviate::{AviateAirframe, EmbeddedIncarnations};
 use pilotage_host_core::{HostCore, HostCoreConfig, HostEvent, HostStatus, MISSION_CLOCK};
 use pilotage_mavlink::link::LinkConfig;
 use pilotage_mission::{
@@ -46,6 +45,9 @@ pub struct ChainRoute {
     pub ownship: OwnshipFeed,
     /// The vehicle's class, which decides how the plan ends.
     pub class: VehicleClass,
+    /// What the flight controller flies, as Pilotage's adapter bounds its
+    /// demands.
+    pub airframe: AviateAirframe,
     /// The civil time the run starts at, which fixes the magnetic field.
     pub utc: UtcTime,
 }
@@ -252,22 +254,14 @@ where
     };
     Ok(HostCoreConfig {
         link: LinkConfig::simulator(),
-        control_feel: control_feel()?,
+        airframe: route.airframe.clone(),
+        fc_origin_height_m: Some(origin.height_m),
         incarnations: EmbeddedIncarnations {
             estimate: SourceIncarnation::new([1; 16]),
             fc_state: SourceIncarnation::new([2; 16]),
         },
         mission,
         magnetic_epoch_unix_s: route.utc.unix_seconds().round() as i64,
-    })
-}
-
-/// The one control-feel law Pilotage's Aviate adapter accepts.
-fn control_feel() -> Result<ValidatedFlightFeelProfile, ChainError> {
-    ValidatedFlightFeelProfile::new(FlightFeelProfile::legacy_compatibility()).map_err(|source| {
-        ChainError::ControlFeel {
-            detail: source.to_string(),
-        }
     })
 }
 
