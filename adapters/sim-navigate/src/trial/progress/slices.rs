@@ -63,7 +63,9 @@ impl<'s> Slices<'s> {
                     }
                 };
                 scheduled.push(event(interval.start_s, true));
-                scheduled.push(event(interval.end_s, false));
+                if let Some(end_s) = interval.end_s {
+                    scheduled.push(event(end_s, false));
+                }
             }
         }
         scheduled.sort_by(|a, b| a.t_s.total_cmp(&b.t_s));

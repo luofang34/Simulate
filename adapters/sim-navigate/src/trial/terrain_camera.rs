@@ -29,18 +29,21 @@ mod tests;
 const FRAME_SEED_STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// The spectral band a camera images in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CameraBand {
     /// Reflected sunlight.
+    #[default]
     Visible,
     /// Long-wave infrared. Reserved: refused until thermal scenes render.
     Lwir,
 }
 
-/// Where the camera sits and where it looks.
+/// Where the camera sits and where it looks. Every field defaults: a
+/// camera at the centre of gravity looking straight down, image top toward
+/// the nose.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct CameraMountSpec {
     /// Optical centre in body axes (x forward, y right, z down), metres.
     pub offset_body_m: [f64; 3],
@@ -53,10 +56,24 @@ pub struct CameraMountSpec {
     pub yaw_deg: f64,
 }
 
+impl Default for CameraMountSpec {
+    fn default() -> Self {
+        Self {
+            offset_body_m: [0.0; 3],
+            roll_deg: 0.0,
+            pitch_deg: -90.0,
+            yaw_deg: 0.0,
+        }
+    }
+}
+
 /// Scene luma to recorded counts: `gain · 255 · (luma/255)^gamma + offset +
-/// noise`, rounded and clamped to 8 bits.
+/// noise`, rounded and clamped to 8 bits. Every field defaults to an ideal
+/// linear sensor with a little read noise: gain 1, no offset, gamma 1,
+/// 2 counts of noise (under 1 % of the 8-bit range; an assumption, not a
+/// measured sensor).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct RadiometrySpec {
     /// Scene gain.
     pub gain: f64,
@@ -68,46 +85,91 @@ pub struct RadiometrySpec {
     pub noise_dn: f64,
 }
 
-/// The terrain camera of a request.
+impl Default for RadiometrySpec {
+    fn default() -> Self {
+        Self {
+            gain: 1.0,
+            offset_dn: 0.0,
+            gamma: 1.0,
+            noise_dn: 2.0,
+        }
+    }
+}
+
+/// A 2 ms exposure: a daylight exposure under which the image moves less
+/// than a tenth of a metre at 60 m/s, far below any ground pixel the
+/// navigator matches at. An engineering choice, not a datasheet value.
+const fn default_exposure_s() -> f64 {
+    0.002
+}
+
+/// The renderer gives no ground lighting below 5° of Sun elevation: a
+/// boundary of the render model, which models no night-time or low-Sun
+/// illumination, not of any camera.
+const fn default_min_sun_elevation_deg() -> f64 {
+    5.0
+}
+
+/// The terrain camera of a request. Only the geometry is required: the
+/// image size, a focal length or a horizontal field of view, and the frame
+/// period; everything else takes the documented defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerrainCameraSpec {
-    /// The band.
+    /// The band; visible by default.
+    #[serde(default)]
     pub band: CameraBand,
     /// Image width, pixels.
     pub width: u32,
     /// Image height, pixels.
     pub height: u32,
-    /// Horizontal focal length, pixels.
-    pub fx_px: f64,
-    /// Vertical focal length, pixels.
-    pub fy_px: f64,
-    /// Principal point, horizontal, pixels.
-    pub cx_px: f64,
-    /// Principal point, vertical, pixels.
-    pub cy_px: f64,
-    /// The mount.
+    /// Horizontal focal length, pixels; or give `horizontal_fov_deg`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fx_px: Option<f64>,
+    /// Horizontal field of view, degrees; or give `fx_px`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizontal_fov_deg: Option<f64>,
+    /// Vertical focal length, pixels; square pixels by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fy_px: Option<f64>,
+    /// Principal point, horizontal, pixels, with pixel centres on integer
+    /// coordinates; the image centre `(width − 1) / 2` by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cx_px: Option<f64>,
+    /// Principal point, vertical, pixels; `(height − 1) / 2` by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cy_px: Option<f64>,
+    /// The mount; straight down from the centre of gravity by default.
+    #[serde(default)]
     pub mount: CameraMountSpec,
     /// Time between frames, seconds; a whole number of simulation steps.
     pub period_s: f64,
     /// Exposure, seconds; frames are stamped at its middle.
+    #[serde(default = "default_exposure_s")]
     pub exposure_s: f64,
     /// The sensor's response.
+    #[serde(default)]
     pub radiometry: RadiometrySpec,
     /// Sun elevation below which the scene gives no light, degrees.
+    #[serde(default = "default_min_sun_elevation_deg")]
     pub min_sun_elevation_deg: f64,
 }
 
 impl TerrainCameraSpec {
-    /// The pinhole intrinsics.
+    /// The pinhole intrinsics, defaults filled in. A field of view gives
+    /// the focal length `(width / 2) / tan(fov / 2)`.
     pub fn intrinsics(&self) -> SensorIntrinsics {
+        let from_fov = self
+            .horizontal_fov_deg
+            .map(|fov| 0.5 * f64::from(self.width) / (0.5 * fov.to_radians()).tan());
+        let fx = self.fx_px.or(from_fov).unwrap_or(f64::NAN);
         SensorIntrinsics {
             width: self.width,
             height: self.height,
-            fx: self.fx_px,
-            fy: self.fy_px,
-            cx: self.cx_px,
-            cy: self.cy_px,
+            fx,
+            fy: self.fy_px.unwrap_or(fx),
+            cx: self.cx_px.unwrap_or(0.5 * (f64::from(self.width) - 1.0)),
+            cy: self.cy_px.unwrap_or(0.5 * (f64::from(self.height) - 1.0)),
         }
     }
 
@@ -153,6 +215,15 @@ impl TerrainCameraSpec {
         };
         if self.band == CameraBand::Lwir {
             return Err(invalid("the lwir band is not rendered yet".into()));
+        }
+        let fov_usable = self
+            .horizontal_fov_deg
+            .is_none_or(|fov| fov > 0.0 && fov < 180.0);
+        if self.fx_px.is_some() == self.horizontal_fov_deg.is_some() || !fov_usable {
+            return Err(invalid(
+                "give exactly one of fx_px and horizontal_fov_deg, a field of view inside (0, 180)"
+                    .into(),
+            ));
         }
         if !self.intrinsics().is_usable() {
             return Err(invalid(format!("intrinsics {:?}", self.intrinsics())));

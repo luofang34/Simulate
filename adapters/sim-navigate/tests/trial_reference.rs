@@ -13,8 +13,8 @@
 use std::sync::OnceLock;
 
 use sim_navigate::trial::{
-    ImuGradeName, ProgressRecord, RecordedTrial, SetReport, TrialReport, TrialRequest, evaluate,
-    record_trial, run_trial_with_progress,
+    ImuGradeName, ProgressRecord, RecordedTrial, SetReport, TrialReport, TrialRequest,
+    evaluate_blocking, record_trial_blocking, run_trial_with_progress_blocking,
 };
 
 #[cfg(test)]
@@ -130,8 +130,8 @@ fn reference() -> &'static (TrialRequest, RecordedTrial, TrialReport) {
     static RUN: OnceLock<(TrialRequest, RecordedTrial, TrialReport)> = OnceLock::new();
     RUN.get_or_init(|| {
         let request = reference_request();
-        let recorded = record_trial(&request).unwrap();
-        let report = evaluate(&request, &recorded).unwrap().report;
+        let recorded = record_trial_blocking(&request).unwrap();
+        let report = evaluate_blocking(&request, &recorded).unwrap().report;
         (request, recorded, report)
     })
 }
@@ -246,14 +246,14 @@ fn every_open_loop_path_writes_the_same_bytes() {
         records = records.wrapping_add(1);
         Ok(())
     };
-    let watched = run_trial_with_progress(request, &mut sink).unwrap();
+    let watched = run_trial_with_progress_blocking(request, &mut sink).unwrap();
     assert!(records > 60, "{records}");
     assert!(watched.to_json().unwrap() == evaluated.to_json().unwrap());
     let bytes = |set: &SetReport| serde_json::to_string(set).unwrap();
     for (index, interleaved) in evaluated.sensor_sets.iter().enumerate() {
         let mut alone = request.clone();
         alone.sensor_sets = vec![request.sensor_sets[index].clone()];
-        let report = evaluate(&alone, recorded).unwrap().report;
+        let report = evaluate_blocking(&alone, recorded).unwrap().report;
         assert!(
             bytes(&report.sensor_sets[0]) == bytes(interleaved),
             "{} alone differs",

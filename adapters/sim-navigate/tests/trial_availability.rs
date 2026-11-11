@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     ComparisonRow, ImuGradeName, RecordedTrial, SensorKind, SensorSetSpec, SetAvailability,
-    SetSelection, TrialOutcome, TrialRequest, evaluate, record_trial, replay_set,
+    SetSelection, TrialOutcome, TrialRequest, evaluate_blocking, record_trial_blocking,
+    replay_set_blocking,
 };
 
 #[cfg(test)]
@@ -18,8 +19,6 @@ mod requests;
 
 /// The interval each fork test withholds its sensor over, seconds.
 const INTERVAL: (f64, f64) = (60.0, 120.0);
-/// Longer than any route here, seconds.
-const WHOLE_ROUTE_S: f64 = 1.0e6;
 
 #[cfg(test)]
 fn init_tracing() {
@@ -52,9 +51,9 @@ fn request() -> TrialRequest {
     let mut request = requests::request(requests::straight(3.0), ImuGradeName::Tactical, sets);
     request.stars.period_s = 10.0;
     request.availability = vec![
-        requests::schedule("no-gnss", SensorKind::Gnss, 0.0, WHOLE_ROUTE_S),
-        requests::schedule("no-baro", SensorKind::Baro, 0.0, WHOLE_ROUTE_S),
-        requests::schedule("no-stars", SensorKind::Stars, 0.0, WHOLE_ROUTE_S),
+        requests::schedule_from("no-gnss", SensorKind::Gnss, 0.0),
+        requests::schedule_from("no-baro", SensorKind::Baro, 0.0),
+        requests::schedule_from("no-stars", SensorKind::Stars, 0.0),
         requests::schedule("baro-out", SensorKind::Baro, INTERVAL.0, INTERVAL.1),
         requests::schedule("cloud", SensorKind::Stars, INTERVAL.0, INTERVAL.1),
     ];
@@ -68,8 +67,8 @@ fn run() -> &'static (TrialRequest, RecordedTrial, TrialOutcome) {
     static RUN: OnceLock<(TrialRequest, RecordedTrial, TrialOutcome)> = OnceLock::new();
     RUN.get_or_init(|| {
         let request = request();
-        let recorded = record_trial(&request).unwrap();
-        let outcome = evaluate(&request, &recorded).unwrap();
+        let recorded = record_trial_blocking(&request).unwrap();
+        let outcome = evaluate_blocking(&request, &recorded).unwrap();
         (request, recorded, outcome)
     })
 }
@@ -87,7 +86,7 @@ fn assert_fork_equal(set: &SensorSetSpec, sensor: SensorKind, schedule: &str) {
     let (request, recorded, _) = run();
     let mut scheduled_set = set.clone();
     scheduled_set.availability.insert(sensor, schedule.into());
-    let mut run = replay_set(request, &scheduled_set, &recorded.log).unwrap();
+    let mut run = replay_set_blocking(request, &scheduled_set, &recorded.log).unwrap();
     run.advance_to(&recorded.log, step(INTERVAL.0)).unwrap();
     let mut fork = run.fork(SetSelection {
         means: set.ablation_set().without(sensor.means()),

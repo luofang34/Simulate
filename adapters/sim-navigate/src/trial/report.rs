@@ -112,10 +112,9 @@ pub struct SetReport {
     pub observations: SensorTallies,
     /// The star tracker's availability; `None` without stars.
     pub stars: Option<StarAvailability>,
-    /// The navigator's terrain-camera fixes by outcome and context; empty
-    /// without the visual means.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub terrain_fixes: BTreeMap<String, u64>,
+    /// The terrain-camera record; `None` without the visual means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain: Option<super::terrain_report::TerrainSetReport>,
     /// The scored samples.
     pub series: Vec<SeriesSample>,
     /// The set's own flight, in closed loop only.
@@ -180,8 +179,9 @@ pub struct IntervalReport {
     pub reason: Option<String>,
     /// First second without the sensor.
     pub start_s: f64,
-    /// Last second without it.
-    pub end_s: f64,
+    /// Last second without it; `None` for an interval that lasts to the
+    /// end of the flight.
+    pub end_s: Option<f64>,
     /// The errors across it; `None` when no scored sample lies at or before
     /// its start, or none inside it.
     pub errors: Option<IntervalErrors>,

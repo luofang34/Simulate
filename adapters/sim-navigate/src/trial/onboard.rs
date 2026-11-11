@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use navigate_camera::{CameraMount as NavigateMount, ImagerModel, Intrinsics};
 use navigate_contract::{Ellipsoid, SolutionQuality, SourceId, Waypoint};
-use navigate_data::{DayNumber, DirectoryStore, GeoidModel};
+use navigate_data::{DayNumber, GeoidModel};
 use navigate_fusion::FogmBias;
 use navigate_geodesy::GeoidUndulation;
 use navigate_guidance::GuidanceConfig;
@@ -22,6 +22,7 @@ use navigate_onboard::{
 };
 
 use super::epoch::parse_utc;
+use super::map_store::{DirectoryStores, MapStores};
 use super::route::execution_config;
 use super::stars::{roof_star_mount, star_camera_config};
 use super::terrain_camera::TerrainCameraSpec;
@@ -117,10 +118,21 @@ pub fn star_catalogue(request: &TrialRequest) -> Result<StarCatalogueConfig, Tri
     Ok(StarCatalogueConfig::with_utc_at_zero(start.unix_seconds()))
 }
 
-/// The navigator `set` flies with, unaligned.
-pub fn trial_navigator(
+/// The navigator `set` flies with, unaligned; a visual set's reads its
+/// onboard package from the store.
+pub fn trial_navigator_blocking(
     request: &TrialRequest,
     set: &SensorSetSpec,
+) -> Result<Box<dyn Navigator>, TrialError> {
+    trial_navigator_with_stores(request, set, &DirectoryStores)
+}
+
+/// [`trial_navigator_blocking`], reading the onboard package from the
+/// store `stores` resolves.
+pub fn trial_navigator_with_stores(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    stores: &dyn MapStores,
 ) -> Result<Box<dyn Navigator>, TrialError> {
     let suite = sensor_suite(request, set)?;
     let stars = set
@@ -130,7 +142,7 @@ pub fn trial_navigator(
         .transpose()?;
     let mut navigator = ReferenceNavigator::new(suite, MASTER_CLOCK_DOMAIN, stars)?;
     if set.means.contains(&NavMeans::Visual) {
-        load_onboard_map_blocking(request, &mut navigator)?;
+        load_onboard_map(request, &mut navigator, stores)?;
     }
     Ok(Box::new(navigator))
 }
@@ -140,6 +152,7 @@ pub fn trial_navigator(
 /// same mount angles, in Navigate's own constructor.
 fn terrain_camera_spec(camera: &TerrainCameraSpec) -> SensorSpec {
     let mount = camera.mount;
+    let intrinsics = camera.intrinsics();
     let [x, y, z] = mount.offset_body_m;
     SensorSpec {
         id: TERRAIN_CAMERA_SOURCE,
@@ -147,10 +160,10 @@ fn terrain_camera_spec(camera: &TerrainCameraSpec) -> SensorSpec {
         imager: Some(ImagerModel::pinhole(Intrinsics {
             width: camera.width,
             height: camera.height,
-            fx: camera.fx_px,
-            fy: camera.fy_px,
-            cx: camera.cx_px,
-            cy: camera.cy_px,
+            fx: intrinsics.fx,
+            fy: intrinsics.fy,
+            cx: intrinsics.cx,
+            cy: intrinsics.cy,
         })),
         mount: Some(
             NavigateMount::rotated_forward(
@@ -183,9 +196,10 @@ impl GeoidUndulation for WorldGeoid {
 }
 
 /// Hands the onboard package to the navigator, as the request states it.
-fn load_onboard_map_blocking(
+fn load_onboard_map(
     request: &TrialRequest,
     navigator: &mut ReferenceNavigator,
+    stores: &dyn MapStores,
 ) -> Result<(), TrialError> {
     let Some(maps) = request.maps.as_ref() else {
         return Err(TrialError::InvalidRequest {
@@ -215,7 +229,7 @@ fn load_onboard_map_blocking(
         let model: Arc<dyn GeoidUndulation + Send + Sync> = Arc::new(WorldGeoid);
         (GeoidModel::Egm96, model)
     });
-    let store = Arc::new(DirectoryStore::new(&maps.onboard.store));
+    let store = Arc::new(stores.store(&maps.onboard.store)?);
     let report = navigator.load_terrain_map(store, &map, geoid)?;
     tracing::info!(?report, "onboard map loaded");
     Ok(())

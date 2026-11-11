@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 
 use sim_navigate::trial::{
     GnssSpec, ImuGradeName, IntervalErrors, RecordedTrial, SensorKind, SetAvailability, SetReport,
-    SetSelection, TrialReport, TrialRequest, evaluate, record_trial, replay_set,
+    SetSelection, TrialReport, TrialRequest, evaluate_blocking, record_trial_blocking,
+    replay_set_blocking,
 };
 use sim_navigate::{AblationSet, NavMeans, compare_with_truth};
 
@@ -79,8 +80,8 @@ fn default_run() -> &'static (TrialRequest, RecordedTrial, TrialReport) {
     static RUN: OnceLock<(TrialRequest, RecordedTrial, TrialReport)> = OnceLock::new();
     RUN.get_or_init(|| {
         let request = outage_request(GnssSpec::default());
-        let recorded = record_trial(&request).unwrap();
-        let report = evaluate(&request, &recorded).unwrap().report;
+        let recorded = record_trial_blocking(&request).unwrap();
+        let report = evaluate_blocking(&request, &recorded).unwrap().report;
         log_set(set(&report, "gnss+baro+ins"));
         log_set(set(&report, "outage"));
         (request, recorded, report)
@@ -118,7 +119,7 @@ fn white_run() -> &'static TrialReport {
             ..GnssSpec::default()
         };
         let request = outage_request(white);
-        let report = evaluate(&request, &record_trial(&request).unwrap())
+        let report = evaluate_blocking(&request, &record_trial_blocking(&request).unwrap())
             .unwrap()
             .report;
         log_set(set(&report, "gnss+baro+ins"));
@@ -172,10 +173,10 @@ fn unaided(grade: ImuGradeName, minutes: f64, seeds: u64) -> (f64, f64, Vec<SetR
                 request.seeds.imu = 0x3_0000 + seed;
                 request.seeds.alignment = seed;
                 scope.spawn(move || {
-                    let recorded = record_trial(&request).unwrap();
+                    let recorded = record_trial_blocking(&request).unwrap();
                     let flight_seconds = recorded.flight.truth.len() as f64 / 120.0;
                     assert!(flight_seconds >= 60.0 * minutes, "{flight_seconds}");
-                    let report = evaluate(&request, &recorded).unwrap().report;
+                    let report = evaluate_blocking(&request, &recorded).unwrap().report;
                     let ins = set(&report, "ins").clone();
                     log_set(&ins);
                     ins
@@ -255,7 +256,7 @@ fn an_outage_leaves_the_filter_unaided_until_gnss_returns() {
         means: means.iter().fold(AblationSet::EMPTY, |s, m| s.with(*m)),
         availability,
     };
-    let mut run = replay_set(request, &request.sensor_sets[1], &recorded.log).unwrap();
+    let mut run = replay_set_blocking(request, &request.sensor_sets[1], &recorded.log).unwrap();
     let step = |seconds: f64| (seconds * 120.0).round() as usize;
     run.advance_to(&recorded.log, step(OUTAGE.0)).unwrap();
     let mut fork = run.fork(selection(

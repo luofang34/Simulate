@@ -116,7 +116,7 @@ fn schedules_must_exist_match_their_sensor_and_name_one_set_means() {
         TrialError::InvalidSchedule { .. }
     ));
     let mut request = route_request(Some(declared));
-    request.availability[0].unavailable[0].end_s = 5.0;
+    request.availability[0].unavailable[0].end_s = Some(5.0);
     assert!(matches!(
         refusal(&request),
         TrialError::InvalidSchedule { .. }
@@ -201,4 +201,28 @@ fn a_visual_set_needs_a_camera_maps_and_a_seed() {
             ..
         }
     ));
+}
+
+/// The master-seed derivation is fixed: SplitMix64 from the master, in the
+/// documented sensor order. Its first output from 0 is the published
+/// SplitMix64 test value.
+#[test]
+fn every_seed_derives_from_the_master_in_a_fixed_order() {
+    use crate::trial::SeedSpec;
+    let seeds = SeedSpec::from_master(0);
+    assert_eq!(seeds.imu, 0xE220_A839_7B1D_CDAF);
+    assert_eq!(seeds, SeedSpec::from_master(0));
+    let other = SeedSpec::from_master(1);
+    assert_ne!(other.imu, seeds.imu);
+    let all = [
+        seeds.imu,
+        seeds.alignment,
+        seeds.gnss,
+        seeds.baro,
+        seeds.star_camera,
+    ];
+    for (i, a) in all.iter().enumerate() {
+        assert!(all.iter().skip(i + 1).all(|b| b != a));
+    }
+    assert!(seeds.terrain_camera.is_some());
 }

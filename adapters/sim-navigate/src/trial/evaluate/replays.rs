@@ -6,14 +6,18 @@ use sim_core::{SimInstant, VehicleState};
 use sim_geo::ecef_to_geodetic;
 
 use super::{
-    RecordedTrial, SetResult, TrialOutcome, replay_set, sample_periods, trial_report, whole_steps,
+    RecordedTrial, SetResult, TrialOutcome, replay_set_with_stores, sample_periods, trial_report,
+    whole_steps,
 };
+use crate::trial::map_store::MapStores;
+use crate::trial::maps::maps_report_blocking;
 use crate::trial::progress::{EventKind, EventRecord, ProgressSink, Scored, Slices};
 use crate::trial::record::SensorLog;
 use crate::trial::replay::SetRun;
 use crate::trial::report::{RouteReport, SeriesSample, TrackPoint};
 use crate::trial::route::{RouteFlight, step_seconds};
 use crate::trial::score::score_sample;
+use crate::trial::timing::{SetTiming, TrialTiming};
 use crate::trial::vertical::{VerticalReport, flown_profile, vertical_plan};
 use crate::trial::{SensorSetSpec, TrialError, TrialRequest};
 use crate::{AblationEvaluation, Estimate, NavigationOrigin};
@@ -23,13 +27,14 @@ use crate::{AblationEvaluation, Estimate, NavigationOrigin};
 pub(super) fn open_trial(
     request: &TrialRequest,
     recorded: &RecordedTrial,
+    stores: &dyn MapStores,
     sink: &mut dyn ProgressSink,
 ) -> Result<TrialOutcome, TrialError> {
     let (sample_steps, progress_steps) = sample_periods(request)?;
     let mut replays = request
         .sensor_sets
         .iter()
-        .map(|set| OpenSet::new(request, set, &recorded.log))
+        .map(|set| OpenSet::new(request, set, &recorded.log, stores))
         .collect::<Result<Vec<_>, _>>()?;
     let known = waypoint_events(&recorded.flight);
     let mut slices = Slices::new(sink, request, progress_steps, known)?;
@@ -51,13 +56,37 @@ pub(super) fn open_trial(
     }
     let mut results = Vec::new();
     let mut estimates = Vec::new();
-    for replay in replays {
+    let frames = recorded.log.terrain.len() as u64;
+    let mut timing = TrialTiming {
+        terrain_frames_rendered: frames,
+        terrain_render_s_per_frame: recorded.terrain_render_s / frames.max(1) as f64,
+        sets: Vec::new(),
+    };
+    for (set, replay) in request.sensor_sets.iter().zip(replays) {
         let (result, published) = replay.finish();
+        let (wall_s, handed, slowest_s) = result.terrain_wall;
+        if handed > 0 {
+            timing.sets.push(SetTiming {
+                set: set.name.clone(),
+                terrain_frames: handed,
+                navigator_s_per_frame: wall_s / handed as f64,
+                navigator_s_slowest: slowest_s,
+            });
+        }
         results.push(result);
         estimates.push(published);
     }
-    let report = trial_report(request, route_report(request, &recorded.flight)?, results)?;
-    Ok(TrialOutcome { report, estimates })
+    let maps = match request.maps.as_ref().filter(|_| request.uses_visual()) {
+        Some(maps) => Some(maps_report_blocking(maps, stores)?),
+        None => None,
+    };
+    let route = route_report(request, &recorded.flight)?;
+    let report = trial_report(request, route, results, maps)?;
+    Ok(TrialOutcome {
+        report,
+        estimates,
+        timing,
+    })
 }
 
 /// The scored steps of a flight of `len` steps: every `period` steps, and
@@ -117,9 +146,10 @@ impl OpenSet {
         request: &TrialRequest,
         set: &SensorSetSpec,
         log: &SensorLog,
+        stores: &dyn MapStores,
     ) -> Result<Self, TrialError> {
         Ok(Self {
-            run: replay_set(request, set, log)?,
+            run: replay_set_with_stores(request, set, log, stores)?,
             origin: NavigationOrigin::Fused(set.ablation_set()),
             evaluation: AblationEvaluation::default(),
             series: Vec::new(),
@@ -159,23 +189,13 @@ impl OpenSet {
     }
 
     fn finish(self) -> (SetResult, Vec<Estimate<(SimInstant, NavigationSolution)>>) {
-        let (wall_s, frames, slowest_s) = self.run.terrain_wall();
-        if frames > 0 {
-            tracing::info!(
-                frames,
-                navigator_s_per_frame = wall_s / frames as f64,
-                slowest_s,
-                working_camera = ?self.run.terrain_working_camera(),
-                fixes = ?self.run.terrain_fixes(),
-                "terrain frames handed to the navigator"
-            );
-        }
         let result = SetResult {
             series: self.series,
             tallies: self.run.tallies().clone(),
             intervals: self.run.interval_tallies().to_vec(),
             stars: self.run.star_availability(),
-            terrain_fixes: self.run.terrain_fixes().clone(),
+            terrain: self.run.terrain_report(),
+            terrain_wall: self.run.terrain_wall(),
             closed_loop: None,
         };
         (result, self.published)

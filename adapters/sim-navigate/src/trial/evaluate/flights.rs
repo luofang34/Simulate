@@ -47,7 +47,8 @@ pub(super) fn closed_trial(
             tallies: outcome.tallies.clone(),
             intervals: outcome.interval_tallies.clone(),
             stars: outcome.stars,
-            terrain_fixes: Default::default(),
+            terrain: None,
+            terrain_wall: (0.0, 0, 0.0),
             closed_loop: Some(outcome.report.clone()),
         });
         sets.push(outcome);
@@ -68,6 +69,6 @@ pub(super) fn closed_trial(
             flown: Vec::new(),
         },
     };
-    let report = trial_report(request, route, results)?;
+    let report = trial_report(request, route, results, None)?;
     Ok(ClosedTrialOutcome { report, sets })
 }

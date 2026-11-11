@@ -10,22 +10,22 @@
 //! the package itself goes to the navigator untouched. The world package is
 //! read whole into a [`CatalogScenery`] for rendering.
 
-use std::path::{Path, PathBuf};
-
 use navigate_data::{
-    DataError, DirectoryStore, Encoding, GeoidModel, LayerKind, Package, Sha256Digest, TileRead,
-    VerticalDatum, tile::ground_sample_distance_m,
+    DataError, Encoding, GeoidModel, LayerKind, Package, Sha256Digest, TileRead, VerticalDatum,
+    tile::ground_sample_distance_m,
 };
 use serde::{Deserialize, Serialize};
 use sim_scenery::{CatalogScenery, CatalogVerticalDatum, ImageryRaster, TerrariumTile, TileId};
 
 use super::TrialError;
+use super::map_store::{MapFile, MapStore, MapStores};
 
 /// A package named in a request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageRef {
-    /// The root directory of the store holding the package.
+    /// The store holding the package, by the name the host resolves: a
+    /// directory for the desktop host, a registered store in a browser.
     pub store: String,
     /// The package identity, `navigate-data`'s digest of the canonical
     /// manifest, 64 hex digits.
@@ -63,7 +63,7 @@ pub struct AssumedAccuracy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OnboardMapSpec {
-    /// The root directory of the store holding the package.
+    /// The store holding the package, by the name the host resolves.
     pub store: String,
     /// The package identity, 64 hex digits.
     pub package: String,
@@ -163,9 +163,13 @@ pub const WORLD_GEOID: &str =
     "EGM96 by sim_geo::egm96_undulation_m, bilinear over a 5 degree grid of the NGA model";
 
 /// Opens both packages of `maps` under their identities and states them.
-pub fn maps_report_blocking(maps: &MapsSpec) -> Result<MapsReport, TrialError> {
-    let onboard = OpenedPackage::open_blocking(&maps.onboard.package_ref(), "maps.onboard")?;
-    let world = OpenedPackage::open_blocking(&maps.world, "maps.world")?;
+pub fn maps_report_blocking(
+    maps: &MapsSpec,
+    stores: &dyn MapStores,
+) -> Result<MapsReport, TrialError> {
+    let onboard =
+        OpenedPackage::open_blocking(&maps.onboard.package_ref(), stores, "maps.onboard")?;
+    let world = OpenedPackage::open_blocking(&maps.world, stores, "maps.world")?;
     Ok(MapsReport {
         onboard: onboard.report_blocking("onboard")?,
         world: world.report_blocking("world")?,
@@ -180,9 +184,9 @@ pub fn maps_report_blocking(maps: &MapsSpec) -> Result<MapsReport, TrialError> {
 
 /// An opened package.
 pub struct OpenedPackage {
-    store: DirectoryStore,
-    package: Package<<DirectoryStore as navigate_data::ReadPort>::File>,
-    root: PathBuf,
+    store: MapStore,
+    package: Package<MapFile>,
+    root: String,
 }
 
 impl std::fmt::Debug for OpenedPackage {
@@ -197,7 +201,11 @@ impl std::fmt::Debug for OpenedPackage {
 impl OpenedPackage {
     /// Opens the package `reference` names, refusing one that is missing,
     /// not the one named, or of an unsupported version.
-    pub fn open_blocking(reference: &PackageRef, field: &'static str) -> Result<Self, TrialError> {
+    pub fn open_blocking(
+        reference: &PackageRef,
+        stores: &dyn MapStores,
+        field: &'static str,
+    ) -> Result<Self, TrialError> {
         let refuse = |reason: PackageRefusal, detail: String| TrialError::Package {
             field,
             reason,
@@ -209,8 +217,8 @@ impl OpenedPackage {
                 format!("`{}`", reference.package),
             )
         })?;
-        let root = PathBuf::from(&reference.store);
-        let store = DirectoryStore::new(root.clone());
+        let root = reference.store.clone();
+        let store = stores.store(&root)?;
         let package = pollster::block_on(Package::open(&store, identity)).map_err(|error| {
             let reason = match &error {
                 DataError::Missing { .. } => PackageRefusal::Missing,
@@ -220,11 +228,7 @@ impl OpenedPackage {
                 }
                 _ => PackageRefusal::Unreadable,
             };
-            let detail = format!(
-                "package {} in {}: {error}",
-                reference.package,
-                root.display()
-            );
+            let detail = format!("package {} in {root}: {error}", reference.package);
             refuse(reason, detail)
         })?;
         Ok(Self {
@@ -234,8 +238,8 @@ impl OpenedPackage {
         })
     }
 
-    /// The store directory.
-    pub fn root(&self) -> &Path {
+    /// The store, by the name the host resolved.
+    pub fn root(&self) -> &str {
         &self.root
     }
 
