@@ -3,11 +3,11 @@
 //! models every consumer aboard a simulated vehicle takes. They read truth
 //! because that is their physics; only their samples leave.
 //!
-//! The air is the standard atmosphere entered at ellipsoidal height, still
-//! and without weather: the trial models no pressure-altitude error other
-//! than the static port's own.
+//! The air is the standard atmosphere referenced to mean sea level through
+//! the EGM96 geoid, still and without weather: the trial models no
+//! pressure-altitude error other than the static port's own.
 
-use sim_atmosphere::{AtmosphereField, StandardAtmosphere};
+use sim_atmosphere::{AtmosphereField, GeoidStandardAtmosphere};
 use sim_core::VehicleState;
 use sim_devices::{
     AirDataSample, AirDataSystem, AirFlow, GaussMarkov, GnssErrorSpec, GnssReceiver, PitotStatic,
@@ -110,7 +110,7 @@ impl StaticPort {
         period_s: f64,
     ) -> Result<AirDataSample, TrialError> {
         let position = ecef_to_geodetic(truth.position_ecef);
-        let air = StandardAtmosphere
+        let air = GeoidStandardAtmosphere::new()
             .sample(&position, self.start.advanced_by(time_s))
             .map_err(|source| TrialError::InvalidRequest {
                 field: "baro",

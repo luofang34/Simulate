@@ -20,10 +20,17 @@ fn request() -> TrialRequest {
     request_from_route(&[point(-75.6), point(-75.5)], None).unwrap()
 }
 
+const LAT_RAD: f64 = 0.680_678_408_277_788_5; // 39.0°
+const LON_RAD: f64 = -1.317_723_585_255_718_8; // -75.5°
+
 fn parked() -> VehicleState {
+    parked_at(LAT_RAD, LON_RAD)
+}
+
+fn parked_at(lat_rad: f64, lon_rad: f64) -> VehicleState {
     let ground = Geodetic {
-        lat_rad: 39.0_f64.to_radians(),
-        lon_rad: (-75.5_f64).to_radians(),
+        lat_rad,
+        lon_rad,
         height_m: HEIGHT_M,
     };
     VehicleState::level_flight(&ground, 0.0, 0.0)
@@ -44,7 +51,8 @@ fn the_host_reads_the_static_port_with_the_declared_metre_spread() {
     let squares: f64 = (0..count)
         .map(|k| {
             let sample = port.sense(&truth, f64::from(k) * 0.2, 0.2).unwrap();
-            let SensorData::BaroAltitude { altitude_m } = baro_altitude_data(&sample).unwrap()
+            let SensorData::BaroAltitude { altitude_m } =
+                baro_altitude_data(&sample, LAT_RAD, LON_RAD).unwrap()
             else {
                 panic!("not a barometric altitude");
             };
@@ -70,7 +78,30 @@ fn an_ideal_static_port_reads_the_true_height() {
     request.baro.bias_sigma_pa = 0.0;
     let mut port = StaticPort::new(&request).unwrap();
     let sample = port.sense(&parked(), 0.0, 0.2).unwrap();
-    let SensorData::BaroAltitude { altitude_m } = baro_altitude_data(&sample).unwrap() else {
+    let SensorData::BaroAltitude { altitude_m } =
+        baro_altitude_data(&sample, LAT_RAD, LON_RAD).unwrap()
+    else {
+        panic!("not a barometric altitude");
+    };
+    assert!((altitude_m - HEIGHT_M).abs() < 1e-6, "{altitude_m}");
+}
+
+#[test]
+fn the_host_recovers_ellipsoidal_height_where_the_geoid_is_far_from_the_ellipsoid() {
+    // South of Sri Lanka the geoid lies about 100 m below the ellipsoid, so
+    // a conversion that dropped the undulation on either side would miss by
+    // that much.
+    let (lat_rad, lon_rad) = (4.0_f64.to_radians(), 79.0_f64.to_radians());
+    let undulation_m = sim_geo::egm96_undulation_m(lat_rad, lon_rad);
+    assert!(undulation_m < -80.0, "{undulation_m}");
+    let mut request = request();
+    request.baro.white_sigma_pa = 1e-9;
+    request.baro.bias_sigma_pa = 0.0;
+    let mut port = StaticPort::new(&request).unwrap();
+    let sample = port.sense(&parked_at(lat_rad, lon_rad), 0.0, 0.2).unwrap();
+    let SensorData::BaroAltitude { altitude_m } =
+        baro_altitude_data(&sample, lat_rad, lon_rad).unwrap()
+    else {
         panic!("not a barometric altitude");
     };
     assert!((altitude_m - HEIGHT_M).abs() < 1e-6, "{altitude_m}");
