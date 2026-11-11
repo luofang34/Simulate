@@ -12,7 +12,7 @@ use sim_flight_chain::{
 };
 use sim_geo::{Geodetic, UtcTime};
 use sim_navigate::InitialAlignment;
-use sim_navigate::trial::{ImuGradeName, TrialRequest, parse_utc};
+use sim_navigate::trial::{TrialRequest, parse_utc};
 
 use super::C172Chain;
 use crate::{ChainTrialError, ChainTrialSpec, Steering};
@@ -36,10 +36,10 @@ pub(super) struct Resolved {
 }
 
 /// The spec's request as the vehicle's devices make it: the navigators
-/// declare the inertial unit the C172 carries.
+/// declare the very grade of inertial unit the C172's devices simulate.
 pub(super) fn resolve(spec: &ChainTrialSpec) -> Result<Resolved, ChainTrialError> {
     let mut request = spec.request.clone();
-    request.imu_grade = ImuGradeName::ConsumerMems;
+    request.imu_grade = spec.calibration.grade_name();
     let utc = parse_utc(&request.epoch_utc)?;
     let s = spec.start;
     let start = Geodetic::from_degrees(s.lat_deg, s.lon_deg, s.height_m);

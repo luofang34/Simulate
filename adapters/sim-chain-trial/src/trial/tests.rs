@@ -229,3 +229,24 @@ fn a_set_on_the_stars_gets_the_star_cameras_frames() {
         "the set has the camera"
     );
 }
+
+#[test]
+fn the_navigators_declare_the_inertial_unit_the_devices_simulate() {
+    for calibration in [
+        CalibrationName::Calibrated,
+        CalibrationName::Uncalibrated20Mg,
+    ] {
+        let declared = setup::resolve(&ChainTrialSpec {
+            calibration,
+            ..spec(None)
+        })
+        .unwrap()
+        .request
+        .imu_grade
+        .grade()
+        .spec();
+        let simulated =
+            sim_flight_chain::c172_sensor_suite_with(2026.5, 1, calibration.calibration()).imu;
+        assert_eq!(declared, simulated, "{calibration:?}");
+    }
+}

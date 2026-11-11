@@ -47,23 +47,26 @@ pub struct C172Setup {
     pub seed: u64,
 }
 
-/// Standard gravity, m/s², for stating accelerometer biases in g.
-const STANDARD_GRAVITY_M_S2: f64 = 9.806_65;
-/// Accelerometer turn-on bias left after calibration, 1-sigma per axis:
-/// 5 mg. An assumed value, not a measured one: a level calibration on the
-/// ground takes out most of the part's 20 mg initial offset, and this is
-/// what such a calibration typically leaves.
-const CALIBRATED_ACCEL_BIAS_G: f64 = 5e-3;
-
 /// How far the C172's accelerometers were calibrated before flight.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum AccelCalibration {
-    /// Calibrated: a 5 mg 1-sigma turn-on bias, the assumed residual.
+    /// Calibrated: [`ImuGrade::ConsumerMemsCalibrated`].
     #[default]
     Calibrated,
-    /// Uncalibrated, as shipped: the part's 20 mg 1-sigma initial offset.
-    /// A stress configuration.
+    /// Uncalibrated, as shipped: [`ImuGrade::ConsumerMems`], whose 20 mg
+    /// 1-sigma initial offset makes a stress configuration.
     Uncalibrated20Mg,
+}
+
+impl AccelCalibration {
+    /// The inertial unit's grade: the one statement of its errors that the
+    /// devices simulate and the navigators declare.
+    pub const fn grade(self) -> ImuGrade {
+        match self {
+            Self::Calibrated => ImuGrade::ConsumerMemsCalibrated,
+            Self::Uncalibrated20Mg => ImuGrade::ConsumerMems,
+        }
+    }
 }
 
 /// [`c172_sensor_suite_with`] with calibrated accelerometers.
@@ -92,12 +95,8 @@ pub fn c172_sensor_suite_with(
             sigma,
         },
     };
-    let mut imu = ImuGrade::ConsumerMems.spec();
-    if calibration == AccelCalibration::Calibrated {
-        imu.accel.bias.sigma = CALIBRATED_ACCEL_BIAS_G * STANDARD_GRAVITY_M_S2;
-    }
     SensorSuiteSpec {
-        imu,
+        imu: calibration.grade().spec(),
         static_port: pressure(3.0, 20.0),
         pitot: Some((pressure(3.0, 10.0), DVec3::X)),
         magnetometer: MagnetometerSpec {

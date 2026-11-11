@@ -171,6 +171,8 @@ pub enum GuidanceSource {
 pub enum ImuGradeName {
     /// [`ImuGrade::ConsumerMems`].
     ConsumerMems,
+    /// [`ImuGrade::ConsumerMemsCalibrated`].
+    ConsumerMemsCalibrated,
     /// [`ImuGrade::Tactical`].
     Tactical,
     /// [`ImuGrade::Navigation`].
@@ -182,6 +184,7 @@ impl ImuGradeName {
     pub const fn grade(self) -> ImuGrade {
         match self {
             Self::ConsumerMems => ImuGrade::ConsumerMems,
+            Self::ConsumerMemsCalibrated => ImuGrade::ConsumerMemsCalibrated,
             Self::Tactical => ImuGrade::Tactical,
             Self::Navigation => ImuGrade::Navigation,
         }

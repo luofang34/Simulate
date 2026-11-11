@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use sim_flight_chain::AccelCalibration;
-use sim_navigate::trial::{SensorKind, TrialRequest};
+use sim_navigate::trial::{ImuGradeName, SensorKind, TrialRequest};
 
 /// One chain trial, as a link describes it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -66,6 +66,14 @@ pub enum CalibrationName {
 }
 
 impl CalibrationName {
+    /// The navigators' name for the grade the calibration gives the unit.
+    pub const fn grade_name(self) -> ImuGradeName {
+        match self {
+            Self::Calibrated => ImuGradeName::ConsumerMemsCalibrated,
+            Self::Uncalibrated20Mg => ImuGradeName::ConsumerMems,
+        }
+    }
+
     /// The suite's calibration.
     pub const fn calibration(self) -> AccelCalibration {
         match self {

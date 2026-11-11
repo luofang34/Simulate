@@ -11,6 +11,9 @@ const PER_SQRT_HOUR: f64 = 1.0 / 60.0;
 /// sources gives one; an hour keeps the bias a near constant over a flight
 /// segment, which is how a turn-on bias behaves.
 const BIAS_TAU_S: f64 = SECONDS_PER_HOUR;
+/// Accelerometer turn-on bias left by a level calibration, g, 1-sigma: an
+/// assumed value, not a measured one.
+const CALIBRATED_ACCEL_BIAS_G: f64 = 5e-3;
 
 /// Broad performance class of an inertial measurement unit.
 ///
@@ -23,6 +26,11 @@ pub enum ImuGrade {
     /// and 0.0028 °/s/√Hz, and its typical initial offset tolerances of
     /// 20 mg and 0.5 °/s taken as the 1-sigma turn-on bias.
     ConsumerMems,
+    /// The same part after a level calibration on the ground: its
+    /// accelerometer turn-on bias reduced to an assumed residual of 5 mg
+    /// 1-sigma; noise and gyroscope bias as shipped, since nothing on the
+    /// ground calibrates the gyroscopes of an aeroplane started in the air.
+    ConsumerMemsCalibrated,
     /// A typical tactical unit: 1 mg and 1 °/h bias, 0.05 m/s/√h velocity
     /// random walk and 0.1 °/√h angle random walk.
     Tactical,
@@ -32,7 +40,8 @@ pub enum ImuGrade {
 }
 
 impl ImuGrade {
-    /// Every grade, best last.
+    /// Every device class, best last; [`Self::ConsumerMemsCalibrated`] is a
+    /// calibration state of the first.
     pub const ALL: [Self; 3] = [Self::ConsumerMems, Self::Tactical, Self::Navigation];
 
     /// The error statistics of this grade.
@@ -41,6 +50,12 @@ impl ImuGrade {
             Self::ConsumerMems => (
                 ACCEL_NOISE_DENSITY,
                 20e-3 * STANDARD_GRAVITY_M_S2,
+                GYRO_NOISE_DENSITY,
+                0.5 * RAD_PER_DEG,
+            ),
+            Self::ConsumerMemsCalibrated => (
+                ACCEL_NOISE_DENSITY,
+                CALIBRATED_ACCEL_BIAS_G * STANDARD_GRAVITY_M_S2,
                 GYRO_NOISE_DENSITY,
                 0.5 * RAD_PER_DEG,
             ),
