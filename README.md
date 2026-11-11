@@ -15,10 +15,11 @@ bit for bit.
 ## Prerequisites
 
 - The Rust toolchain named in `rust-toolchain.toml`.
-- The sibling repositories listed under `[workspace.metadata.external_sources]`
-  in `Cargo.toml`. The workspace depends on them by relative path, so each one
-  must be checked out next to this repository at its pinned `rev`.
-  [Getting Started](book/src/getting-started.md) has a script that clones them.
+- Network access to GitHub on the first build: the sibling repositories
+  (Navigate, Indicate, Aviate, and the others in `Cargo.toml`) are git
+  dependencies pinned to a commit `rev`, and Cargo fetches them itself.
+  [Getting Started](book/src/getting-started.md) covers building against local
+  checkouts of them instead.
 - For the browser build: [trunk](https://trunkrs.dev) and the
   `wasm32-unknown-unknown` target.
 
@@ -63,6 +64,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-navigate` | `adapters/sim-navigate` | Navigate visual navigation and fusion |
 | `sim-pilotage` | `adapters/sim-pilotage` | Pilotage vehicle and camera bridge |
 | `ironbird` | `apps/ironbird` | Headless XIL, calibration, and design-estimation runner |
+| `nav-trial` | `apps/nav-trial` | Headless route navigation trial: Navigate's filter scored per sensor set |
 | `simulate-app` | `apps/simulate-app` | Interactive cockpit for desktop and browser |
 
 `vehicles/c172` is a data-only package with no crate of its own. A vehicle

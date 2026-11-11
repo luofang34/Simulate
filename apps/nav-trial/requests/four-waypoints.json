@@ -1,0 +1,66 @@
+{
+  "epoch_utc": "2026-03-20T02:00:00Z",
+  "waypoints": [
+    { "ident": "W0", "lat_deg": 39.0, "lon_deg": -75.6, "altitude_m": 1000.0 },
+    { "ident": "W1", "lat_deg": 39.0, "lon_deg": -75.5075, "altitude_m": 1000.0 },
+    { "ident": "W2", "lat_deg": 39.0592, "lon_deg": -75.4798, "altitude_m": 1300.0 },
+    { "ident": "W3", "lat_deg": 39.0483, "lon_deg": -75.4001, "altitude_m": 1300.0 }
+  ],
+  "vehicle": {
+    "cruise_speed_m_s": 60.0,
+    "bank_limit_deg": 18.0,
+    "max_climb_m_s": 5.0,
+    "capture_radius_m": 100.0,
+    "guidance": "truth"
+  },
+  "imu_grade": "tactical",
+  "alignment": {
+    "position_sigma_m": 2.0,
+    "velocity_sigma_m_s": 0.1,
+    "attitude_sigma_rad": 0.001
+  },
+  "gnss": {
+    "rate_hz": 1.0,
+    "horizontal_white_sigma_m": 0.6,
+    "vertical_white_sigma_m": 1.0,
+    "horizontal_correlated_sigma_m": 1.2,
+    "vertical_correlated_sigma_m": 2.0,
+    "correlation_time_s": 300.0,
+    "velocity_sigma_m_s": 0.05
+  },
+  "baro": {
+    "rate_hz": 5.0,
+    "white_sigma_m": 0.3,
+    "bias_sigma_m": 3.0,
+    "bias_correlation_time_s": 3600.0
+  },
+  "stars": {
+    "period_s": 10.0,
+    "mount_alignment_sigma_rad": 2e-5
+  },
+  "availability": [
+    {
+      "name": "gnss-jammed",
+      "sensor": "gnss",
+      "unavailable": [{ "start_s": 90.0, "end_s": 240.0, "reason": "jamming" }]
+    }
+  ],
+  "sensor_sets": [
+    { "name": "gnss+baro+ins", "means": ["dead_reckoning", "barometric", "gnss"] },
+    { "name": "ins", "means": ["dead_reckoning"] },
+    { "name": "ins+baro", "means": ["dead_reckoning", "barometric"] },
+    { "name": "ins+baro+stars", "means": ["dead_reckoning", "barometric", "celestial"] },
+    {
+      "name": "gnss-outage+baro+ins",
+      "means": ["dead_reckoning", "barometric", "gnss"],
+      "availability": { "gnss": "gnss-jammed" }
+    },
+    {
+      "name": "gnss-outage+baro+ins+stars",
+      "means": ["dead_reckoning", "barometric", "gnss", "celestial"],
+      "availability": { "gnss": "gnss-jammed" }
+    }
+  ],
+  "seeds": { "imu": 22434, "alignment": 31, "gnss": 28245, "baro": 47648, "star_camera": 7 },
+  "output": { "sample_period_s": 1.0, "track_period_s": 10.0 }
+}

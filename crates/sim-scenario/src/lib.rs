@@ -28,8 +28,9 @@ mod world;
 pub use bridge::{CaptureExposure, aperture_frame, render_capture};
 pub use cameras::scenario_virtual_cameras;
 pub use corridor::{
-    CorridorReport, CorridorRun, CorridorVisualEstimator, FlightDynamics, ImageDrivenConfig,
-    ImageNavigationReport, RenderedSensorFrame, SensorObservation, VisualTiers,
+    Autopilot, CorridorReport, CorridorRun, CorridorVisualEstimator, FlightDynamics, FlightReading,
+    Guidance, ImageDrivenConfig, ImageNavigationReport, RenderedSensorFrame, SensorObservation,
+    Steering, VisualTiers,
 };
 pub use episode::{
     BatchScenarioRunner, EpisodeConfig, EpisodeEnv, EpisodeObservation, EpisodeSnapshot,

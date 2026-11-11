@@ -35,6 +35,9 @@
 //! camera mount in Navigate's axes. [`AblationEvaluation`] scores
 //! [`Estimate`]s of each means, alone and fused, against [`Truth`], and
 //! [`ComputeMeter`] reports their host cost beside the scores.
+//!
+//! [`trial`] flies a waypoint route and scores Navigate's inertial filter
+//! under each requested sensor set.
 
 mod aiding;
 mod celestial;
@@ -47,6 +50,7 @@ mod filter_loop;
 mod frame_link;
 mod image_nav;
 mod inertial;
+pub mod trial;
 mod truth;
 mod visual_fix;
 

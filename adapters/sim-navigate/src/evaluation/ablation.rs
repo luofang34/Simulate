@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use super::{
     ComputeMeter, ComputeStats, Estimate, EvaluationSummary, MeansEvaluation, NavigationOutput,
     PositionScore, SimTruth, Truth, score_position,
@@ -10,7 +12,8 @@ use crate::NavigateBridgeError;
 mod tests;
 
 /// One independent way of knowing where the vehicle is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum NavMeans {
     /// Inertial or kinematic propagation alone.

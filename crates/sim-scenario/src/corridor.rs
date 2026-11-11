@@ -25,7 +25,7 @@ pub(crate) mod snapshot;
 mod visual;
 
 pub(crate) use autopilot::angle_difference;
-use autopilot::{Autopilot, FlightReading, Guidance, Steering};
+pub use autopilot::{Autopilot, FlightReading, Guidance, Steering};
 pub use dynamics::FlightDynamics;
 use dynamics::{CorridorStart, Source};
 use image_mode::VisualSource;

@@ -249,6 +249,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "aviate-core"
 version = "0.1.3"
+source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
 dependencies = [
  "bitflags 2.13.2",
  "libm",
@@ -257,6 +258,7 @@ dependencies = [
 [[package]]
 name = "aviate-hal-io"
 version = "0.1.3"
+source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
 dependencies = [
  "aviate-core",
  "embedded-hal",
@@ -266,6 +268,7 @@ dependencies = [
 [[package]]
 name = "aviate-link"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -275,10 +278,12 @@ dependencies = [
 [[package]]
 name = "aviate-xil-contract"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
 
 [[package]]
 name = "aviate-xil-direct"
 version = "0.1.3"
+source = "git+https://github.com/luofang34/Aviate?rev=816b1a65cf05b9aaf3b149fcd97ab428afc29b6d#816b1a65cf05b9aaf3b149fcd97ab428afc29b6d"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -1061,6 +1066,7 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flamsteed"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 
 [[package]]
 name = "flate2"
@@ -1076,6 +1082,7 @@ dependencies = [
 [[package]]
 name = "flightbag"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Flightbag?rev=60d74f362fedbe497ba3064f61961e03b6b16ffc#60d74f362fedbe497ba3064f61961e03b6b16ffc"
 dependencies = [
  "flightbag-core",
 ]
@@ -1083,6 +1090,7 @@ dependencies = [
 [[package]]
 name = "flightbag-core"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Flightbag?rev=60d74f362fedbe497ba3064f61961e03b6b16ffc#60d74f362fedbe497ba3064f61961e03b6b16ffc"
 dependencies = [
  "world-core",
 ]
@@ -1296,7 +1304,7 @@ version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "777d18aa0f12f8b285331cd867133ee14422b3f023f6d388034c47d43e28786a"
 dependencies = [
- "approx 0.5.1",
+ "approx 0.4.0",
  "num-traits",
  "rayon",
  "rstar 0.10.0",
@@ -2090,6 +2098,7 @@ dependencies = [
 [[package]]
 name = "indicate-alerts"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -2097,6 +2106,7 @@ dependencies = [
 [[package]]
 name = "indicate-frames"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "libm",
  "thiserror 2.0.21",
@@ -2105,6 +2115,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-analog"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-instrument-descriptor",
  "indicate-instrument-scene",
@@ -2117,6 +2128,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-descriptor"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-frames",
@@ -2131,6 +2143,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-feeder"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-instrument-state",
 ]
@@ -2138,6 +2151,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-glyphs"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-sha256",
  "libm",
@@ -2147,6 +2161,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-hud"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-frames",
@@ -2160,6 +2175,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-panels"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-instrument-descriptor",
@@ -2173,6 +2189,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-raster"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-instrument-glyphs",
@@ -2186,6 +2203,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-registry"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-instrument-descriptor",
  "indicate-instrument-scene",
@@ -2199,6 +2217,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-scene"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -2208,6 +2227,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-state"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-frames",
@@ -2218,6 +2238,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-symbology"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-instrument-scene",
@@ -2229,6 +2250,7 @@ dependencies = [
 [[package]]
 name = "indicate-instrument-volumes"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-frames",
@@ -2244,6 +2266,7 @@ dependencies = [
 [[package]]
 name = "indicate-intent"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-alerts",
  "indicate-instrument-feeder",
@@ -2254,6 +2277,7 @@ dependencies = [
 [[package]]
 name = "indicate-interaction"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -2263,6 +2287,7 @@ dependencies = [
 [[package]]
 name = "indicate-sha256"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=11ee0fbc8c759200614186fb333722232ac3caee#11ee0fbc8c759200614186fb333722232ac3caee"
 
 [[package]]
 name = "inotify"
@@ -2481,6 +2506,7 @@ dependencies = [
 [[package]]
 name = "jsbsim"
 version = "0.2.0"
+source = "git+https://github.com/luofang34/jsbsim-rs?rev=ca376d63d1ba3453ad5ca97dd593aacb4d20b218#ca376d63d1ba3453ad5ca97dd593aacb4d20b218"
 dependencies = [
  "libm",
  "roxmltree",
@@ -2749,6 +2775,7 @@ checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
 [[package]]
 name = "maplibre"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=312d788430d9aa182c75e3842acc6e2522fafe7b#312d788430d9aa182c75e3842acc6e2522fafe7b"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2798,6 +2825,7 @@ dependencies = [
 [[package]]
 name = "maplibre-build-tools"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/maplibre-rs-experimental?rev=312d788430d9aa182c75e3842acc6e2522fafe7b#312d788430d9aa182c75e3842acc6e2522fafe7b"
 dependencies = [
  "flate2",
  "log",
@@ -2829,6 +2857,7 @@ dependencies = [
 [[package]]
 name = "mbd-airdata"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/mbd?rev=4ece01c9d007f736a7d09f6111cd262ab552c756#4ece01c9d007f736a7d09f6111cd262ab552c756"
 dependencies = [
  "libm",
  "thiserror 2.0.21",
@@ -2837,6 +2866,7 @@ dependencies = [
 [[package]]
 name = "mbd-core"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/mbd?rev=4ece01c9d007f736a7d09f6111cd262ab552c756#4ece01c9d007f736a7d09f6111cd262ab552c756"
 dependencies = [
  "glam 0.33.12",
  "thiserror 2.0.21",
@@ -3016,8 +3046,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nav-trial"
+version = "0.1.0"
+dependencies = [
+ "sim-navigate",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "navigate-astrodynamics"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3028,6 +3070,7 @@ dependencies = [
 [[package]]
 name = "navigate-camera"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "nalgebra",
  "navigate-contract",
@@ -3038,6 +3081,7 @@ dependencies = [
 [[package]]
 name = "navigate-celestial"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "flamsteed",
  "hifitime",
@@ -3050,6 +3094,7 @@ dependencies = [
 [[package]]
 name = "navigate-contract"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -3057,6 +3102,7 @@ dependencies = [
 [[package]]
 name = "navigate-fusion"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "nalgebra",
  "navigate-astrodynamics",
@@ -3068,14 +3114,40 @@ dependencies = [
 [[package]]
 name = "navigate-geodesy"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "navigate-contract",
  "thiserror 2.0.21",
 ]
 
 [[package]]
+name = "navigate-guidance"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
+ "navigate-route",
+ "navigate-trajectory",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "navigate-route"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "navigate-contract",
+ "navigate-geodesy",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-startrack"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "nalgebra",
  "navigate-camera",
@@ -3086,8 +3158,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "navigate-trajectory"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
+dependencies = [
+ "nalgebra",
+ "navigate-astrodynamics",
+ "navigate-contract",
+ "navigate-geodesy",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "navigate-visual"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/Navigate?rev=9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c#9cf9d2ceadeb5bd6e6dbcbada19acdeb75d82b6c"
 dependencies = [
  "image",
  "nalgebra",
@@ -3726,7 +3811,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -3743,7 +3828,7 @@ dependencies = [
 [[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 dependencies = [
  "serde",
  "serde_json",
@@ -3754,12 +3839,12 @@ dependencies = [
 [[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3771,7 +3856,7 @@ dependencies = [
 [[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3783,12 +3868,12 @@ dependencies = [
 [[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -3801,7 +3886,7 @@ dependencies = [
 [[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=e2714e54c480670561d2f6c91bb64e5e26b81a00#e2714e54c480670561d2f6c91bb64e5e26b81a00"
+source = "git+https://github.com/luofang34/Pilotage?rev=458407c92308888bd21714edc4a5da3f94131482#458407c92308888bd21714edc4a5da3f94131482"
 
 [[package]]
 name = "pin-project"
@@ -4988,8 +5073,12 @@ dependencies = [
  "navigate-contract",
  "navigate-fusion",
  "navigate-geodesy",
+ "navigate-guidance",
+ "navigate-route",
  "navigate-startrack",
  "navigate-visual",
+ "serde",
+ "serde_json",
  "sha2 0.11.1",
  "sim-core",
  "sim-devices",
@@ -5542,6 +5631,7 @@ dependencies = [
 [[package]]
 name = "syspack"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/mbd?rev=4ece01c9d007f736a7d09f6111cd262ab552c756#4ece01c9d007f736a7d09f6111cd262ab552c756"
 dependencies = [
  "glam 0.33.12",
  "mbd-airdata",
@@ -6804,6 +6894,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "world"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "world-airmass",
  "world-atmosphere",
@@ -6816,6 +6907,7 @@ dependencies = [
 [[package]]
 name = "world-airmass"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -6825,6 +6917,7 @@ dependencies = [
 [[package]]
 name = "world-atmosphere"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",
@@ -6833,6 +6926,7 @@ dependencies = [
 [[package]]
 name = "world-core"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
 ]
@@ -6840,6 +6934,7 @@ dependencies = [
 [[package]]
 name = "world-geomag"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",
@@ -6848,6 +6943,7 @@ dependencies = [
 [[package]]
 name = "world-notices"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -6857,6 +6953,7 @@ dependencies = [
 [[package]]
 name = "world-surveillance"
 version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",
