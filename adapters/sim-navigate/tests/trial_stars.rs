@@ -4,7 +4,7 @@
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     ImuGradeName, ProgressRecord, SensorState, SetReport, TrialOutcome, TrialRequest,
-    evaluate_with_progress, record_trial,
+    evaluate_with_progress_blocking, record_trial_blocking,
 };
 
 #[cfg(test)]
@@ -43,7 +43,7 @@ fn star_request(epoch_utc: &str) -> TrialRequest {
 /// camera's state in every progress sample of the star set.
 #[cfg(test)]
 fn run(request: &TrialRequest) -> (TrialOutcome, Vec<f64>, Vec<SensorState>) {
-    let recorded = record_trial(request).unwrap();
+    let recorded = record_trial_blocking(request).unwrap();
     let sun_elevations = recorded
         .log
         .stars
@@ -59,7 +59,7 @@ fn run(request: &TrialRequest) -> (TrialOutcome, Vec<f64>, Vec<SensorState>) {
         }
         Ok(())
     };
-    let outcome = evaluate_with_progress(request, &recorded, &mut sink).unwrap();
+    let outcome = evaluate_with_progress_blocking(request, &recorded, &mut sink).unwrap();
     (outcome, sun_elevations, states)
 }
 
@@ -259,7 +259,7 @@ fn closed_loop_arrival_over_a_schuler_period() {
             corridor_half_width_m: 500_000.0,
             ..Default::default()
         });
-        let report = sim_navigate::trial::run_trial(&request).unwrap();
+        let report = sim_navigate::trial::run_trial_blocking(&request).unwrap();
         for set in &report.sensor_sets {
             let closed = set.closed_loop.as_ref().unwrap();
             tracing::info!(

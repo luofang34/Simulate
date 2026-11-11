@@ -133,6 +133,10 @@ fn the_smoke_request_runs_end_to_end_with_and_without_progress() {
     assert_eq!(report.sensor_sets.len(), 3);
     assert_eq!(report.route.events.len(), 2);
     assert_eq!(report.comparison.rows.len(), 3);
+    // Wall-clock timing goes beside the result, never into it.
+    let timing = std::fs::read_to_string(nav_trial::run::timing_path(&watched)).unwrap();
+    let timing: sim_navigate::trial::TrialTiming = serde_json::from_str(&timing).unwrap();
+    assert!(timing.sets.is_empty(), "{timing:?}");
 
     let text = std::fs::read_to_string(&stream).unwrap();
     let records: Vec<ProgressRecord> = text

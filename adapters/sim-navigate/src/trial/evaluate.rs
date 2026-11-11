@@ -21,7 +21,7 @@ use super::comparison::comparison;
 use super::epoch::parse_utc;
 use super::gnss::GnssReceiver;
 use super::maps::OpenedPackage;
-use super::onboard::trial_navigator;
+use super::onboard::trial_navigator_blocking;
 use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
 use super::replay::{SensorTallies, SetRun, SetSelection, StarAvailability};
@@ -31,6 +31,7 @@ use super::report::{
 use super::route::{RouteFlight, STEP_HZ, fly_route};
 use super::score::summarise;
 use super::terrain_camera::TerrainCamera;
+use super::timing::TrialTiming;
 use super::vertical::vertical_plan;
 use super::{GuidanceSource, SensorSetSpec, TrialError, TrialRequest, model_statements};
 use crate::{Estimate, NavMeans};
@@ -42,6 +43,9 @@ pub struct RecordedTrial {
     pub flight: RouteFlight,
     /// What the sensors reported along it.
     pub log: SensorLog,
+    /// Wall-clock seconds spent rendering the terrain camera's frames; not
+    /// a function of the request.
+    pub terrain_render_s: f64,
 }
 
 /// A trial's report with the estimates each set's filter published at the
@@ -52,6 +56,8 @@ pub struct TrialOutcome {
     pub report: TrialReport,
     /// Each set's estimates, by sample.
     pub estimates: Vec<Vec<Estimate<(SimInstant, NavigationSolution)>>>,
+    /// Where the wall-clock time went; never part of the report.
+    pub timing: TrialTiming,
 }
 
 /// A closed-loop trial's report with each set's full outcome, in set order.
@@ -69,22 +75,24 @@ pub(super) struct SetContext {
     pub(super) sample_steps: usize,
 }
 
-/// Validates `request`, flies its route and senses the flight.
-pub fn record_trial(request: &TrialRequest) -> Result<RecordedTrial, TrialError> {
+/// Validates `request`, flies its route and senses the flight; with a
+/// visual set it reads the world package from its store to render the
+/// terrain camera.
+pub fn record_trial_blocking(request: &TrialRequest) -> Result<RecordedTrial, TrialError> {
     request.validate()?;
     let flight = fly_route(request)?;
     let mut log = record(request, &flight.truth)?;
+    let mut terrain_render_s = 0.0;
     if let Some(camera) = terrain_camera_blocking(request)? {
         let started = web_time::Instant::now();
         log.terrain = camera.render_along(&flight.truth)?;
-        let frames = log.terrain.len().max(1) as f64;
-        tracing::info!(
-            frames = log.terrain.len(),
-            render_s_per_frame = started.elapsed().as_secs_f64() / frames,
-            "terrain camera frames rendered"
-        );
+        terrain_render_s = started.elapsed().as_secs_f64();
     }
-    Ok(RecordedTrial { flight, log })
+    Ok(RecordedTrial {
+        flight,
+        log,
+        terrain_render_s,
+    })
 }
 
 /// The request's terrain camera over its world package, when a set takes
@@ -111,17 +119,25 @@ pub(super) fn terrain_camera_blocking(
 }
 
 /// Runs `request` end to end, in open or closed loop as it asks.
-pub fn run_trial(request: &TrialRequest) -> Result<TrialReport, TrialError> {
-    run_trial_with_progress(request, &mut NoProgress)
+pub fn run_trial_blocking(request: &TrialRequest) -> Result<TrialReport, TrialError> {
+    run_trial_with_progress_blocking(request, &mut NoProgress)
 }
 
 /// Runs `request` end to end, handing `sink` a `started` record and then
 /// every slice's events and samples. The report is the same whatever the
 /// sink does with them.
-pub fn run_trial_with_progress(
+pub fn run_trial_with_progress_blocking(
     request: &TrialRequest,
     sink: &mut dyn ProgressSink,
 ) -> Result<TrialReport, TrialError> {
+    run_trial_timed_blocking(request, sink).map(|(report, _)| report)
+}
+
+/// [`run_trial_with_progress_blocking`], with where the wall-clock time went.
+pub fn run_trial_timed_blocking(
+    request: &TrialRequest,
+    sink: &mut dyn ProgressSink,
+) -> Result<(TrialReport, TrialTiming), TrialError> {
     request.validate()?;
     let (legs, _) = vertical_plan(&request.waypoints, &request.vehicle)?;
     let digest = identity(request)?.request_sha256;
@@ -129,10 +145,14 @@ pub fn run_trial_with_progress(
         .map_err(TrialError::Progress)?;
     match request.vehicle.guidance {
         GuidanceSource::Truth => {
-            let recorded = record_trial(request)?;
-            Ok(evaluate_with_progress(request, &recorded, sink)?.report)
+            let recorded = record_trial_blocking(request)?;
+            let outcome = evaluate_with_progress_blocking(request, &recorded, sink)?;
+            Ok((outcome.report, outcome.timing))
         }
-        GuidanceSource::Estimate => Ok(flights::closed_trial(request, false, sink)?.report),
+        GuidanceSource::Estimate => Ok((
+            flights::closed_trial(request, false, sink)?.report,
+            TrialTiming::default(),
+        )),
     }
 }
 
@@ -147,15 +167,15 @@ pub fn run_closed_trial(
 
 /// Replays every sensor set of `request` over `recorded` and scores each
 /// against the recorded flight's truth.
-pub fn evaluate(
+pub fn evaluate_blocking(
     request: &TrialRequest,
     recorded: &RecordedTrial,
 ) -> Result<TrialOutcome, TrialError> {
-    evaluate_with_progress(request, recorded, &mut NoProgress)
+    evaluate_with_progress_blocking(request, recorded, &mut NoProgress)
 }
 
-/// [`evaluate`], handing `sink` every slice's events and samples.
-pub fn evaluate_with_progress(
+/// [`evaluate_blocking`], handing `sink` every slice's events and samples.
+pub fn evaluate_with_progress_blocking(
     request: &TrialRequest,
     recorded: &RecordedTrial,
     sink: &mut dyn ProgressSink,
@@ -186,8 +206,9 @@ fn sample_periods(request: &TrialRequest) -> Result<(usize, usize), TrialError> 
 }
 
 /// The navigator of `set` of `request`, aligned from `log`: what a trial
-/// runs, for stepping by hand.
-pub fn replay_set(
+/// runs, for stepping by hand. A visual set's navigator reads its onboard
+/// package from the store.
+pub fn replay_set_blocking(
     request: &TrialRequest,
     set: &SensorSetSpec,
     log: &SensorLog,
@@ -196,7 +217,7 @@ pub fn replay_set(
         means: set.ablation_set(),
         availability: SetAvailability::resolve(request, set)?,
     };
-    SetRun::new(log, selection, trial_navigator(request, set)?)
+    SetRun::new(log, selection, trial_navigator_blocking(request, set)?)
 }
 
 /// What a set's run leaves for its report.
@@ -205,7 +226,8 @@ pub(super) struct SetResult {
     pub(super) tallies: SensorTallies,
     pub(super) intervals: Vec<(ScheduledInterval, SensorTallies)>,
     pub(super) stars: StarAvailability,
-    pub(super) terrain_fixes: std::collections::BTreeMap<String, u64>,
+    pub(super) terrain: Option<super::terrain_report::TerrainSetReport>,
+    pub(super) terrain_wall: (f64, u64, f64),
     pub(super) closed_loop: Option<ClosedLoopReport>,
 }
 
@@ -219,7 +241,7 @@ fn set_report(set: &SensorSetSpec, result: SetResult) -> SetReport {
         observations: result.tallies,
         stars: means.contains(NavMeans::Celestial).then_some(result.stars),
         series: result.series,
-        terrain_fixes: result.terrain_fixes,
+        terrain: result.terrain,
         closed_loop: result.closed_loop,
     }
 }
