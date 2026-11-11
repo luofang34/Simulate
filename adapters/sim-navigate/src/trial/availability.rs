@@ -64,7 +64,9 @@ pub struct UnavailableInterval {
     /// First second without the sensor.
     pub start_s: f64,
     /// Last second without it: the error there is the error without it.
-    pub end_s: f64,
+    /// Absent, the sensor stays unavailable until the flight ends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_s: Option<f64>,
     /// Why, for the reader: `jamming`, `icing`, `cloud`, `night`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -73,12 +75,18 @@ pub struct UnavailableInterval {
 impl UnavailableInterval {
     /// Whether route time `t_s` falls inside, ends included.
     pub fn contains(&self, t_s: f64) -> bool {
-        (self.start_s..=self.end_s).contains(&t_s)
+        t_s >= self.start_s && t_s <= self.end_or_never()
+    }
+
+    /// The last second without the sensor, or infinity for an interval
+    /// that lasts to the end of the flight.
+    pub fn end_or_never(&self) -> f64 {
+        self.end_s.unwrap_or(f64::INFINITY)
     }
 
     /// Whether any instant of `[from_s, to_s]` falls inside.
     pub fn overlaps(&self, from_s: f64, to_s: f64) -> bool {
-        from_s <= self.end_s && to_s >= self.start_s
+        from_s <= self.end_or_never() && to_s >= self.start_s
     }
 }
 
@@ -221,14 +229,15 @@ pub(super) fn check_schedules(schedules: &[AvailabilitySchedule]) -> Result<(), 
         }
         for interval in &schedule.unavailable {
             let ordered = interval.start_s.is_finite()
-                && interval.end_s.is_finite()
                 && interval.start_s >= 0.0
-                && interval.end_s > interval.start_s;
+                && interval
+                    .end_s
+                    .is_none_or(|end| end.is_finite() && end > interval.start_s);
             if !ordered {
                 return Err(TrialError::InvalidSchedule {
                     schedule: schedule.name.clone(),
                     detail: format!(
-                        "interval {} to {} s is not 0 <= start < end",
+                        "interval {} to {:?} s is not 0 <= start < end",
                         interval.start_s, interval.end_s
                     ),
                 });
