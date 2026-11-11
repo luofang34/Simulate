@@ -4,6 +4,8 @@
 /// The surface; its `data-state` is `loading`, `failed`, `done`, `plan` or
 /// `refused`.
 pub const ROOT: &str = "boot";
+/// The column the surface's content sits in; the app adds sections to it.
+pub const CARD: &str = "boot-card";
 /// The line saying what is happening.
 pub const PHASE: &str = "boot-phase";
 /// The bar; `data-unknown` on it means the work has no measure.

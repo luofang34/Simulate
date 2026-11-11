@@ -10,8 +10,12 @@
 //!   elevation along the route, from Navigate's route geometry and
 //!   ephemeris.
 //! - [`plan_lines`] words the link and its summary in plain language.
+//! - [`package_route_msl`] and [`package_camera`] say what the map package
+//!   is planned for, and [`package_plan_lines`], [`progress_words`] and
+//!   [`sealed_lines`] word its plan, its progress and its result.
 
 mod error;
+mod package;
 mod request;
 mod summary;
 mod wording;
@@ -20,6 +24,10 @@ mod wording;
 mod tests;
 
 pub use error::HostError;
+pub use package::{
+    BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,
+    package_plan_lines, package_route_msl, progress_words, sealed_lines,
+};
 pub use request::{
     CameraGeometry, HostedRequest, StartState, UNTIL_END_S, VEHICLE_CAMERA, hosted_request,
     own_cruise_speed_m_s, sensor_seeds,

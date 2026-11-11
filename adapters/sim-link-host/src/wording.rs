@@ -21,7 +21,7 @@ pub struct PlanLine {
     pub text: String,
 }
 
-fn line(label: &str, text: String) -> PlanLine {
+pub(crate) fn line(label: &str, text: String) -> PlanLine {
     PlanLine {
         label: label.to_owned(),
         text,

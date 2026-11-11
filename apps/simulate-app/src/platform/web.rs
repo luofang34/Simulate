@@ -9,7 +9,9 @@ use winit::window::{Window, WindowAttributes};
 use crate::app::{AppEvent, FlightApp, GpuReady};
 
 mod link_start;
+mod package_run;
 mod progress_surface;
+mod section;
 
 use progress_surface::ProgressSurface;
 
@@ -28,10 +30,9 @@ pub fn run() {
             .set_max_level(Level::INFO)
             .build(),
     );
-    let surface = ProgressSurface::of_page();
-    if link_start::show_link(&surface) {
+    let Err(surface) = link_start::show_link(ProgressSurface::of_page()) else {
         return;
-    }
+    };
     surface.phase("Starting the simulator");
     let event_loop = match EventLoop::<AppEvent>::with_user_event().build() {
         Ok(event_loop) => event_loop,

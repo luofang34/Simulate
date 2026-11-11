@@ -18,21 +18,27 @@
       #boot-card { width: min(34rem, calc(100vw - 3rem)); padding: 2rem 0; }
       #boot[data-state="plan"] #boot-card, #boot[data-state="refused"] #boot-card { width: min(52rem, calc(100vw - 3rem)); }
       #boot h1 { margin: 0 0 1.2rem; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8f98ad; }
-      #boot-phase { margin: 0 0 0.6rem; font-size: 1.05rem; color: #f2f4f8; }
-      #boot-bar { height: 6px; border-radius: 3px; background: #1b2030; overflow: hidden; }
-      #boot-fill { height: 100%; width: 0; border-radius: 3px; background: #5aa2ff; transition: width 120ms linear; }
-      #boot-bar[data-unknown] #boot-fill { width: 30%; animation: boot-sweep 1.4s ease-in-out infinite; }
+      #boot-phase, .section h2 { margin: 0 0 0.6rem; font-size: 1.05rem; font-weight: 400; color: #f2f4f8; }
+      .bar { height: 6px; border-radius: 3px; background: #1b2030; overflow: hidden; }
+      .fill { height: 100%; width: 0; border-radius: 3px; background: #5aa2ff; transition: width 120ms linear; }
+      .bar[data-unknown] .fill { width: 30%; animation: boot-sweep 1.4s ease-in-out infinite; }
       @keyframes boot-sweep { from { margin-left: -30%; } to { margin-left: 100%; } }
-      #boot-detail { margin: 0.6rem 0 0; min-height: 1.5em; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+      .detail { margin: 0.6rem 0 0; min-height: 1.5em; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
       #boot[data-state="failed"] #boot-bar, #boot[data-state="plan"] #boot-bar, #boot[data-state="refused"] #boot-bar { display: none; }
       #boot[data-state="failed"] #boot-phase, #boot[data-state="refused"] #boot-phase { color: #ff8a80; }
       /* Labelled lines the app writes: the plan of a link, or why it is refused. */
-      #boot-lines { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin: 1rem 0 0; }
-      #boot-lines:empty { display: none; }
-      #boot-lines dt { color: #8f98ad; }
-      #boot-lines dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; font-variant-numeric: tabular-nums; }
+      .lines { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin: 1rem 0 0; }
+      .lines:empty { display: none; }
+      .lines dt { color: #8f98ad; }
+      .lines dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; font-variant-numeric: tabular-nums; }
       #boot[data-state="refused"] #boot-lines dd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
-      @media (prefers-reduced-motion: reduce) { #boot-bar[data-unknown] #boot-fill { animation: none; width: 100%; opacity: 0.4; } }
+      /* Sections the app adds under the plan: the map package, the flight. */
+      .section { margin-top: 1.6rem; padding-top: 1.4rem; border-top: 1px solid #1b2030; }
+      .section[data-state="refused"] h2 { color: #ff8a80; }
+      .section [hidden] { display: none; }
+      .section button { margin-top: 1rem; padding: 0.5rem 1.1rem; border: 1px solid #5aa2ff; border-radius: 4px; background: #10203a; color: #f2f4f8; font: inherit; cursor: pointer; }
+      .section button:hover { background: #17305a; }
+      @media (prefers-reduced-motion: reduce) { .bar[data-unknown] .fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     <link data-trunk rel="rust" data-bin="simulate-app" data-initializer="boot.mjs" />
   </head>
@@ -41,9 +47,9 @@
       <div id="boot-card">
         <h1>Simulate</h1>
         <p id="boot-phase">Loading the simulator</p>
-        <div id="boot-bar" data-unknown><div id="boot-fill"></div></div>
-        <p id="boot-detail"></p>
-        <dl id="boot-lines"></dl>
+        <div id="boot-bar" class="bar" data-unknown><div id="boot-fill" class="fill"></div></div>
+        <p id="boot-detail" class="detail"></p>
+        <dl id="boot-lines" class="lines"></dl>
       </div>
     </div>
     <noscript>Simulate needs JavaScript and WebAssembly.</noscript>

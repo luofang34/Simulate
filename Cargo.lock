@@ -5081,8 +5081,10 @@ name = "sim-link-host"
 version = "0.1.0"
 dependencies = [
  "navigate-celestial",
+ "navigate-data",
  "sim-geo",
  "sim-link",
+ "sim-navdata",
  "sim-navigate",
  "thiserror 2.0.21",
 ]
@@ -5438,8 +5440,10 @@ dependencies = [
  "image",
  "indicate-instrument-glyphs",
  "indicate-instrument-scene",
+ "js-sys",
  "mbd-airdata",
  "mbd-core",
+ "navigate-data",
  "pollster 0.4.0",
  "serde_json",
  "sim-analysis",
@@ -5453,6 +5457,7 @@ dependencies = [
  "sim-link",
  "sim-link-host",
  "sim-maplibre",
+ "sim-navdata",
  "sim-navigate",
  "sim-orbital",
  "sim-p38g",

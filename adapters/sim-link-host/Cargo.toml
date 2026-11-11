@@ -10,7 +10,9 @@ workspace = true
 
 [dependencies]
 navigate-celestial = { workspace = true }
+navigate-data = { workspace = true }
 sim-geo = { workspace = true }
 sim-link = { workspace = true }
+sim-navdata = { workspace = true }
 sim-navigate = { workspace = true }
 thiserror = { workspace = true }

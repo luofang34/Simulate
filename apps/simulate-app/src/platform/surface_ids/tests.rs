@@ -1,11 +1,11 @@
-use super::{BAR, DETAIL, FILL, LINES, PHASE, ROOT};
+use super::{BAR, CARD, DETAIL, FILL, LINES, PHASE, ROOT};
 
 const PAGE: &str = include_str!("../../../index.html");
 const LOADER: &str = include_str!("../../../boot.mjs");
 
 #[test]
 fn the_page_carries_every_surface_element_once() {
-    for id in [ROOT, PHASE, BAR, FILL, DETAIL, LINES] {
+    for id in [ROOT, CARD, PHASE, BAR, FILL, DETAIL, LINES] {
         assert_eq!(
             PAGE.matches(&format!("id=\"{id}\"")).count(),
             1,
@@ -22,6 +22,13 @@ fn the_loader_drives_the_elements_of_the_download() {
             LOADER.contains(&format!("getElementById(\"{id}\")")),
             "{id} in boot.mjs"
         );
+    }
+}
+
+#[test]
+fn the_page_styles_what_the_app_builds_by_class() {
+    for class in [".section", ".bar", ".fill", ".detail", ".lines"] {
+        assert!(PAGE.contains(&format!("{class} ")), "{class} in index.html");
     }
 }
 

@@ -5,7 +5,8 @@
 use sim_link_host::PlanLine;
 use web_sys::{Document, Element};
 
-use crate::platform::surface_ids::{BAR, DETAIL, FILL, LINES, PHASE, ROOT};
+use super::section::{Section, write_lines};
+use crate::platform::surface_ids::{BAR, CARD, DETAIL, FILL, LINES, PHASE, ROOT};
 
 /// The surface's elements. A page without them gives a surface that does
 /// nothing, so the app also runs in a bare page.
@@ -16,6 +17,7 @@ pub struct ProgressSurface {
 struct Elements {
     document: Document,
     root: Element,
+    card: Element,
     phase: Element,
     bar: Element,
     fill: Element,
@@ -31,6 +33,7 @@ impl ProgressSurface {
             let find = |id: &str| document.get_element_by_id(id);
             Some(Elements {
                 root: find(ROOT)?,
+                card: find(CARD)?,
                 phase: find(PHASE)?,
                 bar: find(BAR)?,
                 fill: find(FILL)?,
@@ -72,16 +75,14 @@ impl ProgressSurface {
         attribute(&elements.root, "data-state", Some(state));
         elements.phase.set_text_content(Some(heading));
         elements.detail.set_text_content(None);
-        elements.lines.set_text_content(None);
-        for line in lines {
-            for (tag, text) in [("dt", &line.label), ("dd", &line.text)] {
-                // Creating an element fails only for a malformed tag name.
-                if let Ok(cell) = elements.document.create_element(tag) {
-                    cell.set_text_content(Some(text));
-                    elements.lines.append_child(&cell).ok();
-                }
-            }
-        }
+        write_lines(&elements.document, &elements.lines, lines);
+    }
+
+    /// Adds a section under what the surface shows, headed `heading`.
+    /// `None` in a page without the surface.
+    pub fn section(&self, heading: &str) -> Option<Section> {
+        let elements = self.elements.as_ref()?;
+        Section::under(&elements.document, &elements.card, heading)
     }
 
     /// Removes the surface: the app has something to draw.
@@ -94,7 +95,7 @@ impl ProgressSurface {
 
 /// Sets or removes an attribute. The DOM refuses only a malformed attribute
 /// name, and the names here are literals.
-fn attribute(element: &Element, name: &str, value: Option<&str>) {
+pub(super) fn attribute(element: &Element, name: &str, value: Option<&str>) {
     match value {
         Some(value) => element.set_attribute(name, value).ok(),
         None => element.remove_attribute(name).ok(),
