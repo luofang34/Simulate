@@ -19,7 +19,7 @@ use super::package_run::LinkPlan;
 use super::section::{Section, append};
 use crate::vehicles::{PageFeed, PageSnapshot};
 use wasm_bindgen::JsCast;
-use web_sys::{Element, HtmlCanvasElement};
+use web_sys::{Document, Element, HtmlCanvasElement};
 
 /// The pace a flight starts at, route seconds per wall second; the page
 /// holds it lower when it cannot afford it.
@@ -90,8 +90,10 @@ fn prepare(
 /// flight goes on. Returns where the page states the tab's memory.
 fn start_world_view(section: &Section, feed: PageFeed) -> Option<Element> {
     let document = section.document();
-    let canvas = append(document, section.root(), "canvas", "world-view")
+    let row = append(document, section.root(), "div", "world-row")?;
+    let canvas = append(document, &row, "canvas", "world-view")
         .and_then(|canvas| canvas.dyn_into::<HtmlCanvasElement>().ok());
+    let panels = instrument_panels(document, &row);
     let line = append(document, section.root(), "p", "detail");
     let notes = append(document, section.root(), "p", "detail");
     let (Some(canvas), Some(line), Some(notes)) = (canvas, line, notes) else {
@@ -109,10 +111,28 @@ fn start_world_view(section: &Section, feed: PageFeed) -> Option<Element> {
             canvas,
             line,
             diagnostics,
+            panels,
         },
         feed,
     );
     Some(memory)
+}
+
+/// The PFD's and the HSI's canvases, in a column beside the world view or a row under it,
+/// as the page's width allows.
+fn instrument_panels(document: &Document, row: &Element) -> Option<[HtmlCanvasElement; 2]> {
+    let column = append(document, row, "div", "instrument-panels")?;
+    let canvas = |label: &str| {
+        let canvas = append(document, &column, "canvas", "instrument-panel")?
+            .dyn_into::<HtmlCanvasElement>()
+            .ok()?;
+        canvas.set_attribute("aria-label", label).ok();
+        Some(canvas)
+    };
+    Some([
+        canvas("Primary flight display")?,
+        canvas("Horizontal situation indicator")?,
+    ])
 }
 
 /// The tab's WebAssembly memory in words: it only grows, so it is the most

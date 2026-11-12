@@ -4,7 +4,7 @@
 use std::collections::hash_map::Entry;
 
 use sim_geo::BodyEllipsoid;
-use sim_render::{Camera, EnvironmentFrame, FrameOutcome};
+use sim_render::{Camera, EnvironmentFrame};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
 use winit::event_loop::ActiveEventLoop;
 
@@ -136,6 +136,17 @@ impl FlightApp {
         Some(camera)
     }
 
+    /// Sizes the panels drawn apart to their canvases, and the instruments to the panels.
+    fn follow_panel_layout(&mut self) {
+        if let (Some(panels), Some(renderer), Some(rig)) = (
+            self.panels.as_mut(),
+            self.renderer.as_ref(),
+            self.cockpit_rig.as_mut(),
+        ) {
+            rig.set_panels_apart(Some(panels.follow_layout(renderer)));
+        }
+    }
+
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.mapper.controls();
@@ -168,6 +179,7 @@ impl FlightApp {
         let Some(camera) = self.frame_camera(event_loop, viewport_mode) else {
             return;
         };
+        self.follow_panel_layout();
         let exposures = self.flight.drain_sensor_exposures();
         let world = self.flight.world();
         let sky = self
@@ -233,9 +245,15 @@ impl FlightApp {
             preview_view,
             &mut quads,
         );
-        match renderer.render_composite(globe, &quads) {
-            Ok(FrameOutcome::Presented | FrameOutcome::Skipped) => {}
-            Err(err) => self.fail(event_loop, "rendering failed", &err),
+        if let Err(err) = renderer.render_composite(globe, &quads) {
+            return self.fail(event_loop, "rendering failed", &err);
+        }
+        let apart = match (self.panels.as_mut(), rig.apart_panel_quads(world)) {
+            (Some(panels), Some(quads)) => panels.present(renderer, &quads),
+            _ => Ok(()),
+        };
+        if let Err(err) = apart {
+            self.fail(event_loop, "the instrument panels could not be drawn", &err);
         }
     }
 }

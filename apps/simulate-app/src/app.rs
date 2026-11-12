@@ -32,6 +32,7 @@ mod actions;
 mod efb_input;
 mod frame;
 mod hub;
+pub(crate) mod page_panels;
 mod pointer;
 
 #[cfg(test)]
@@ -105,6 +106,8 @@ pub struct FlightApp {
     look: LookOffset,
     occluded: bool,
     host: platform::Host,
+    /// The PFD and HSI on canvases of their own, when the host lays them out apart.
+    panels: Option<page_panels::PagePanels>,
     #[cfg(not(target_arch = "wasm32"))]
     next_occluded_tick: Option<std::time::Instant>,
 }
@@ -152,6 +155,7 @@ impl FlightApp {
             look: LookOffset::default(),
             occluded: false,
             host,
+            panels: None,
             #[cfg(not(target_arch = "wasm32"))]
             next_occluded_tick: None,
         })
@@ -198,6 +202,7 @@ impl FlightApp {
             renderer.resize(size.width, size.height);
             window.request_redraw();
         }
+        self.panels = self.host.page_panels(&renderer);
         match CockpitRig::from_renderer(&renderer, hud_pass, self.flight.world_surface().clone()) {
             Ok(mut rig) => {
                 rig.set_pixel_ratio(scale_factor);

@@ -68,6 +68,14 @@ impl Host {
     /// A line of diagnostics the log already carries; the desktop has no other place for it.
     pub fn diagnostics(&self, _text: &str) {}
 
+    /// The desktop docks its instruments over the window view.
+    pub fn page_panels(
+        &self,
+        _renderer: &sim_render::Renderer,
+    ) -> Option<crate::app::page_panels::PagePanels> {
+        None
+    }
+
     /// Shows `title` on the window.
     pub fn set_title(&self, window: &Window, title: &str) {
         window.set_title(title);

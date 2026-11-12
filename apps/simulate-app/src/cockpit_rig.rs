@@ -21,6 +21,7 @@ use sim_maplibre::EfbDisplayMode;
 
 pub mod efb_chrome;
 mod layout;
+mod panels_apart;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -40,6 +41,9 @@ pub struct CockpitRig {
     show_conformal_hud: bool,
     sources: layout::FlightSources,
     surface: WorldSurfaceHandle,
+    /// The size of the PFD and HSI when drawn apart from the window view, each on its own
+    /// surface; `None` docks them over it.
+    panels_apart: Option<[u32; 2]>,
 }
 
 impl CockpitRig {
@@ -105,6 +109,7 @@ impl CockpitRig {
             show_conformal_hud: true,
             sources: layout::FlightSources::default(),
             surface,
+            panels_apart: None,
         })
     }
 
@@ -414,19 +419,6 @@ impl CockpitRig {
         (true, svs, patch, runway)
     }
 
-    fn dock_panel_px(&self, earth: bool, mode: OperatorViewportMode) -> Option<[u32; 2]> {
-        if !self.show_instruments || !self.sources.avionics {
-            return None;
-        }
-        let has_dock_chart = earth
-            && mode != OperatorViewportMode::ChartMap
-            && self
-                .maps
-                .as_ref()
-                .is_some_and(|m| !m.efb_shown() && m.instrument_view(MFD_CHART_MAP).is_some());
-        layout::dock_panel_px(self.surface_size, has_dock_chart)
-    }
-
     fn active_landing_runway(
         &self,
         earth: bool,
@@ -454,7 +446,7 @@ impl CockpitRig {
         {
             quads.push(OverlayQuad::vector_overlay(ViewportRect::FULL, hud));
         }
-        if !self.show_instruments || !self.sources.avionics {
+        if !self.show_instruments || !self.sources.avionics || self.panels_apart.is_some() {
             return quads;
         }
         let maps = self.maps.as_ref().filter(|_| earth);

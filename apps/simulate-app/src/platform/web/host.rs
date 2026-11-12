@@ -3,11 +3,14 @@
 //! page alone: its start, its title and its failures stay in the view, so
 //! the flight and the monitor go on whatever becomes of the renderer.
 
+use sim_render::Renderer;
+use tracing::warn;
 use web_sys::{Element, HtmlCanvasElement};
 use winit::platform::web::WindowAttributesExtWebSys;
 use winit::window::{Window, WindowAttributes};
 
 use super::progress_surface::ProgressSurface;
+use crate::app::page_panels::{PagePanel, PagePanels};
 
 /// A view of the app inside a page: the canvas it draws on and the line
 /// under it that says what it shows, or why it shows nothing.
@@ -19,6 +22,9 @@ pub struct PageView {
     pub line: Element,
     /// Where the view states how it runs: the maps' device tier and why.
     pub diagnostics: Element,
+    /// The canvases the PFD and the HSI are drawn on beside the view, when the page has
+    /// room for them.
+    pub panels: Option<[HtmlCanvasElement; 2]>,
 }
 
 /// Where the app is shown.
@@ -69,6 +75,35 @@ impl Host {
         }
     }
 
+    /// The PFD and the HSI on the view's panel canvases, sharing `renderer`'s device; `None`
+    /// docks them over the view, as on the whole page.
+    pub fn page_panels(&self, renderer: &Renderer) -> Option<PagePanels> {
+        let Self::View(view) = self else {
+            return None;
+        };
+        let [pfd, hsi] = view.panels.clone()?;
+        let panel = |canvas: HtmlCanvasElement| {
+            let [width, height] = laid_out_px(&canvas);
+            let surface = renderer
+                .panel_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()), width, height)
+                .inspect_err(|err| warn!(error = %err, "instrument panel unavailable; docking"))
+                .ok()?;
+            Some(PagePanel::new(
+                surface,
+                Box::new(move || laid_out_px(&canvas)),
+            ))
+        };
+        match (panel(pfd.clone()), panel(hsi.clone())) {
+            (Some(pfd), Some(hsi)) => Some(PagePanels::new(pfd, hsi)),
+            _ => {
+                for canvas in [pfd, hsi] {
+                    canvas.set_attribute("hidden", "").ok();
+                }
+                None
+            }
+        }
+    }
+
     /// Shows `title`: on the page's tab, or on the view's line.
     pub fn set_title(&self, _window: &Window, title: &str) {
         match self {
@@ -91,4 +126,18 @@ impl Host {
                 .with_append(false),
         }
     }
+}
+
+/// `canvas`'s laid-out size in physical pixels, with its drawing buffer set to match.
+fn laid_out_px(canvas: &HtmlCanvasElement) -> [u32; 2] {
+    let ratio = web_sys::window().map_or(1.0, |window| window.device_pixel_ratio());
+    let px = |css: i32| ((f64::from(css) * ratio).round() as u32).max(1);
+    let (width, height) = (px(canvas.client_width()), px(canvas.client_height()));
+    if canvas.width() != width {
+        canvas.set_width(width);
+    }
+    if canvas.height() != height {
+        canvas.set_height(height);
+    }
+    [width, height]
 }

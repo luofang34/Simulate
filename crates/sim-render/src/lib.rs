@@ -60,7 +60,7 @@ pub use multiscale::{
     reconstruct_planetary_eye_depth_m, sort_celestial_bodies_back_to_front,
 };
 pub use ortho::{OrthoAtlas, OrthoFootprint};
-pub use renderer::Renderer;
+pub use renderer::{PanelSurface, Renderer};
 pub use vector_pass::{
     VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorScenePass, VectorTarget, VectorVertex,
 };
