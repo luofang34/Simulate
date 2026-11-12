@@ -5,12 +5,18 @@
 //! `tiles/<key>`. A file appears whole or not at all: the browser commits a
 //! writable stream when it closes. The store lasts across reloads and
 //! counts against the origin's storage quota.
+//!
+//! A writable stream left open keeps a swap file the browser does not clean
+//! up, so the store writes one file at a time and aborts the one in hand
+//! when the page goes away mid-write.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use navigate_data::{DataError, RandomAccess, ReadPort, WritePort, checked_path};
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
@@ -20,11 +26,47 @@ use web_sys::{
 
 use super::js_text;
 
+/// The writable stream a write has open, shared with the page's `pagehide`
+/// listener that aborts it.
+type OpenStream = Rc<RefCell<Option<FileSystemWritableFileStream>>>;
+
 /// A store under one directory of the origin private file system.
 pub struct OpfsStore {
     root: FileSystemDirectoryHandle,
     /// The directories opened so far, by logical path.
     directories: RefCell<BTreeMap<String, FileSystemDirectoryHandle>>,
+    /// The stream of the write in progress, if one is.
+    open: OpenStream,
+    /// Aborts [`Self::open`] when the page is hidden for good; removed with
+    /// the store.
+    on_leave: Option<Closure<dyn FnMut()>>,
+}
+
+/// The `pagehide` listener that aborts `open`'s stream, registered on the
+/// page's window; `None` without a window.
+fn abort_on_leave(open: &OpenStream) -> Option<Closure<dyn FnMut()>> {
+    let window = web_sys::window()?;
+    let open = Rc::clone(open);
+    let listener: Closure<dyn FnMut()> = Closure::new(move || {
+        if let Some(stream) = open.borrow_mut().take() {
+            // The page is going; the abort's promise settles without it.
+            drop(stream.abort());
+        }
+    });
+    window
+        .add_event_listener_with_callback("pagehide", listener.as_ref().unchecked_ref())
+        .ok()?;
+    Some(listener)
+}
+
+impl Drop for OpfsStore {
+    fn drop(&mut self) {
+        if let (Some(window), Some(listener)) = (web_sys::window(), &self.on_leave) {
+            window
+                .remove_event_listener_with_callback("pagehide", listener.as_ref().unchecked_ref())
+                .ok();
+        }
+    }
 }
 
 /// A file of an [`OpfsStore`], read whole when it was opened.
@@ -85,9 +127,12 @@ impl OpfsStore {
             .map_err(js_text)?
             .dyn_into()
             .map_err(|_| format!("{name} is not a directory"))?;
+        let open = OpenStream::default();
         Ok(Self {
             root,
             directories: RefCell::new(BTreeMap::new()),
+            on_leave: abort_on_leave(&open),
+            open,
         })
     }
 
@@ -190,7 +235,13 @@ impl WritePort for OpfsStore {
             .await
             .map_err(&failed)?
             .unchecked_into();
-        match write_and_close(&stream, bytes).await {
+        *self.open.borrow_mut() = Some(stream.clone());
+        let written = write_and_close(&stream, bytes).await;
+        // Taken by the page's leaving when it went first: nothing left to end.
+        if self.open.borrow_mut().take().is_none() {
+            return Err(failed(JsValue::from_str("the page left during the write")));
+        }
+        match written {
             Ok(()) => Ok(()),
             Err(error) => {
                 // An open stream keeps the browser's swap file for it; only

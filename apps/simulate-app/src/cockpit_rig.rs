@@ -346,8 +346,8 @@ impl CockpitRig {
             queue,
             &AvionicsFrameInput {
                 profile,
-                timestamp: now,
-                utc: flight.sim_epoch().utc_at(now).ok(),
+                timestamp: flight.display_instant(),
+                utc: flight.sim_epoch().utc_at(flight.display_instant()).ok(),
                 vehicle: estimated,
                 cockpit: sensed.cockpit,
                 air_data: sensed.air_data,

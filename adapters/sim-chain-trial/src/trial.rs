@@ -132,6 +132,11 @@ impl ChainTrial {
         feed::avionics(&self.chain)
     }
 
+    /// What the trial's log keeps, which grows with the flight's length.
+    pub fn retained(&self) -> crate::Retained {
+        self.nav.retained()
+    }
+
     /// The true aeroplane now, for drawing the world outside it only.
     pub fn truth(&self) -> TruthSnapshot {
         feed::truth(&self.chain)
@@ -265,6 +270,22 @@ impl ChainTrial {
         Ok(())
     }
 
+    /// Every set to `step`, then the pixels released of the terrain frames
+    /// all of them have taken.
+    fn advance_sets(&mut self, step: usize) -> Result<(), ChainTrialError> {
+        for slot in &mut self.sets {
+            slot.run.advance_to(&self.nav.log, step)?;
+        }
+        let taken = self
+            .sets
+            .iter()
+            .map(|slot| slot.run.terrain_frames_taken())
+            .min();
+        self.nav
+            .release_terrain_before(taken.unwrap_or(self.nav.log.terrain.len()));
+        Ok(())
+    }
+
     /// Navigation step `step`: the camera, every set, the steering, and the
     /// records due.
     fn navigate(&mut self, step: usize) -> Result<(), ChainTrialError> {
@@ -300,9 +321,8 @@ impl ChainTrial {
             };
             stars.sense(&self.nav.truth, step, &mut self.nav.log, in_service)?;
         }
-        for slot in &mut self.sets {
-            slot.run.advance_to(&self.nav.log, step)?;
-        }
+        self.advance_sets(step)?;
+
         if let Some(slot) = self.steering.and_then(|index| self.sets.get_mut(index))
             && let Some(solution) = slot.run.solution(&self.nav.log)?
         {

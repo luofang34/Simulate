@@ -6,7 +6,7 @@
 use navigate_data::MemoryStore;
 use sim_chain_trial::ChainTrial;
 use sim_link_host::{
-    CameraWorld, ChainFlight, HostError, Monitor, PlanLine, chain_spec, page_stores,
+    CameraWorld, ChainFlight, Clock, HostError, Monitor, PlanLine, chain_spec, page_stores,
 };
 use sim_navdata::SealedPackage;
 use sim_navigate::trial::parse_utc;
@@ -19,7 +19,7 @@ use super::package_run::LinkPlan;
 use super::section::{Section, append};
 use crate::vehicles::{PageFeed, PageSnapshot};
 use wasm_bindgen::JsCast;
-use web_sys::HtmlCanvasElement;
+use web_sys::{Element, HtmlCanvasElement};
 
 /// The pace a flight starts at, route seconds per wall second; the page
 /// holds it lower when it cannot afford it.
@@ -87,16 +87,24 @@ fn prepare(
 
 /// Starts the app's own world view at the top of `section`, above the
 /// monitor, drawing the flight `feed` publishes. Whatever becomes of it, the
-/// flight goes on.
-fn start_world_view(section: &Section, feed: PageFeed, map_canvas: Option<HtmlCanvasElement>) {
+/// flight goes on; the app's map draws on `map_canvas` too. Returns where the page
+/// states the tab's memory.
+fn start_world_view(
+    section: &Section,
+    feed: PageFeed,
+    map_canvas: Option<HtmlCanvasElement>,
+) -> Option<Element> {
     let document = section.document();
     let canvas = append(document, section.root(), "canvas", "world-view")
         .and_then(|canvas| canvas.dyn_into::<HtmlCanvasElement>().ok());
     let line = append(document, section.root(), "p", "detail");
-    let (Some(canvas), Some(line)) = (canvas, line) else {
+    let notes = append(document, section.root(), "p", "detail");
+    let (Some(canvas), Some(line), Some(notes)) = (canvas, line, notes) else {
         warn!("the page has no room for the world view");
-        return;
+        return None;
     };
+    let diagnostics = append(document, &notes, "span", "")?;
+    let memory = append(document, &notes, "span", "")?;
     canvas
         .set_attribute("aria-label", "The world outside the aircraft")
         .ok();
@@ -105,10 +113,12 @@ fn start_world_view(section: &Section, feed: PageFeed, map_canvas: Option<HtmlCa
         PageView {
             canvas,
             line,
+            diagnostics,
             map_canvas,
         },
         feed,
     );
+    Some(memory)
 }
 
 /// What the page's map needs before the flight: its canvas, the link to the app's map,
@@ -131,6 +141,13 @@ fn page_map_setup(
                 .collect()
         }),
     })
+}
+
+/// The tab's WebAssembly memory in words: it only grows, so it is the most
+/// the run has needed, against the 4 GiB a 32-bit module can address.
+fn memory_words() -> String {
+    let bytes = core::arch::wasm32::memory_size(0) as u64 * 65_536;
+    format!("; WebAssembly memory {} MB of 4096", bytes >> 20)
 }
 
 /// Flies the link of `plan` in `section`.
@@ -174,8 +191,9 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             .dyn_into::<HtmlCanvasElement>()
             .ok()
     });
+    let mut memory = None;
     if let Some(feed) = &feed {
-        start_world_view(&section, feed.clone(), map_canvas.clone());
+        memory = start_world_view(&section, feed.clone(), map_canvas.clone());
     }
     let Some(view) = MonitorView::inside(
         section,
@@ -189,7 +207,16 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         return;
     };
     let flight = ChainFlight::new(trial, world, PageClock::of_page());
+    let clock = PageClock::of_page();
+    let mut memory_at_s = f64::NEG_INFINITY;
     let mut publish = |flight: &ChainFlight<PageClock>, monitor: &Monitor| {
+        if let Some(line) = memory
+            .as_ref()
+            .filter(|_| clock.now_s() - memory_at_s >= 2.0)
+        {
+            memory_at_s = clock.now_s();
+            line.set_text_content(Some(&memory_words()));
+        }
         if let Some(feed) = &feed {
             feed.publish(PageSnapshot::of(
                 flight.trial(),

@@ -44,7 +44,7 @@ pub struct FixMark {
 pub struct CameraLog {
     latest: Option<CameraShot>,
     outcomes: BTreeMap<String, Vec<String>>,
-    marks: Vec<FixMark>,
+    marks: super::thinning::Thinned<FixMark>,
 }
 
 impl CameraLog {
@@ -103,7 +103,7 @@ impl CameraLog {
 
     /// Where the camera was for each frame a set's filter judged, in order.
     pub fn marks(&self) -> &[FixMark] {
-        &self.marks
+        self.marks.items()
     }
 }
 

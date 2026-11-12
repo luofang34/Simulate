@@ -329,3 +329,28 @@ fn the_feed_keeps_its_rate_and_its_two_sides_apart() {
     assert!(after.avionics.is_empty());
     assert_eq!(trial.truth().at, trial.avionics().at);
 }
+
+/// Flies `trial` to `until_s`, handing back every frame it asks for.
+fn fly_with_frames(trial: &mut ChainTrial, until_s: f64) -> crate::Retained {
+    while trial.now_s() < until_s {
+        if let StepOutcome::FrameWanted(asked, _) = trial.step_until(until_s).unwrap() {
+            trial.deliver_frame(asked.index, &[128; 192]).unwrap();
+        }
+    }
+    trial.retained()
+}
+
+#[test]
+fn a_long_flights_log_keeps_only_the_frames_a_set_has_yet_to_take() {
+    let mut trial = ChainTrial::new(&spec(Some(camera())), &DirectoryStores).unwrap();
+    let early = fly_with_frames(&mut trial, 5.0);
+    let late = fly_with_frames(&mut trial, 20.0);
+    assert!(
+        late.terrain_frames > early.terrain_frames + 10,
+        "{early:?} {late:?}"
+    );
+    assert!(late.steps > early.steps);
+    // At most the frame read out but not yet taken keeps its pixels.
+    assert!(early.terrain_pixel_bytes <= 192, "{early:?}");
+    assert!(late.terrain_pixel_bytes <= 192, "{late:?}");
+}

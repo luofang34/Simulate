@@ -222,6 +222,10 @@ impl FlightApp {
                     .ok();
                 info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
                 self.host.startup_done();
+                if let Some(maps) = rig.maps() {
+                    info!(tier = maps.tier().words(), "the maps' device tier");
+                    self.host.diagnostics(&maps.tier().words());
+                }
                 self.cockpit_rig = Some(rig);
                 self.apply_vehicle_overlays();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));

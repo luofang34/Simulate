@@ -44,9 +44,9 @@ pub use chain::{
 pub use error::HostError;
 pub use monitor::{
     CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark, FlightStepper,
-    MAX_FRAME_S, MeansSwitch, Monitor, MonitorFeed, PaceLimit, Pacer, Replay, SLICE_BUDGET_S,
-    SetTrace, Slice, StepState, TracePoint, clock_words, event_words, outcome_words, pace_words,
-    run_slice, sensor_words, state_words, status_words, terrain_words,
+    MAX_FRAME_S, MeansSwitch, Monitor, MonitorFeed, PaceLimit, Pacer, Replay, SAMPLES_KEPT,
+    SLICE_BUDGET_S, SetTrace, Slice, StepState, TracePoint, clock_words, event_words,
+    outcome_words, pace_words, run_slice, sensor_words, state_words, status_words, terrain_words,
 };
 pub use package::{
     BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,

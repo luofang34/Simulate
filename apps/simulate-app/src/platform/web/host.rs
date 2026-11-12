@@ -17,6 +17,8 @@ pub struct PageView {
     pub canvas: HtmlCanvasElement,
     /// The line under the canvas.
     pub line: Element,
+    /// Where the view states how it runs: the maps' device tier and why.
+    pub diagnostics: Element,
     /// The page's own map canvas, which shows the app's EFB map expanded.
     pub map_canvas: Option<HtmlCanvasElement>,
 }
@@ -59,6 +61,13 @@ impl Host {
                     .set_text_content(Some(&format!("No world view: {what}: {detail}")));
                 view.canvas.set_attribute("hidden", "").ok();
             }
+        }
+    }
+
+    /// States how the app runs, in the view's diagnostics; the whole page has the log.
+    pub fn diagnostics(&self, text: &str) {
+        if let Self::View(view) = self {
+            view.diagnostics.set_text_content(Some(text));
         }
     }
 

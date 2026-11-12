@@ -23,6 +23,8 @@ pub(crate) struct NavLog {
     pending_imu: InertialIncrement,
     pending_gnss: Vec<Logged<GnssReading>>,
     pending_baro: Vec<Logged<AirDataSample>>,
+    /// Terrain frames whose pixels are released: every set has taken them.
+    released_terrain: usize,
 }
 
 impl NavLog {
@@ -44,6 +46,33 @@ impl NavLog {
             pending_imu: empty_increment(),
             pending_gnss: Vec::new(),
             pending_baro: Vec::new(),
+            released_terrain: 0,
+        }
+    }
+
+    /// Releases the pixels of every terrain frame before `taken`, the fewest
+    /// any set has taken: no set reads them again, and a frame's pixels are
+    /// most of what a long flight's log would otherwise keep.
+    pub(crate) fn release_terrain_before(&mut self, taken: usize) {
+        let from = self.released_terrain;
+        for frame in self.log.terrain.iter_mut().take(taken).skip(from) {
+            frame.pixels = Vec::new();
+        }
+        self.released_terrain = self.released_terrain.max(taken.min(self.log.terrain.len()));
+    }
+
+    /// What the log keeps: its steps, its terrain frames and the pixel bytes
+    /// they still hold.
+    pub(crate) fn retained(&self) -> crate::Retained {
+        crate::Retained {
+            steps: self.log.imu.len(),
+            terrain_frames: self.log.terrain.len(),
+            terrain_pixel_bytes: self
+                .log
+                .terrain
+                .iter()
+                .map(|frame| frame.pixels.len())
+                .sum(),
         }
     }
 
