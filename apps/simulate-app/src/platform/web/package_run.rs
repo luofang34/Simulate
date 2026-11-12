@@ -18,6 +18,7 @@ use sim_navdata::{
 use tracing::{info, warn};
 
 use super::section::Section;
+use crate::platform::surface_ids::WRITER_SCRIPT;
 
 /// The directory of the origin private file system the store lives in.
 const STORE_DIRECTORY: &str = "navdata";
@@ -80,7 +81,7 @@ pub async fn build_package(section: &Section, plan: &LinkPlan) -> Option<SealedP
         return None;
     };
     let quota = storage_quota().await;
-    let outcome = match OpfsStore::open(STORE_DIRECTORY).await {
+    let outcome = match OpfsStore::open_with_writer(STORE_DIRECTORY, WRITER_SCRIPT).await {
         Ok(mut store) => match package(section, plan, camera, quota, &mut store).await {
             Err(Stop::Package(error)) if error.store_fault() => {
                 warn!(%error, "the browser's storage does not keep what the page writes; packing in memory");

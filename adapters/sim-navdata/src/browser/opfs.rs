@@ -32,6 +32,10 @@ use web_sys::{
 use super::js_text;
 use crate::RepairPort;
 
+mod writer;
+
+use writer::{OpfsWriter, Written};
+
 /// The writable stream a write has open, shared with the page's `pagehide`
 /// listener that aborts it.
 type OpenStream = Rc<RefCell<Option<FileSystemWritableFileStream>>>;
@@ -46,6 +50,8 @@ pub struct OpfsStore {
     /// Aborts [`Self::open`] when the page is hidden for good; removed with
     /// the store.
     on_leave: Option<Closure<dyn FnMut()>>,
+    /// The worker that writes through sync access handles, while it can.
+    writer: Option<OpfsWriter>,
 }
 
 /// The `pagehide` listener that aborts `open`'s stream, registered on the
@@ -139,7 +145,23 @@ impl OpfsStore {
             directories: RefCell::new(BTreeMap::new()),
             on_leave: abort_on_leave(&open),
             open,
+            writer: None,
         })
+    }
+
+    /// Opens the store as [`Self::open`] does, writing through the worker
+    /// script at `writer_url` while the browser lets it; without one, or
+    /// once it cannot write, files are written on the main thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::open`]'s refusals.
+    pub async fn open_with_writer(name: &str, writer_url: &str) -> Result<Self, String> {
+        let mut store = Self::open(name).await?;
+        store.writer = OpfsWriter::start(writer_url, name)
+            .inspect_err(|reason| tracing::warn!(%reason, "no OPFS writer worker; writing on the main thread"))
+            .ok();
+        Ok(store)
     }
 
     /// The directory holding `path` and the file's name in it; `None` when
@@ -221,6 +243,19 @@ async fn write_and_close(
 impl OpfsStore {
     /// Writes `bytes` to the file at `path`, created or truncated.
     async fn write_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
+        checked_path(path)?;
+        let through_worker = match &self.writer {
+            Some(writer) => Some(writer.write(path, bytes).await?),
+            None => None,
+        };
+        match through_worker {
+            Some(Written::Done) => return Ok(()),
+            Some(Written::Unavailable(reason)) => {
+                tracing::warn!(%reason, "the OPFS writer worker cannot write; writing on the main thread");
+                self.writer = None;
+            }
+            None => {}
+        }
         let failed = store_error(path);
         let Some((directory, name)) = self.directory(path, true).await? else {
             return Err(DataError::Missing {

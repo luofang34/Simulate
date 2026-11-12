@@ -1,7 +1,8 @@
-use super::{BAR, CARD, DETAIL, FILL, LINES, PHASE, ROOT};
+use super::{BAR, CARD, DETAIL, FILL, LINES, PHASE, ROOT, WRITER_SCRIPT};
 
 const PAGE: &str = include_str!("../../../index.html");
 const LOADER: &str = include_str!("../../../boot.mjs");
+const WRITER: &str = include_str!("../../../opfs-writer.js");
 
 #[test]
 fn the_page_carries_every_surface_element_once() {
@@ -51,4 +52,22 @@ fn the_page_styles_what_the_app_builds_by_class() {
 #[test]
 fn the_page_starts_trunk_with_the_loader() {
     assert!(PAGE.contains("data-initializer=\"boot.mjs\""));
+}
+
+#[test]
+fn the_page_ships_the_store_writer_and_it_writes_through_sync_handles() {
+    assert!(
+        PAGE.contains(&format!(r#"rel="copy-file" href="{WRITER_SCRIPT}""#)),
+        "index.html copies {WRITER_SCRIPT}"
+    );
+    // The protocol OpfsStore's writer speaks: an id per write, and an
+    // answer that is ok, an error, or unsupported.
+    for part in [
+        "const { id, root, path, bytes } = event.data",
+        "createSyncAccessHandle",
+        "postMessage({ id, ok: true })",
+        "unsupported: true",
+    ] {
+        assert!(WRITER.contains(part), "{WRITER_SCRIPT} has {part}");
+    }
 }

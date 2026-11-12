@@ -1,5 +1,6 @@
 //! Ids of the page's progress surface, shared by `index.html`, `boot.mjs`
-//! and the browser platform code.
+//! and the browser platform code, and the scripts the page ships beside
+//! the app.
 
 /// The surface; its `data-state` is `loading`, `failed`, `done`, `plan` or
 /// `refused`.
@@ -17,6 +18,10 @@ pub const DETAIL: &str = "boot-detail";
 
 /// The list of labelled lines: a link's plan, or why it is refused.
 pub const LINES: &str = "boot-lines";
+
+/// The worker script, beside the page, that writes the map package's store
+/// through sync access handles.
+pub const WRITER_SCRIPT: &str = "opfs-writer.js";
 
 #[cfg(test)]
 mod tests;
