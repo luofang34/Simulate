@@ -9,7 +9,8 @@
 use glam::DVec3;
 use indicate_instrument_state::{
     AltitudeDeclaration, HeadingReference, HeadingSample, IdentStr, MagneticVariation, NavData,
-    NavFromTo, NavScale, NavSource, Selections, Stamped, VariationSourceId,
+    NavFacility, NavFromTo, NavScale, NavSequencing, NavSource, Selections, Stamped,
+    VariationSourceId,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use world_core::{DecimalYear, GeodeticPosition};
@@ -194,6 +195,8 @@ pub(super) fn runway_nav(
             to_ident: guidance.ident,
             from_ident: IdentStr::EMPTY,
             scale: NavScale::Approach,
+            facility: NavFacility::Localizer,
+            sequencing: NavSequencing::Sequencing,
         }),
         age_ms: Some(0.0),
     }

@@ -1,7 +1,7 @@
 use indicate_instrument_feeder::{CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION};
 use indicate_instrument_state::{
-    AirframeDisplayProfile, FreshnessPolicy, NavFromTo, NavScale, NavSource, PanelData,
-    UnusualAttitudeState, resolve_stateful,
+    AirframeDisplayProfile, FreshnessPolicy, NavFromTo, NavScale, NavSequencing, NavSource,
+    PanelData, UnusualAttitudeState, resolve_stateful,
 };
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{Geodetic, LocalFrame};
@@ -58,6 +58,7 @@ fn lane_guidance() -> Guidance {
         distance_to_waypoint_m: 3_704.0,
         scale: NavScale::Terminal,
         to_from: NavFromTo::To,
+        sequencing: NavSequencing::Sequencing,
         leg_index: 1,
         waypoint_count: 3,
         solution_quality: 0,

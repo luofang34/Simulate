@@ -223,6 +223,7 @@ impl AvionicsModel {
                 pressure_alt_m: pressure_alt as f32,
                 stamp,
             }),
+            airspeed: None,
             geodetic: geodetic_fix(position, quality, stamp),
             magnetic_variation: None,
             estimator_status_stamp: Some(stamp),

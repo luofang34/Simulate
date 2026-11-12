@@ -1,4 +1,4 @@
-use indicate_instrument_state::abi::v9::{AbiError, CAPACITY};
+use indicate_instrument_state::abi::v10::{AbiError, CAPACITY};
 use indicate_instrument_state::{
     AirframeDisplayProfile, FreshnessPolicy, HeadingReference, IdentStr, PanelData, SignalStatus,
     UnusualAttitudeState, resolve_stateful,
