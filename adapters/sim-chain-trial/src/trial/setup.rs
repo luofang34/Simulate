@@ -92,6 +92,7 @@ pub(super) fn chain(
             .waypoints
             .iter()
             .map(|w| RouteFix {
+                ident: Some(w.ident.clone()),
                 lat_deg: w.lat_deg,
                 lon_deg: w.lon_deg,
                 altitude_m: w.altitude_m,
