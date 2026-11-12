@@ -1,6 +1,8 @@
 //! A page map's pointer and wheel input as EFB commands, the way a tablet map takes it:
 //! one finger or the mouse drags the map, two fingers pinch to zoom and twist to rotate,
-//! a tap picks the fix under it, and the wheel zooms.
+//! or, moved up or down together, tilt it; the right mouse button (or a drag with Shift)
+//! tilts with up and down and turns with left and right; a tap picks the fix under it, and
+//! the wheel zooms.
 //!
 //! The mapping only reads where pointers are, so a later editing mode can claim a drag
 //! that starts on a fix before it becomes a pan.
@@ -15,6 +17,12 @@ const TAP_SLOP_CSS_PX: f64 = 6.0;
 const WHEEL_PX_PER_ZOOM: f64 = 300.0;
 /// Most zoom one wheel event may change, levels: a mouse's notch is a few hundred pixels.
 const MAX_WHEEL_ZOOM: f64 = 1.0;
+/// Tilt per CSS pixel of a tilting drag, degrees: the whole range in about 150 pixels.
+const TILT_DEG_PER_PX: f64 = 0.4;
+/// Turn per CSS pixel of a tilting drag sideways, degrees.
+const TURN_DEG_PER_PX: f64 = 0.3;
+/// How far two fingers move before their gesture is read as a tilt or a pinch, CSS px.
+const PAIR_SLOP_CSS_PX: f64 = 8.0;
 
 /// One pointer or wheel event on the map, CSS pixels from its top left.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -25,6 +33,8 @@ pub enum PointerInput {
         id: i32,
         /// Where.
         at: [f64; 2],
+        /// Whether its drag tilts and turns the map instead of panning it.
+        tilts: bool,
     },
     /// A pointer moved.
     Move {
@@ -58,6 +68,25 @@ pub struct Gestures {
     pointers: BTreeMap<i32, [f64; 2]>,
     /// Where the first pointer went down, while it may still tap.
     tap_from: Option<(i32, [f64; 2])>,
+    /// The single pointer's drag tilts and turns.
+    tilting: bool,
+    /// Two fingers' gesture, once read.
+    pair: Option<Pair>,
+}
+
+/// Two fingers on the map: where they went down, and what their gesture was read as.
+#[derive(Debug, Clone, Copy)]
+struct Pair {
+    start: [[f64; 2]; 2],
+    read: Option<PairGesture>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PairGesture {
+    /// Both move up or down together.
+    Tilt,
+    /// Anything else: they spread, close or turn.
+    PinchTwist,
 }
 
 impl Gestures {
@@ -65,14 +94,17 @@ impl Gestures {
     pub fn handle(&mut self, input: PointerInput, ratio: f64) -> Vec<EfbCommand> {
         let px = |[x, y]: [f64; 2]| [(x * ratio) as f32, (y * ratio) as f32];
         match input {
-            PointerInput::Down { id, at } => {
+            PointerInput::Down { id, at, tilts } => {
                 self.tap_from = self.pointers.is_empty().then_some((id, at));
+                self.tilting = tilts && self.pointers.is_empty();
                 self.pointers.insert(id, at);
+                self.pair = self.start_of_pair().map(|start| Pair { start, read: None });
                 Vec::new()
             }
             PointerInput::Move { id, at } => self.moved(id, at, ratio),
             PointerInput::Up { id, at } => {
                 self.pointers.remove(&id);
+                self.pair = None;
                 match self.tap_from.take() {
                     Some((tap, from)) if tap == id && distance(from, at) <= TAP_SLOP_CSS_PX => {
                         vec![EfbCommand::Pick(px(at))]
@@ -83,6 +115,7 @@ impl Gestures {
             PointerInput::Cancel { id } => {
                 self.pointers.remove(&id);
                 self.tap_from = None;
+                self.pair = None;
                 Vec::new()
             }
             PointerInput::Wheel { delta_y } if delta_y.is_finite() && delta_y != 0.0 => {
@@ -112,14 +145,78 @@ impl Gestures {
             .map(|(_, at)| *at);
         self.pointers.insert(id, at);
         match other {
+            None if self.tap_from.is_none() && self.tilting => tilt_and_turn(last, at),
             None if self.tap_from.is_none() => {
                 let [dx, dy] = [(last[0] - at[0]) * ratio, (last[1] - at[1]) * ratio];
                 vec![EfbCommand::PanPixels([dx as f32, dy as f32])]
             }
             None => Vec::new(),
-            Some(pivot) => twist_and_pinch(pivot, last, at),
+            Some(pivot) => match self.read_pair() {
+                Some(PairGesture::Tilt) => {
+                    // The fingers' midpoint moves half as far as the finger moved.
+                    tilt_and_turn([0.0, last[1] / 2.0], [0.0, at[1] / 2.0])
+                }
+                Some(PairGesture::PinchTwist) => twist_and_pinch(pivot, last, at),
+                None => Vec::new(),
+            },
         }
     }
+
+    /// Where two fingers on the map went down, when two are.
+    fn start_of_pair(&self) -> Option<[[f64; 2]; 2]> {
+        let mut at = self.pointers.values();
+        match (at.next(), at.next(), at.next()) {
+            (Some(a), Some(b), None) => Some([*a, *b]),
+            _ => None,
+        }
+    }
+
+    /// What two fingers' gesture is, once they moved far enough to tell.
+    fn read_pair(&mut self) -> Option<PairGesture> {
+        let pair = self.pair.as_mut()?;
+        if pair.read.is_none() {
+            let now = self.pointers.values().copied().collect::<Vec<_>>();
+            let moved: Vec<[f64; 2]> = pair
+                .start
+                .iter()
+                .zip(&now)
+                .map(|(from, to)| [to[0] - from[0], to[1] - from[1]])
+                .collect();
+            let lengths: Vec<f64> = moved.iter().map(|[dx, dy]| dx.hypot(*dy)).collect();
+            let most = lengths.iter().copied().fold(0.0, f64::max);
+            let least = lengths.iter().copied().fold(f64::MAX, f64::min);
+            let up_or_down = |sign: f64| moved.iter().all(|[dx, dy]| dy * sign > dx.abs() * 2.0);
+            pair.read = if most < PAIR_SLOP_CSS_PX {
+                None
+            } else if least > PAIR_SLOP_CSS_PX / 2.0 {
+                // Both have moved: together up or down tilts, anything else pinches.
+                Some(if up_or_down(1.0) || up_or_down(-1.0) {
+                    PairGesture::Tilt
+                } else {
+                    PairGesture::PinchTwist
+                })
+            } else if most > PAIR_SLOP_CSS_PX * 3.0 {
+                // One moves while the other holds: a pinch or a twist about it.
+                Some(PairGesture::PinchTwist)
+            } else {
+                None
+            };
+        }
+        pair.read
+    }
+}
+
+/// A tilting drag from `last` to `at`: up tilts toward the horizon, sideways turns.
+fn tilt_and_turn(last: [f64; 2], at: [f64; 2]) -> Vec<EfbCommand> {
+    let [dx, dy] = [at[0] - last[0], at[1] - last[1]];
+    let mut commands = Vec::new();
+    if dy != 0.0 {
+        commands.push(EfbCommand::PitchBy(-dy * TILT_DEG_PER_PX));
+    }
+    if dx != 0.0 {
+        commands.push(EfbCommand::RotateBy(-dx * TURN_DEG_PER_PX));
+    }
+    commands
 }
 
 /// Zoom and rotation of two fingers, one held at `pivot`, the other moved from `last` to

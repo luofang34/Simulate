@@ -47,6 +47,7 @@ pub use map_set::AvionicsMapSet;
 pub(crate) use pixel_ratio::pixel_ratio_update;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use readback::read_texture_rgba_blocking;
+pub(crate) use svs_dem::sample_point_msl;
 pub(crate) use tile_json::resolve_or_strip_tile_json;
 pub use truth::{
     AircraftInstance, CelestialDisc, CelestialEarthShadow, CelestialSkyInput, CelestialStar,

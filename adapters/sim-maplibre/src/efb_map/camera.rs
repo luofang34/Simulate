@@ -16,6 +16,10 @@ pub const DEFAULT_EXPANDED_ZOOM: f64 = 11.6;
 /// Lowest and highest EFB zoom.
 pub const EFB_ZOOM_RANGE: (f64, f64) = (3.5, 18.0);
 
+/// Steepest the map tilts toward the horizon, degrees: the relief reads well and the
+/// horizon stays off screen.
+pub const EFB_MAX_PITCH_DEG: f64 = 60.0;
+
 /// Below this ground speed the track is meaningless, so track-up follows the heading.
 const MIN_TRACK_SPEED_MPS: f64 = 2.0;
 
@@ -134,6 +138,8 @@ pub(super) struct EfbCamera {
     /// `[lat, lon]` of the centre, degrees.
     center: [f64; 2],
     bearing_deg: f64,
+    /// Tilt from straight down, degrees.
+    pitch_deg: f64,
 }
 
 impl EfbCamera {
@@ -145,6 +151,7 @@ impl EfbCamera {
             zooms: [DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM],
             center: sanitize_center(center_lat_deg, center_lon_deg),
             bearing_deg: 0.0,
+            pitch_deg: 0.0,
         }
     }
 
@@ -201,6 +208,14 @@ impl EfbCamera {
             self.bearing_deg = 0.0;
         }
         self.follow = follow;
+    }
+
+    /// Tilts the view by `delta_deg` toward the horizon (`> 0`), within
+    /// `0..=`[`EFB_MAX_PITCH_DEG`].
+    pub(super) fn pitch_by(&mut self, delta_deg: f64) {
+        if delta_deg.is_finite() {
+            self.pitch_deg = (self.pitch_deg + delta_deg).clamp(0.0, EFB_MAX_PITCH_DEG);
+        }
     }
 
     /// Returns to following ownship in the follow mode last chosen.
@@ -301,7 +316,7 @@ impl EfbCamera {
             center_lon_deg: lon,
             zoom: self.zoom(),
             bearing_deg: self.bearing_deg,
-            pitch_deg: 0.0,
+            pitch_deg: self.pitch_deg,
             surveillance_revision: 0,
             notices_revision: 0,
             symbology_revision: 0,

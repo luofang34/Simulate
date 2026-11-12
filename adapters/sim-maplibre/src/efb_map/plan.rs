@@ -7,7 +7,7 @@ use super::plan_style::{OUTLINES_SOURCE, ROUTE_SOURCE, SATELLITE_LAYER, TRACKS_S
 use super::{
     EfbDisplayMode, EfbFrameMarks, EfbMapSurface, EfbTracks, FixId, FlightPlan, RouteProgress,
 };
-use crate::{MapAdapterError, chart_symbology::screen_positions};
+use crate::{MapAdapterError, chart_symbology::screen_positions, runtime::sample_point_msl};
 
 /// What lies under the plan.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -131,12 +131,16 @@ impl EfbMapSurface {
             .iter()
             .map(|fix| [fix.lat_deg, fix.lon_deg])
             .collect();
-        match self.camera_spec(mode) {
-            Some(spec) => {
-                screen_positions((&spec, self.size_of(mode), self.pixel_ratio()), &points)
-            }
-            None => vec![None; points.len()],
-        }
+        let Some(spec) = self.camera_spec(mode) else {
+            return vec![None; points.len()];
+        };
+        let at = |lat: f64, lon: f64| sample_point_msl(&self.map, lat, lon);
+        let ground = self.ground(&spec, &at);
+        screen_positions(
+            (&spec, self.size_of(mode), self.pixel_ratio()),
+            ground,
+            &points,
+        )
     }
 
     /// Where the frame marks' true position falls on `mode`'s view as it last drew,
@@ -146,8 +150,11 @@ impl EfbMapSurface {
     pub fn truth_mark_position(&self, mode: EfbDisplayMode) -> Option<[f32; 2]> {
         let truth_deg = self.plan.frame_marks.truth_deg?;
         let spec = self.camera_spec(mode)?;
+        let at = |lat: f64, lon: f64| sample_point_msl(&self.map, lat, lon);
+        let ground = self.ground(&spec, &at);
         screen_positions(
             (&spec, self.size_of(mode), self.pixel_ratio()),
+            ground,
             &[truth_deg],
         )
         .into_iter()

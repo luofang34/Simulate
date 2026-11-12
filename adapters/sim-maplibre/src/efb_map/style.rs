@@ -89,6 +89,11 @@ pub(super) fn efb_style(
         )
         .map_err(mutation(AIRSPACE_LAYER))?;
     super::plan_style::add_plan_layers(&mut style, endpoints, Some(PLATE_LAYER))?;
+    // The relief stands up when a view tilts; looking straight down it is the same chart.
+    style.terrain = Some(maplibre::style::terrain::TerrainSpecification {
+        source: "dem".to_owned(),
+        exaggeration: 1.0,
+    });
     Ok(style)
 }
 

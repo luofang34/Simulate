@@ -3,7 +3,7 @@
 
 use maplibre::overlay::OverlayMesh;
 
-use super::{ChartProjection, push_segment};
+use super::{ChartProjection, Ground, push_segment};
 use crate::{
     ChartCameraSpec, SigmaRing,
     efb_map::{MIN_RING_PX, TRUTH_MARK},
@@ -18,9 +18,10 @@ const RING_STEPS: u32 = 64;
 pub(crate) fn append_sigma_rings(
     mesh: &mut OverlayMesh,
     (camera, viewport_px, pixel_ratio): (&ChartCameraSpec, [u32; 2], f64),
+    ground: Option<Ground<'_>>,
     rings: &[SigmaRing],
 ) {
-    let Some(projection) = ChartProjection::new(camera, viewport_px, pixel_ratio) else {
+    let Some(projection) = ChartProjection::on(camera, viewport_px, pixel_ratio, ground) else {
         return;
     };
     let s = projection.scale;
@@ -67,9 +68,10 @@ const TRUTH_REACH_PX: f32 = 12.0;
 pub(crate) fn append_truth_mark(
     mesh: &mut OverlayMesh,
     (camera, viewport_px, pixel_ratio): (&ChartCameraSpec, [u32; 2], f64),
+    ground: Option<Ground<'_>>,
     [lat, lon]: [f64; 2],
 ) {
-    let Some(projection) = ChartProjection::new(camera, viewport_px, pixel_ratio) else {
+    let Some(projection) = ChartProjection::on(camera, viewport_px, pixel_ratio, ground) else {
         return;
     };
     let s = projection.scale;
@@ -112,9 +114,10 @@ pub(crate) fn append_truth_mark(
 /// at `pixel_ratio`, physical pixels from its top left; `None` behind the globe.
 pub(crate) fn screen_positions(
     (camera, viewport_px, pixel_ratio): (&ChartCameraSpec, [u32; 2], f64),
+    ground: Option<Ground<'_>>,
     points: &[[f64; 2]],
 ) -> Vec<Option<[f32; 2]>> {
-    let Some(projection) = ChartProjection::new(camera, viewport_px, pixel_ratio) else {
+    let Some(projection) = ChartProjection::on(camera, viewport_px, pixel_ratio, ground) else {
         return vec![None; points.len()];
     };
     points

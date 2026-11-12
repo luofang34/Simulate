@@ -6,11 +6,14 @@ use maplibre::{
     headless::{CoveringPolicy, MultiViewFrame, SlotView, ViewSlotEntry},
 };
 
+use maplibre::overlay::OverlayMesh;
+
 use super::{EfbDisplayMode, EfbMapSurface, FRAME_INTERVAL, effective_globe_zoom, mode_index};
 use crate::{
-    ChartCameraSpec, ChartSymbologyInput, MapAdapterError, build_chart_symbology_scaled,
-    chart_symbology::{append_sigma_rings, append_truth_mark},
+    ChartCameraSpec, ChartSymbologyInput, MapAdapterError,
+    chart_symbology::{Ground, append_sigma_rings, append_truth_mark, build_chart_symbology_on},
     geodesy::wrap_lon_deg,
+    runtime::sample_point_msl,
 };
 
 /// Both views, in the order they draw.
@@ -73,31 +76,13 @@ impl EfbMapSurface {
         mode: EfbDisplayMode,
         symbology: &ChartSymbologyInput<'_>,
     ) -> Result<(), MapAdapterError> {
-        let route = self.layers.route_and_traffic;
-        let ratio = self.pixel_ratio();
         let viewport_px = self.size_of(mode);
         let Some(camera) = self.cameras.get_mut(mode_index(mode)) else {
             return Ok(());
         };
         camera.follow_ownship(symbology.ownship.as_ref());
         let spec = camera.spec();
-        let mut mesh = build_chart_symbology_scaled(
-            &ChartSymbologyInput {
-                camera: spec,
-                viewport_px,
-                ownship: symbology.ownship,
-                runway: symbology.runway.filter(|_| route),
-                traffic: if route { symbology.traffic } else { &[] },
-            },
-            ratio,
-        );
-        let chart = (&spec, viewport_px, ratio);
-        append_sigma_rings(&mut mesh, chart, &self.plan.tracks.rings);
-        let marks = self.plan.frame_marks;
-        append_sigma_rings(&mut mesh, chart, marks.ownship_ring.as_slice());
-        if let Some(truth_deg) = marks.truth_deg {
-            append_truth_mark(&mut mesh, chart, truth_deg);
-        }
+        let mesh = self.overlay(&spec, viewport_px, symbology);
         let slot = self.slot_of(mode);
         self.map
             .set_view_slot_overlay(slot, mesh)
@@ -115,7 +100,7 @@ impl EfbMapSurface {
                     center: LatLon::new(center_lat, wrap_lon_deg(spec.center_lon_deg)),
                     zoom: Zoom::new(effective_globe_zoom(spec.zoom, center_lat)),
                     bearing_deg: spec.bearing_deg,
-                    pitch_deg: 0.0,
+                    pitch_deg: spec.pitch_deg,
                 },
                 policy: CoveringPolicy::Independent,
             }],
@@ -123,6 +108,50 @@ impl EfbMapSurface {
         self.runtime
             .with_runtime_context(|| self.map.run_multi_view_frame(frame))
             .map_err(|source| MapAdapterError::MultiView { source })
+    }
+
+    /// The symbology and the plan's rings of a view drawn by `spec` over `viewport_px`,
+    /// standing on the terrain the map has loaded under them.
+    fn overlay(
+        &self,
+        spec: &ChartCameraSpec,
+        viewport_px: [u32; 2],
+        symbology: &ChartSymbologyInput<'_>,
+    ) -> OverlayMesh {
+        let route = self.layers.route_and_traffic;
+        let ratio = self.pixel_ratio();
+        let at = |lat: f64, lon: f64| sample_point_msl(&self.map, lat, lon);
+        let ground = self.ground(spec, &at);
+        let mut mesh = build_chart_symbology_on(
+            &ChartSymbologyInput {
+                camera: *spec,
+                viewport_px,
+                ownship: symbology.ownship,
+                runway: symbology.runway.filter(|_| route),
+                traffic: if route { symbology.traffic } else { &[] },
+            },
+            ratio,
+            ground,
+        );
+        let chart = (spec, viewport_px, ratio);
+        append_sigma_rings(&mut mesh, chart, ground, &self.plan.tracks.rings);
+        let marks = self.plan.frame_marks;
+        append_sigma_rings(&mut mesh, chart, ground, marks.ownship_ring.as_slice());
+        if let Some(truth_deg) = marks.truth_deg {
+            append_truth_mark(&mut mesh, chart, ground, truth_deg);
+        }
+        mesh
+    }
+
+    /// The ground a view's marks stand on: the loaded terrain, with the camera's centre
+    /// on it as the map stands it there; `None` before any terrain under the centre loads.
+    pub(super) fn ground<'g>(
+        &self,
+        spec: &ChartCameraSpec,
+        at: &'g dyn Fn(f64, f64) -> Option<f64>,
+    ) -> Option<Ground<'g>> {
+        let center_m = at(spec.center_lat_deg, spec.center_lon_deg)?;
+        Some(Ground { center_m, at })
     }
 
     /// `mode`'s last frame, once it has drawn one.

@@ -29,6 +29,7 @@ use crate::{
 };
 
 mod marks;
+mod ownship;
 mod runway;
 
 pub(crate) use marks::{append_sigma_rings, append_truth_mark, screen_positions};
@@ -78,9 +79,20 @@ pub struct ChartSymbologyInput<'a> {
     pub traffic: &'a [DynamicEntity3D],
 }
 
+/// The ground a chart drawn over terrain stands its marks on: the height under the chart's
+/// centre the map's camera stands on, and the height at any point, metres above sea level.
+#[derive(Clone, Copy)]
+pub(crate) struct Ground<'g> {
+    /// Height under the camera's centre.
+    pub(crate) center_m: f64,
+    /// Height at `(lat, lon)` degrees, where the map has it loaded.
+    pub(crate) at: &'g dyn Fn(f64, f64) -> Option<f64>,
+}
+
 /// Vertical-perspective globe projection matching `HeadlessMap`'s chart camera.
-pub(super) struct ChartProjection {
+pub(super) struct ChartProjection<'g> {
     globe: GlobeCameraState,
+    ground: Option<Ground<'g>>,
     half: [f64; 2],
     phys_width: f64,
     phys_height: f64,
@@ -88,8 +100,20 @@ pub(super) struct ChartProjection {
     pub(super) scale: f32,
 }
 
-impl ChartProjection {
+impl<'g> ChartProjection<'g> {
+    #[cfg(test)]
     fn new(camera: &ChartCameraSpec, viewport_px: [u32; 2], pixel_ratio: f64) -> Option<Self> {
+        Self::on(camera, viewport_px, pixel_ratio, None)
+    }
+
+    /// The projection of a chart over `ground`, its marks standing on it; flat at sea level
+    /// without one.
+    fn on(
+        camera: &ChartCameraSpec,
+        viewport_px: [u32; 2],
+        pixel_ratio: f64,
+        ground: Option<Ground<'g>>,
+    ) -> Option<Self> {
         let [w, h] = viewport_px;
         let phys = PhysicalSize::new(w, h)?;
         let ratio = if pixel_ratio.is_finite() {
@@ -126,12 +150,13 @@ impl ChartProjection {
             roll_degrees: 0.0,
             center_offset: Point2::new(0.0, 0.0),
             body: Body::EARTH,
-            target_elevation_meters: 0.0,
+            target_elevation_meters: ground.map_or(0.0, |g| g.center_m),
             radius_pixels: Some(scale::radius_pixels(eff_zoom, center_lat)),
         })
         .ok()?;
         Some(Self {
             globe,
+            ground,
             half: [phys_width * 0.5, phys_height * 0.5],
             phys_width,
             phys_height,
@@ -148,7 +173,11 @@ impl ChartProjection {
         if self.globe.is_location_occluded(loc) {
             return None;
         }
-        let p = self.globe.location_to_screen(loc, 0.0);
+        let height = self
+            .ground
+            .and_then(|ground| (ground.at)(lat_deg, lon_deg))
+            .unwrap_or(0.0);
+        let p = self.globe.location_to_screen(loc, height);
         let [sx, sy] = self.logical_to_phys;
         let (x, y) = ((p.x * sx) as f32, (p.y * sy) as f32);
         (x.is_finite() && y.is_finite()).then_some([x, y])
@@ -203,7 +232,18 @@ pub fn build_chart_symbology_scaled(
     input: &ChartSymbologyInput<'_>,
     pixel_ratio: f64,
 ) -> OverlayMesh {
-    let Some(projection) = ChartProjection::new(&input.camera, input.viewport_px, pixel_ratio)
+    build_chart_symbology_on(input, pixel_ratio, None)
+}
+
+/// [`build_chart_symbology_scaled`] for a chart drawn over `ground`, its marks standing on
+/// the ground under them.
+pub(crate) fn build_chart_symbology_on(
+    input: &ChartSymbologyInput<'_>,
+    pixel_ratio: f64,
+    ground: Option<Ground<'_>>,
+) -> OverlayMesh {
+    let Some(projection) =
+        ChartProjection::on(&input.camera, input.viewport_px, pixel_ratio, ground)
     else {
         return OverlayMesh::default();
     };
@@ -232,14 +272,14 @@ pub fn build_chart_symbology_scaled(
         append_traffic(&mut mesh, &projection, entity);
     }
     if let (Some(own), Some(px)) = (input.ownship, ownship_px) {
-        append_ownship(&mut mesh, &projection, &own, px);
+        ownship::append_ownship(&mut mesh, &projection, &own, px);
     }
     mesh
 }
 
 fn append_range_ring(
     mesh: &mut OverlayMesh,
-    projection: &ChartProjection,
+    projection: &ChartProjection<'_>,
     c: [f32; 2],
     (ref_lat, ref_lon): (f64, f64),
     r: f32,
@@ -272,7 +312,11 @@ fn append_range_ring(
     );
 }
 
-fn append_traffic(mesh: &mut OverlayMesh, projection: &ChartProjection, entity: &DynamicEntity3D) {
+fn append_traffic(
+    mesh: &mut OverlayMesh,
+    projection: &ChartProjection<'_>,
+    entity: &DynamicEntity3D,
+) {
     if entity.kind == DynamicEntityKind::OwnshipExterior {
         return;
     }
@@ -307,116 +351,9 @@ fn append_traffic(mesh: &mut OverlayMesh, projection: &ChartProjection, entity: 
     }
 }
 
-fn append_ownship(
-    mesh: &mut OverlayMesh,
-    projection: &ChartProjection,
-    own: &ChartOwnship,
-    px: [f32; 2],
-) {
-    let s = projection.scale;
-    let [east, north] = own.ground_velocity_en_mps;
-    let speed = east.hypot(north);
-    if speed > 2.0 {
-        let track = east.atan2(north).to_degrees();
-        let [lon2, lat2] = destination([own.lon_deg, own.lat_deg], track, speed * 60.0);
-        if let Some(tip) = projection.project(lat2, lon2) {
-            push_segment(mesh, px, tip, 3.0 * s, HALO);
-            push_segment(mesh, px, tip, 2.0 * s, TRACK_VECTOR);
-        }
-    }
-    let angle = projection.screen_angle_at(own.lat_deg, own.lon_deg, own.true_heading_deg);
-    let nose = rotate([0.0, -18.0 * s], angle, px);
-    let lubber_end = rotate([0.0, -62.0 * s], angle, px);
-    push_segment(mesh, nose, lubber_end, 1.8 * s, LUBBER_CYAN);
-    for (polygon, _) in silhouette(s) {
-        push_convex(mesh, &inflate(&polygon, 2.5 * s), angle, px, HALO);
-    }
-    for (polygon, color) in silhouette(s) {
-        push_convex(mesh, &polygon, angle, px, color);
-    }
-}
-
-/// Top-down high-wing trainer, nose up, pixels about its centre of gravity.
-fn silhouette(s: f32) -> [(Vec<[f32; 2]>, [f32; 4]); 6] {
-    let sp = |pts: &[[f32; 2]]| pts.iter().map(|&[x, y]| [x * s, y * s]).collect();
-    [
-        (
-            sp(&[
-                [0.0, -15.0],
-                [2.3, -11.5],
-                [2.2, 7.0],
-                [1.0, 13.5],
-                [-1.0, 13.5],
-                [-2.2, 7.0],
-                [-2.3, -11.5],
-            ]),
-            OWNSHIP_WHITE,
-        ),
-        (
-            sp(&[[-15.0, -4.6], [15.0, -4.6], [15.0, -1.0], [-15.0, -1.0]]),
-            OWNSHIP_WHITE,
-        ),
-        (
-            sp(&[[2.0, -5.4], [12.0, -4.6], [12.0, -0.8], [2.0, 0.2]]),
-            OWNSHIP_WHITE,
-        ),
-        (
-            sp(&[[-6.5, 9.5], [6.5, 9.5], [6.0, 12.4], [-6.0, 12.4]]),
-            OWNSHIP_WHITE,
-        ),
-        (
-            sp(&[[12.8, -4.6], [15.0, -4.6], [15.0, -1.0], [12.8, -1.0]]),
-            WINGTIP_CYAN,
-        ),
-        (
-            sp(&[[-15.0, -4.6], [-12.8, -4.6], [-12.8, -1.0], [-15.0, -1.0]]),
-            WINGTIP_CYAN,
-        ),
-    ]
-}
-
-/// Grows a convex polygon outward by about `by` pixels.
-fn inflate(polygon: &[[f32; 2]], by: f32) -> Vec<[f32; 2]> {
-    let n = polygon.len().max(1) as f32;
-    let (sx, sy) = polygon
-        .iter()
-        .fold((0.0, 0.0), |(x, y), [px, py]| (x + px, y + py));
-    let (cx, cy) = (sx / n, sy / n);
-    polygon
-        .iter()
-        .map(|&[x, y]| {
-            let (dx, dy) = (x - cx, y - cy);
-            let len = dx.hypot(dy).max(1e-3);
-            [x + dx / len * by, y + dy / len * by]
-        })
-        .collect()
-}
-
-fn rotate([x, y]: [f32; 2], angle: f32, [ox, oy]: [f32; 2]) -> [f32; 2] {
+pub(super) fn rotate([x, y]: [f32; 2], angle: f32, [ox, oy]: [f32; 2]) -> [f32; 2] {
     let (s, c) = angle.sin_cos();
     [ox + x * c - y * s, oy + x * s + y * c]
-}
-
-fn push_convex(
-    mesh: &mut OverlayMesh,
-    polygon: &[[f32; 2]],
-    angle: f32,
-    origin: [f32; 2],
-    color: [f32; 4],
-) {
-    let Some((&first, rest)) = polygon.split_first() else {
-        return;
-    };
-    let a = rotate(first, angle, origin);
-    for pair in rest.windows(2) {
-        if let [b, c] = pair {
-            push_triangle(
-                mesh,
-                [a, rotate(*b, angle, origin), rotate(*c, angle, origin)],
-                color,
-            );
-        }
-    }
 }
 
 fn premultiplied([r, g, b, a]: [f32; 4]) -> [f32; 4] {

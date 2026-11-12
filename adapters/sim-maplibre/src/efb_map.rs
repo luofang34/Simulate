@@ -36,8 +36,8 @@ mod views;
 
 pub(crate) use camera::effective_globe_zoom;
 pub use camera::{
-    DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE, EfbDisplayMode, EfbFollowMode,
-    EfbLayerFlags, EfbRefreshPolicy,
+    DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_MAX_PITCH_DEG, EFB_ZOOM_RANGE, EfbDisplayMode,
+    EfbFollowMode, EfbLayerFlags, EfbRefreshPolicy,
 };
 pub use hold::HoldPattern;
 pub use pacing::EfbPacer;
@@ -243,6 +243,11 @@ impl EfbMapSurface {
     /// Changes the shown view's zoom by `delta`, within [`EFB_ZOOM_RANGE`].
     pub fn zoom_by(&mut self, delta: f64) {
         self.camera_mut().zoom_by(delta);
+    }
+
+    /// Tilts the shown view by `delta_deg` toward the horizon, over the terrain's relief.
+    pub fn pitch_by(&mut self, delta_deg: f64) {
+        self.camera_mut().pitch_by(delta_deg);
     }
 
     /// Rotates the shown view by `delta_deg` (`> 0` rotates map features counter-clockwise),

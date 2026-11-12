@@ -120,7 +120,9 @@ pub(super) fn listen(
             let input = match kind {
                 "pointerdown" => {
                     canvas.set_pointer_capture(id).ok();
-                    PointerInput::Down { id, at }
+                    // The right button, or any with Shift, tilts and turns.
+                    let tilts = event.button() == 2 || event.shift_key();
+                    PointerInput::Down { id, at, tilts }
                 }
                 "pointermove" => PointerInput::Move { id, at },
                 "pointerup" => PointerInput::Up { id, at },
@@ -157,6 +159,10 @@ pub(super) fn listen(
         )
         .ok();
     listeners.push(wheel);
+    // The right button tilts the map, so it opens no menu over it.
+    listeners.push(on(canvas.as_ref(), "contextmenu", |event| {
+        event.prevent_default()
+    }));
     listeners
 }
 
