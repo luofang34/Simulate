@@ -17,7 +17,7 @@ use sim_core::{
 };
 use sim_devices::SensedTruth;
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
-use sim_pack::builtin_c172_package;
+use sim_pack::{LoadedSyspack, PackError, builtin_c172p_package, builtin_c172s_package};
 
 use crate::airframe::specific_force_body_m_s2;
 use crate::{Airframe, ChainError, SharedAir};
@@ -27,6 +27,26 @@ mod tests;
 
 /// Angle of attack the trim search starts from, radians.
 const TRIM_SEARCH_ALPHA_RAD: f64 = 0.035;
+
+/// Cessna 172 sub-variant flown by [`C172Airframe`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum C172Variant {
+    /// Cessna 172S Skyhawk SP (`vehicles/c172s`, 180 BHP IO-360-L2A).
+    #[default]
+    C172s,
+    /// Cessna 172P Skyhawk II / Reims F172P (`vehicles/c172p`, 160 BHP O-320-D2J).
+    C172p,
+}
+
+impl C172Variant {
+    /// Loads and SHA-256-verifies the built-in syspack for this variant.
+    pub fn load_package(self) -> Result<LoadedSyspack, PackError> {
+        match self {
+            Self::C172s => builtin_c172s_package(),
+            Self::C172p => builtin_c172p_package(),
+        }
+    }
+}
 
 /// Where and how fast the aeroplane starts.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,9 +73,20 @@ pub struct C172Airframe {
 }
 
 impl C172Airframe {
-    /// The aeroplane trimmed for level flight at `start`, engine running.
+    /// The Cessna 172S Skyhawk SP trimmed for level flight at `start`, engine running.
     pub fn trimmed(start: &C172Start, air: SharedAir) -> Result<Self, ChainError> {
-        let package = builtin_c172_package().map_err(|e| ChainError::Package(Box::new(e)))?;
+        Self::trimmed_variant(C172Variant::C172s, start, air)
+    }
+
+    /// The selected Cessna 172 `variant` trimmed for level flight at `start`, engine running.
+    pub fn trimmed_variant(
+        variant: C172Variant,
+        start: &C172Start,
+        air: SharedAir,
+    ) -> Result<Self, ChainError> {
+        let package = variant
+            .load_package()
+            .map_err(|e| ChainError::Package(Box::new(e)))?;
         let resolver = package
             .build_jsbsim_resolver()
             .map_err(|e| ChainError::Package(Box::new(e)))?;

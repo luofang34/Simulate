@@ -58,6 +58,7 @@ pub fn first_link() -> Result<ChainTrialSpec, ChainTrialError> {
         set("ins.baro", &[DeadReckoning, Barometric]),
     ];
     Ok(ChainTrialSpec {
+        variant: crate::ChainC172Variant::C172s,
         request,
         start: StartSpec {
             lat_deg: START.0,

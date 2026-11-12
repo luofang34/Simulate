@@ -193,7 +193,7 @@ fn build(fields: &Fields<'_>) -> Result<SimulationLink, Refusal> {
         Site::of(Parameter::Veh),
         fields.required(Parameter::Veh)?,
         "vehicle",
-        "c172, x500",
+        "c172, c172s, c172p, x500",
         &Vehicle::ALL.map(|vehicle| (vehicle.key(), vehicle)),
     )?;
     let cruise_speed = fields

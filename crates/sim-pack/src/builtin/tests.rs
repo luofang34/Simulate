@@ -15,27 +15,26 @@ use crate::{
     CotsDevice, DirectoryPackageSource, DynamicsSpec, MANIFEST_FILE, SyspackError, SystemKind,
 };
 
+const C172_FDM_PATH: &str = "fdm/c172s.xml";
+
 fn c172_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vehicles/c172")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vehicles/c172s")
 }
 
-/// A copy of the C172 package, as a user's download would leave it.
+/// A copy of the C172S package, as a user's download would leave it.
 fn downloaded_copy() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::create_dir(dir.path().join("fdm")).unwrap();
-    std::fs::create_dir(dir.path().join("performance")).unwrap();
-    std::fs::create_dir(dir.path().join("geometry")).unwrap();
-    std::fs::create_dir(dir.path().join("views")).unwrap();
-    for file in [
-        MANIFEST_FILE,
-        C172_FDM_PATH,
-        AIRSPEED_ENVELOPE_ASSET,
-        PITOT_STATIC_CALIBRATION_ASSET,
-        CALIBRATION_SUITE_ASSET,
-        STRUCTURAL_LANDMARKS_ASSET,
-        CAMERA_VIEWS_ASSET,
-    ] {
-        std::fs::copy(c172_dir().join(file), dir.path().join(file)).unwrap();
+    std::fs::copy(
+        c172_dir().join(MANIFEST_FILE),
+        dir.path().join(MANIFEST_FILE),
+    )
+    .unwrap();
+    for (file, _) in C172S_ASSETS {
+        let dst = dir.path().join(file);
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::copy(c172_dir().join(file), dst).unwrap();
     }
     dir
 }
@@ -74,22 +73,27 @@ fn fly(package: &LoadedSyspack) -> Vec<VehicleState> {
 fn the_builtin_c172_loads_as_a_jsbsim_fixed_wing() {
     let package = builtin_c172_package().unwrap();
     let manifest = package.manifest();
-    assert_eq!(manifest.id, "c172_class_reference");
+    assert_eq!(manifest.id, "c172s");
     assert_eq!(manifest.kind, SystemKind::FixedWing);
     assert!(matches!(manifest.dynamics, DynamicsSpec::JsbsimXml { .. }));
-    assert_eq!(
-        package.jsbsim_model().unwrap(),
-        ("aircraft", "c172_class_reference")
-    );
-    assert_eq!(package.asset(C172_FDM_PATH), Some(C172_FDM));
+    assert_eq!(package.jsbsim_model().unwrap(), ("aircraft", "c172s"));
+    let c172_fdm = C172S_ASSETS
+        .iter()
+        .find_map(|(k, v)| (*k == C172_FDM_PATH).then_some(*v))
+        .unwrap();
+    assert_eq!(package.asset(C172_FDM_PATH), Some(c172_fdm));
 }
 
 #[test]
 fn the_declared_digest_is_the_digest_of_the_shipped_file() {
     let package = builtin_c172_package().unwrap();
+    let c172_fdm = C172S_ASSETS
+        .iter()
+        .find_map(|(k, v)| (*k == C172_FDM_PATH).then_some(*v))
+        .unwrap();
     let declared = &package.manifest().assets[C172_FDM_PATH];
-    assert_eq!(declared.size_bytes, C172_FDM.len() as u64);
-    let digest: String = Sha256::digest(C172_FDM)
+    assert_eq!(declared.size_bytes, c172_fdm.len() as u64);
+    let digest: String = Sha256::digest(c172_fdm)
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
@@ -171,10 +175,12 @@ fn one_corrupted_byte_of_the_aircraft_fails_on_disk_and_in_memory() {
         Err(PackError::Syspack(SyspackError::AssetDigestMismatch { path, .. })) if path == C172_FDM_PATH
     ));
 
-    let source = MemoryPackageSource::new(
-        C172_MANIFEST.to_vec(),
-        BTreeMap::from([(C172_FDM_PATH.to_owned(), xml)]),
-    );
+    let mut mem_assets: BTreeMap<String, Vec<u8>> = C172S_ASSETS
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.to_vec()))
+        .collect();
+    mem_assets.insert(C172_FDM_PATH.to_owned(), xml);
+    let source = MemoryPackageSource::new(C172S_MANIFEST.to_vec(), mem_assets);
     assert!(matches!(
         LoadedSyspack::load(&source),
         Err(PackError::Syspack(SyspackError::AssetDigestMismatch { .. }))
@@ -183,8 +189,12 @@ fn one_corrupted_byte_of_the_aircraft_fails_on_disk_and_in_memory() {
 
 #[test]
 fn a_changed_size_fails_even_with_the_right_bytes() {
-    let manifest = std::str::from_utf8(C172_MANIFEST).unwrap();
-    let declared = C172_FDM.len();
+    let manifest = std::str::from_utf8(C172S_MANIFEST).unwrap();
+    let c172_fdm = C172S_ASSETS
+        .iter()
+        .find_map(|(k, v)| (*k == C172_FDM_PATH).then_some(*v))
+        .unwrap();
+    let declared = c172_fdm.len();
     let edited = manifest.replace(
         &format!("\"size_bytes\": {declared}"),
         &format!("\"size_bytes\": {}", declared + 1),
@@ -200,11 +210,8 @@ fn a_changed_size_fails_even_with_the_right_bytes() {
 
 #[test]
 fn a_manifest_pointing_outside_the_package_fails() {
-    let manifest = std::str::from_utf8(C172_MANIFEST).unwrap();
-    let edited = manifest.replace(
-        "\"fdm/c172_class_reference.xml\"",
-        "\"../fdm/c172_class_reference.xml\"",
-    );
+    let manifest = std::str::from_utf8(C172S_MANIFEST).unwrap();
+    let edited = manifest.replace("\"fdm/c172s.xml\"", "\"../fdm/c172s.xml\"");
     assert_ne!(edited, manifest);
     let copy = downloaded_copy();
     std::fs::write(copy.path().join(MANIFEST_FILE), edited).unwrap();

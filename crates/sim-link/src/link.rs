@@ -96,20 +96,26 @@ impl HeightDatum {
 /// The vehicle flown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Vehicle {
-    /// The Cessna 172, `c172`.
+    /// The Cessna 172 (legacy alias for the 172S Skyhawk SP), `c172`.
     C172,
+    /// The Cessna 172S Skyhawk SP, `c172s`.
+    C172s,
+    /// The Cessna 172P Skyhawk II / Reims F172P, `c172p`.
+    C172p,
     /// The X500 quadrotor, `x500`.
     X500,
 }
 
 impl Vehicle {
     /// Every vehicle.
-    pub const ALL: [Self; 2] = [Self::C172, Self::X500];
+    pub const ALL: [Self; 4] = [Self::C172, Self::C172s, Self::C172p, Self::X500];
 
     /// The vehicle's word in a link.
     pub const fn key(self) -> &'static str {
         match self {
             Self::C172 => "c172",
+            Self::C172s => "c172s",
+            Self::C172p => "c172p",
             Self::X500 => "x500",
         }
     }

@@ -22,7 +22,7 @@ fn pitot_static_calibration_round_trips_and_rejects_non_monotonic_tables()
     let pec = c172
         .pitot_static_calibration()
         .ok_or("C172 must ship pitot_static_calibration.json")?;
-    assert_eq!(pec.type_designator, "C172");
+    assert_eq!(pec.type_designator, "C172S");
 
     for (flap_norm, kias_expected, kcas_expected) in [
         (0.0, 48.0, 53.0),
@@ -280,8 +280,8 @@ fn design_trade_study_and_ace_rs_codesign_bridge_evaluate_closed_loop()
 
     let ace_sample = br#"{
       "schema_version": 1,
-      "id": "c172_class_reference",
-      "name": "ACE C172 design",
+      "id": "c172s",
+      "name": "ACE C172S design",
       "domain": "fixed_wing",
       "parameters": {
         "engine.count": { "value": { "value": 1, "unit": "1" } },
@@ -345,8 +345,8 @@ fn flown_reference(feedback: &AceFeedbackReport, name: &str) -> f64 {
 fn drag_polar_oswald(package: &sim_pack::LoadedSyspack) -> Result<f64, Box<dyn std::error::Error>> {
     let xml = std::str::from_utf8(
         package
-            .asset("fdm/c172_class_reference.xml")
-            .ok_or("no C172 flight model")?,
+            .asset("fdm/c172s.xml")
+            .ok_or("no C172S flight model")?,
     )?;
     let at = xml
         .find("<property>aero/cl-squared</property>")

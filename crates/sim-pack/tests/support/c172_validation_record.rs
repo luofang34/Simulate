@@ -1,8 +1,8 @@
-//! The C172's validation record, `vehicles/c172/performance/validation.json`:
+//! The C172S's validation record, `vehicles/c172s/performance/validation.json`:
 //! which card rows and which named checks are known to fail, and why.
 
 /// The record, embedded so the tests grade the same file the package ships.
-pub const RECORD: &str = include_str!("../../../../vehicles/c172/performance/validation.json");
+pub const RECORD: &str = include_str!("../../../../vehicles/c172s/performance/validation.json");
 
 /// The names listed under `key`, sorted.
 #[cfg(test)]

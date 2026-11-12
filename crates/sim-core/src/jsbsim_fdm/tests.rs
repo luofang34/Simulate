@@ -8,9 +8,9 @@ use super::*;
 mod ground;
 mod systems;
 
-const C172_XML: &str = include_str!("../../../../vehicles/c172/fdm/c172_class_reference.xml");
+const C172_XML: &str = include_str!("../../../../vehicles/c172s/fdm/c172s.xml");
 const JSBSIM_AIRCRAFT_PATH: &str = "aircraft";
-const JSBSIM_C172_MODEL: &str = "c172_class_reference";
+const JSBSIM_C172_MODEL: &str = "c172s";
 
 const CRUISE_M_S: f64 = 45.0;
 const CRUISE_ALPHA_RAD: f64 = 0.06;
@@ -26,10 +26,7 @@ fn start() -> Geodetic {
 
 fn c172_resolver() -> MemoryResolver {
     let mut files = MemoryResolver::new();
-    files.insert(
-        "aircraft/c172_class_reference/c172_class_reference.xml",
-        C172_XML,
-    );
+    files.insert("aircraft/c172s/c172s.xml", C172_XML);
     files
 }
 

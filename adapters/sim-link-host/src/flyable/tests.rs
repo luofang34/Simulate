@@ -166,6 +166,20 @@ fn reference_data_and_roles_do_not_stop_a_track_to_a_fix() {
 
 #[test]
 fn the_page_flies_only_the_c172_at_its_cruise_speeds() {
+    let c172s =
+        decode_fragment(&format!("v=2&r={SQUARE}{}", REST.replace("c172", "c172s"))).unwrap();
+    let hosted_s = hosted_request(&c172s).unwrap();
+    assert_eq!(
+        chain_spec(&c172s, &hosted_s, None).unwrap().variant,
+        sim_chain_trial::ChainC172Variant::C172s
+    );
+    let c172p =
+        decode_fragment(&format!("v=2&r={SQUARE}{}", REST.replace("c172", "c172p"))).unwrap();
+    let hosted_p = hosted_request(&c172p).unwrap();
+    assert_eq!(
+        chain_spec(&c172p, &hosted_p, None).unwrap().variant,
+        sim_chain_trial::ChainC172Variant::C172p
+    );
     let x500 = decode_fragment(&format!("v=2&r={SQUARE}{}", REST.replace("c172", "x500"))).unwrap();
     let hosted = hosted_request(&x500).unwrap();
     assert!(matches!(

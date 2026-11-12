@@ -126,4 +126,10 @@ pub enum PackError {
         /// Failure diagnostic from JSBSim or the trim/hold loop.
         detail: String,
     },
+    /// An external livery specification or overlay bundle failed validation.
+    #[error("external livery bundle refused: {detail}")]
+    LiveryImport {
+        /// Why the external livery was refused.
+        detail: String,
+    },
 }

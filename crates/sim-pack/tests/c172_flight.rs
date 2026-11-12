@@ -96,7 +96,7 @@ fn pilot(state: &VehicleState, climb_rate_m_s: f64) -> ControlInputs {
 fn the_exported_package_loads_and_declares_what_it_is() {
     let package = builtin_c172_package().unwrap();
     let manifest = package.manifest();
-    assert_eq!(manifest.id, "c172_class_reference");
+    assert_eq!(manifest.id, "c172s");
     assert_eq!(manifest.kind, SystemKind::FixedWing);
     assert_eq!(
         manifest.controls,
@@ -302,19 +302,26 @@ fn closed_throttle_at_cruise_decelerates_and_full_power_holds_it() {
 #[test]
 fn a_tampered_aircraft_is_caught_by_its_digest() {
     let source = builtin_c172_source();
-    let asset = "fdm/c172_class_reference.xml";
+    let package = builtin_c172_package().unwrap();
+    let asset = "fdm/c172s.xml";
     let manifest = source.read_manifest_bytes().unwrap();
+    let mut base_assets: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for key in package.manifest().assets.keys() {
+        base_assets.insert(key.clone(), source.read_asset_bytes(key).unwrap());
+    }
     let mut xml = source.read_asset_bytes(asset).unwrap();
     let flip = xml.iter().position(|byte| *byte == b'1').unwrap();
     xml[flip] = b'2';
-    let tampered =
-        MemoryPackageSource::new(manifest.clone(), BTreeMap::from([(asset.to_owned(), xml)]));
+    let mut tampered_map = base_assets.clone();
+    tampered_map.insert(asset.to_owned(), xml);
+    let tampered = MemoryPackageSource::new(manifest.clone(), tampered_map);
     assert!(matches!(
         LoadedSyspack::load(&tampered),
         Err(PackError::Syspack(SyspackError::AssetDigestMismatch { path, .. })) if path == asset
     ));
-    let truncated =
-        MemoryPackageSource::new(manifest, BTreeMap::from([(asset.to_owned(), vec![b'<'])]));
+    let mut trunc_map = base_assets;
+    trunc_map.insert(asset.to_owned(), vec![b'<']);
+    let truncated = MemoryPackageSource::new(manifest, trunc_map);
     assert!(matches!(
         LoadedSyspack::load(&truncated),
         Err(PackError::Syspack(SyspackError::AssetSizeMismatch { .. }))

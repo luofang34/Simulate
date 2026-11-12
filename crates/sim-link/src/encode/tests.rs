@@ -99,11 +99,7 @@ fn link(draws: &mut Draws) -> SimulationLink {
             minute: draws.within(0, 59) as u8,
             second: draws.within(0, 59) as u8,
         },
-        vehicle: if draws.flag() {
-            Vehicle::C172
-        } else {
-            Vehicle::X500
-        },
+        vehicle: Vehicle::ALL[draws.within(0, Vehicle::ALL.len() as i64 - 1) as usize],
         cruise_speed: draws
             .flag()
             .then(|| Milli::from_scaled(draws.within(1_000, 350_000))),

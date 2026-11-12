@@ -7,81 +7,243 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-const C172_MANIFEST: &[u8] = include_bytes!("../../../vehicles/c172/syspack.json");
-const C172_FDM_PATH: &str = "fdm/c172_class_reference.xml";
-const C172_FDM: &[u8] = include_bytes!("../../../vehicles/c172/fdm/c172_class_reference.xml");
-const C172_ENVELOPE: &[u8] =
-    include_bytes!("../../../vehicles/c172/performance/airspeed_envelope.json");
-const C172_PEC: &[u8] =
-    include_bytes!("../../../vehicles/c172/performance/pitot_static_calibration.json");
-const C172_BENCHMARKS: &[u8] =
-    include_bytes!("../../../vehicles/c172/performance/poh_benchmarks.json");
-const C172_LANDMARKS: &[u8] = include_bytes!("../../../vehicles/c172/geometry/landmarks.json");
-const C172_VIEWS: &[u8] = include_bytes!("../../../vehicles/c172/views/cameras.json");
-const P38_MANIFEST: &[u8] = include_bytes!("../../../vehicles/p38g/syspack.json");
-const P38_FDM_PATH: &str = "fdm/p38g.xml";
-const P38_FDM: &[u8] = include_bytes!("../../../vehicles/p38g/fdm/p38g.xml");
-const P38_ENVELOPE: &[u8] =
-    include_bytes!("../../../vehicles/p38g/performance/airspeed_envelope.json");
-const P38_BENCHMARKS: &[u8] =
-    include_bytes!("../../../vehicles/p38g/performance/poh_benchmarks.json");
-const P38_PEC: &[u8] =
-    include_bytes!("../../../vehicles/p38g/performance/pitot_static_calibration.json");
-const P38_LANDMARKS: &[u8] = include_bytes!("../../../vehicles/p38g/geometry/landmarks.json");
-const P38_VIEWS: &[u8] = include_bytes!("../../../vehicles/p38g/views/cameras.json");
-const P38_FG_SET_PATH: &str = "p38g-set.xml";
-const P38_FG_SET: &[u8] = include_bytes!("../../../vehicles/p38g/p38g-set.xml");
-const P38_LIVERY_CATALOG: &[u8] = include_bytes!("../../../vehicles/p38g/Liveries/catalog.json");
-const P38_LIVERY_MISS_VIRGINIA_PATH: &str = "Models/Liveries/miss-virginia.xml";
-const P38_LIVERY_MISS_VIRGINIA: &[u8] =
-    include_bytes!("../../../vehicles/p38g/Models/Liveries/miss-virginia.xml");
-const P38_LIVERY_BARE_METAL_PATH: &str = "Models/Liveries/bare-metal.xml";
-const P38_LIVERY_BARE_METAL: &[u8] =
-    include_bytes!("../../../vehicles/p38g/Models/Liveries/bare-metal.xml");
-const P38_LIVERY_GLACIER_GIRL_PATH: &str = "Models/Liveries/glacier-girl.xml";
-const P38_LIVERY_GLACIER_GIRL: &[u8] =
-    include_bytes!("../../../vehicles/p38g/Models/Liveries/glacier-girl.xml");
+const C172S_MANIFEST: &[u8] = include_bytes!("../../../vehicles/c172s/syspack.json");
+const C172S_ASSETS: &[(&str, &[u8])] = &[
+    (
+        LIVERY_CATALOG_ASSET,
+        include_bytes!("../../../vehicles/c172s/Liveries/catalog.json"),
+    ),
+    (
+        "Models/Liveries/n172sp.xml",
+        include_bytes!("../../../vehicles/c172s/Models/Liveries/n172sp.xml"),
+    ),
+    (
+        "Models/Liveries/n642sp.xml",
+        include_bytes!("../../../vehicles/c172s/Models/Liveries/n642sp.xml"),
+    ),
+    (
+        "c172s-set.xml",
+        include_bytes!("../../../vehicles/c172s/c172s-set.xml"),
+    ),
+    (
+        "fdm/c172s.xml",
+        include_bytes!("../../../vehicles/c172s/fdm/c172s.xml"),
+    ),
+    (
+        STRUCTURAL_LANDMARKS_ASSET,
+        include_bytes!("../../../vehicles/c172s/geometry/landmarks.json"),
+    ),
+    (
+        AIRSPEED_ENVELOPE_ASSET,
+        include_bytes!("../../../vehicles/c172s/performance/airspeed_envelope.json"),
+    ),
+    (
+        PITOT_STATIC_CALIBRATION_ASSET,
+        include_bytes!("../../../vehicles/c172s/performance/pitot_static_calibration.json"),
+    ),
+    (
+        CALIBRATION_SUITE_ASSET,
+        include_bytes!("../../../vehicles/c172s/performance/poh_benchmarks.json"),
+    ),
+    (
+        "usd/c172.usdc",
+        include_bytes!("../../../vehicles/c172s/usd/c172.usdc"),
+    ),
+    (
+        "usd/c172s_airframe.usda",
+        include_bytes!("../../../vehicles/c172s/usd/c172s_airframe.usda"),
+    ),
+    (
+        "usd/n172sp.usda",
+        include_bytes!("../../../vehicles/c172s/usd/n172sp.usda"),
+    ),
+    (
+        "usd/n172sp_livery.json",
+        include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.json"),
+    ),
+    (
+        "usd/n172sp_livery.usda",
+        include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.usda"),
+    ),
+    (
+        "usd/n642sp.usda",
+        include_bytes!("../../../vehicles/c172s/usd/n642sp.usda"),
+    ),
+    (
+        "usd/n642sp_livery.json",
+        include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.json"),
+    ),
+    (
+        "usd/n642sp_livery.usda",
+        include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.usda"),
+    ),
+    (
+        CAMERA_VIEWS_ASSET,
+        include_bytes!("../../../vehicles/c172s/views/cameras.json"),
+    ),
+];
 
-/// The C172-class aeroplane's package files, embedded in the binary.
-pub fn builtin_c172_source() -> MemoryPackageSource {
-    MemoryPackageSource::from_embedded(
-        C172_MANIFEST,
-        &[
-            (C172_FDM_PATH, C172_FDM),
-            (AIRSPEED_ENVELOPE_ASSET, C172_ENVELOPE),
-            (PITOT_STATIC_CALIBRATION_ASSET, C172_PEC),
-            (CALIBRATION_SUITE_ASSET, C172_BENCHMARKS),
-            (STRUCTURAL_LANDMARKS_ASSET, C172_LANDMARKS),
-            (CAMERA_VIEWS_ASSET, C172_VIEWS),
-        ],
-    )
+const C172P_MANIFEST: &[u8] = include_bytes!("../../../vehicles/c172p/syspack.json");
+const C172P_ASSETS: &[(&str, &[u8])] = &[
+    (
+        LIVERY_CATALOG_ASSET,
+        include_bytes!("../../../vehicles/c172p/Liveries/catalog.json"),
+    ),
+    (
+        "Models/Liveries/d-ecjb.xml",
+        include_bytes!("../../../vehicles/c172p/Models/Liveries/d-ecjb.xml"),
+    ),
+    (
+        "Models/Liveries/n53295.xml",
+        include_bytes!("../../../vehicles/c172p/Models/Liveries/n53295.xml"),
+    ),
+    (
+        "c172p-set.xml",
+        include_bytes!("../../../vehicles/c172p/c172p-set.xml"),
+    ),
+    (
+        "fdm/c172p.xml",
+        include_bytes!("../../../vehicles/c172p/fdm/c172p.xml"),
+    ),
+    (
+        STRUCTURAL_LANDMARKS_ASSET,
+        include_bytes!("../../../vehicles/c172p/geometry/landmarks.json"),
+    ),
+    (
+        AIRSPEED_ENVELOPE_ASSET,
+        include_bytes!("../../../vehicles/c172p/performance/airspeed_envelope.json"),
+    ),
+    (
+        PITOT_STATIC_CALIBRATION_ASSET,
+        include_bytes!("../../../vehicles/c172p/performance/pitot_static_calibration.json"),
+    ),
+    (
+        CALIBRATION_SUITE_ASSET,
+        include_bytes!("../../../vehicles/c172p/performance/poh_benchmarks.json"),
+    ),
+    (
+        "usd/c172.usdc",
+        include_bytes!("../../../vehicles/c172p/usd/c172.usdc"),
+    ),
+    (
+        "usd/c172p_airframe.usda",
+        include_bytes!("../../../vehicles/c172p/usd/c172p_airframe.usda"),
+    ),
+    (
+        "usd/d_ecjb.usda",
+        include_bytes!("../../../vehicles/c172p/usd/d_ecjb.usda"),
+    ),
+    (
+        "usd/d_ecjb_livery.json",
+        include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.json"),
+    ),
+    (
+        "usd/d_ecjb_livery.usda",
+        include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.usda"),
+    ),
+    (
+        "usd/n53295.usda",
+        include_bytes!("../../../vehicles/c172p/usd/n53295.usda"),
+    ),
+    (
+        "usd/n53295_livery.json",
+        include_bytes!("../../../vehicles/c172p/usd/n53295_livery.json"),
+    ),
+    (
+        "usd/n53295_livery.usda",
+        include_bytes!("../../../vehicles/c172p/usd/n53295_livery.usda"),
+    ),
+    (
+        CAMERA_VIEWS_ASSET,
+        include_bytes!("../../../vehicles/c172p/views/cameras.json"),
+    ),
+];
+
+const P38_MANIFEST: &[u8] = include_bytes!("../../../vehicles/p38g/syspack.json");
+const P38_ASSETS: &[(&str, &[u8])] = &[
+    (
+        "fdm/p38g.xml",
+        include_bytes!("../../../vehicles/p38g/fdm/p38g.xml"),
+    ),
+    (
+        AIRSPEED_ENVELOPE_ASSET,
+        include_bytes!("../../../vehicles/p38g/performance/airspeed_envelope.json"),
+    ),
+    (
+        CALIBRATION_SUITE_ASSET,
+        include_bytes!("../../../vehicles/p38g/performance/poh_benchmarks.json"),
+    ),
+    (
+        PITOT_STATIC_CALIBRATION_ASSET,
+        include_bytes!("../../../vehicles/p38g/performance/pitot_static_calibration.json"),
+    ),
+    (
+        STRUCTURAL_LANDMARKS_ASSET,
+        include_bytes!("../../../vehicles/p38g/geometry/landmarks.json"),
+    ),
+    (
+        CAMERA_VIEWS_ASSET,
+        include_bytes!("../../../vehicles/p38g/views/cameras.json"),
+    ),
+    (
+        "p38g-set.xml",
+        include_bytes!("../../../vehicles/p38g/p38g-set.xml"),
+    ),
+    (
+        LIVERY_CATALOG_ASSET,
+        include_bytes!("../../../vehicles/p38g/Liveries/catalog.json"),
+    ),
+    (
+        "Models/Liveries/miss-virginia.xml",
+        include_bytes!("../../../vehicles/p38g/Models/Liveries/miss-virginia.xml"),
+    ),
+    (
+        "Models/Liveries/bare-metal.xml",
+        include_bytes!("../../../vehicles/p38g/Models/Liveries/bare-metal.xml"),
+    ),
+    (
+        "Models/Liveries/glacier-girl.xml",
+        include_bytes!("../../../vehicles/p38g/Models/Liveries/glacier-girl.xml"),
+    ),
+];
+
+/// The Cessna 172S Skyhawk SP (`c172s`, `N642SP` default) package files, embedded in the binary.
+#[must_use]
+pub fn builtin_c172s_source() -> MemoryPackageSource {
+    MemoryPackageSource::from_embedded(C172S_MANIFEST, C172S_ASSETS)
 }
 
-/// The built-in C172-class aeroplane, loaded and verified like any other
-/// package.
+/// The built-in Cessna 172S Skyhawk SP (`c172s`), loaded and SHA-256-verified.
+pub fn builtin_c172s_package() -> Result<LoadedSyspack, PackError> {
+    LoadedSyspack::load(&builtin_c172s_source())
+}
+
+/// The Cessna 172P Skyhawk II (`c172p`, `D-ECJB` default) package files, embedded in the binary.
+#[must_use]
+pub fn builtin_c172p_source() -> MemoryPackageSource {
+    MemoryPackageSource::from_embedded(C172P_MANIFEST, C172P_ASSETS)
+}
+
+/// The built-in Cessna 172P Skyhawk II (`c172p`), loaded and SHA-256-verified.
+pub fn builtin_c172p_package() -> Result<LoadedSyspack, PackError> {
+    LoadedSyspack::load(&builtin_c172p_source())
+}
+
+/// Compatibility alias for [`builtin_c172s_source`] (`"c172"` -> `"c172s"`).
+#[must_use]
+pub fn builtin_c172_source() -> MemoryPackageSource {
+    builtin_c172s_source()
+}
+
+/// Compatibility alias for [`builtin_c172s_package`] (`"c172"` -> `"c172s"`).
 pub fn builtin_c172_package() -> Result<LoadedSyspack, PackError> {
-    LoadedSyspack::load(&builtin_c172_source())
+    builtin_c172s_package()
 }
 
 /// The Lockheed P-38G Lightning's package files, embedded in the binary.
 #[must_use]
 pub fn builtin_p38g_source() -> MemoryPackageSource {
-    MemoryPackageSource::from_embedded(
-        P38_MANIFEST,
-        &[
-            (P38_FDM_PATH, P38_FDM),
-            (AIRSPEED_ENVELOPE_ASSET, P38_ENVELOPE),
-            (CALIBRATION_SUITE_ASSET, P38_BENCHMARKS),
-            (PITOT_STATIC_CALIBRATION_ASSET, P38_PEC),
-            (STRUCTURAL_LANDMARKS_ASSET, P38_LANDMARKS),
-            (CAMERA_VIEWS_ASSET, P38_VIEWS),
-            (P38_FG_SET_PATH, P38_FG_SET),
-            (LIVERY_CATALOG_ASSET, P38_LIVERY_CATALOG),
-            (P38_LIVERY_MISS_VIRGINIA_PATH, P38_LIVERY_MISS_VIRGINIA),
-            (P38_LIVERY_BARE_METAL_PATH, P38_LIVERY_BARE_METAL),
-            (P38_LIVERY_GLACIER_GIRL_PATH, P38_LIVERY_GLACIER_GIRL),
-        ],
-    )
+    MemoryPackageSource::from_embedded(P38_MANIFEST, P38_ASSETS)
 }
 
 /// The built-in Lockheed P-38G Lightning twin-boom fighter, loaded and verified

@@ -48,7 +48,7 @@ fn c172_declares_cockpit_looks_including_the_strut_window() {
         .iter()
         .find(|v| v.id == "cockpit_left_strut")
         .unwrap();
-    assert_eq!(strut.airframe, ViewAirframe::External);
+    assert_eq!(strut.airframe, ViewAirframe::CabinWindow);
     assert_eq!(views.chase_offsets_m(), Some((22.0, 6.5)));
 }
 
@@ -56,6 +56,7 @@ fn c172_declares_cockpit_looks_including_the_strut_window() {
 fn every_builtin_view_resolves_to_a_usable_camera() {
     for package in [
         builtin_c172_package().unwrap(),
+        crate::builtin_c172p_package().unwrap(),
         builtin_p38g_package().unwrap(),
     ] {
         for spec in package.camera_view_set().virtual_cameras(P38_EYE_FRD_M) {
