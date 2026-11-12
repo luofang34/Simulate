@@ -66,6 +66,8 @@
       .page-map-labels { position: absolute; inset: 0; pointer-events: none; }
       .fix-label { position: absolute; transform: translate(8px, -130%); font: 600 12px/1 system-ui, sans-serif; color: #ffffff; text-shadow: 0 0 3px #05070b, 0 0 3px #05070b; white-space: nowrap; }
       .fix-label.active { color: #ff40ff; }
+      .truth-label { position: absolute; transform: translate(14px, 6px); font: 600 12px/1 system-ui, sans-serif; color: #ffe066; text-shadow: 0 0 3px #05070b, 0 0 3px #05070b; white-space: nowrap; pointer-events: none; }
+      .series.groundtruth { cursor: default; padding-left: 1.6rem; }
       .fix-label.flown { color: #9aa1b2; }
       .page-map-card { position: absolute; transform: translate(-50%, 14px); min-width: 11rem; padding: 0.5rem 0.7rem; border: 1px solid #2b3245; border-radius: 6px; background: rgba(11, 14, 23, 0.94); font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; pointer-events: none; }
       .page-map-card .ident { font-weight: 600; color: #f2f4f8; }
@@ -176,10 +178,10 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 }
 
 
-import init, * as bindings from '/Simulate/simulate-app-4b47acea7e10e9a3.js';
+import init, * as bindings from '/Simulate/simulate-app-e68213db16c44b00.js';
 import initializer from '/Simulate/b1e1f53c347e862e-boot.mjs';
 
-const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-4b47acea7e10e9a3_bg.wasm', 34699653, initializer(), true);
+const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-e68213db16c44b00_bg.wasm', 34701894, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -189,7 +191,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
     
-  <link rel="modulepreload" href="/Simulate/simulate-app-4b47acea7e10e9a3.js" crossorigin="anonymous" integrity="sha384-rXZVXXF8jWjnBJlcBaVR4dZfclEtEcHZEtid1KEVWU+c3ANpmHVWqW3wF2pJena5"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-4b47acea7e10e9a3_bg.wasm" crossorigin="anonymous" integrity="sha384-YN2n5gRrr5kFqWgZ3Ml9hvQNYyhJ5sQIJopm7Qfd54gZA9KeeVHUL0BDjD1EFFcm" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/Simulate/simulate-app-e68213db16c44b00.js" crossorigin="anonymous" integrity="sha384-rXZVXXF8jWjnBJlcBaVR4dZfclEtEcHZEtid1KEVWU+c3ANpmHVWqW3wF2pJena5"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-e68213db16c44b00_bg.wasm" crossorigin="anonymous" integrity="sha384-tbIERR3wNEwPZ7KPFUDNQnFRgBqtlTGJrs8pG/Bn103a9gzqJbxgaeuuKQnBbP7m" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" data-state="loading" role="status" aria-live="polite">
       <div id="boot-card">
