@@ -94,6 +94,16 @@ fn ownship_is_a_haloed_silhouette_on_its_projected_position() {
         .all(|v| (v.position[0] - 240.0).hypot(v.position[1] - 180.0) < 20.0);
     assert!(near_centre);
     assert!(mesh.vertices.iter().all(|v| v.depth == DEPTH));
+    // The ground-track predictor is drawn, and nothing of ownship's is the active leg's
+    // magenta.
+    let track = premultiplied(TRACK_VECTOR);
+    assert!(mesh.vertices.iter().any(|v| v.color == track));
+    assert!(
+        mesh.vertices
+            .iter()
+            .all(|v| !(v.color[0] > 0.7 && v.color[1] < 0.5 && v.color[2] > 0.6)),
+        "no magenta beside the plan's"
+    );
 }
 
 #[test]

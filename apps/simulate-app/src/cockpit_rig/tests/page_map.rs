@@ -103,6 +103,8 @@ fn the_inset_and_the_page_map_are_one_map_drawn_together() -> Result<(), AppSimE
     );
     assert!(maps.efb_view_of(EfbDisplayMode::ExpandedEfb).is_some());
     assert!(maps.efb_view_of(EfbDisplayMode::CompactCorner).is_some());
+    link.set_in_sight(false);
+    frame(&gpu, &mut rig, &flight, &link)?;
     let chrome = rig.efb_chrome(flight.world()).expect("the inset shows");
     assert_eq!(chrome.mode, EfbDisplayMode::CompactCorner);
     assert!(
@@ -118,6 +120,10 @@ fn the_inset_and_the_page_map_are_one_map_drawn_together() -> Result<(), AppSimE
         "the inset, not the tablet"
     );
 
+    // With the page's map in sight the window drops the inset, which shows less.
+    link.set_in_sight(true);
+    frame(&gpu, &mut rig, &flight, &link)?;
+    assert!(rig.efb_chrome(flight.world()).is_none());
     let view = rig.maps().expect("maps").page_map_view();
     let states: Vec<(&str, LegState)> = view
         .labels

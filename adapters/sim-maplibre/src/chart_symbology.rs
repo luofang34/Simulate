@@ -39,7 +39,9 @@ const GLOBE_FOV_RAD: f64 = 0.643_501_108_793_284_4;
 /// Chart symbology depth: in front of every 2D chart layer under reversed-Z.
 const DEPTH: f32 = 0.5;
 const RING: [f32; 4] = [148.0 / 255.0, 163.0 / 255.0, 184.0 / 255.0, 0.42];
-const MAGENTA: [f32; 4] = [0.96, 0.32, 0.82, 0.95];
+/// The ground-track predictor: a pale cyan, since magenta marks the active leg and white
+/// the legs to come, and paler than the cyan heading lubber line.
+pub(super) const TRACK_VECTOR: [f32; 4] = [0.62, 0.93, 1.0, 0.95];
 const LUBBER_CYAN: [f32; 4] = [0.0, 0.88, 1.0, 0.85];
 const TRAFFIC_CYAN: [f32; 4] = [0.0, 0.92, 0.92, 0.95];
 pub(super) const FEATHER_CYAN: [f32; 4] = [0.22, 0.85, 1.0, 0.9];
@@ -319,7 +321,7 @@ fn append_ownship(
         let [lon2, lat2] = destination([own.lon_deg, own.lat_deg], track, speed * 60.0);
         if let Some(tip) = projection.project(lat2, lon2) {
             push_segment(mesh, px, tip, 3.0 * s, HALO);
-            push_segment(mesh, px, tip, 2.0 * s, MAGENTA);
+            push_segment(mesh, px, tip, 2.0 * s, TRACK_VECTOR);
         }
     }
     let angle = projection.screen_angle_at(own.lat_deg, own.lon_deg, own.true_heading_deg);
