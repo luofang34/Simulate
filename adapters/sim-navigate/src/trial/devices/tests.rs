@@ -4,7 +4,9 @@ use sim_core::VehicleState;
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
 use super::{StaticPort, receiver};
-use crate::trial::onboard::{altimeter_budget, baro_altitude_data, gnss_fix_data};
+use crate::trial::onboard::{
+    GNSS_SOURCE, altimeter_budget, baro_altitude_data, gnss_fix_data, sensor_suite,
+};
 use crate::trial::{BaroSpec, GnssSpec, RoutePoint, TrialRequest, request_from_route};
 
 const HEIGHT_M: f64 = 1_000.0;
@@ -107,49 +109,139 @@ fn the_host_recovers_ellipsoidal_height_where_the_geoid_is_far_from_the_ellipsoi
     assert!((altitude_m - HEIGHT_M).abs() < 1e-6, "{altitude_m}");
 }
 
+/// Fixes drawn for the measured budget: at 1 Hz and a 2 s correlation
+/// time, enough that the white and correlated spreads and the correlation
+/// time come out within a few percent.
+const FIXES: usize = 200_000;
+
+/// The receiver's position and velocity errors, north-east-down, for a
+/// parked vehicle fixing once a second.
+fn fix_errors(request: &TrialRequest) -> Vec<(DVec3, DVec3)> {
+    let truth = parked();
+    let frame = LocalFrame::at(&ecef_to_geodetic(truth.position_ecef));
+    let mut gnss = receiver(request).unwrap();
+    (0..FIXES)
+        .map(|_| {
+            let fix = gnss.measure(&truth, 1.0).unwrap();
+            let SensorData::GnssFix {
+                position,
+                velocity: Some(velocity),
+                position_cov: None,
+                velocity_cov: None,
+            } = gnss_fix_data(&fix)
+            else {
+                panic!("a fix without velocity or carrying its own covariance");
+            };
+            let measured = geodetic_to_ecef(&Geodetic {
+                lat_rad: position.latitude_rad,
+                lon_rad: position.longitude_rad,
+                height_m: position.altitude_m,
+            });
+            let velocity = DVec3::new(velocity.north_mps, velocity.east_mps, velocity.down_mps);
+            (
+                frame.ecef_to_ned_vector(measured - truth.position_ecef),
+                velocity - frame.ecef_to_ned_vector(truth.velocity_ecef),
+            )
+        })
+        .collect()
+}
+
+/// The white sigma, the correlated sigma and the correlation time of a
+/// white-plus-first-order-Gauss–Markov series from its autocovariances at
+/// lags 0, 1 and 2 (`c0 = w² + c²`, `ck = c²·φᵏ`), with a 1 s spacing.
+fn white_and_correlated(c0: f64, c1: f64, c2: f64) -> (f64, f64, f64) {
+    let correlated_variance = c1 * c1 / c2;
+    (
+        (c0 - correlated_variance).sqrt(),
+        correlated_variance.sqrt(),
+        -1.0 / (c2 / c1).ln(),
+    )
+}
+
+fn assert_within(what: &str, measured: f64, declared: f64, relative: f64) {
+    assert!(
+        (measured / declared - 1.0).abs() < relative,
+        "{what}: measured {measured}, declared {declared}"
+    );
+}
+
+/// The suite declares the receiver the trial flies: the white, correlated
+/// and velocity statistics measured from its fixes are the GNSS budget.
 #[test]
-fn the_declared_fix_covariance_is_the_simulated_spread() {
+fn the_declared_gnss_budget_is_the_simulated_receiver() {
     let mut request = request();
     request.gnss = GnssSpec {
-        correlation_time_s: 0.5,
+        correlation_time_s: 2.0,
         ..GnssSpec::default()
     };
-    let truth = parked();
-    let mut gnss = receiver(&request).unwrap();
-    let count = 20_000;
-    let mut squares = DVec3::ZERO;
-    let mut declared = DVec3::ZERO;
-    for _ in 0..count {
-        let fix = gnss.measure(&truth, 1.0).unwrap();
-        let SensorData::GnssFix {
-            position,
-            position_cov: Some(cov),
-            ..
-        } = gnss_fix_data(&fix)
-        else {
-            panic!("not a fix with covariance");
-        };
-        let measured = geodetic_to_ecef(&Geodetic {
-            lat_rad: position.latitude_rad,
-            lon_rad: position.longitude_rad,
-            height_m: position.altitude_m,
-        });
-        let error = LocalFrame::at(&ecef_to_geodetic(truth.position_ecef))
-            .ecef_to_ned_vector(measured - truth.position_ecef);
-        squares += error * error;
-        let (n, e, d) = cov.diagonal();
-        declared = DVec3::new(n, e, d);
+    let suite = sensor_suite(&request, request.sensor_sets.first().unwrap()).unwrap();
+    let ErrorBudget::Gnss {
+        horizontal_sigma_m,
+        vertical_sigma_m,
+        velocity_sigma_m_s,
+        correlated: Some(correlated),
+    } = suite.get(GNSS_SOURCE).unwrap().budget
+    else {
+        panic!("no correlated GNSS budget");
+    };
+    let errors = fix_errors(&request);
+    let lag = |k: usize| -> DVec3 {
+        let pairs = errors.iter().zip(errors.iter().skip(k));
+        pairs.map(|(a, b)| a.0 * b.0).sum::<DVec3>() / (FIXES - k) as f64
+    };
+    let (c0, c1, c2) = (lag(0), lag(1), lag(2));
+    let horizontal = |c: DVec3| 0.5 * (c.x + c.y);
+    let axes = [
+        (
+            "horizontal",
+            white_and_correlated(horizontal(c0), horizontal(c1), horizontal(c2)),
+            (horizontal_sigma_m, correlated.horizontal_sigma_m),
+        ),
+        (
+            "vertical",
+            white_and_correlated(c0.z, c1.z, c2.z),
+            (vertical_sigma_m, correlated.vertical_sigma_m),
+        ),
+    ];
+    for (axis, (white, correlated_sigma, tau), declared) in axes {
+        assert_within(&format!("{axis} white"), white, declared.0, 0.05);
+        assert_within(
+            &format!("{axis} correlated"),
+            correlated_sigma,
+            declared.1,
+            0.03,
+        );
+        assert_within(&format!("{axis} tau"), tau, correlated.tau_s, 0.05);
     }
-    let ratio = squares / f64::from(count) / declared;
+    let velocity_squares = errors.iter().map(|e| e.1 * e.1).sum::<DVec3>() / FIXES as f64;
+    for variance in velocity_squares.to_array() {
+        assert_within("velocity", variance.sqrt(), velocity_sigma_m_s, 0.02);
+    }
+}
+
+#[test]
+fn a_receiver_without_a_correlated_error_declares_none() {
+    let mut request = request();
+    request.gnss.horizontal_correlated_sigma_m = 0.0;
+    request.gnss.vertical_correlated_sigma_m = 0.0;
+    let suite = sensor_suite(&request, request.sensor_sets.first().unwrap()).unwrap();
     assert!(
-        ratio.min_element() > 0.95 && ratio.max_element() < 1.05,
-        "{ratio}"
+        suite
+            .get(GNSS_SOURCE)
+            .unwrap()
+            .budget
+            .gnss_correlated()
+            .is_none()
     );
+    assert!(!suite.has_correlated_error());
 }
 
 #[test]
 fn a_fix_the_filter_could_not_weigh_is_refused() {
-    let mut request = request();
-    request.gnss.velocity_sigma_m_s = 0.0;
-    assert!(receiver(&request).is_err());
+    let mut no_velocity = request();
+    no_velocity.gnss.velocity_sigma_m_s = 0.0;
+    assert!(receiver(&no_velocity).is_err());
+    let mut correlated_only = request();
+    correlated_only.gnss.vertical_white_sigma_m = 0.0;
+    assert!(receiver(&correlated_only).is_err());
 }

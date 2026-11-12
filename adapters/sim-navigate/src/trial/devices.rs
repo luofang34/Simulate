@@ -46,19 +46,14 @@ pub(super) const fn static_port_spec(spec: &BaroSpec) -> PressureErrorSpec {
 
 /// The receiver of `request`, fixing once per period from the GNSS seed.
 ///
-/// A fix the filter could not weigh (no horizontal, vertical or velocity
-/// spread) is refused here although the device would produce it.
+/// A fix the filter could not weigh is refused here although the device
+/// would produce it: the filter weighs each fix by the white spread alone,
+/// so that and the velocity spread must be positive.
 pub(super) fn receiver(request: &TrialRequest) -> Result<GnssReceiver, TrialError> {
     let spec = request.gnss;
     let weighable = spec.rate_hz > 0.0
-        && spec
-            .horizontal_white_sigma_m
-            .hypot(spec.horizontal_correlated_sigma_m)
-            > 0.0
-        && spec
-            .vertical_white_sigma_m
-            .hypot(spec.vertical_correlated_sigma_m)
-            > 0.0
+        && spec.horizontal_white_sigma_m > 0.0
+        && spec.vertical_white_sigma_m > 0.0
         && spec.velocity_sigma_m_s > 0.0;
     let invalid = |detail: String| TrialError::InvalidRequest {
         field: "gnss",

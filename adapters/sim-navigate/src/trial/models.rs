@@ -41,7 +41,7 @@ const SIMULATED: [(&str, &str); 8] = [
     ),
     (
         "gnss",
-        "sim_devices::GnssReceiver, a position-domain receiver, not a pseudorange or constellation model: true antenna position (at the centre of gravity) plus white noise plus a first-order Gauss-Markov error, true velocity plus white noise; the declared covariance is the marginal white plus correlated variance, and the filter has no state for the correlated part",
+        "sim_devices::GnssReceiver, a position-domain receiver, not a pseudorange or constellation model: true antenna position (at the centre of gravity) plus white noise plus a first-order Gauss-Markov error, true velocity plus white noise; the navigator's host declares the receiver's own white and Gauss-Markov statistics as its error budget, so the filter weighs each fix by the white spread and carries the correlated error as a state",
     ),
     (
         "barometric altimeter",
@@ -71,7 +71,7 @@ const CLOSED_LOOP_GUIDANCE: (&str, &str) = (
 const FINDINGS: [(&str, &str); 6] = [
     (
         "finding: correlated GNSS error",
-        "navigate_fusion::InertialNavigationFilter has no state for a time-correlated GNSS error; against the default receiver (0.6 m white plus 1.2 m with a 300 s correlation time per horizontal axis) the GNSS-aided tactical run averages position NEES 51.3 and the outage run 28.3, against 3.2 with the correlated term removed",
+        "with the receiver's Gauss-Markov error declared to the navigator, which carries it as a filter state, the default receiver (0.6 m white plus 1.2 m with a 300 s correlation time per horizontal axis) gives the one-minute GNSS-aided tactical run a position NEES averaging 2.5 over 12 seeds and the outage runs 2.6; the same receiver declared as white noise of its whole spread averages 53.7 and 30.7",
     ),
     (
         "finding: barometric updates move the horizontal estimate",

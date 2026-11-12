@@ -128,9 +128,9 @@ fn white_run() -> &'static TrialReport {
     })
 }
 
-/// Pipeline validity: with a white-noise receiver, the only error Navigate's
-/// filter can represent, it stays consistent with GNSS and across the
-/// outage.
+/// Pipeline validity: with a white-noise receiver, which declares no
+/// correlated error and so flies the filter without that state, it stays
+/// consistent with GNSS and across the outage.
 #[test]
 fn the_pipeline_is_consistent_with_a_white_noise_receiver() {
     init_tracing();
@@ -144,17 +144,30 @@ fn the_pipeline_is_consistent_with_a_white_noise_receiver() {
     );
 }
 
-/// The result flags the realistic receiver's overconfidence, which Navigate's
-/// filter cannot avoid without a state for the correlated error, and does
-/// not flag the white receiver.
+/// The realistic receiver, its Gauss–Markov error declared to the filter as
+/// a state, is as consistent as the white one, with GNSS and across the
+/// outage; declared as white noise of its whole spread it would average a
+/// NEES in the tens.
 #[test]
-fn the_consistency_note_flags_the_correlated_receiver_only() {
+fn the_realistic_receiver_is_consistent_with_its_correlated_error_declared() {
     init_tracing();
-    let realistic = &set(&default_run().2, "gnss+baro+ins").summary.consistency;
+    let report = &default_run().2;
+    let realistic = &set(report, "gnss+baro+ins").summary;
     let white = &set(white_run(), "gnss+baro+ins").summary.consistency;
-    tracing::info!(?realistic, ?white, "consistency notes");
-    assert_eq!(realistic.verdict, "overconfident", "{realistic:?}");
+    tracing::info!(?realistic.consistency, ?white, "consistency notes");
+    assert_eq!(
+        realistic.consistency.verdict, "consistent",
+        "{:?}",
+        realistic.consistency
+    );
     assert_eq!(white.verdict, "consistent", "{white:?}");
+    let nees = realistic.mean_position_nees;
+    assert!(AIDED_NEES.contains(&nees), "{nees}");
+    let outage = the_outage(report);
+    assert!(
+        AIDED_NEES.contains(&outage.mean_position_nees),
+        "{outage:?}"
+    );
 }
 
 /// The ensemble-mean position NEES and RMS final horizontal error of the INS
