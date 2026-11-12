@@ -11,6 +11,7 @@ members = [
     "adapters/sim-navigate",
     "adapters/sim-pilotage",
     "apps/ironbird",
+    "apps/link-replay",
     "apps/nav-trial",
     "apps/simulate-app",
     "crates/sim-analysis",

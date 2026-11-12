@@ -61,6 +61,7 @@ Tiles (Terrarium elevation), and OpenFreeMap vectors.
 |---|---|---|
 | `SIMULATE_OFFLINE_SCENERY` | native | When set to any value, uses the built-in synthetic regional catalog instead of tile servers. No network is used. |
 | `SIMULATE_TILE_CACHE_DIR` | native | Directory where downloaded tiles are kept across runs. Without it, tiles go to `target/simulate-tile-cache` in the workspace. |
+| `SIMULATE_TILE_CACHE` | native | Persistent tile cache directory used by `link-replay` for Mapzen Terrarium DEM and satellite orthoimagery tiles (defaults to `~/.cache/simulate/tiles`). |
 | `SIMULATE_AIRPORT_PACK` | native | Path to a `SIMAPT01` airport pack that replaces the embedded airport database. If the file fails to load, the embedded database is used. |
 
 The Flight Hub's flight tab also switches scenery mode while the app is running.
@@ -72,6 +73,15 @@ around the built-in C172 for 30 simulated seconds and logs a summary:
 
 ```sh
 cargo run --release -p ironbird -- --mode tier0-c172 --duration-s 30
+```
+
+`link-replay` flies `#v=2` simulation links, JSON scenario specs, and built-in
+navigation/spoofing presets natively without a browser, caching DEM and imagery
+tiles under `SIMULATE_TILE_CACHE` and recording NDJSON trajectories plus run
+summaries (`--out <trace-path>` and `--summary <report-path>`):
+
+```sh
+cargo run --release -p link-replay -- --preset zaragoza --duration-s 60 --sample-hz 10
 ```
 
 [Flying an External Autopilot](external-autopilots.md) builds on this. The
