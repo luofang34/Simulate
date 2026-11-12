@@ -44,6 +44,10 @@ use track_map::TrackMap;
 const SERIES: [&str; 8] = [
     "#3987e5", "#d95926", "#199e70", "#c98500", "#2bb5c9", "#008300", "#9085e9", "#e66767",
 ];
+/// The name the page gives the simulator's true state, wherever it marks it.
+const GROUNDTRUTH: &str = "simulator groundtruth";
+/// Its colour on the maps.
+const GROUNDTRUTH_COLOUR: &str = "#ffe066";
 /// The colour of a set past the eighth, which gets no hue of its own.
 const SERIES_OTHER: &str = "#8f98ad";
 
@@ -295,6 +299,7 @@ impl MonitorView {
             };
             legend_row(&document, &self.legend, (name, role), series_colour(index));
         }
+        groundtruth_row(&document, &self.legend);
         self.steering_block.set_text_content(None);
         if let Some(steering) = &self.steering {
             let index = names.iter().position(|name| *name == steering.set);
@@ -349,6 +354,25 @@ fn checkbox(document: &Document, label: &Element, data: (&str, &str), checked: b
     input.set_attribute(data.0, data.1).ok();
     if let Ok(input) = input.dyn_into::<HtmlInputElement>() {
         input.set_checked(checked);
+    }
+}
+
+/// The legend's last row: the simulator groundtruth's colour and name. It has no
+/// switch, since the maps always mark it, and its value cell keeps the rows paired.
+fn groundtruth_row(document: &Document, legend: &Element) {
+    let Some(label) = append(document, legend, "span", "series groundtruth") else {
+        return;
+    };
+    if let Some(swatch) = append(document, &label, "span", "swatch") {
+        swatch
+            .set_attribute("style", &format!("background: {GROUNDTRUTH_COLOUR}"))
+            .ok();
+    }
+    if let Some(text) = append(document, &label, "span", "") {
+        text.set_text_content(Some(GROUNDTRUTH));
+    }
+    if let Some(value) = append(document, legend, "span", "value") {
+        value.set_text_content(Some("known only to the simulator"));
     }
 }
 

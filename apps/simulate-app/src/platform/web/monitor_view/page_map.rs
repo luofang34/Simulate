@@ -62,6 +62,7 @@ pub struct PageMap {
     frame: Element,
     canvas: HtmlCanvasElement,
     labels: Element,
+    truth_label: Element,
     card: Element,
     controls: controls::Controls,
     link: PageMapLink,
@@ -80,11 +81,14 @@ impl PageMap {
         canvas
             .set_attribute(
                 "aria-label",
-                "The flight plan and each set's track on the moving map",
+                "The flight plan, the simulator groundtruth and each set's track on the moving map",
             )
             .ok();
         frame.append_child(&canvas).ok()?;
         let labels = append(document, &frame, "div", "page-map-labels")?;
+        let truth_label = append(document, &frame, "span", "truth-label")?;
+        truth_label.set_text_content(Some(super::GROUNDTRUTH));
+        truth_label.set_attribute("hidden", "").ok();
         let card = append(document, &frame, "div", "page-map-card")?;
         card.set_attribute("hidden", "").ok();
         let controls = controls::Controls::under(document, &frame, &setup.link)?;
@@ -97,6 +101,7 @@ impl PageMap {
             frame,
             canvas,
             labels,
+            truth_label,
             card,
             controls,
             link: setup.link,
@@ -154,6 +159,7 @@ impl PageMap {
             self.frame.remove_attribute("hidden").ok();
         }
         self.lay_labels(&view);
+        self.lay_truth_label(&view);
         self.lay_card(&view);
         self.controls.show(view.status.as_ref());
     }
@@ -228,6 +234,21 @@ impl PageMap {
         }
     }
 
+    /// Names the simulator groundtruth's mark where the map draws it.
+    fn lay_truth_label(&self, view: &PageMapView) {
+        let Some([x, y]) = view
+            .truth_px
+            .map(|at| at.map(|v| f64::from(v) * self.css_per_px()))
+        else {
+            self.truth_label.set_attribute("hidden", "").ok();
+            return;
+        };
+        self.truth_label
+            .set_attribute("style", &format!("left: {x:.1}px; top: {y:.1}px"))
+            .ok();
+        self.truth_label.remove_attribute("hidden").ok();
+    }
+
     fn lay_card(&self, view: &PageMapView) {
         let Some(picked) = &view.picked else {
             self.card.set_attribute("hidden", "").ok();
@@ -260,7 +281,7 @@ impl PageMap {
 /// What the map's marks mean.
 const KEY: &str = "The cockpit's moving map, expanded. The aircraft: the estimate of the set \
     the flight steers on, in its one-sigma ring. Yellow crossed circle and yellow track: \
-    the simulator's true position and track. Coloured: each set's estimated track, the \
+    the simulator groundtruth and its track. Coloured: each set's estimated track, the \
     others' with their one-sigma rings; dots and rings: camera fixes accepted and \
     rejected. Magenta: the active leg; white: legs to come; grey: legs flown. Dashed \
     green: the map package's imagery. Drag, zoom or tap a fix.";

@@ -139,6 +139,22 @@ impl EfbMapSurface {
         }
     }
 
+    /// Where the frame marks' true position falls on `mode`'s view as it last drew,
+    /// physical pixels from its top left, for a host that labels the mark; `None`
+    /// without the mark, and behind the globe.
+    #[must_use]
+    pub fn truth_mark_position(&self, mode: EfbDisplayMode) -> Option<[f32; 2]> {
+        let truth_deg = self.plan.frame_marks.truth_deg?;
+        let spec = self.camera_spec(mode)?;
+        screen_positions(
+            (&spec, self.size_of(mode), self.pixel_ratio()),
+            &[truth_deg],
+        )
+        .into_iter()
+        .next()
+        .flatten()
+    }
+
     /// The fix nearest `at_px` (physical pixels on `mode`'s view) within `radius_px`.
     #[must_use]
     pub fn pick_fix(

@@ -56,6 +56,9 @@ pub struct PageMapView {
     pub labels: Vec<FixLabel>,
     /// The fix picked, if any.
     pub picked: Option<PickedFix>,
+    /// Where the simulator groundtruth's mark is, the canvas's drawing-buffer pixels
+    /// from its top left, while the map draws it.
+    pub truth_px: Option<[f32; 2]>,
 }
 
 #[derive(Debug, Default)]

@@ -24,7 +24,9 @@ const MEANS: &str = "Pilotage's mission steers on this set's position. The map's
     solution degrades, Pilotage flies the same solution on as dead reckoning and reports \
     it; the map's aircraft stays that solution.";
 /// What it says of the other marks.
-const OTHERS: &str = "The yellow crossed circle is the simulator's true position. The flight \
+const OTHERS: &str = "The yellow crossed circle is the simulator groundtruth. The simulator \
+    groundtruth is known only to the simulator; the onboard software never sees or uses \
+    it. The flight \
     controller's own estimate is drawn as flight-controller, one more track to compare: \
     Aviate flies the surfaces on it, the mission does not steer on it.";
 /// What it says of the HSI's label.

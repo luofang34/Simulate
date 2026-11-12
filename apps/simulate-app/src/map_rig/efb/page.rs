@@ -82,6 +82,7 @@ impl EfbRig {
             status: Some(self.status()),
             labels,
             picked,
+            truth_px: self.surface.truth_mark_position(self.mode()),
         }
     }
 }

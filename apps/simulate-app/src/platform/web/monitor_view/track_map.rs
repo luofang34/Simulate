@@ -67,7 +67,8 @@ impl TrackMap {
         canvas
             .set_attribute(
                 "aria-label",
-                "The route, the true track and each set's estimated track from above",
+                "The route, the simulator groundtruth's track and each set's estimated track \
+                 from above",
             )
             .ok();
         let context = canvas.get_context("2d").ok()??.dyn_into().ok()?;
@@ -221,7 +222,8 @@ fn key_words(pictured: bool) -> String {
         ""
     };
     format!(
-        "{under}Yellow: the simulator's true track, and its true position as a crossed circle. \
+        "{under}Yellow: the simulator groundtruth, its track and its position as a crossed \
+         circle. \
          Coloured: each set's estimate with its one-sigma ring (at least {MIN_RING_PX} px). \
          Dots and rings: camera frames accepted and rejected. Dashed: the planned route."
     )
@@ -312,12 +314,21 @@ impl Painter<'_> {
             }
         }
         if let Some((_, at)) = monitor.truth().last() {
-            self.truth_mark(self.at(*at));
+            let (x, y) = self.at(*at);
+            self.truth_mark((x, y));
+            let context = self.context;
+            context.set_font(FONT);
+            context.set_text_align("left");
+            context.set_text_baseline("top");
+            context.set_fill_style_str(TRUTH);
+            context
+                .fill_text(super::GROUNDTRUTH, x + 12.0, y + 8.0)
+                .ok();
         }
     }
 
-    /// The true position: a circle crossed by hairs, dark-cased, as the app's map
-    /// marks it.
+    /// The simulator groundtruth: a circle crossed by hairs, dark-cased, as the app's
+    /// map marks it.
     fn truth_mark(&self, (x, y): (f64, f64)) {
         let context = self.context;
         for (width, colour) in [(4.0, "#000000"), (2.0, TRUTH)] {

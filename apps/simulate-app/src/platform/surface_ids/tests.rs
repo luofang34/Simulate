@@ -48,6 +48,7 @@ fn the_page_styles_what_the_app_builds_by_class() {
         ".sensor-rows",
         ".fault-switch",
         ".gnss-checks",
+        ".truth-label",
     ] {
         let styled = [" ", ","]
             .iter()
