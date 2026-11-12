@@ -33,12 +33,14 @@ pub fn run() {
         ProgressSurface::of_page().fail("Simulate stopped: internal error", &info.to_string());
     }));
     // Every event reaches the console, so the default of all levels would
-    // write out each of JSBSim's per-step trace events. Spans stay out: the
-    // layer marks and measures each one entered on the page's performance
-    // timeline, which keeps every entry, and the maps enter thousands a second.
+    // write out each of JSBSim's per-step trace events. Nothing goes to the
+    // page's performance timeline, which keeps every entry: spans stay out,
+    // since the layer marks each one entered and the maps enter thousands a
+    // second, and events are not marked.
     let console = WASMLayer::new(
         WASMLayerConfigBuilder::new()
             .set_max_level(Level::INFO)
+            .set_report_logs_in_timings(false)
             .build(),
     )
     .with_filter(filter_fn(|meta| {
