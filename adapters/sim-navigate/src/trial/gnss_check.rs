@@ -5,6 +5,7 @@
 //! The check is Navigate's. Nothing here judges a fix; this is the status
 //! the navigator states, carried to a host's displays.
 
+use navigate_contract::MonotonicNanos;
 use navigate_onboard::{GnssIntegrityState, GnssIntegrityStatus};
 
 /// What the check says of the receiver.
@@ -47,8 +48,8 @@ pub struct GnssCheckSeparation {
 pub struct GnssCheck {
     /// The verdict.
     pub state: GnssCheckState,
-    /// Route time the verdict began, seconds, when the navigator states it.
-    pub since_s: Option<f64>,
+    /// When the verdict began, on the navigator's clock, when it states it.
+    pub since: Option<MonotonicNanos>,
     /// The latest fix against the reference, once one was compared.
     pub last: Option<GnssCheckSeparation>,
     /// What the receiver is checked against.
@@ -59,8 +60,13 @@ pub struct GnssCheck {
 }
 
 impl GnssCheck {
-    /// The check `status` reports. The navigator's clock reads zero at the
-    /// first route instant, so its times are route times.
+    /// Route time the verdict began, seconds: the navigator's clock reads
+    /// zero at the first route instant.
+    pub fn since_s(&self) -> Option<f64> {
+        self.since.map(|at| at.as_nanos() as f64 * 1e-9)
+    }
+
+    /// The check `status` reports.
     pub fn of(status: &GnssIntegrityStatus) -> Self {
         Self {
             state: match status.state {
@@ -68,7 +74,7 @@ impl GnssCheck {
                 GnssIntegrityState::Disagreeing => GnssCheckState::Disagreeing,
                 GnssIntegrityState::Excluded => GnssCheckState::Excluded,
             },
-            since_s: status.since.map(|at| at.as_nanos() as f64 * 1e-9),
+            since: status.since,
             last: status.last.map(|last| GnssCheckSeparation {
                 separation_m: last.separation_m,
                 caution_bound_m: last.caution_bound_m,

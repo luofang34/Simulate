@@ -29,7 +29,8 @@ pub use pilotage_host_core::{HostEvent, HostStatus, MISSION_CLOCK};
 pub use pilotage_mission::{
     DisplayFix, DisplayWaypoint, FlightPhase, HoldingEntry, HoldingLeg, HoldingPattern,
     HoldingPatternStatus, HoldingTurn, LegDisplay, MissionEvent, MissionState, NavQuality,
-    NavigationDisplay, PositionIntegrity, PositionKind, SteeringIntegrity, SteeringSource,
-    TerminalHoldingPattern, ToFrom, WaypointProgress,
+    NavigationDisplay, OnboardSolution, PositionIntegrity, PositionKind, SourceIntegrity,
+    SourceIntegrityState, SteeringIntegrity, SteeringSource, TerminalHoldingPattern, ToFrom,
+    WaypointProgress,
 };
 pub use pilotage_protocol::{VehicleClass, VehicleId};

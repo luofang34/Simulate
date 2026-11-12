@@ -137,7 +137,9 @@ fn each_gnss_sets_check_reads_as_its_navigator_states_it() {
     });
     let check = |state, reference, checkable| GnssCheck {
         state,
-        since_s: Some(92.0),
+        since: Some(navigate_contract::MonotonicNanos::from_nanos(
+            92_000_000_000,
+        )),
         last,
         reference,
         checkable,
@@ -202,7 +204,9 @@ fn a_receiver_its_navigator_excluded_reads_as_excluded_beside_the_switches() {
         set: "ins.baro.gnss".to_owned(),
         check: GnssCheck {
             state: GnssCheckState::Excluded,
-            since_s: Some(92.0),
+            since: Some(navigate_contract::MonotonicNanos::from_nanos(
+                92_000_000_000,
+            )),
             last: None,
             reference: GnssReference::PositionFix,
             checkable: true,

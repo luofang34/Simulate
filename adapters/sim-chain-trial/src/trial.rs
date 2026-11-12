@@ -14,7 +14,9 @@ use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use navigate_contract::NavigationSolution;
 use sim_core::{SimInstant, VehicleState};
-use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay};
+use sim_flight_chain::{
+    C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay, OnboardSolution,
+};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
     LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, TerrainMatch,
@@ -427,7 +429,12 @@ impl ChainTrial {
             && let Some(solution) = slot.run.solution(&self.nav.log)?
         {
             let solution = records::on_mission_clock(solution.get());
-            self.chain.offer_navigation(&solution);
+            // The navigator's verdict on its receiver travels with the
+            // solution, so the mission and its displays know a position
+            // flown without GNSS from one that never had it.
+            let gnss = slot.run.gnss_check().map(records::gnss_statement);
+            self.chain
+                .offer_navigation(OnboardSolution::with_source_integrity(solution, gnss));
             self.offered = Some(solution);
         }
         // Before the first step nothing was out, so an outage from the

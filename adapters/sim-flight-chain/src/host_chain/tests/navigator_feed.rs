@@ -4,8 +4,8 @@
 use glam::{DMat3, DQuat, DVec3};
 use navigate_contract::{
     AttitudeQuaternion, Ellipsoid, FaultDetection, GeodeticPosition, IntegrityAssessment,
-    NedVelocity, Redundancy, SensorClass, SolutionQuality, SolutionStamp, SourceComposition,
-    SourceEpoch, SymmetricCov3, WrappingSequence,
+    NavigationSolution, NedVelocity, Redundancy, SensorClass, SolutionQuality, SolutionStamp,
+    SourceComposition, SourceEpoch, SymmetricCov3, WrappingSequence,
 };
 use sim_geo::{LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 

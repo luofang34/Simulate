@@ -11,14 +11,14 @@ mod tests;
 
 use aviate_core::control::{ControlMode, VehicleController};
 use aviate_core::mixer::Mixer;
-use navigate_contract::{GeodeticPosition, MonotonicNanos, NavigationSolution};
+use navigate_contract::{GeodeticPosition, MonotonicNanos};
 use pilotage_adapter_api::SourceIncarnation;
 use pilotage_adapter_aviate::{AviateAirframe, EmbeddedIncarnations};
 use pilotage_host_core::{HostCore, HostCoreConfig, HostEvent, HostStatus, MISSION_CLOCK};
 use pilotage_mavlink::link::LinkConfig;
 use pilotage_mission::{
-    MissionConfig, MissionLimits, OwnshipSource, PlannedWaypoint, TerminalHoldingPattern,
-    WaypointPlan, WaypointPlanRecord,
+    MissionConfig, MissionLimits, OnboardSolution, OwnshipSource, PlannedWaypoint,
+    TerminalHoldingPattern, WaypointPlan, WaypointPlanRecord,
 };
 use pilotage_protocol::VehicleClass;
 use sim_core::{SimInstant, VehicleState};
@@ -209,10 +209,12 @@ where
     }
 
     /// Hands an onboard navigator's solution to the mission, which flies
-    /// it when its ownship is the navigator.
-    pub fn offer_navigation(&mut self, solution: &NavigationSolution) {
+    /// it when its ownship is the navigator, with what the navigator states
+    /// of a position sensor behind it. The mission keeps the statement of
+    /// the latest solution it admitted, so each solution carries its own.
+    pub fn offer_navigation(&mut self, offered: impl Into<OnboardSolution>) {
         let now = self.host_now();
-        self.core.on_onboard_solution(solution, now);
+        self.core.on_onboard_solution(offered, now);
     }
 
     /// The events the host reported since the last call, each with the

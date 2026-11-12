@@ -23,5 +23,6 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }
+navigate-contract = { workspace = true }
 pollster = { workspace = true }
 sim-core = { workspace = true }

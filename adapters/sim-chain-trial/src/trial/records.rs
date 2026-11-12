@@ -1,13 +1,15 @@
 //! The progress records and mission updates a chain trial reports.
 
-use navigate_contract::NavigationSolution;
+use navigate_contract::{NavigationSolution, SensorClass};
 use sim_core::VehicleState;
-use sim_flight_chain::{HostEvent, MISSION_CLOCK, MissionEvent};
+use sim_flight_chain::{
+    HostEvent, MISSION_CLOCK, MissionEvent, SourceIntegrity, SourceIntegrityState,
+};
 use sim_geo::{Geodetic, geodetic_to_ecef};
 use sim_navigate::trial::{
-    EventKind, EventRecord, GuidanceSource, PROGRESS_SCHEMA, ProgressRecord, ProgressRoute,
-    ProgressSet, ProgressWaypoint, SensorKind, SensorLog, SensorState, SensorStates, StartedRecord,
-    TrialRequest,
+    EventKind, EventRecord, GnssCheck, GnssCheckState, GuidanceSource, PROGRESS_SCHEMA,
+    ProgressRecord, ProgressRoute, ProgressSet, ProgressWaypoint, SensorKind, SensorLog,
+    SensorState, SensorStates, StartedRecord, TrialRequest,
 };
 
 use super::sets::{FLIGHT_CONTROLLER_SET, SetSlot, flight_controller_sample, solution_sample};
@@ -142,6 +144,21 @@ pub(super) fn on_mission_clock(solution: &NavigationSolution) -> NavigationSolut
     let mut stamped = *solution;
     stamped.stamp.clock = MISSION_CLOCK;
     stamped
+}
+
+/// What a navigator's check of its receiver states to the mission: the
+/// navigator's own verdict and its time, on the navigator's clock, which
+/// counts as the mission's does.
+pub(super) fn gnss_statement(check: GnssCheck) -> SourceIntegrity {
+    SourceIntegrity {
+        class: SensorClass::Gnss,
+        state: match check.state {
+            GnssCheckState::Consistent => SourceIntegrityState::Consistent,
+            GnssCheckState::Disagreeing => SourceIntegrityState::Disagreeing,
+            GnssCheckState::Excluded => SourceIntegrityState::Excluded,
+        },
+        since: check.since,
+    }
 }
 
 /// The outages that began or ended in `(from_s, to_s]`, for every set

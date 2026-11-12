@@ -224,7 +224,7 @@ fn reference_words(reference: GnssReference) -> String {
 
 fn check_words(check: &GnssCheck) -> (String, bool) {
     let since = check
-        .since_s
+        .since_s()
         .map_or_else(String::new, |t_s| format!(" since {}", clock_words(t_s)));
     let reference = reference_words(check.reference);
     if !check.checkable {
