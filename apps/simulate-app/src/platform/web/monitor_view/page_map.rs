@@ -14,9 +14,10 @@ use std::sync::Arc;
 
 use sim_link_host::Monitor;
 use sim_maplibre::{
-    EfbBasemap, EfbTracks, FixId, FlightPlan, LegState, PointMark, RouteFix, RouteProgress,
-    SigmaRing, TrackLine,
+    EfbBasemap, EfbTracks, FixId, FlightPlan, HoldPattern, LegState, PointMark, RouteFix,
+    RouteProgress, SigmaRing, TrackLine,
 };
+use sim_navigate::trial::{HoldingPatternRecord, HoldingTurnName};
 use wasm_bindgen::closure::Closure;
 use web_sys::{Document, Element, HtmlCanvasElement};
 
@@ -271,10 +272,25 @@ fn plan_of(monitor: &Monitor, origin: Option<[f64; 2]>) -> (FlightPlan, RoutePro
             altitude_m: altitudes.get(index).copied(),
         })
         .collect();
-    (
-        FlightPlan { origin, fixes },
-        RouteProgress::after_sequenced(monitor.sequenced()),
-    )
+    let progress = RouteProgress {
+        hold: monitor.hold_pattern().map(hold_of),
+        ..RouteProgress::after_sequenced(monitor.sequenced())
+    };
+    (FlightPlan { origin, fixes }, progress)
+}
+
+/// The map's drawing of the pattern the mission host reported.
+fn hold_of(pattern: &HoldingPatternRecord) -> HoldPattern {
+    HoldPattern {
+        fix_deg: [
+            pattern.fix.latitude_rad.to_degrees(),
+            pattern.fix.longitude_rad.to_degrees(),
+        ],
+        inbound_course_deg: pattern.inbound_course_rad.to_degrees(),
+        right_turns: matches!(pattern.turn, HoldingTurnName::Right),
+        turn_radius_m: pattern.turn_radius_m,
+        leg_length_m: pattern.leg_length_m,
+    }
 }
 
 /// The true track, each shown set's track, ring and fix marks, and the coverage.

@@ -62,14 +62,7 @@ impl SetRun {
                 self.terrain_wall.2.max(took),
             );
             for record in &self.records {
-                let outcome = match &record.outcome {
-                    Outcome::Accepted => "accepted".to_owned(),
-                    Outcome::Rejected(reason) => format!("rejected:{}", reason_name(reason)),
-                    Outcome::Unused(reason) => format!(
-                        "unused:{reason}:{}",
-                        record.context.map_or("unmatched", |_| "matched")
-                    ),
-                };
+                let outcome = outcome_key(&record.outcome, record.context.is_some());
                 let context = record.context.unwrap_or("none");
                 for key in [outcome, format!("context:{context}")] {
                     let count = self.terrain_fixes.entry(key).or_default();
@@ -86,12 +79,6 @@ impl SetRun {
         Ok(())
     }
 
-    /// How many of the log's terrain frames the set has taken, handed over
-    /// or not: frames before this one it never reads again.
-    pub const fn terrain_frames_taken(&self) -> usize {
-        self.next_terrain
-    }
-
     /// The terrain camera's fixes so far, by outcome (`accepted`,
     /// `rejected:<filter reason>`, `unused:<navigator reason>`) and by
     /// context (`context:keyframe`, `context:render`).
@@ -104,6 +91,16 @@ impl SetRun {
     /// deterministic: for logs, never a result.
     pub const fn terrain_wall(&self) -> (f64, u64, f64) {
         self.terrain_wall
+    }
+
+    /// The record of the set's latest terrain match, when its navigator
+    /// keeps one ([`super::super::replay_set_inspecting`]) and has matched a
+    /// frame since.
+    pub fn last_terrain_match(&self) -> Option<&navigate_onboard::TerrainMatch> {
+        self.navigator
+            .as_any()
+            .downcast_ref::<navigate_onboard::ReferenceNavigator>()?
+            .last_terrain_match(TERRAIN_CAMERA_SOURCE)
     }
 
     /// The set's terrain-camera record, when it takes visual fixes: its
@@ -126,6 +123,20 @@ impl SetRun {
                 .and_then(|n| n.terrain_working_camera(TERRAIN_CAMERA_SOURCE))
                 .map(|camera| WorkingCameraReport::of(&camera)),
         })
+    }
+}
+
+/// A terrain frame's outcome as the tally keys it: `accepted`,
+/// `rejected:<filter reason>`, or `unused:<navigator reason>:matched` or
+/// `:unmatched`, by whether a reference view was `matched` against.
+pub fn outcome_key(outcome: &Outcome, matched: bool) -> String {
+    match outcome {
+        Outcome::Accepted => "accepted".to_owned(),
+        Outcome::Rejected(reason) => format!("rejected:{}", reason_name(reason)),
+        Outcome::Unused(reason) => format!(
+            "unused:{reason}:{}",
+            if matched { "matched" } else { "unmatched" }
+        ),
     }
 }
 

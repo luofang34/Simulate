@@ -8,6 +8,8 @@
 //! nothing about the flight that the feed does not say.
 
 mod camera;
+mod hold;
+mod matching;
 mod pacer;
 mod replay;
 mod thinning;
@@ -20,9 +22,13 @@ mod tests;
 use std::collections::BTreeMap;
 
 use sim_navigate::NavMeans;
-use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
+use sim_navigate::trial::{
+    EventKind, EventRecord, HoldingPatternRecord, ProgressRecord, SensorKind, SensorStates,
+};
 
 pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
+pub use hold::{HoldState, entry_words, leg_words, pattern_words};
+pub use matching::{GreyImage, MatchLine, MatchLog, MatchShot, OfferedPosition, SolvedFit};
 pub use pacer::{
     Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
     StepState, run_slice,
@@ -33,6 +39,18 @@ pub use trace::{Column, SetTrace, TracePoint};
 pub use words::{
     clock_words, event_words, pace_words, sensor_words, state_words, status_words, terrain_words,
 };
+
+/// The flight's picture when the plan completed, which a page keeps
+/// showing while the vehicle flies on in its hold.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RouteEnd {
+    /// Route time of the plan's completion, seconds.
+    pub t_s: f64,
+    /// The last waypoint, the one that completed the plan.
+    pub ident: String,
+    /// Each set's latest sample then, in the run's order of sets.
+    pub samples: Vec<Option<TracePoint>>,
+}
 
 /// Events the monitor keeps for its log; older ones drop off.
 pub const EVENTS_KEPT: usize = 12;
@@ -62,6 +80,8 @@ pub enum MonitorFeed {
     },
     /// A terrain-camera frame the flight delivered.
     Frame(CameraShot),
+    /// A visual set's latest terrain match.
+    Match(Box<MatchShot>),
 }
 
 /// A sensor a visitor can switch, because some set of the run uses it.
@@ -81,7 +101,9 @@ pub struct Monitor {
     waypoints: Vec<(String, (f64, f64))>,
     altitudes_m: Vec<f64>,
     sequenced: Option<(usize, bool)>,
+    hold_pattern: Option<HoldingPatternRecord>,
     camera: CameraLog,
+    matches: MatchLog,
     sensors: BTreeMap<String, SensorStates>,
     fixes: BTreeMap<String, BTreeMap<String, u64>>,
     phase: Option<String>,
@@ -90,6 +112,8 @@ pub struct Monitor {
     planned_duration_s: Option<f64>,
     sim_time_s: f64,
     finished: bool,
+    route_end: Option<RouteEnd>,
+    hold: Option<HoldState>,
 }
 
 impl Monitor {
@@ -112,6 +136,7 @@ impl Monitor {
                 self.fixes.insert(set, fixes);
             }
             MonitorFeed::Frame(shot) => self.camera.deliver(shot),
+            MonitorFeed::Match(shot) => self.matches.take(*shot),
         }
     }
 
@@ -150,13 +175,18 @@ impl Monitor {
             }
             ProgressRecord::Event(event) => {
                 self.sim_time_s = self.sim_time_s.max(event.t_s);
-                if let EventKind::WaypointSequenced {
-                    waypoint_index,
-                    plan_complete,
-                    ..
-                } = &event.kind
-                {
-                    self.sequenced = Some((*waypoint_index, *plan_complete));
+                self.note_route_end(&event);
+                self.hold = HoldState::after(self.hold.take(), &event.kind);
+                match &event.kind {
+                    EventKind::WaypointSequenced {
+                        waypoint_index,
+                        plan_complete,
+                        ..
+                    } => self.sequenced = Some((*waypoint_index, *plan_complete)),
+                    EventKind::HoldingStarted { pattern } => {
+                        self.hold_pattern = Some(pattern.clone());
+                    }
+                    _ => {}
                 }
                 self.events.push(event);
                 let over = self.events.len().saturating_sub(EVENTS_KEPT);
@@ -164,6 +194,39 @@ impl Monitor {
             }
             ProgressRecord::Finished(_) => self.finished = true,
         }
+    }
+
+    /// The plan's completion as `event` reports it, once.
+    fn note_route_end(&mut self, event: &EventRecord) {
+        let EventKind::WaypointSequenced {
+            ident,
+            plan_complete: true,
+            ..
+        } = &event.kind
+        else {
+            return;
+        };
+        if self.route_end.is_none() {
+            self.route_end = Some(RouteEnd {
+                t_s: event.t_s,
+                ident: ident.clone(),
+                samples: self
+                    .traces
+                    .iter()
+                    .map(|trace| trace.latest().copied())
+                    .collect(),
+            });
+        }
+    }
+
+    /// Where the vehicle is in the holding pattern it flies after its plan.
+    pub const fn hold(&self) -> Option<&HoldState> {
+        self.hold.as_ref()
+    }
+
+    /// The flight's picture when the plan completed, once it has.
+    pub const fn route_end(&self) -> Option<&RouteEnd> {
+        self.route_end.as_ref()
     }
 
     /// Every set's trace, in the run's order.
@@ -192,6 +255,16 @@ impl Monitor {
     /// whether that completed the plan; kept however many events follow.
     pub const fn sequenced(&self) -> Option<(usize, bool)> {
         self.sequenced
+    }
+
+    /// The holding pattern the mission host flies, once it holds.
+    pub const fn hold_pattern(&self) -> Option<&HoldingPatternRecord> {
+        self.hold_pattern.as_ref()
+    }
+
+    /// Each visual set's latest terrain matches.
+    pub const fn matches(&self) -> &MatchLog {
+        &self.matches
     }
 
     /// The terrain camera's latest frame, its outcomes and the fix marks.

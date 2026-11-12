@@ -15,7 +15,7 @@ use sim_core::{
     TickSpan, VehicleState,
 };
 use sim_devices::SensedTruth;
-use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
+use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
 use sim_pack::builtin_c172_package;
 
 use crate::airframe::specific_force_body_m_s2;
@@ -118,7 +118,7 @@ impl Airframe for C172Airframe {
         Ok(SensedTruth {
             vehicle,
             specific_force_body_m_s2: self.specific_force_body_m_s2,
-            angular_rate_body_rad_s: vehicle.angular_rate_body,
+            angular_rate_body_rad_s: vehicle.inertial_rate_body(&BodyEllipsoid::WGS84),
             air: self
                 .air
                 .sample(&position, self.utc)

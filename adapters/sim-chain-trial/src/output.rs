@@ -89,13 +89,20 @@ pub struct FrameRequest {
     pub sun_elevation_deg: f64,
 }
 
-/// What a chain trial's log keeps; it grows with the flight's length.
+/// What a chain trial's log keeps: bounded by how far its slowest reader
+/// lags, not by the flight's length.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Retained {
-    /// Navigation steps logged.
+    /// Navigation steps logged, forgotten ones included.
     pub steps: usize,
-    /// Terrain-camera frames logged.
-    pub terrain_frames: usize,
-    /// Pixel bytes those frames still hold: only frames some set has yet to take.
+    /// Steps whose instant, IMU increment or truth is still kept.
+    pub steps_kept: usize,
+    /// Receiver fixes and air-data samples still kept.
+    pub readings_kept: usize,
+    /// Star and terrain camera frames still kept.
+    pub frames_kept: usize,
+    /// Pixel bytes the kept terrain frames hold.
     pub terrain_pixel_bytes: usize,
+    /// Roughly the bytes all of it takes.
+    pub approximate_bytes: usize,
 }

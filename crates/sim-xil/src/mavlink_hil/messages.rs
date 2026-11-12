@@ -1,5 +1,6 @@
 use sim_atmosphere::geometric_to_geopotential_m;
 use sim_core::ControlInputs;
+use sim_geo::BodyEllipsoid;
 
 use crate::mavlink_hil::crc::{
     CRC_EXTRA_HEARTBEAT, CRC_EXTRA_HIL_ACTUATOR_CONTROLS, CRC_EXTRA_HIL_GPS, CRC_EXTRA_HIL_SENSOR,
@@ -120,7 +121,8 @@ pub struct HilSensorSample {
     pub time_usec: u64,
     /// Body FRD specific force (`m/s²`).
     pub accel_frd_m_s2: [f32; 3],
-    /// Body FRD angular velocity (`rad/s`).
+    /// Body FRD angular velocity relative to inertial space (`rad/s`), as
+    /// the gyroscopes sense it.
     pub gyro_frd_rad_s: [f32; 3],
     /// Body FRD magnetic field (`Gauss`).
     pub mag_frd_gauss: [f32; 3],
@@ -199,7 +201,7 @@ impl HilSensorSample {
         let pressure_ratio = (stimulus.static_pressure_pa / SEA_LEVEL_PRESSURE_PA).max(1.0e-9);
         let pressure_alt_m = 44_330.0 * (1.0 - pressure_ratio.powf(0.190_294_95));
         let f = stimulus.specific_force_body_m_s2;
-        let w = stimulus.vehicle.angular_rate_body;
+        let w = stimulus.vehicle.inertial_rate_body(&BodyEllipsoid::WGS84);
         let m = stimulus.mag_field_body_gauss;
         Ok(Self {
             time_usec,

@@ -2,20 +2,25 @@
 //! short calls, each terrain-camera frame rendered and delivered within
 //! the same call, and the run ended where the link's flight ends.
 
+use std::collections::BTreeMap;
+
 use glam::{DQuat, DVec3};
 use sim_chain_trial::{ChainTrial, FrameRequest, StepOutcome};
 use sim_geo::ecef_to_geodetic;
 use sim_navigate::trial::{ProgressRecord, SensorKind};
 
 use super::{feeds, finished, intrinsics};
-use crate::{CameraShot, CameraWorld, Clock, FlightStepper, HostError, MonitorFeed, StepState};
+use crate::{
+    CameraShot, CameraWorld, Clock, FlightStepper, HostError, MatchShot, MonitorFeed, StepState,
+};
 
 /// Route time one call of the chain may cover, seconds: a call returns to
 /// the page's slice no later than this, whatever the target.
 pub const MAX_STEP_S: f64 = 0.25;
 /// Route time the run may go on past half again its planned duration,
 /// seconds, before the page ends it: a mission that never completes still
-/// ends.
+/// ends. One that completes flies on in its hold for as long as the page
+/// is open.
 pub const OVERRUN_S: f64 = 120.0;
 
 /// The chain trial flown in a page.
@@ -27,6 +32,9 @@ pub struct ChainFlight<C> {
     camera_wall_s: f64,
     end_s: f64,
     ended: bool,
+    /// Each set's latest terrain match handed to the monitor: its frame's
+    /// instant, nanoseconds.
+    matched: BTreeMap<String, u64>,
 }
 
 impl<C: Clock> ChainFlight<C> {
@@ -41,6 +49,7 @@ impl<C: Clock> ChainFlight<C> {
             camera_wall_s: 0.0,
             end_s: f64::INFINITY,
             ended: false,
+            matched: BTreeMap::new(),
         }
     }
 
@@ -77,6 +86,19 @@ impl<C: Clock> ChainFlight<C> {
         Ok(())
     }
 
+    /// Hands the monitor each set's terrain match that is newer than the
+    /// last one it got; a trial built without inspection has none.
+    fn collect_matches(&mut self, out: &mut Vec<MonitorFeed>) {
+        for (set, found) in self.trial.terrain_matches() {
+            let at = found.acquired_at().as_nanos();
+            if self.matched.get(set) == Some(&at) {
+                continue;
+            }
+            self.matched.insert(set.to_owned(), at);
+            out.push(MonitorFeed::Match(Box::new(MatchShot::of(set, found))));
+        }
+    }
+
     /// Notes what the new feeds say of the run's end.
     fn watch(&mut self, feeds: &[MonitorFeed]) {
         for feed in feeds {
@@ -85,6 +107,9 @@ impl<C: Clock> ChainFlight<C> {
             };
             if let ProgressRecord::Started(started) = record {
                 self.end_s = 1.5 * started.route.planned_duration_s + OVERRUN_S;
+            }
+            if super::completes_plan(record) {
+                self.end_s = f64::INFINITY;
             }
             self.ended |= super::ends_flight(record);
         }
@@ -112,6 +137,7 @@ impl<C: Clock> FlightStepper for ChainFlight<C> {
                 self.develop(&request, out)?;
             }
         }
+        self.collect_matches(out);
         self.watch(out.get(from..).unwrap_or_default());
         if self.ended {
             out.push(MonitorFeed::Progress(finished(

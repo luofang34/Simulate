@@ -11,6 +11,7 @@
 //! emits `finished`, because only it knows where the result went and how
 //! long the run took on the wall clock.
 
+mod holding;
 mod slices;
 #[cfg(test)]
 mod tests;
@@ -19,6 +20,9 @@ use std::io;
 
 use serde::{Deserialize, Serialize};
 
+pub use holding::{
+    HoldingEntryName, HoldingFix, HoldingLegName, HoldingPatternRecord, HoldingTurnName,
+};
 pub(super) use slices::{Scored, Slices, started};
 
 use super::GuidanceSource;
@@ -214,6 +218,23 @@ pub enum EventKind {
     GuidanceRefused {
         /// Navigate's refusal kind.
         refusal: String,
+    },
+    /// The flight's host started a holding pattern after its plan.
+    HoldingStarted {
+        /// The pattern.
+        pattern: HoldingPatternRecord,
+    },
+    /// The vehicle reached the holding fix and started this entry.
+    HoldingEntered {
+        /// The entry.
+        entry: HoldingEntryName,
+    },
+    /// The part of the holding pattern flown changed.
+    HoldingLegChanged {
+        /// The part flown now.
+        leg: HoldingLegName,
+        /// The circuits completed since the entry.
+        circuits: u32,
     },
     /// A closed-loop flight was ended by a termination rule.
     Terminated {

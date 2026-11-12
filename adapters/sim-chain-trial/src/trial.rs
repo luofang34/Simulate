@@ -2,6 +2,7 @@
 
 mod camera;
 mod feed;
+mod holding;
 mod records;
 mod sets;
 mod setup;
@@ -11,10 +12,11 @@ mod tests;
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use sim_core::SimInstant;
-use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain};
+use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    LiveStarCamera, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
+    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, TerrainMatch,
+    replay_set_inspecting,
 };
 
 use crate::nav_log::NavLog;
@@ -51,12 +53,24 @@ pub struct ChainTrial {
     pending: Outputs,
     records: records::Recorder,
     feed: Option<feed::FeedClock>,
+    holding: holding::HoldingWatch,
 }
 
 impl ChainTrial {
     /// The trial of `spec`, its onboard packages read from `stores`: the
     /// aeroplane trimmed at the start, every set aligned, nothing flown.
     pub fn new(spec: &ChainTrialSpec, stores: &dyn MapStores) -> Result<Self, ChainTrialError> {
+        Self::new_inspecting(spec, stores, false)
+    }
+
+    /// [`Self::new`], whose visual sets keep a record of their latest
+    /// terrain match when `inspect` is on ([`Self::terrain_matches`]). The
+    /// flight and every navigator's output are the same either way.
+    pub fn new_inspecting(
+        spec: &ChainTrialSpec,
+        stores: &dyn MapStores,
+        inspect: bool,
+    ) -> Result<Self, ChainTrialError> {
         let resolved = setup::resolve(spec)?;
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
@@ -67,7 +81,7 @@ impl ChainTrial {
             .sensor_sets
             .iter()
             .map(|set| {
-                let run = replay_set_with_stores(request, set, &nav.log, stores)?;
+                let run = replay_set_inspecting(request, set, &nav.log, (stores, inspect))?;
                 Ok(SetSlot::new(set.name.clone(), run, |kind| {
                     has_sensor(&set.means, kind)
                 }))
@@ -117,6 +131,7 @@ impl ChainTrial {
             progress_steps,
             pending: Outputs::default(),
             feed: None,
+            holding: holding::HoldingWatch::default(),
         })
     }
 
@@ -132,9 +147,27 @@ impl ChainTrial {
         feed::avionics(&self.chain)
     }
 
-    /// What the trial's log keeps, which grows with the flight's length.
+    /// What the trial's log keeps: as much as its slowest reader has yet to
+    /// take, however long the flight.
     pub fn retained(&self) -> crate::Retained {
         self.nav.retained()
+    }
+
+    /// What Pilotage's navigation display shows of the mission now: the
+    /// plan, the leg flown and the holding pattern after it. It is the
+    /// flight-management side, apart from the flight controller's account.
+    pub fn navigation(&self) -> Option<&NavigationDisplay> {
+        self.chain.status().navigation.as_ref()
+    }
+
+    /// Each visual set's latest terrain match, by set name, for a trial built
+    /// inspecting them.
+    pub fn terrain_matches(&self) -> impl Iterator<Item = (&str, &TerrainMatch)> {
+        self.sets.iter().filter_map(|slot| {
+            slot.run
+                .last_terrain_match()
+                .map(|found| (slot.name.as_str(), found))
+        })
     }
 
     /// The true aeroplane now, for drawing the world outside it only.
@@ -263,6 +296,11 @@ impl ChainTrial {
         let events = self.chain.drain_events();
         let sequenced = self.records.sequenced(&events);
         self.pending.records.extend(sequenced);
+        let now_s = self.now_s();
+        let held = self
+            .holding
+            .records(now_s, &events, self.chain.status().navigation.as_ref());
+        self.pending.records.extend(held);
         let phase = self.chain.status().mission_state.map(|s| format!("{s:?}"));
         if let Some(update) = self.records.mission(self.now_s(), phase, &events) {
             self.pending.mission.push(update);
@@ -270,19 +308,26 @@ impl ChainTrial {
         Ok(())
     }
 
-    /// Every set to `step`, then the pixels released of the terrain frames
-    /// all of them have taken.
+    /// Every set to `step`, then the log released up to the slowest set and
+    /// the truth up to the star camera's open exposure.
     fn advance_sets(&mut self, step: usize) -> Result<(), ChainTrialError> {
         for slot in &mut self.sets {
             slot.run.advance_to(&self.nav.log, step)?;
         }
-        let taken = self
+        let Some(positions) = self
             .sets
             .iter()
-            .map(|slot| slot.run.terrain_frames_taken())
-            .min();
+            .map(|slot| slot.run.positions())
+            .reduce(LogPositions::earliest)
+        else {
+            return Ok(());
+        };
+        let looking_back = self
+            .stars
+            .as_ref()
+            .map_or(0, LiveStarCamera::exposure_steps);
         self.nav
-            .release_terrain_before(taken.unwrap_or(self.nav.log.terrain.len()));
+            .release_before(&positions, step.saturating_sub(looking_back));
         Ok(())
     }
 

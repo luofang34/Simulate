@@ -148,10 +148,7 @@ fn rotation_vectors_keep_their_digits_near_the_identity() {
 /// thousandth of a degree a second, from its own statistics.
 #[test]
 fn a_minute_on_the_ground_leaves_the_consumer_gyroscope_a_small_residual() {
-    let calibration = GroundCalibration {
-        window_s: GroundCalibration::WINDOW_S,
-        seed: 0,
-    };
+    let calibration = GroundCalibration::at_rest(0);
     let spec = ImuGrade::ConsumerMemsCalibrated.spec();
     let sigma_deg_s = calibration
         .residual_variance(&spec.gyro)
@@ -173,10 +170,7 @@ fn a_ground_calibration_misses_by_its_declared_sigma() {
     let (mut squares, draws) = (0.0, 400_u64);
     let mut declared = 0.0;
     for seed in 0..draws {
-        let calibration = GroundCalibration {
-            window_s: GroundCalibration::WINDOW_S,
-            seed,
-        };
+        let calibration = GroundCalibration::at_rest(seed);
         let bias = DVec3::new(0.01, -0.004, 0.007);
         let prior = calibration.prior(&spec, bias).unwrap();
         squares += (DVec3::from_array(prior.gyro_bias_body_rad_s) - bias).length_squared();
@@ -206,10 +200,7 @@ fn a_ground_calibrated_unit_holds_its_heading_unaided() {
         let mut fix = InitialAlignment::EXACT.measure(&truth);
         let bias = imu.errors().gyro_bias_rad_s();
         if calibrated {
-            let calibration = GroundCalibration {
-                window_s: GroundCalibration::WINDOW_S,
-                seed: 3,
-            };
+            let calibration = GroundCalibration::at_rest(3);
             fix.imu_bias_prior = calibration.prior(&spec, bias);
         }
         let mut navigator = InertialNavigator::new(

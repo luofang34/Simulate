@@ -5,12 +5,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use sim_chain_trial::{ChainTrial, TruthSnapshot};
-use sim_flight_chain::FcAvionics;
+use sim_flight_chain::{FcAvionics, NavigationDisplay};
 
 use crate::page_map::PageMapLink;
 
 /// The chain at one instant: the truth for the world outside, the flight controller's
-/// account for the displays, and Pilotage's mission phase.
+/// account for the displays, and Pilotage's mission phase and navigation display.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageSnapshot {
     /// TRUTH: the true aeroplane, for drawing the world outside it only.
@@ -19,6 +19,8 @@ pub struct PageSnapshot {
     pub avionics: FcAvionics,
     /// Pilotage's mission phase, in its own words.
     pub phase: Option<String>,
+    /// Pilotage's navigation display: the plan, the leg flown and the holding pattern.
+    pub navigation: Option<NavigationDisplay>,
 }
 
 impl PageSnapshot {
@@ -29,6 +31,7 @@ impl PageSnapshot {
             truth: trial.truth(),
             avionics: trial.avionics(),
             phase,
+            navigation: trial.navigation().cloned(),
         }
     }
 

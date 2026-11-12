@@ -1,6 +1,7 @@
 //! The flight monitor on the page: the status line, the error plot, a
 //! legend that shows or hides each set, a switch for each means the run
-//! uses, the track map, the terrain camera's latest frame, the pace, the
+//! uses, the track map, the terrain camera's latest frame and what the visual
+//! navigator matched it against, the pace, the
 //! link of the run, the terrain camera's tallies, the mission host's
 //! reports and the latest events.
 //!
@@ -8,6 +9,7 @@
 //! loop runs every animation frame anyway, so a click shows within a frame.
 
 mod frame_panel;
+mod match_panel;
 mod page_map;
 mod plot;
 mod track_map;
@@ -15,8 +17,8 @@ mod track_map;
 use std::collections::BTreeSet;
 
 use sim_link_host::{
-    CameraWorld, MeansSwitch, Monitor, PlanLine, clock_words, event_words, sensor_words,
-    state_words, status_words, terrain_words,
+    CameraWorld, MeansSwitch, Monitor, PlanLine, TracePoint, clock_words, event_words,
+    sensor_words, state_words, status_words, terrain_words,
 };
 use sim_navigate::NavMeans;
 use sim_navigate::trial::SensorKind;
@@ -25,6 +27,7 @@ use web_sys::{Document, Element, HtmlInputElement};
 
 use super::section::{Section, append, write_lines};
 use frame_panel::FramePanel;
+use match_panel::MatchPanel;
 use page_map::PageMap;
 pub use page_map::PageMapSetup;
 use plot::Plot;
@@ -72,6 +75,7 @@ pub struct MonitorView {
     map: TrackMap,
     page_map: Option<PageMap>,
     frame: FramePanel,
+    matching: MatchPanel,
     legend: Element,
     switches: Element,
     speeds: Element,
@@ -111,6 +115,7 @@ impl MonitorView {
         let page_map = page_map.and_then(|setup| PageMap::under(&document, &root, setup));
         let map = TrackMap::under(&document, &root, world)?;
         let frame = FramePanel::under(&document, &root)?;
+        let matching = MatchPanel::under(&document, &root)?;
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);
@@ -127,6 +132,7 @@ impl MonitorView {
             map,
             page_map,
             frame,
+            matching,
             legend,
             switches,
             speeds,
@@ -200,6 +206,7 @@ impl MonitorView {
         self.legend_values(monitor);
         self.draw_map(monitor, &controls.hidden);
         self.frame.draw(monitor);
+        self.matching.draw(monitor);
         self.switch_states(monitor);
         let mut visual: Vec<PlanLine> = monitor
             .traces()
@@ -273,20 +280,22 @@ impl MonitorView {
     }
 
     fn legend_values(&self, monitor: &Monitor) {
-        for (trace, value) in monitor.traces().iter().zip(values(&self.legend)) {
-            let text =
-                trace
-                    .latest()
-                    .map_or_else(String::new, |latest| match latest.sigma_horizontal_m {
-                        Some(sigma) => format!(
-                            "{:.1} m off the truth, {sigma:.1} m one-sigma",
-                            latest.horizontal_error_m
-                        ),
-                        None => format!(
-                            "{:.1} m off the truth, no uncertainty stated",
-                            latest.horizontal_error_m
-                        ),
-                    });
+        let ends = monitor.route_end().map(|end| end.samples.as_slice());
+        for (index, (trace, value)) in monitor
+            .traces()
+            .iter()
+            .zip(values(&self.legend))
+            .enumerate()
+        {
+            let now = trace.latest().map(sample_words);
+            let at_end = ends
+                .and_then(|samples| samples.get(index).copied().flatten())
+                .map(|sample| sample_words(&sample));
+            let text = match (at_end, now) {
+                (Some(end), Some(now)) => format!("at the route's end {end}; now {now}"),
+                (Some(end), None) => format!("at the route's end {end}"),
+                (None, now) => now.unwrap_or_default(),
+            };
             value.set_text_content(Some(&text));
         }
     }
@@ -395,5 +404,19 @@ fn speed_choices(document: &Document, speeds: &Element, speed: Option<f64>) {
         if let Some(text) = append(document, &label, "span", "") {
             text.set_text_content(Some(words));
         }
+    }
+}
+
+/// One sample of a set in words: its error and the uncertainty it states.
+fn sample_words(sample: &TracePoint) -> String {
+    match sample.sigma_horizontal_m {
+        Some(sigma) => format!(
+            "{:.1} m off the truth, {sigma:.1} m one-sigma",
+            sample.horizontal_error_m
+        ),
+        None => format!(
+            "{:.1} m off the truth, no uncertainty stated",
+            sample.horizontal_error_m
+        ),
     }
 }

@@ -6,6 +6,8 @@
 mod tally;
 mod terrain;
 
+pub use terrain::outcome_key;
+
 use std::collections::BTreeMap;
 
 use navigate_contract::{MonotonicNanos, NavigationSolution, SourceId};
@@ -13,7 +15,7 @@ use navigate_fusion::RejectionReason;
 use navigate_onboard::{AcceptanceRecord, Alignment, Navigator, Outcome, SensorData, SensorInput};
 use sim_core::SimInstant;
 
-use super::record::SensorLog;
+use super::record::{LogPositions, SensorLog};
 use tally::Ledger;
 pub use tally::{ObservationTally, SensorTallies, StarAvailability};
 use tally::{Reading, sensor_state};
@@ -100,7 +102,7 @@ impl SetRun {
         mut navigator: Box<dyn Navigator>,
     ) -> Result<Self, TrialError> {
         let clock = MasterClockBridge::default();
-        let start = log.instants.first().copied().unwrap_or(SimInstant::START);
+        let start = log.instants.get(0).copied().unwrap_or(SimInstant::START);
         let fix = &log.alignment;
         navigator.align(&Alignment {
             position: fix.position,
@@ -148,6 +150,18 @@ impl SetRun {
     /// The last step processed.
     pub const fn step(&self) -> usize {
         self.step
+    }
+
+    /// The first position of each part of the log this run may still read.
+    pub const fn positions(&self) -> LogPositions {
+        LogPositions {
+            step: self.step,
+            gnss: self.next_gnss,
+            baro: self.next_baro,
+            star_openings: self.next_opening,
+            stars: self.next_reading,
+            terrain: self.next_terrain,
+        }
     }
 
     /// Per-sensor tallies so far.
@@ -233,31 +247,39 @@ impl SetRun {
 
     /// The star frame opening or read out at `step`. A frame any instant
     /// of whose mid-exposure to readout a schedule covers is neither
-    /// announced at mid-exposure nor read: the camera gave nothing.
+    /// announced at mid-exposure nor read: the camera gave nothing. A set
+    /// without the stars passes the frames by too, so a log that forgets
+    /// what every set has passed is not held back by it.
     fn stars_at(
         &mut self,
         log: &SensorLog,
         step: usize,
         now: MonotonicNanos,
     ) -> Result<(), TrialError> {
+        let opening = log.star_mid_steps.get(self.next_opening) == Some(&step);
+        if opening {
+            self.next_opening = self.next_opening.wrapping_add(1);
+        }
+        let frame = log
+            .stars
+            .get(self.next_reading)
+            .filter(|frame| frame.image.end_step == step);
+        if frame.is_some() {
+            self.next_reading = self.next_reading.wrapping_add(1);
+        }
         if !self.selection.means.contains(NavMeans::Celestial) {
             return Ok(());
         }
-        if log.star_mid_steps.get(self.next_opening) == Some(&step) {
+        if opening {
             let end = step.wrapping_add(self.star_half_exposure_steps);
             let availability = &self.selection.availability;
             if !availability.withheld(SensorKind::Stars, step_seconds(step), step_seconds(end)) {
                 self.ingest(STAR_SOURCE, (now, now), SensorData::StarExposureMid)?;
             }
-            self.next_opening = self.next_opening.wrapping_add(1);
         }
-        let Some(frame) = log.stars.get(self.next_reading) else {
+        let Some(frame) = frame else {
             return Ok(());
         };
-        if frame.image.end_step != step {
-            return Ok(());
-        }
-        self.next_reading = self.next_reading.wrapping_add(1);
         let window = (step_seconds(frame.image.mid_step), step_seconds(step));
         if self
             .selection

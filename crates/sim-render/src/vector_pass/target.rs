@@ -10,10 +10,22 @@ pub const VECTOR_COLOUR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8
 pub const VECTOR_SAMPLE_COUNT: u32 = 4;
 
 struct Attachments {
+    msaa: wgpu::Texture,
     msaa_view: wgpu::TextureView,
+    depth: wgpu::Texture,
     depth_view: wgpu::TextureView,
     resolve: wgpu::Texture,
     resolve_view: wgpu::TextureView,
+}
+
+impl Attachments {
+    /// Frees the textures now. On WebGPU dropping a texture frees nothing until the
+    /// page's garbage collector runs, so a resize would otherwise hold both sizes.
+    fn destroy(&self) {
+        self.msaa.destroy();
+        self.depth.destroy();
+        self.resolve.destroy();
+    }
 }
 
 /// Multisampled attachments, per-target GPU buffers, and the single-sample
@@ -27,10 +39,7 @@ struct Attachments {
 /// [`OverlayQuad::vector_overlay`](crate::OverlayQuad::vector_overlay).
 pub struct VectorTarget {
     label: &'static str,
-    msaa_view: wgpu::TextureView,
-    depth_view: wgpu::TextureView,
-    resolve: wgpu::Texture,
-    resolve_view: wgpu::TextureView,
+    attachments: Attachments,
     viewport: wgpu::Buffer,
     bind_group: Option<wgpu::BindGroup>,
     vertices: Option<wgpu::Buffer>,
@@ -55,10 +64,7 @@ impl VectorTarget {
         });
         Ok(Self {
             label,
-            msaa_view: att.msaa_view,
-            depth_view: att.depth_view,
-            resolve_view: att.resolve_view,
-            resolve: att.resolve,
+            attachments: att,
             viewport,
             bind_group: None,
             vertices: None,
@@ -79,10 +85,7 @@ impl VectorTarget {
             return Ok(());
         }
         let att = allocate_attachments(device, self.label, width, height)?;
-        self.msaa_view = att.msaa_view;
-        self.depth_view = att.depth_view;
-        self.resolve = att.resolve;
-        self.resolve_view = att.resolve_view;
+        std::mem::replace(&mut self.attachments, att).destroy();
         self.size = [width, height];
         Ok(())
     }
@@ -90,13 +93,13 @@ impl VectorTarget {
     /// Resolved single-sample premultiplied colour view.
     #[must_use]
     pub const fn view(&self) -> &wgpu::TextureView {
-        &self.resolve_view
+        &self.attachments.resolve_view
     }
 
     /// Resolved single-sample colour texture, for copies and readback.
     #[must_use]
     pub const fn texture(&self) -> &wgpu::Texture {
-        &self.resolve
+        &self.attachments.resolve
     }
 
     /// Attachment size `[width_px, height_px]`.
@@ -106,11 +109,11 @@ impl VectorTarget {
     }
 
     pub(super) const fn msaa_view(&self) -> &wgpu::TextureView {
-        &self.msaa_view
+        &self.attachments.msaa_view
     }
 
     pub(super) const fn depth_view(&self) -> &wgpu::TextureView {
-        &self.depth_view
+        &self.attachments.depth_view
     }
 
     pub(super) fn write_viewport(&self, queue: &wgpu::Queue) {
@@ -220,6 +223,8 @@ fn allocate_attachments(
         msaa_view: view(&msaa),
         depth_view: view(&depth),
         resolve_view: view(&resolve),
+        msaa,
+        depth,
         resolve,
     })
 }

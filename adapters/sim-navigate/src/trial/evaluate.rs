@@ -21,7 +21,7 @@ use super::comparison::comparison;
 use super::epoch::parse_utc;
 use super::map_store::{DirectoryStores, MapStores};
 use super::maps::OpenedPackage;
-use super::onboard::trial_navigator_with_stores;
+use super::onboard::trial_navigator_inspecting;
 use super::progress::{NoProgress, ProgressSink, started};
 use super::record::{SensorLog, record};
 use super::replay::{SensorTallies, SetRun, SetSelection, StarAvailability};
@@ -94,7 +94,7 @@ pub fn record_trial_with_stores(
     let mut terrain_render_s = 0.0;
     if let Some(camera) = terrain_camera(request, stores)? {
         let started = web_time::Instant::now();
-        log.terrain = camera.render_along(&flight.truth)?;
+        log.terrain = camera.render_along(&flight.truth)?.into();
         terrain_render_s = started.elapsed().as_secs_f64();
     }
     Ok(RecordedTrial {
@@ -246,6 +246,18 @@ pub fn replay_set_with_stores(
     log: &SensorLog,
     stores: &dyn MapStores,
 ) -> Result<SetRun, TrialError> {
+    replay_set_inspecting(request, set, log, (stores, false))
+}
+
+/// [`replay_set_with_stores`], whose visual navigator keeps a record of its
+/// latest terrain match when `inspect` is on
+/// ([`SetRun::last_terrain_match`]); the run is the same either way.
+pub fn replay_set_inspecting(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    log: &SensorLog,
+    (stores, inspect): (&dyn MapStores, bool),
+) -> Result<SetRun, TrialError> {
     let selection = SetSelection {
         means: set.ablation_set(),
         availability: SetAvailability::resolve(request, set)?,
@@ -253,7 +265,7 @@ pub fn replay_set_with_stores(
     SetRun::new(
         log,
         selection,
-        trial_navigator_with_stores(request, set, stores)?,
+        trial_navigator_inspecting(request, set, stores, inspect)?,
     )
 }
 

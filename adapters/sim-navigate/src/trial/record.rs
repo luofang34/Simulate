@@ -13,6 +13,10 @@ use super::terrain_camera::TerrainFrame;
 use super::{TrialError, TrialRequest};
 use crate::{AlignmentFix, InitialAlignment, SimulatedImu, Truth};
 
+mod window;
+
+pub use window::LogWindow;
+
 /// A reading delivered at one simulation step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Logged<T> {
@@ -24,26 +28,101 @@ pub struct Logged<T> {
 
 /// Everything the sensors reported along one flight. The only truth in it is
 /// each star frame's scene record, behind [`Truth`], which a replay never
-/// reads.
+/// reads. Each part is read by absolute position; a log grown as a flight
+/// goes forgets what every reader has passed ([`SensorLog::release_before`]).
 #[derive(Debug, Clone)]
 pub struct SensorLog {
     /// The instant of every simulation step.
-    pub instants: Vec<SimInstant>,
+    pub instants: LogWindow<SimInstant>,
     /// The initial alignment at step 0.
     pub alignment: AlignmentFix,
     /// The IMU increment ending at each step from step 1.
-    pub imu: Vec<InertialIncrement>,
+    pub imu: LogWindow<InertialIncrement>,
     /// GNSS receiver fixes.
-    pub gnss: Vec<Logged<GnssReading>>,
+    pub gnss: LogWindow<Logged<GnssReading>>,
     /// Static-port samples.
-    pub baro: Vec<Logged<AirDataSample>>,
+    pub baro: LogWindow<Logged<AirDataSample>>,
     /// Star camera frames; their truth part is for scoring only.
-    pub stars: Vec<StarFrame>,
+    pub stars: LogWindow<StarFrame>,
     /// The mid-exposure step of every frame, in order, known from the
     /// camera's schedule before the frame is read out.
-    pub star_mid_steps: Vec<usize>,
+    pub star_mid_steps: LogWindow<usize>,
     /// Terrain camera frames; their truth part is for scoring only.
-    pub terrain: Vec<TerrainFrame>,
+    pub terrain: LogWindow<TerrainFrame>,
+}
+
+/// True states looked up by step, from a whole flight's record or from the
+/// window of it a flight still being flown keeps.
+pub trait TruthAtStep {
+    /// The true state at `step`, when it is held.
+    fn truth_at(&self, step: usize) -> Option<&Truth<(SimInstant, VehicleState)>>;
+}
+
+impl TruthAtStep for [Truth<(SimInstant, VehicleState)>] {
+    fn truth_at(&self, step: usize) -> Option<&Truth<(SimInstant, VehicleState)>> {
+        self.get(step)
+    }
+}
+
+impl TruthAtStep for Vec<Truth<(SimInstant, VehicleState)>> {
+    fn truth_at(&self, step: usize) -> Option<&Truth<(SimInstant, VehicleState)>> {
+        self.get(step)
+    }
+}
+
+impl TruthAtStep for LogWindow<Truth<(SimInstant, VehicleState)>> {
+    fn truth_at(&self, step: usize) -> Option<&Truth<(SimInstant, VehicleState)>> {
+        self.get(step)
+    }
+}
+
+/// Where a reader of a [`SensorLog`] is: the first position of each part it
+/// may still read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogPositions {
+    /// The step: its instant and every later IMU increment.
+    pub step: usize,
+    /// The next GNSS fix.
+    pub gnss: usize,
+    /// The next static-port sample.
+    pub baro: usize,
+    /// The next star frame's mid-exposure step.
+    pub star_openings: usize,
+    /// The next star frame.
+    pub stars: usize,
+    /// The next terrain frame.
+    pub terrain: usize,
+}
+
+impl LogPositions {
+    /// The earlier of `self` and `other` in every part: where the slower of
+    /// two readers is.
+    #[must_use]
+    pub fn earliest(self, other: Self) -> Self {
+        Self {
+            step: self.step.min(other.step),
+            gnss: self.gnss.min(other.gnss),
+            baro: self.baro.min(other.baro),
+            star_openings: self.star_openings.min(other.star_openings),
+            stars: self.stars.min(other.stars),
+            terrain: self.terrain.min(other.terrain),
+        }
+    }
+}
+
+impl SensorLog {
+    /// Forgets everything before `positions`, which every reader has passed.
+    /// The IMU increment ending at step `n + 1` sits at position `n`, so a
+    /// reader at `step` still needs the increment from `step` on.
+    pub fn release_before(&mut self, positions: &LogPositions) {
+        self.instants.release_before(positions.step);
+        self.imu.release_before(positions.step);
+        self.gnss.release_before(positions.gnss);
+        self.baro.release_before(positions.baro);
+        self.star_mid_steps.release_before(positions.star_openings);
+        self.stars.release_before(positions.stars);
+        self.terrain.release_before(positions.terrain);
+    }
 }
 
 /// Steps between readings of a sensor at `rate_hz`.
@@ -100,12 +179,12 @@ pub fn record(
     Ok(SensorLog {
         instants: truth.iter().map(|sample| sample.get().0).collect(),
         alignment,
-        imu: increments,
-        gnss,
-        baro,
+        imu: increments.into(),
+        gnss: gnss.into(),
+        baro: baro.into(),
         star_mid_steps: stars.iter().map(|frame| frame.image.mid_step).collect(),
-        terrain: Vec::new(),
-        stars,
+        terrain: LogWindow::new(),
+        stars: stars.into(),
     })
 }
 

@@ -85,3 +85,6 @@ web-sys = { workspace = true, features = [
     "WheelEvent",
     "Window",
 ] }
+
+[dev-dependencies]
+navigate-contract = { workspace = true }
