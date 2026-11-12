@@ -4,16 +4,17 @@
 
 use navigate_data::{MemoryStore, Sha256Digest};
 use sim_chain_trial::{
-    CalibrationName, ChainTrialSpec, DeviceOutage, FrameRequest, Outputs, StartSpec, Steering,
+    CalibrationName, ChainTrialSpec, DeviceOutage, FrameRequest, HoldSpec, HoldTurn, Outputs,
+    StartSpec, Steering,
 };
 use sim_geo::SensorIntrinsics;
-use sim_link::{Sensor, SimulationLink};
+use sim_link::{Sensor, SimulationLink, TurnDirection, Vehicle};
 use sim_navigate::trial::{
     AssumedAccuracy, EventKind, FinishedRecord, GeoidChoice, MapStore, MapsSpec, NamedStores,
     OnboardMapSpec, PackageRef, ProgressRecord, SensorKind,
 };
 
-use crate::{HostError, HostedRequest, MonitorFeed};
+use crate::{HostError, HostedHold, HostedRequest, MonitorFeed};
 
 mod flight;
 
@@ -21,6 +22,9 @@ mod flight;
 mod tests;
 
 pub use flight::{ChainFlight, MAX_STEP_S, OVERRUN_S};
+
+/// The cruise speeds the C172's chain trial flies, m/s.
+pub const C172_CRUISE_M_S: std::ops::RangeInclusive<f64> = 30.0..=120.0;
 
 /// The store name the page registers its sealed package under.
 pub const PAGE_STORE: &str = "page";
@@ -69,13 +73,15 @@ fn bearing_deg(from: [f64; 2], to: [f64; 2]) -> f64 {
 ///
 /// # Errors
 ///
-/// Refuses a visual link without a package, and a route of fewer than two
-/// waypoints.
+/// Refuses a vehicle other than the C172 and a cruise speed outside
+/// [`C172_CRUISE_M_S`], a visual link without a package, and a route of
+/// fewer than two waypoints.
 pub fn chain_spec(
     link: &SimulationLink,
     hosted: &HostedRequest,
     package: Option<Sha256Digest>,
 ) -> Result<ChainTrialSpec, HostError> {
+    flies_on_the_c172(hosted)?;
     let mut request = hosted.trial.clone();
     request.availability.clear();
     for set in &mut request.sensor_sets {
@@ -144,7 +150,37 @@ pub fn chain_spec(
         steering: Steering::Set(hosted.steering_set.clone()),
         calibration: CalibrationName::Calibrated,
         outages,
+        hold: hosted.hold.map(hold_spec),
     })
+}
+
+/// Refuses a vehicle other than the C172, and a cruise speed it does not
+/// fly.
+fn flies_on_the_c172(hosted: &HostedRequest) -> Result<(), HostError> {
+    if hosted.vehicle != Vehicle::C172 {
+        return Err(HostError::ChainVehicle {
+            detail: format!("the link asks for the {}", hosted.vehicle.key()),
+        });
+    }
+    let cruise_m_s = hosted.trial.vehicle.cruise_speed_m_s;
+    if !C172_CRUISE_M_S.contains(&cruise_m_s) {
+        return Err(HostError::ChainVehicle {
+            detail: format!("a cruise speed of {cruise_m_s} m/s; the C172 flies 30 to 120 m/s"),
+        });
+    }
+    Ok(())
+}
+
+/// The chain trial's hold of the link's hold at the last fix.
+fn hold_spec(hold: HostedHold) -> HoldSpec {
+    HoldSpec {
+        turn: match hold.stated.turn {
+            TurnDirection::Left => HoldTurn::Left,
+            TurnDirection::Right => HoldTurn::Right,
+        },
+        leg_time_s: hold.stated.leg_time_s,
+        altitude_m: hold.altitude_m,
+    }
 }
 
 /// The renderer's pinhole of a frame request.

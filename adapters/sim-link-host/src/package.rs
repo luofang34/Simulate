@@ -5,8 +5,9 @@ use navigate_data::{LayerKind, PlannedCamera};
 use sim_link::{HeightDatum, Micro, Milli, SimulationLink};
 use sim_navdata::{NavdataError, PackagePlan, PrefetchProgress, SealedPackage, planned_camera};
 
+use crate::request::stated_height_m;
 use crate::wording::line;
-use crate::{HostError, HostedRequest, PlanLine, PlanSummary};
+use crate::{HostError, HostedRequest, PlanLine, PlanSummary, flyable_route};
 
 #[cfg(test)]
 mod tests;
@@ -20,19 +21,17 @@ pub const fn budget_bytes(link: &SimulationLink) -> u64 {
 }
 
 /// The points the package is planned along: the start when the link gives
-/// one, then the waypoints, each `[lat, lon, height]` in degrees and metres
-/// above mean sea level, the reference of the elevation source.
+/// one, then the fixes the route flies to, each `[lat, lon, height]` in
+/// degrees and metres above mean sea level, the reference of the elevation
+/// source.
 ///
 /// # Errors
 ///
-/// Refuses a link value in which a point has no height and the link no
-/// default.
+/// Refuses a leg the vehicle's software does not fly yet, and a point that
+/// has no height when the link has no default.
 pub fn package_route_msl(link: &SimulationLink) -> Result<Vec<[f64; 3]>, HostError> {
-    let point = |what: String, lat: Micro, lon: Micro, own: Option<Milli>| {
-        let stated = link
-            .height_or_default(own)
-            .ok_or(HostError::MissingHeight { what })?
-            .as_f64();
+    let point = |what: String, lat: Micro, lon: Micro, own: Option<f64>| {
+        let stated = stated_height_m(link, own).ok_or(HostError::MissingHeight { what })?;
         let (lat_deg, lon_deg) = (lat.as_f64(), lon.as_f64());
         let msl = match link.datum {
             HeightDatum::MeanSeaLevel => stated,
@@ -42,18 +41,19 @@ pub fn package_route_msl(link: &SimulationLink) -> Result<Vec<[f64; 3]>, HostErr
         };
         Ok::<[f64; 3], HostError>([lat_deg, lon_deg, msl])
     };
-    let mut points = Vec::with_capacity(link.route.len().saturating_add(1));
+    let route = flyable_route(link)?;
+    let mut points = Vec::with_capacity(route.fixes.len().saturating_add(1));
     if let Some(start) = link.start {
         points.push(point(
             "the start".to_owned(),
             start.lat,
             start.lon,
-            start.height,
+            start.height.map(Milli::as_f64),
         )?);
     }
-    for (index, waypoint) in link.route.iter().enumerate() {
-        let what = format!("waypoint {}", index.saturating_add(1));
-        points.push(point(what, waypoint.lat, waypoint.lon, waypoint.height)?);
+    for fix in &route.fixes {
+        let what = format!("the fix of leg {}", fix.leg);
+        points.push(point(what, fix.lat, fix.lon, fix.height_m)?);
     }
     Ok(points)
 }

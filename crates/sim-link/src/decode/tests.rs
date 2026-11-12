@@ -1,13 +1,15 @@
+mod leg_refusals;
+mod legs;
 mod parameters;
 mod reference;
-mod route;
 mod sensors;
+mod start;
 mod structure;
 
 use crate::{Parameter, Reason, Refusal, decode_fragment};
 
-/// A link the reference encoder emits, with every parameter present.
-const FULL: &str = "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1;41.600000,-0.620000,,,Z_2_A\
+/// A link in the written form, with every parameter present.
+const FULL: &str = "v=2&r=IF,LEZG:41.666242/-1.041553;TF,Z1:41.75/-0.8;TF,Z_2_A:41.6/-0.62\
 &h=1981.2&hd=msl&start=41.666250,-1.041550,,75.0&t=20260615T120000Z&veh=c172&spd=55&seed=1\
 &nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.visual&out=gnss:300-600,900-\
 &cam=800x600,67.4,90,1&go=1&mb=200";

@@ -4,9 +4,9 @@ use sim_link::decode_url;
 
 use crate::{hosted_request, plan_lines, plan_summary};
 
-const REFERENCE_LINKS: &str = include_str!("../../../crates/sim-link/fixtures/reference-v1.txt");
+const REFERENCE_LINKS: &str = include_str!("../../../crates/sim-link/fixtures/reference-v2.txt");
 const OTHER_FORMS: &str =
-    include_str!("../../../crates/sim-link/fixtures/reference-v1-other-forms.txt");
+    include_str!("../../../crates/sim-link/fixtures/reference-v2-other-forms.txt");
 
 #[test]
 fn every_reference_link_maps_and_summarises() {
@@ -36,7 +36,7 @@ fn every_name_the_link_grammar_allows_is_a_waypoint_the_route_takes() {
     let name = "aB_cdefghij-klmnopqrstuvwxyz0123";
     assert_eq!(name.len(), 32);
     let link = decode_url(&format!(
-        "http://localhost/#v=1&r=41.5,2.0,,,{name};41.6,2.1,,,-;41.7,2.0,,,_&h=1500&hd=hae\
+        "http://localhost/#v=2&r=IF,{name}:41.5/2;TF,-:41.6/2.1;TF,_:41.7/2&h=1500&hd=hae\
 &t=20260615T120000Z&veh=c172&seed=1&nav=ins&mb=1"
     ))
     .unwrap()

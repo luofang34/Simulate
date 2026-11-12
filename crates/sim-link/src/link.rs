@@ -1,17 +1,27 @@
-//! What a version 1 link says, value for value.
+//! What a version 2 link says, value for value.
 
+mod leg;
 mod nav;
+mod quantity;
 mod route;
 
+pub use leg::{
+    EVERY_LEG, Fix, Key, Leg, PathTerminator, Role, Shape, TurnDirection, distance_from_navaid,
+    shape,
+};
 pub use nav::{Camera, Means, NavSet, Outage, Sensor, Span};
-pub use route::{Start, Turn, Waypoint};
+pub use quantity::{
+    Bearing, Distance, DistanceUnit, Duration, Height, HeightUnit, HoldLength, Limit, North,
+    SecondAltitude, SecondAltitudeKind, Speed, SpeedUnit, TimeUnit,
+};
+pub use route::Start;
 
 use crate::Milli;
 
 /// Longest whole link, base and fragment, in characters.
 pub const MAX_LINK_CHARS: usize = 8192;
-/// Most waypoints a route carries.
-pub const MAX_WAYPOINTS: usize = 300;
+/// Most legs a route carries.
+pub const MAX_LEGS: usize = 300;
 
 /// One navigation simulation as a link describes it.
 ///
@@ -20,10 +30,10 @@ pub const MAX_WAYPOINTS: usize = 300;
 /// can carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimulationLink {
-    /// The route in fly order, 2 to [`MAX_WAYPOINTS`] waypoints.
-    pub route: Vec<Waypoint>,
-    /// Flight height, metres in `datum`, of waypoints and a start that give
-    /// none; required when one of them gives none.
+    /// The route in fly order, 2 to [`MAX_LEGS`] legs.
+    pub route: Vec<Leg>,
+    /// Flight height, metres in `datum`, where no altitude constraint says
+    /// otherwise, and of a start that gives none.
     pub default_height: Option<Milli>,
     /// What every height is measured from.
     pub datum: HeightDatum,
@@ -56,11 +66,6 @@ impl SimulationLink {
     /// The set that steers the flight, when `steering_set` names one.
     pub fn steering(&self) -> Option<&NavSet> {
         self.sets.get(self.steering_set)
-    }
-
-    /// The height of `own`, or the link's default, metres in `datum`.
-    pub fn height_or_default(&self, own: Option<Milli>) -> Option<Milli> {
-        own.or(self.default_height)
     }
 }
 

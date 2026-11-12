@@ -20,7 +20,8 @@ pub fn show_link(surface: ProgressSurface) -> Result<(), ProgressSurface> {
         Ok(Some(link)) => match planned(link) {
             Ok(plan) => {
                 info!(
-                    waypoints = plan.link.route.len(),
+                    legs = plan.link.route.len(),
+                    fixes = plan.request.route.fixes.len(),
                     "showing the plan of the link"
                 );
                 let lines = plan_lines(&plan.link, &plan.request, &plan.summary);

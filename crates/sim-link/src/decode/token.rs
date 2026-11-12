@@ -36,6 +36,39 @@ impl<'a> Token<'a> {
         })
     }
 
+    /// The text before and after the first `separator`.
+    pub(super) fn split_once_text(self, separator: &str) -> Option<(Token<'a>, Token<'a>)> {
+        self.text.split_once(separator).map(|(before, after)| {
+            let after_offset = self
+                .offset
+                .saturating_add(before.len())
+                .saturating_add(separator.len());
+            (
+                Token::new(before, self.offset),
+                Token::new(after, after_offset),
+            )
+        })
+    }
+
+    /// The token without `prefix`, when it starts with it.
+    pub(super) fn strip_prefix(self, prefix: &str) -> Option<Token<'a>> {
+        self.text
+            .strip_prefix(prefix)
+            .map(|rest| Token::new(rest, self.offset.saturating_add(prefix.len())))
+    }
+
+    /// The token without `suffix`, when it ends with it.
+    pub(super) fn strip_suffix(self, suffix: &str) -> Option<Token<'a>> {
+        self.text
+            .strip_suffix(suffix)
+            .map(|rest| Token::new(rest, self.offset))
+    }
+
+    /// The offset just past the token's last character.
+    pub(super) const fn end(self) -> usize {
+        self.offset.saturating_add(self.text.len())
+    }
+
     /// The token, or a refusal when it is empty.
     pub(super) fn non_empty(self, site: Site, expected: &'static str) -> Result<Self, Refusal> {
         if self.text.is_empty() {

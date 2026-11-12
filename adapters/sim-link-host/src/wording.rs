@@ -1,9 +1,11 @@
 //! The link and its plan in plain language, for a page or a terminal.
 
 use sim_link::{
-    HeightDatum, Means, NavSet, Outage, Refusal, Sensor, SimulationLink, Turn, resolve_escapes,
+    HeightDatum, Means, NavSet, Outage, Refusal, Sensor, SimulationLink, TurnDirection,
+    resolve_escapes,
 };
 
+use crate::request::stated_height_m;
 use crate::{CameraGeometry, HostedRequest, Light, PlanSummary};
 
 #[cfg(test)]
@@ -70,7 +72,7 @@ const fn datum_words(datum: HeightDatum) -> &'static str {
     }
 }
 
-/// The plan of `link` in plain language: the route, each waypoint, the
+/// The plan of `link` in plain language: the route, each leg, the hold, the
 /// start, the sets compared, the outages, the Sun and the map package.
 pub fn plan_lines(
     link: &SimulationLink,
@@ -80,15 +82,21 @@ pub fn plan_lines(
     let mut lines = vec![line(
         "Route",
         format!(
-            "{} waypoints, {:.1} km, about {:.0} min at {} m/s ({})",
+            "{} legs to {} fixes, {:.1} km, about {:.0} min at {} m/s ({})",
             link.route.len(),
+            request.route.fixes.len(),
             summary.length_m / 1000.0,
             summary.duration_s / 60.0,
             request.trial.vehicle.cruise_speed_m_s,
             link.vehicle.key()
         ),
     )];
-    lines.extend(waypoint_lines(link, request));
+    lines.extend(leg_lines(link, request));
+    lines.push(line("Hold", hold_words(request)));
+    if link.route.iter().any(|leg| leg.rnp.is_some()) {
+        let rnp = "stated on the route; the vehicle's software does not monitor it yet";
+        lines.push(line("RNP", rnp.to_owned()));
+    }
     lines.push(line("Starts", start_words(link)));
     let sets: Vec<String> = link.sets.iter().map(set_words).collect();
     lines.push(line("Compares", sets.join(";  ")));
@@ -146,45 +154,75 @@ fn camera_words(camera: CameraGeometry, vehicles_own: bool) -> String {
     )
 }
 
-fn waypoint_lines<'a>(
+fn leg_lines<'a>(
     link: &'a SimulationLink,
     request: &'a HostedRequest,
 ) -> impl Iterator<Item = PlanLine> + 'a {
-    link.route
+    request
+        .route
+        .fixes
         .iter()
         .zip(&request.trial.waypoints)
-        .enumerate()
-        .map(|(index, (waypoint, spec))| {
-            let height = link
-                .height_or_default(waypoint.height)
-                .map_or_else(String::new, |height| height.text(0));
-            let turn = match waypoint.turn {
-                Turn::FlyBy => "fly-by",
-                Turn::FlyOver => "fly-over",
+        .map(|(fix, spec)| {
+            let code = link
+                .route
+                .get(fix.leg.saturating_sub(1))
+                .map_or("", |leg| leg.path.code());
+            let height = stated_height_m(link, fix.height_m).map_or_else(String::new, metres_text);
+            let turn = if fix.fly_over { "fly-over" } else { "fly-by" };
+            let roles: Vec<&str> = fix.roles.iter().map(|role| role.word()).collect();
+            let roles = if roles.is_empty() {
+                String::new()
+            } else {
+                format!(", {}", roles.join(" "))
             };
             line(
-                &format!("Waypoint {}", index.saturating_add(1)),
+                &format!("Leg {}", fix.leg),
                 format!(
-                    "{}  {}, {}  {height} m {}, {turn}",
+                    "{code} {}  {}, {}  {height} m {}, {turn}{roles}",
                     spec.ident,
-                    waypoint.lat.text(6),
-                    waypoint.lon.text(6),
+                    fix.lat.text(6),
+                    fix.lon.text(6),
                     datum_words(link.datum)
                 ),
             )
         })
 }
 
+/// Metres with at most one decimal and no trailing `.0`.
+fn metres_text(metres: f64) -> String {
+    let text = format!("{metres:.1}");
+    text.strip_suffix(".0")
+        .map_or_else(|| text.clone(), str::to_owned)
+}
+
+fn hold_words(request: &HostedRequest) -> String {
+    let Some(hold) = request.hold else {
+        return "the standard right-hand hold at the last fix, flown when the route ends"
+            .to_owned();
+    };
+    let turns = match hold.stated.turn {
+        TurnDirection::Left => "left",
+        TurnDirection::Right => "right",
+    };
+    let at = hold.stated.height_m.map_or_else(String::new, |height| {
+        format!(", at {} m", metres_text(height))
+    });
+    format!(
+        "at the last fix, {turns} turns, inbound course {:.1}° true, {} s legs{at}",
+        hold.stated.inbound_course_deg, hold.stated.leg_time_s
+    )
+}
+
 fn start_words(link: &SimulationLink) -> String {
     let time = link.time.iso8601().replace('T', " ").replace('Z', " UTC");
     match link.start {
-        None => format!("{time}, over the first waypoint, heading for the second"),
+        None => format!("{time}, over the first fix, heading for the second"),
         Some(start) => {
-            let height = link
-                .height_or_default(start.height)
-                .map_or_else(String::new, |height| height.text(0));
+            let height = stated_height_m(link, start.height.map(sim_link::Milli::as_f64))
+                .map_or_else(String::new, metres_text);
             let heading = start.heading.map_or_else(
-                || "heading for the first waypoint".to_owned(),
+                || "heading for the first fix".to_owned(),
                 |heading| format!("heading {}° true", heading.text(0)),
             );
             format!(

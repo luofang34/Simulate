@@ -18,8 +18,7 @@ use super::{
 use crate::{HostError, HostedRequest, hosted_request, package_camera, package_route_msl};
 use sim_navdata::SealedPackage;
 
-const FIRST: &str = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3;\
-41.800000,-1.000000,,,ZA4;41.740000,-1.050000,,,ZA5&h=2000.0&hd=msl&start=41.700000,-1.070000,,90.0\
+const FIRST: &str = "v=2&r=IF,ZA1:41.7/-1.05;TF,ZA2:41.7/-0.8;TF,ZA3:41.8/-0.8;TF,ZA4:41.8/-1;TF,ZA5:41.74/-1.05&h=2000.0&hd=msl&start=41.700000,-1.070000,,90.0\
 &t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.gnss\
 &go=1&mb=200";
 
@@ -94,10 +93,10 @@ fn a_world_too_big_for_the_tab_is_refused_with_its_numbers() {
 }
 
 /// The short leg, flown on its visual set from the leg's start.
-const VISUAL: &str = "v=1&r=41.700000,-1.050000,,,A;41.700000,-1.030000,,,B&h=2000.0&hd=msl\
+const VISUAL: &str = "v=2&r=IF,A:41.7/-1.05;TF,B:41.7/-1.03&h=2000.0&hd=msl\
 &t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual&fly=ins.baro.visual&mb=200";
 /// A short leg flown over a visual set.
-const SHORT: &str = "v=1&r=41.700000,-1.050000,,,A;41.700000,-1.030000,,,B&h=2000.0&hd=msl\
+const SHORT: &str = "v=2&r=IF,A:41.7/-1.05;TF,B:41.7/-1.03&h=2000.0&hd=msl\
 &t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual&mb=200";
 /// The grey of every imagery tile the fake server holds.
 const GREY: u8 = 150;

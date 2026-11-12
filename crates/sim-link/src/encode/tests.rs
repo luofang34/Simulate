@@ -1,6 +1,9 @@
+mod route;
+
 use crate::{
-    Camera, HeightDatum, MAX_LINK_CHARS, Means, Micro, Milli, NavSet, Outage, Parameter, Reason,
-    Sensor, SimulationLink, Span, Start, StartTime, Turn, Vehicle, Waypoint, decode_fragment,
+    Camera, HeightDatum, Leg, MAX_LINK_CHARS, Means, Micro, Milli, NavSet, Outage, Parameter,
+    PathTerminator, Reason, Sensor, SimulationLink, Span, Start, StartTime, Vehicle,
+    decode_fragment,
 };
 
 /// A deterministic stream of values, so the round trip covers many links
@@ -25,22 +28,6 @@ impl Draws {
     }
 }
 
-fn waypoint(draws: &mut Draws, with_height: bool) -> Waypoint {
-    Waypoint {
-        lat: Micro::from_scaled(draws.within(-90_000_000, 90_000_000)),
-        lon: Micro::from_scaled(draws.within(-180_000_000, 180_000_000)),
-        height: with_height.then(|| Milli::from_scaled(draws.within(-500_000, 30_000_000))),
-        turn: if draws.flag() {
-            Turn::FlyOver
-        } else {
-            Turn::FlyBy
-        },
-        name: draws
-            .flag()
-            .then(|| format!("W_{}-x", draws.within(0, 999))),
-    }
-}
-
 fn outage(draws: &mut Draws, sensor: Sensor) -> Outage {
     let mut at = draws.within(0, 5_000);
     let count = draws.within(1, 4);
@@ -62,11 +49,7 @@ fn outage(draws: &mut Draws, sensor: Sensor) -> Outage {
 
 fn link(draws: &mut Draws) -> SimulationLink {
     let all_heights = draws.flag();
-    let mut route = Vec::new();
-    for _ in 0..draws.within(2, 12) {
-        let with_height = all_heights || draws.flag();
-        route.push(waypoint(draws, with_height));
-    }
+    let route = route::route(draws);
     let mut outages = Vec::new();
     for sensor in Sensor::ALL.into_iter().rev() {
         if draws.flag() {
@@ -173,9 +156,14 @@ fn parameters_are_written_in_the_order_of_the_format() {
 /// A change to a valid link, and the refusal writing it must give.
 type Unwritable = (fn(&mut SimulationLink), Parameter, fn(&Reason) -> bool);
 
+/// The fix of leg `index` of `link`.
+fn fix(link: &mut SimulationLink, index: usize) -> &mut crate::Fix {
+    link.route[index].fix.as_mut().unwrap()
+}
+
 fn valid() -> SimulationLink {
     decode_fragment(
-        "v=1&r=41.5,2.0;41.6,2.1&h=1500&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins&mb=200",
+        "v=2&r=IF,A:41.5/2;TF,41.6/2.1&h=1500&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins&mb=200",
     )
     .unwrap()
 }
@@ -193,34 +181,68 @@ fn numbers_take_the_written_form() {
     }];
     assert_eq!(
         link.fragment().unwrap(),
-        "v=1&r=41.500000,2.000000;41.600000,2.100000&h=1500.0&hd=msl&t=20260615T120000Z\
+        "v=2&r=IF,A:41.5/2;TF,41.6/2.1&h=1500.0&hd=msl&t=20260615T120000Z\
 &veh=c172&spd=55&seed=1&nav=ins.baro;ins&fly=ins.baro&out=gnss:300-&mb=200"
     );
 }
 
-#[test]
-fn a_value_no_link_can_carry_is_refused_as_its_written_form_would_be() {
-    let cases: [Unwritable; 9] = [
+/// Route values no link can carry.
+fn unwritable_routes() -> [Unwritable; 8] {
+    [
         (
             |l| l.route.truncate(1),
             Parameter::R,
-            |r| matches!(r, Reason::TooFewWaypoints { .. }),
+            |r| matches!(r, Reason::TooFewLegs { .. }),
         ),
         (
-            |l| l.default_height = None,
-            Parameter::R,
+            |l| {
+                l.default_height = None;
+                l.start = Some(Start {
+                    lat: Micro::from_whole(1),
+                    lon: Micro::from_whole(1),
+                    height: None,
+                    heading: None,
+                });
+            },
+            Parameter::Start,
             |r| matches!(r, Reason::MissingHeight),
         ),
         (
-            |l| l.route[0].lat = Micro::from_scaled(90_000_001),
+            |l| fix(l, 0).lat = Micro::from_scaled(90_000_001),
             Parameter::R,
             |r| matches!(r, Reason::OutOfRange { .. }),
         ),
         (
-            |l| l.route[1].name = Some("no good".into()),
+            |l| fix(l, 1).name = Some("no good".into()),
             Parameter::R,
             |r| matches!(r, Reason::BadName { .. }),
         ),
+        (
+            |l| l.route[1].path = PathTerminator::Cf,
+            Parameter::R,
+            |r| matches!(r, Reason::MissingKey { key: 'c', .. }),
+        ),
+        (
+            |l| l.route[1].fix = None,
+            Parameter::R,
+            |r| matches!(r, Reason::MissingFix { .. }),
+        ),
+        (
+            |l| l.route[0] = Leg::new(PathTerminator::Tf, l.route[0].fix.clone()),
+            Parameter::R,
+            |r| matches!(r, Reason::MisplacedLeg { .. }),
+        ),
+        (
+            |l| fix(l, 0).name = Some(String::new()),
+            Parameter::R,
+            |r| matches!(r, Reason::BadName { .. }),
+        ),
+    ]
+}
+
+/// Values of the other parameters no link can carry.
+fn unwritable_parameters() -> [Unwritable; 4] {
+    [
         (
             |l| l.steering_set = 2,
             Parameter::Fly,
@@ -255,13 +277,15 @@ fn a_value_no_link_can_carry_is_refused_as_its_written_form_would_be() {
             Parameter::Mb,
             |r| matches!(r, Reason::OutOfRange { .. }),
         ),
-        (
-            |l| l.route[0].name = Some(String::new()),
-            Parameter::Link,
-            |r| matches!(r, Reason::NotRepresentable),
-        ),
-    ];
-    for (index, (change, parameter, expected)) in cases.into_iter().enumerate() {
+    ]
+}
+
+#[test]
+fn a_value_no_link_can_carry_is_refused_as_its_written_form_would_be() {
+    let cases = unwritable_routes()
+        .into_iter()
+        .chain(unwritable_parameters());
+    for (index, (change, parameter, expected)) in cases.enumerate() {
         let mut link = valid();
         change(&mut link);
         let refusal = link.fragment().unwrap_err();

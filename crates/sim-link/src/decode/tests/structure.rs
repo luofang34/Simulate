@@ -3,15 +3,28 @@ use crate::{MAX_LINK_CHARS, Parameter, Reason, decode_fragment, decode_url, reso
 
 #[test]
 fn another_version_is_refused_before_anything_else_is_judged() {
-    let refused = refusal(&format!("{}&shape=new", with("v", "2")));
+    let refused = refusal(&format!("{}&shape=new", with("v", "3")));
     assert_eq!(refused.parameter, Parameter::V);
     assert_eq!(refused.offset, 2);
     assert_eq!(
         refused.reason,
-        Reason::UnsupportedVersion { found: "2".into() }
+        Reason::UnsupportedVersion { found: "3".into() }
     );
-    assert_eq!(refusal("v=1.0&r=x").parameter, Parameter::V);
+    assert_eq!(refusal("v=2.0&r=x").parameter, Parameter::V);
     assert_eq!(refusal("v=&r=x").parameter, Parameter::V);
+}
+
+#[test]
+fn a_version_1_link_is_refused_as_retired_and_told_to_regenerate() {
+    let refused = refusal(
+        "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1&h=1981.2&hd=msl\
+&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro&mb=200",
+    );
+    assert_eq!(
+        (refused.parameter, refused.offset, &refused.reason),
+        (Parameter::V, 2, &Reason::RetiredVersion)
+    );
+    assert!(refused.to_string().contains("fpl_to_simulate_url.py"));
 }
 
 #[test]
@@ -182,10 +195,10 @@ fn broken_escapes_and_characters_outside_ascii_are_refused() {
 
 #[test]
 fn a_refusal_reads_as_parameter_place_and_reason() {
-    let refused = refusal(&with("r", "41.5,2.0;95.5,2.0"));
+    let refused = refusal(&with("r", "IF,41.5/2;TF,95.5/2"));
     assert_eq!(
         refused.to_string(),
-        "r, entry 2, character 16: latitude 95.5 is outside -90 to 90 degrees"
+        "r, entry 2, character 20: latitude 95.5 is outside -90 to 90 degrees"
     );
     let refused = refusal(&without("mb"));
     assert!(refused.to_string().starts_with("mb, character "));

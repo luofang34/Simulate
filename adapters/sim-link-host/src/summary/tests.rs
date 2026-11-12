@@ -2,8 +2,8 @@ use sim_link::{SimulationLink, decode_fragment};
 
 use crate::{Light, PlanSummary, hosted_request, plan_summary};
 
-const ROUTE: &str = "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1;41.600000,-0.620000,,,Z2\
-&h=2000&hd=msl";
+const ROUTE: &str =
+    "v=2&r=IF,LEZG:41.666242/-1.041553;TF,Z1:41.75/-0.8;TF,Z2:41.6/-0.62&h=2000&hd=msl";
 const REST: &str = "&veh=c172&seed=1&nav=ins.baro&mb=200";
 
 fn summary(fragment: &str) -> (SimulationLink, PlanSummary) {
@@ -123,8 +123,7 @@ fn the_sun_moves_with_the_planned_time_of_passing() {
 
 #[test]
 fn the_first_flight_link_is_a_noon_land_circuit_of_fifty_six_kilometres() {
-    let fragment = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3;\
-41.800000,-1.000000,,,ZA4;41.740000,-1.050000,,,ZA5&h=2000.0&hd=msl&t=20260615T120400Z&veh=c172\
+    let fragment = "v=2&r=IF,ZA1:41.7/-1.05;TF,ZA2:41.7/-0.8;TF,ZA3:41.8/-0.8;TF,ZA4:41.8/-1;TF,ZA5:41.74/-1.05&h=2000.0&hd=msl&t=20260615T120400Z&veh=c172\
 &seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.gnss&go=1&mb=200";
     let (_, summary) = summary(fragment);
     assert_eq!(summary.legs.len(), 4);

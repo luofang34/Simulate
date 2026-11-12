@@ -1,21 +1,21 @@
-//! The shareable simulation link, version 1.
+//! The shareable simulation link, version 2.
 //!
 //! One URL describes one navigation simulation. Everything sits in the URL
 //! fragment, so opening the link sends none of it to a server:
 //!
 //! ```text
-//! <base>#v=1&r=<route>&h=<m>&hd=msl|hae&start=<start>&t=<UTC>&veh=<vehicle>
+//! <base>#v=2&r=<legs>&h=<m>&hd=msl|hae&start=<start>&t=<UTC>&veh=<vehicle>
 //!       &spd=<m/s>&seed=<n>&nav=<sets>&fly=<set>&out=<outages>&cam=<camera>
 //!       &go=1&mb=<MB>
 //! ```
 //!
 //! | key | value |
 //! |---|---|
-//! | `v` | the format version, `1` |
-//! | `r` | waypoints joined by `;`, each `lat,lon[,height[,turn[,name]]]`: decimal degrees north and east with at most 6 decimals; height in metres in the `hd` datum, empty for `h`; turn `o` fly-over, `b` or empty fly-by; name 1 to 32 of `[A-Za-z0-9_-]` |
-//! | `h` | flight height in metres for waypoints that give none |
-//! | `hd` | height datum: `msl` or `hae` |
-//! | `start` | `lat,lon[,height[,heading_deg]]`; without it the flight begins over waypoint 1 heading for waypoint 2 |
+//! | `v` | the format version, `2`; a version 1 link is refused as retired |
+//! | `r` | 2 to 300 legs joined by `;`, each `CODE[,fix]{,attribute}` (below) |
+//! | `h` | flight height in metres where no altitude constraint says otherwise |
+//! | `hd` | height datum of every height in metres or feet: `msl` or `hae` |
+//! | `start` | `lat,lon[,height[,heading_deg]]`; without it the flight begins over the first fix heading for the second |
 //! | `t` | start time, UTC, `YYYYMMDDTHHMMSSZ` |
 //! | `veh` | `c172` or `x500` |
 //! | `spd` | cruise speed, m/s; absent for the vehicle's own |
@@ -27,10 +27,35 @@
 //! | `go` | `1` builds the map package and starts without asking |
 //! | `mb` | storage budget of the map package, MB, 1 to 65536 |
 //!
+//! A leg is an ARINC 424 path terminator ([`PathTerminator`]), the fix it
+//! ends at or starts from when it has one, then attributes, each a key
+//! letter and its value ([`Key`]). [`shape`] says which keys each code needs
+//! and takes. A fix is `NAME:lat/lon`, `lat/lon`, or a bare `NAME` for the
+//! latest earlier fix of that name; names are 1 to 32 of `[A-Za-z0-9_-]`.
+//!
+//! | key | value |
+//! |---|---|
+//! | `o` `m` | fly-over; first leg of the missed approach |
+//! | `r` | roles joined by `.`: `IAF IF FACF FAF SDF MAP MAHF FEP RWY` |
+//! | `t` | turn direction `L` or `R` |
+//! | `a` | altitude `1500` at, `1500+` at or above, `1500-` at or below, `1500..3000` between |
+//! | `g` | second altitude: `G` glide path, `I` intercept or `V` on the vertical angle, then a height |
+//! | `v` `x` | vertical angle in degrees, negative descending; threshold crossing height |
+//! | `s` | speed, written as `a` is: `60` m/s or `120kt` |
+//! | `c` `h` `b` | course, heading, bearing from the navaid: degrees then `T` true or `M` magnetic |
+//! | `d` | distance: along the course for `FC`, the excursion limit for `PI`, else from the navaid |
+//! | `n` `z` | the navaid `b` and `d` are measured from; the `RF` arc centre (both fixes) |
+//! | `l` | hold leg length with its unit: `60s`, `1min`, `4nm`, `7400m` |
+//! | `p` | required navigation performance, a distance |
+//!
+//! Heights are metres, `ft`, or `FL` flight levels; distances metres or
+//! `nm`. For example
+//! `r=IF,ENO:39.231/-75.516,rIAF,a3000ft+;TF,RAIDR:38.8/-75.3,rFAF,a1800ft;HM,RAIDR,c220T,tR,l1min`.
+//!
 //! [`decode_url`] and [`decode_fragment`] refuse anything else with a
-//! [`Refusal`] naming the parameter, the character and the reason; nothing
-//! malformed falls back to a default. A [`SimulationLink`] holds every number
-//! as a scaled integer ([`Micro`], [`Milli`]), so
+//! [`Refusal`] naming the parameter, the leg, the character and the
+//! reason; nothing malformed falls back to a default. A [`SimulationLink`]
+//! holds every number as a scaled integer with its unit, so
 //! [`SimulationLink::fragment`] and the decoders round-trip exactly.
 
 mod decode;
@@ -42,7 +67,10 @@ mod refusal;
 pub use decode::{decode_fragment, decode_url, resolve_escapes};
 pub use fixed::{Fixed, Micro, Milli, NumberFault};
 pub use link::{
-    Camera, HeightDatum, MAX_LINK_CHARS, MAX_WAYPOINTS, Means, NavSet, Outage, Sensor,
-    SimulationLink, Span, Start, StartTime, Turn, Vehicle, Waypoint,
+    Bearing, Camera, Distance, DistanceUnit, Duration, EVERY_LEG, Fix, Height, HeightDatum,
+    HeightUnit, HoldLength, Key, Leg, Limit, MAX_LEGS, MAX_LINK_CHARS, Means, NavSet, North,
+    Outage, PathTerminator, Role, SecondAltitude, SecondAltitudeKind, Sensor, Shape,
+    SimulationLink, Span, Speed, SpeedUnit, Start, StartTime, TimeUnit, TurnDirection, Vehicle,
+    distance_from_navaid, shape,
 };
 pub use refusal::{Parameter, Reason, Refusal};

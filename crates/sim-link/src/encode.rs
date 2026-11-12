@@ -1,17 +1,19 @@
 //! Writing a link in the one form every encoder agrees on.
 
+mod leg;
+
 #[cfg(test)]
 mod tests;
 
 use crate::{
-    MAX_LINK_CHARS, Outage, Parameter, Reason, Refusal, SimulationLink, Start, Turn, Waypoint,
-    decode_fragment,
+    MAX_LINK_CHARS, Outage, Parameter, Reason, Refusal, SimulationLink, Start, decode_fragment,
 };
 
 impl SimulationLink {
     /// The fragment of the link, the text after `#`: parameters in the
-    /// format's order, positions with six decimals, heights and the heading
-    /// with at least one, every other number with no spare zeros.
+    /// format's order, the legs in their canonical form, the start's
+    /// position with six decimals, heights and the heading with at least
+    /// one, every other number with no spare zeros.
     ///
     /// # Errors
     ///
@@ -59,11 +61,8 @@ impl SimulationLink {
         })?;
         let joined = |parts: Vec<String>| parts.join(";");
         let mut pairs: Vec<(Parameter, String)> = vec![
-            (Parameter::V, "1".to_owned()),
-            (
-                Parameter::R,
-                joined(self.route.iter().map(waypoint).collect()),
-            ),
+            (Parameter::V, "2".to_owned()),
+            (Parameter::R, leg::legs(&self.route)),
         ];
         let mut push = |parameter: Parameter, value: Option<String>| {
             pairs.extend(value.map(|value| (parameter, value)));
@@ -125,21 +124,6 @@ fn trimmed(mut fields: Vec<String>) -> String {
         fields.pop();
     }
     fields.join(",")
-}
-
-fn waypoint(waypoint: &Waypoint) -> String {
-    trimmed(vec![
-        waypoint.lat.text(6),
-        waypoint.lon.text(6),
-        waypoint
-            .height
-            .map_or_else(String::new, |height| height.text(1)),
-        match waypoint.turn {
-            Turn::FlyBy => String::new(),
-            Turn::FlyOver => "o".to_owned(),
-        },
-        waypoint.name.clone().unwrap_or_default(),
-    ])
 }
 
 fn start(start: &Start) -> String {

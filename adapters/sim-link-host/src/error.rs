@@ -14,12 +14,41 @@ pub enum HostError {
         #[from]
         source: TrialError,
     },
-    /// A waypoint or the start gives no height and the link has no default.
-    /// A decoded link never does; a link value built in code can.
-    #[error("{what} has no height and the link has no default height")]
+    /// A fix or the start gives no height and the link has no default.
+    #[error("{what} has no height and the link has no default height `h`")]
     MissingHeight {
-        /// The waypoint, or the start.
+        /// The fix, or the start.
         what: String,
+    },
+    /// A leg, or an attribute of it, that the vehicle's software does not
+    /// fly yet. The link is valid; this host cannot fly it as stated.
+    #[error(
+        "leg {leg} ({code}{}): {reason}; the link is valid, but the vehicle's software \
+         does not fly it as stated yet",
+        fix.as_deref().map(|name| format!(" {name}")).unwrap_or_default()
+    )]
+    Unflyable {
+        /// The leg, counted from one.
+        leg: usize,
+        /// Its path terminator code.
+        code: &'static str,
+        /// The name of its fix.
+        fix: Option<String>,
+        /// What is not flown.
+        reason: String,
+    },
+    /// A link the page's vehicle, the C172 under its own software, cannot
+    /// fly.
+    #[error("the page flies the C172 through its own software, and cannot fly {detail}")]
+    ChainVehicle {
+        /// What the link asks that the C172 cannot fly.
+        detail: String,
+    },
+    /// A route with fewer than two fixes to fly to.
+    #[error("{count} fix(es) to fly to; a route needs at least two")]
+    TooFewFixes {
+        /// The fixes the route flies to.
+        count: usize,
     },
     /// The ephemeris gives no Sun for the link's start time.
     #[error("no Sun position for {time_utc} at waypoint {waypoint}: {detail}")]

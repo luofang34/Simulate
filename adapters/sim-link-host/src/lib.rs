@@ -1,6 +1,8 @@
 //! Hosting a simulation link: what a browser page or a headless tool does
 //! with a decoded [`sim_link::SimulationLink`] before anything flies.
 //!
+//! - [`flyable_route`] takes the legs the vehicle's software flies today and
+//!   refuses every other leg by its number and code.
 //! - [`hosted_request`] maps the link onto the one request every host
 //!   shares, [`sim_navigate::trial::TrialRequest`], converting heights to
 //!   the ellipsoid and outages to availability schedules. What the trial
@@ -26,6 +28,7 @@
 
 mod chain;
 mod error;
+mod flyable;
 mod monitor;
 mod package;
 mod request;
@@ -38,10 +41,14 @@ mod world;
 mod tests;
 
 pub use chain::{
-    ASSUMED_ACCURACY, ChainFlight, MAX_STEP_S, OVERRUN_S, PAGE_STORE, chain_spec, link_outages,
-    page_stores,
+    ASSUMED_ACCURACY, C172_CRUISE_M_S, ChainFlight, MAX_STEP_S, OVERRUN_S, PAGE_STORE, chain_spec,
+    link_outages, page_stores,
 };
 pub use error::HostError;
+pub use flyable::{
+    FlyableFix, FlyableRoute, HOLD_COURSE_TOLERANCE_DEG, TerminalHold, final_course_deg,
+    flyable_route, path_words,
+};
 pub use monitor::{
     CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark, FlightStepper,
     GreyImage, HoldState, MAX_FRAME_S, MatchLine, MatchShot, MeansSwitch, Monitor, MonitorFeed,
@@ -55,7 +62,8 @@ pub use package::{
     package_plan_lines, package_route_msl, progress_words, sealed_lines,
 };
 pub use request::{
-    CameraGeometry, HostedRequest, StartState, VEHICLE_CAMERA, hosted_request, own_cruise_speed_m_s,
+    CameraGeometry, HostedHold, HostedRequest, StartState, VEHICLE_CAMERA, hosted_request,
+    own_cruise_speed_m_s,
 };
 pub use run_link::SwitchLog;
 pub use summary::{LegSummary, Light, PlanSummary, SunSample, plan_summary};
