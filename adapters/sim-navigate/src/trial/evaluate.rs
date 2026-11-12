@@ -94,7 +94,7 @@ pub fn record_trial_with_stores(
     let mut terrain_render_s = 0.0;
     if let Some(camera) = terrain_camera(request, stores)? {
         let started = web_time::Instant::now();
-        log.terrain = camera.render_along(&flight.truth)?;
+        log.terrain = camera.render_along(&flight.truth)?.into();
         terrain_render_s = started.elapsed().as_secs_f64();
     }
     Ok(RecordedTrial {

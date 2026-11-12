@@ -86,12 +86,6 @@ impl SetRun {
         Ok(())
     }
 
-    /// How many of the log's terrain frames the set has taken, handed over
-    /// or not: frames before this one it never reads again.
-    pub const fn terrain_frames_taken(&self) -> usize {
-        self.next_terrain
-    }
-
     /// The terrain camera's fixes so far, by outcome (`accepted`,
     /// `rejected:<filter reason>`, `unused:<navigator reason>`) and by
     /// context (`context:keyframe`, `context:render`).

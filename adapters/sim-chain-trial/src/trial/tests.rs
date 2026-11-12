@@ -340,17 +340,39 @@ fn fly_with_frames(trial: &mut ChainTrial, until_s: f64) -> crate::Retained {
     trial.retained()
 }
 
+/// The most a log keeps whatever the flight's length: the steps of one star
+/// exposure and a few more, the readings and frames of those steps, and the
+/// pixels of the one terrain frame read out but not yet taken.
+const KEPT_STEPS: usize = 64;
+const KEPT_READINGS: usize = 16;
+const KEPT_FRAMES: usize = 4;
+const KEPT_BYTES: usize = 64 * 1024;
+
+fn assert_bounded(retained: &crate::Retained) {
+    assert!(retained.steps_kept <= KEPT_STEPS, "{retained:?}");
+    assert!(retained.readings_kept <= KEPT_READINGS, "{retained:?}");
+    assert!(retained.frames_kept <= KEPT_FRAMES, "{retained:?}");
+    assert!(retained.terrain_pixel_bytes <= 192, "{retained:?}");
+    assert!(retained.approximate_bytes <= KEPT_BYTES, "{retained:?}");
+}
+
 #[test]
-fn a_long_flights_log_keeps_only_the_frames_a_set_has_yet_to_take() {
-    let mut trial = ChainTrial::new(&spec(Some(camera())), &DirectoryStores).unwrap();
+fn a_long_flights_log_keeps_only_what_a_reader_has_yet_to_take() {
+    let mut flight = spec(Some(camera()));
+    flight.request.sensor_sets.push(set(
+        "ins.stars",
+        &[NavMeans::DeadReckoning, NavMeans::Celestial],
+    ));
+    let mut trial = ChainTrial::new(&flight, &DirectoryStores).unwrap();
     let early = fly_with_frames(&mut trial, 5.0);
-    let late = fly_with_frames(&mut trial, 20.0);
+    let late = fly_with_frames(&mut trial, 40.0);
+    assert!(late.steps >= early.steps * 7, "{early:?} {late:?}");
     assert!(
-        late.terrain_frames > early.terrain_frames + 10,
-        "{early:?} {late:?}"
+        !trial.nav.log.stars.is_empty() && trial.nav.log.terrain.len() > 30,
+        "both cameras took frames"
     );
-    assert!(late.steps > early.steps);
-    // At most the frame read out but not yet taken keeps its pixels.
-    assert!(early.terrain_pixel_bytes <= 192, "{early:?}");
-    assert!(late.terrain_pixel_bytes <= 192, "{late:?}");
+    // Eight times the flight, the same bound: what is kept follows the
+    // readers' lag, so an hours-long hold keeps no more than this.
+    assert_bounded(&early);
+    assert_bounded(&late);
 }
