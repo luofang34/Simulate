@@ -25,10 +25,12 @@ pub enum PointerDrag {
         /// Cursor at the press.
         origin: [f64; 2],
     },
-    /// The expanded EFB's map.
+    /// The expanded EFB's map; a release near `origin` picks a fix or inserts a waypoint.
     Efb {
         /// Cursor at the last move.
         last: [f64; 2],
+        /// Cursor at the press.
+        origin: [f64; 2],
     },
 }
 
@@ -48,9 +50,12 @@ impl FlightApp {
                     origin,
                 });
             }
-            Some(PointerDrag::Efb { last }) => {
+            Some(PointerDrag::Efb { last, origin }) => {
                 self.pan_efb(last, position);
-                self.hub.drag = Some(PointerDrag::Efb { last: position });
+                self.hub.drag = Some(PointerDrag::Efb {
+                    last: position,
+                    origin,
+                });
             }
             None => {}
         }
@@ -63,7 +68,9 @@ impl FlightApp {
 
     pub(super) fn mouse_pressed(&mut self, event_loop: &ActiveEventLoop) {
         if !self.esc_menu.is_open() {
-            let _taken = self.efb_pressed();
+            if !self.efb_pressed() && self.efb_workspace.ad_hoc.pick_mode.is_world_3d() {
+                self.world_3d_pick_pressed();
+            }
             return;
         }
         let view = self.hub_view();
@@ -86,10 +93,14 @@ impl FlightApp {
     }
 
     pub(super) fn mouse_released(&mut self) {
-        if let Some(PointerDrag::Globe { origin, .. }) = self.hub.drag.take()
-            && self.esc_menu.is_open()
-        {
-            self.release_globe(origin, self.cursor_px);
+        match self.hub.drag.take() {
+            Some(PointerDrag::Globe { origin, .. }) if self.esc_menu.is_open() => {
+                self.release_globe(origin, self.cursor_px);
+            }
+            Some(PointerDrag::Efb { origin, .. }) if !self.esc_menu.is_open() => {
+                self.release_efb_map(origin, self.cursor_px);
+            }
+            _ => {}
         }
     }
 

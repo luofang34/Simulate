@@ -109,6 +109,16 @@
       .speeds { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 1rem; color: #8f98ad; }
       .speeds label { display: flex; gap: 0.3rem; align-items: center; color: #d7dbe6; cursor: pointer; }
       .section input { accent-color: #5aa2ff; }
+      .efb-web-drawer { margin-top: 0.7rem; padding: 0.85rem; border: 1px solid #2b3245; border-radius: 6px; background: #0b0e17; }
+      .efb-web-omni, .efb-web-chips, .efb-web-actions, .efb-web-presets { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; align-items: center; }
+      .efb-web-omni { margin-top: 0; }
+      .efb-web-input { flex: 1 1 18rem; min-width: 0; padding: 0.42rem 0.65rem; border: 1px solid #2b3245; border-radius: 4px; background: #06080f; color: #f2f4f8; font: inherit; }
+      .section .efb-web-btn, .section .efb-web-chip { margin-top: 0; padding: 0.34rem 0.7rem; border-radius: 4px; font-size: 13px; }
+      .section .efb-web-btn.primary { border-color: #5aa2ff; background: #163059; }
+      .section .efb-web-btn.emerald, .section .efb-web-chip.adhoc { border-color: #34d399; background: #0e2e26; color: #a7f3d0; }
+      .section .efb-web-chip { border-color: #2b3245; background: #121826; border-radius: 999px; }
+      .section .efb-web-chip.hold { border-color: #ffb454; color: #ffd9a0; }
+      .section .efb-web-chip.selected { border-color: #5aa2ff; box-shadow: 0 0 0 1px #5aa2ff; }
       @media (prefers-reduced-motion: reduce) { .bar[data-unknown] .fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     <link data-trunk rel="rust" data-bin="simulate-app" data-initializer="boot.mjs" />

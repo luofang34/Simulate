@@ -12,6 +12,7 @@ workspace = true
 navigate-contract = { workspace = true }
 sim-chain-trial = { workspace = true }
 sim-flight-chain = { workspace = true }
+sim-link = { workspace = true }
 aviate-core = { workspace = true }
 aviate-hal-io = { workspace = true }
 flightbag = { workspace = true }
@@ -59,8 +60,6 @@ pollster = { workspace = true }
 console_error_panic_hook = { workspace = true }
 js-sys = { workspace = true }
 navigate-data = { workspace = true }
-sim-chain-trial = { workspace = true }
-sim-link = { workspace = true }
 sim-link-host = { workspace = true }
 sim-navdata = { workspace = true }
 tracing-wasm = { workspace = true }

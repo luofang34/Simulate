@@ -24,7 +24,7 @@ mod tests;
 
 use live_dem::LiveDem;
 pub use runway::RunwayStrip;
-pub(crate) use runway::surface_ecef;
+pub(crate) use runway::{Reach, surface_ecef};
 
 /// Half the baseline of the central differences behind a surface normal.
 const NORMAL_HALF_BASELINE_M: f64 = 5.0;

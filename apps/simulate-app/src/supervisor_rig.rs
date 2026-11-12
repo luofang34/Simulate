@@ -5,7 +5,8 @@ use sim_scenario::{
     OperatorViewportMode, RadioBeliefPolicy, ScenarioProfile, SimSupervisor, SimTimeScale,
 };
 use sim_scenery::{
-    AerodromeId, AirportIdx, CatalogVerticalDatum, LandingRunwayGeometry, OsmAerodromeDiagram,
+    AerodromeId, AirportIdx, AirportRecord, CatalogVerticalDatum, LandingRunwayGeometry,
+    OsmAerodromeDiagram,
 };
 use world::GeodeticPosition;
 
@@ -36,6 +37,7 @@ pub struct SupervisorRig {
     diagrams: Vec<OsmAerodromeDiagram>,
     free_aerodrome: AerodromeId,
     free_airport: Option<AirportIdx>,
+    custom_airport: Option<AirportRecord>,
     selected_runway_end: usize,
     datum: CatalogVerticalDatum,
     graphs: AirportGraphs,
@@ -76,9 +78,10 @@ impl SupervisorRig {
             diagrams,
             free_aerodrome: AerodromeId::DoverKdov,
             free_airport,
+            custom_airport: None,
             selected_runway_end: 0,
             datum,
-            graphs: AirportGraphs::build(datum, free_airport),
+            graphs: AirportGraphs::build(datum, free_airport, None),
             virtual_camera_index: 0,
             camera_suite: None,
             vehicle_cameras: &[],
@@ -127,6 +130,7 @@ impl SupervisorRig {
     /// Points the free-flight database airport at [`Self::free_aerodrome`]'s.
     fn sync_free_airport(&mut self) {
         self.free_airport = featured_idx(self.free_aerodrome);
+        self.custom_airport = None;
         self.selected_runway_end = 0;
         self.refresh_graphs();
     }

@@ -4,10 +4,12 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use glam::DVec3;
 use sim_geo::Geodetic;
+use sim_render::Camera;
 use sim_scenery::{
     AuthoritativeWorldSurface, CatalogScenery, CatalogVerticalDatum, LiveDemBridge, RunwayDatum,
-    SceneryError, TileId, WorldSurfaceQuery,
+    RunwayStrip, SceneryError, TileId, WorldSurfaceQuery,
 };
 
 use crate::map_rig::ScenerySource;
@@ -116,6 +118,51 @@ impl WorldSurfaceHandle {
     pub fn ellipsoidal_ground_and_version(&self, position: &Geodetic) -> Option<(f64, u64)> {
         let sample = self.read().sample_surface(position).ok()??;
         Some((sample.ellipsoidal_height_m.0, sample.world_version))
+    }
+
+    /// Replaces the ad-hoc runway strips stamped into [`Self::runway_datum`] and the
+    /// live/extra world surface, restamping any already-resident live Terrarium tiles so
+    /// newly delineated runways and bridge decks are immediately flat and landable.
+    pub fn set_ad_hoc_strips(&self, strips: Vec<RunwayStrip>) {
+        self.runway_datum.set_ad_hoc_strips(strips.clone());
+        let mut surface = self.write();
+        surface.set_extra_runways(strips);
+        let _restamped = surface.restamp_live_tiles(&self.runway_datum);
+    }
+
+    /// Unprojects physical window cursor `cursor_px` through 3D perspective `camera` onto
+    /// the authoritative terrain surface (`<= 150 km` slant range), returning the hit's
+    /// [`Geodetic`] coordinates and orthometric height in metres MSL.
+    pub fn raycast_cursor_geodetic(
+        &self,
+        camera: &Camera,
+        cursor_px: [f64; 2],
+        surface_px: [u32; 2],
+    ) -> Option<(Geodetic, f64)> {
+        let [cx, cy] = cursor_px;
+        let [sw, sh] = surface_px.map(|v| f64::from(v.max(1)));
+        if !cx.is_finite() || !cy.is_finite() || !camera.fov_y_rad.is_finite() {
+            return None;
+        }
+        let ndc_x = 2.0 * (cx / sw) - 1.0;
+        let ndc_y = 1.0 - 2.0 * (cy / sh);
+        let tan_half_y = (camera.fov_y_rad * 0.5).tan();
+        if !tan_half_y.is_finite() || tan_half_y <= 0.0 {
+            return None;
+        }
+        let aspect = sw / sh;
+        let dir_cam = DVec3::new(ndc_x * aspect * tan_half_y, ndc_y * tan_half_y, -1.0).normalize();
+        let dir_ecef = (camera.pose.orientation * dir_cam).normalize_or_zero();
+        if dir_ecef.length_squared() < 0.5 {
+            return None;
+        }
+        let from_ecef = camera.pose.position_ecef;
+        let to_ecef = from_ecef + dir_ecef * 150_000.0;
+        let hit = self
+            .read()
+            .raycast_segment_ecef(from_ecef, to_ecef, 192)
+            .ok()??;
+        Some((hit.geodetic, hit.surface.orthometric_msl_m.0))
     }
 
     fn read(&self) -> RwLockReadGuard<'_, AuthoritativeWorldSurface> {

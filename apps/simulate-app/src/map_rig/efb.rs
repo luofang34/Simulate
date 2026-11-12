@@ -2,14 +2,16 @@
 //! corner that expands into an EFB page, with the active airport's surface diagram and a
 //! georeferenced approach plate for its active runway end.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde_json::Value;
 use sim_maplibre::{
     ChartAssetStore, ChartSymbologyInput, EfbBasemap, EfbDisplayMode, EfbFollowMode, EfbLayerFlags,
-    EfbMapConfig, EfbMapSurface, EfbPacer, EfbRefreshPolicy, SceneryEndpoints, SharedMapRuntime,
+    EfbMapConfig, EfbMapSurface, EfbPacer, EfbRefreshPolicy, FixPick, FlightPlan, RouteProgress,
+    SceneryEndpoints, SharedMapRuntime,
 };
-use sim_scenery::AirportDatabase;
+use sim_scenery::{AirportDatabase, AirportRecord};
 use tracing::warn;
 use web_time::Instant;
 
@@ -55,6 +57,8 @@ pub enum EfbCommand {
     Pick([f32; 2]),
     /// Draw the plan over this basemap.
     SetBasemap(EfbBasemap),
+    /// Dispatch a mission-planner / ad-hoc runway action to [`crate::efb_plan::EfbWorkspace`].
+    Plan(crate::efb_plan::EfbPlanAction),
 }
 
 /// What the EFB shows, for its bezel and buttons.
@@ -104,7 +108,8 @@ pub struct EfbRig {
     dirty: bool,
     merged_diagram: Value,
     merged_diagram_shown: bool,
-    picked: Option<sim_maplibre::FixPick>,
+    extra_airports: BTreeMap<String, AirportRecord>,
+    picked: Option<FixPick>,
     /// Which of `[compact, expanded]` a page's host draws, once it chose.
     views_shown: Option<[bool; 2]>,
     /// Frames drawn, so a host shows each new one once.
@@ -148,6 +153,7 @@ impl EfbRig {
             dirty: true,
             merged_diagram: aerodrome_geojson.clone(),
             merged_diagram_shown: true,
+            extra_airports: BTreeMap::new(),
             picked: None,
             views_shown: None,
             frames: 0,
@@ -274,6 +280,7 @@ impl EfbRig {
             #[cfg(any(target_arch = "wasm32", test))]
             EfbCommand::Pick(at_px) => self.pick(at_px),
             EfbCommand::SetBasemap(basemap) => self.surface.set_basemap(basemap)?,
+            EfbCommand::Plan(_) => {}
         }
         Ok(())
     }
@@ -339,14 +346,76 @@ impl EfbRig {
         Ok(())
     }
 
+    /// Registers an ad-hoc or supplemental [`AirportRecord`] (`ZMRS`, `EFHF`, `ZZ01`, ...)
+    /// and merges its surface `diagram_geojson` features into the EFB surface diagram, so
+    /// [`Self::show_airport`] renders both its surface diagram and georeferenced approach plate.
+    pub fn register_extra_airport(&mut self, record: AirportRecord, diagram_geojson: &Value) {
+        let code = record.ids.primary.as_str().to_owned();
+        if let (Some(merged_features), Some(new_features)) = (
+            self.merged_diagram
+                .get_mut("features")
+                .and_then(Value::as_array_mut),
+            diagram_geojson.get("features").and_then(Value::as_array),
+        ) {
+            merged_features.retain(|f| {
+                f.get("properties")
+                    .and_then(|p| p.get("aerodrome"))
+                    .and_then(Value::as_str)
+                    != Some(code.as_str())
+            });
+            merged_features.extend(new_features.iter().cloned());
+        }
+        self.extra_airports.insert(code.clone(), record);
+        self.merged_diagram_shown = false;
+        if self.airport.as_ref().is_some_and(|(a, _)| a == &code) {
+            self.airport = None;
+        }
+        self.dirty = true;
+    }
+
+    /// Draws `plan` at `progress` on the EFB map.
+    pub fn set_route(
+        &mut self,
+        plan: &FlightPlan,
+        progress: RouteProgress,
+    ) -> Result<(), AppSimError> {
+        self.surface.set_route(plan, progress)?;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Centres the shown EFB view on `(lat_deg, lon_deg)`, optionally setting its zoom.
+    pub fn jump_to(&mut self, lat_deg: f64, lon_deg: f64, zoom: Option<f64>) {
+        self.surface.jump_to(lat_deg, lon_deg, zoom);
+        self.dirty = true;
+    }
+
+    /// Unprojects physical texture pixel `at_px` on the shown EFB view to `[lat_deg, lon_deg]`.
+    #[must_use]
+    pub fn screen_to_geodetic(&self, at_px: [f32; 2]) -> Option<[f64; 2]> {
+        self.surface.screen_to_geodetic(self.mode(), at_px)
+    }
+
+    /// Picks the nearest route fix to physical texture pixel `at_px` within `radius_css_px`.
+    #[must_use]
+    pub fn pick_fix_at(&self, at_px: [f32; 2], radius_css_px: f32) -> Option<FixPick> {
+        let radius_px = radius_css_px * self.surface.pixel_ratio() as f32;
+        self.surface.pick_fix(self.mode(), at_px, radius_px)
+    }
+
     /// Shows `airport`'s surface diagram and the approach plate of its runway end.
     fn show_airport(&mut self, airport: Option<EfbAirport>) -> Result<(), AppSimError> {
         self.dirty = true;
-        let record = airport
+        let extra = airport
+            .as_ref()
+            .and_then(|(code, _)| self.extra_airports.get(code))
+            .cloned();
+        let builtin = airport
             .as_ref()
             .and_then(|(code, _)| AirportDatabase::builtin().by_code(code))
             .map(|(_, record)| record);
-        let mapped = record.is_none_or(|r| r.osm_aerodrome().is_some());
+        let record = extra.as_ref().or(builtin);
+        let mapped = extra.is_some() || record.is_none_or(|r| r.osm_aerodrome().is_some());
         if mapped && !self.merged_diagram_shown {
             self.surface
                 .set_surface_diagram_geojson(&self.merged_diagram.to_string())?;

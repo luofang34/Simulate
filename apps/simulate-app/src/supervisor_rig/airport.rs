@@ -21,10 +21,15 @@ const FEATURED: [AerodromeId; 3] = [
 pub(super) struct AirportGraphs {
     featured: Vec<(AerodromeId, AirportIdx)>,
     graphs: Vec<(AirportIdx, AirportSurfaceGraph)>,
+    custom: Option<AirportSurfaceGraph>,
 }
 
 impl AirportGraphs {
-    pub(super) fn build(datum: CatalogVerticalDatum, free: Option<AirportIdx>) -> Self {
+    pub(super) fn build(
+        datum: CatalogVerticalDatum,
+        free: Option<AirportIdx>,
+        custom: Option<&AirportRecord>,
+    ) -> Self {
         let db = AirportDatabase::builtin();
         let featured: Vec<(AerodromeId, AirportIdx)> = FEATURED
             .into_iter()
@@ -39,7 +44,11 @@ impl AirportGraphs {
                 graphs.push((idx, record.to_flightbag_graph(datum)));
             }
         }
-        Self { featured, graphs }
+        Self {
+            featured,
+            graphs,
+            custom: custom.map(|record| record.to_flightbag_graph(datum)),
+        }
     }
 
     fn featured(&self, id: AerodromeId) -> Option<AirportIdx> {
@@ -54,6 +63,10 @@ impl AirportGraphs {
             .iter()
             .find(|(have, _)| *have == idx)
             .map(|(_, graph)| graph)
+    }
+
+    const fn custom_graph(&self) -> Option<&AirportSurfaceGraph> {
+        self.custom.as_ref()
     }
 }
 
@@ -95,6 +108,7 @@ impl SupervisorRig {
     /// (an index into its surface graph's runway ends) a flight there lines up on.
     pub fn set_free_airport(&mut self, idx: AirportIdx, runway_end: usize) {
         self.free_airport = Some(idx);
+        self.custom_airport = None;
         self.selected_runway_end = runway_end;
         if let Some(id) = AirportDatabase::builtin()
             .get(idx)
@@ -102,6 +116,15 @@ impl SupervisorRig {
         {
             self.free_aerodrome = id;
         }
+        self.refresh_graphs();
+    }
+
+    /// Selects a runtime-delineated or historical ad-hoc [`AirportRecord`] (`ZMRS`, `EFHF`,
+    /// `ZZ01`, ...) and its runway end index for free flight, lighting up conformal HUD/SVS
+    /// runway outlines, HSI localizer/glideslope, and procedural approach plates.
+    pub fn set_custom_airport(&mut self, record: AirportRecord, runway_end: usize) {
+        self.custom_airport = Some(record);
+        self.selected_runway_end = runway_end;
         self.refresh_graphs();
     }
 
@@ -119,19 +142,24 @@ impl SupervisorRig {
         self.selected_runway_end
     }
 
-    /// The database airport `profile` flies at: its scenario's airport, the free-flight
-    /// airport without a profile, and none off Earth.
+    /// The database or custom ad-hoc airport `profile` flies at: its scenario's airport,
+    /// the custom ad-hoc or free-flight airport without a profile, and none off Earth.
     #[must_use]
     pub fn active_airport_record(
         &self,
         profile: Option<ScenarioProfile>,
-    ) -> Option<&'static AirportRecord> {
+    ) -> Option<&AirportRecord> {
+        if profile.is_none()
+            && let Some(custom) = &self.custom_airport
+        {
+            return Some(custom);
+        }
         AirportDatabase::builtin().get(self.active_airport_idx(profile)?)
     }
 
     /// The code of [`Self::active_airport_record`], else of [`Self::effective_aerodrome`].
     #[must_use]
-    pub fn effective_airport_code(&self, profile: Option<ScenarioProfile>) -> &'static str {
+    pub fn effective_airport_code(&self, profile: Option<ScenarioProfile>) -> &str {
         self.active_airport_record(profile).map_or_else(
             || self.effective_aerodrome(profile).code(),
             |record| record.ids.primary.as_str(),
@@ -186,6 +214,15 @@ impl SupervisorRig {
 
     /// The active runway from the graphs built for [`Self::vertical_datum`].
     pub(super) fn cached_runway(&self, profile: Option<ScenarioProfile>) -> Option<&RunwayEndSpec> {
+        if profile.is_none()
+            && let (Some(custom), Some(graph)) = (&self.custom_airport, self.graphs.custom_graph())
+        {
+            return pick_end(
+                graph,
+                self.runway_choice(profile),
+                self.pattern_runway(custom),
+            );
+        }
         let idx = self.active_airport_idx(profile)?;
         let record = AirportDatabase::builtin().get(idx)?;
         pick_end(
@@ -206,6 +243,7 @@ impl SupervisorRig {
     }
 
     pub(super) fn refresh_graphs(&mut self) {
-        self.graphs = AirportGraphs::build(self.datum, self.free_airport);
+        self.graphs =
+            AirportGraphs::build(self.datum, self.free_airport, self.custom_airport.as_ref());
     }
 }

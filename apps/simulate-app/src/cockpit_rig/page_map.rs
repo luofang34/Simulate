@@ -2,9 +2,11 @@
 //! inset, its expanded view sized to the canvas instead of the window's tablet, while the
 //! compact view stays the world view's inset.
 
+use serde_json::Value;
 use sim_core::SensorExposureEvent;
-use sim_maplibre::EfbDisplayMode;
+use sim_maplibre::{EfbDisplayMode, FixPick, FlightPlan, RouteProgress};
 use sim_render::{Camera, FrameOutcome, OverlayQuad, PanelSurface, RenderError, Renderer};
+use sim_scenery::AirportRecord;
 use tracing::warn;
 
 use super::CockpitRig;
@@ -74,14 +76,64 @@ impl CockpitRig {
     pub(super) fn inset_chrome(&self, mut chrome: EfbChrome) -> EfbChrome {
         if self.page_map_px.is_some() {
             chrome.buttons.clear();
+            chrome.panels.clear();
+            chrome.labels.clear();
         }
         chrome
+    }
+
+    /// Updates the cockpit EFB autopilot phase reported on the PFD/HUD FMA scoreboard.
+    pub fn set_efb_autopilot_phase(&mut self, phase: crate::efb_plan::EfbAutopilotPhase) {
+        self.host.set_efb_phase(phase);
     }
 
     /// Whether a page's map, not the window, takes the EFB's commands.
     #[must_use]
     pub const fn page_commands_efb(&self) -> bool {
         self.page_map_px.is_some()
+    }
+
+    /// Registers an ad-hoc or supplemental [`AirportRecord`] and its GeoJSON surface diagram
+    /// with the active map rig.
+    pub fn register_extra_airport(&mut self, record: AirportRecord, diagram_geojson: &Value) {
+        if let Some(maps) = self.maps.as_mut() {
+            maps.register_extra_airport(record, diagram_geojson);
+        }
+    }
+
+    /// Publishes the cockpit EFB flight plan and active leg progress onto the EFB map.
+    pub fn set_efb_route(
+        &mut self,
+        plan: &FlightPlan,
+        progress: RouteProgress,
+    ) -> Result<(), crate::error::AppSimError> {
+        match self.maps.as_mut() {
+            Some(maps) => maps.set_efb_route(plan, progress),
+            None => Ok(()),
+        }
+    }
+
+    /// Centres the cockpit EFB map on `(lat_deg, lon_deg)`, optionally changing zoom.
+    pub fn efb_jump_to(&mut self, lat_deg: f64, lon_deg: f64, zoom: Option<f64>) {
+        if let Some(maps) = self.maps.as_mut() {
+            maps.efb_jump_to(lat_deg, lon_deg, zoom);
+        }
+    }
+
+    /// Unprojects physical texture pixel `at_px` on the cockpit EFB view to `[lat_deg, lon_deg]`.
+    #[must_use]
+    pub fn efb_screen_to_geodetic(&self, at_px: [f32; 2]) -> Option<[f64; 2]> {
+        self.maps
+            .as_ref()
+            .and_then(|m| m.efb_screen_to_geodetic(at_px))
+    }
+
+    /// Picks the nearest route fix to physical texture pixel `at_px` on the cockpit EFB view.
+    #[must_use]
+    pub fn efb_pick_fix(&self, at_px: [f32; 2], radius_css_px: f32) -> Option<FixPick> {
+        self.maps
+            .as_ref()
+            .and_then(|m| m.efb_pick_fix(at_px, radius_css_px))
     }
 
     /// The frame the window's EFB chrome frames: beside a page's map the compact inset,

@@ -122,3 +122,13 @@ pub(crate) fn screen_positions(
         .map(|&[lat, lon]| projection.project(lat, lon))
         .collect()
 }
+
+/// Sea-level `[lat_deg, lon_deg]` under physical pixel `at_px` on a `viewport_px` chart
+/// drawn by `camera` at `pixel_ratio`; `None` beyond the globe limb or for non-finite inputs.
+pub(crate) fn unproject_screen_position(
+    (camera, viewport_px, pixel_ratio): (&ChartCameraSpec, [u32; 2], f64),
+    at_px: [f32; 2],
+) -> Option<[f64; 2]> {
+    let projection = ChartProjection::new(camera, viewport_px, pixel_ratio)?;
+    projection.unproject(at_px)
+}

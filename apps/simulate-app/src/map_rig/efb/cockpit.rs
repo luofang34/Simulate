@@ -3,9 +3,12 @@
 
 use std::time::Duration;
 
-use sim_maplibre::{ChartSymbologyInput, EfbDisplayMode, ViewSlotMask};
+use serde_json::Value;
+use sim_maplibre::{
+    ChartSymbologyInput, EfbDisplayMode, FixPick, FlightPlan, RouteProgress, ViewSlotMask,
+};
 use sim_scenario::OperatorViewportMode;
-use sim_scenery::LandingRunwayGeometry;
+use sim_scenery::{AirportRecord, LandingRunwayGeometry};
 use tracing::warn;
 use web_time::Instant;
 
@@ -100,6 +103,61 @@ impl MapLibreRig {
     /// follows the supervisor again).
     pub fn set_efb_airport(&mut self, airport: Option<EfbAirport>) {
         self.efb_airport = airport;
+    }
+
+    /// Registers an ad-hoc or supplemental [`AirportRecord`] and its GeoJSON diagram with
+    /// both the shared `aerodrome_geojson` and the active EFB surface.
+    pub fn register_extra_airport(&mut self, record: AirportRecord, diagram_geojson: &Value) {
+        let code = record.ids.primary.as_str().to_owned();
+        if let (Some(merged_features), Some(new_features)) = (
+            self.aerodrome_geojson
+                .get_mut("features")
+                .and_then(Value::as_array_mut),
+            diagram_geojson.get("features").and_then(Value::as_array),
+        ) {
+            merged_features.retain(|f| {
+                f.get("properties")
+                    .and_then(|p| p.get("aerodrome"))
+                    .and_then(Value::as_str)
+                    != Some(code.as_str())
+            });
+            merged_features.extend(new_features.iter().cloned());
+        }
+        if let Some(efb) = self.efb.as_mut() {
+            efb.register_extra_airport(record, diagram_geojson);
+        }
+    }
+
+    /// Updates the cockpit EFB map's drawn route and active leg progress.
+    pub fn set_efb_route(
+        &mut self,
+        plan: &FlightPlan,
+        progress: RouteProgress,
+    ) -> Result<(), AppSimError> {
+        self.efb
+            .as_mut()
+            .map_or(Ok(()), |efb| efb.set_route(plan, progress))
+    }
+
+    /// Centres the cockpit EFB map on `(lat_deg, lon_deg)`, optionally changing zoom.
+    pub fn efb_jump_to(&mut self, lat_deg: f64, lon_deg: f64, zoom: Option<f64>) {
+        if let Some(efb) = self.efb.as_mut() {
+            efb.jump_to(lat_deg, lon_deg, zoom);
+        }
+    }
+
+    /// Unprojects physical texture pixel `at_px` on the shown EFB view to `[lat_deg, lon_deg]`.
+    #[must_use]
+    pub fn efb_screen_to_geodetic(&self, at_px: [f32; 2]) -> Option<[f64; 2]> {
+        self.shown_efb()
+            .and_then(|efb| efb.screen_to_geodetic(at_px))
+    }
+
+    /// Picks the nearest route fix to physical texture pixel `at_px` within `radius_css_px`.
+    #[must_use]
+    pub fn efb_pick_fix(&self, at_px: [f32; 2], radius_css_px: f32) -> Option<FixPick> {
+        self.shown_efb()
+            .and_then(|efb| efb.pick_fix_at(at_px, radius_css_px))
     }
 
     /// Draws only the EFB, when it is shown and due, as the rest of the frame would.

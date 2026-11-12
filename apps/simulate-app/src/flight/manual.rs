@@ -303,7 +303,6 @@ impl Flight {
 
     /// Respawns on `record`'s runway `designator` at longitudinal `station_m` relative to
     /// its surveyed landing threshold (`< 0` on approach glidepath, `>= 0` on ground rollout).
-    #[cfg(test)]
     pub fn spawn_at_landing_station(
         &mut self,
         record: &AirportRecord,
@@ -312,12 +311,12 @@ impl Flight {
     ) -> Result<(), AppSimError> {
         use sim_geo::{Geodetic, geodetic_to_ecef};
         let datum = self.surface.vertical_datum();
-        let landing =
-            record
-                .landing_runway(designator, datum)
-                .ok_or_else(|| AppSimError::Screenshot {
-                    detail: format!("missing runway {designator} at {}", record.ids.primary),
-                })?;
+        let landing = record.landing_runway(designator, datum).ok_or_else(|| {
+            AppSimError::SpawnRunwayMissing {
+                airport: record.ids.primary.to_string(),
+                designator: designator.to_owned(),
+            }
+        })?;
         let thr_frame = LocalFrame::at(&landing.threshold);
         let (sin_b, cos_b) = landing.true_bearing_rad.sin_cos();
         let ahead = thr_frame.north() * cos_b + thr_frame.east() * sin_b;

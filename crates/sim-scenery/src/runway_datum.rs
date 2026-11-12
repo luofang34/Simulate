@@ -7,14 +7,14 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use sim_geo::Geodetic;
 
-use crate::AirportDatabase;
 use crate::airport_db::{CELL_DEG, LAT_CELLS, LON_CELLS};
-use crate::world_query::surface_ecef;
+use crate::world_query::{Reach, surface_ecef};
+use crate::{AirportDatabase, RunwayStrip};
 
 mod landing;
 mod profile;
@@ -45,7 +45,9 @@ struct Index {
     polar: OnceLock<Vec<DatumStrip>>,
     /// Each airport's runway profiles by runway, once resolved from terrain.
     profiles: Vec<OnceLock<Vec<Option<Profile>>>>,
-    /// Counts airports resolved, so a surface knows its runways changed.
+    /// Runtime ad-hoc runway strips delineated during a session.
+    ad_hoc: RwLock<Vec<RunwayStrip>>,
+    /// Counts airports resolved or ad-hoc strips updated, so a surface knows its runways changed.
     generation: AtomicU64,
 }
 
@@ -90,10 +92,46 @@ impl RunwayDatum {
                     .collect(),
                 polar: OnceLock::new(),
                 profiles: (0..database.len()).map(|_| OnceLock::new()).collect(),
+                ad_hoc: RwLock::new(Vec::new()),
                 generation: AtomicU64::new(0),
                 database,
             }),
         }
+    }
+
+    /// Replaces all runtime ad-hoc runway strips and increments [`Self::generation`].
+    pub fn set_ad_hoc_strips(&self, strips: Vec<RunwayStrip>) {
+        if let Ok(mut guard) = self.index.ad_hoc.write() {
+            *guard = strips;
+            self.index.generation.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    /// Appends runtime ad-hoc runway strips and increments [`Self::generation`].
+    pub fn push_ad_hoc_strips(&self, strips: impl IntoIterator<Item = RunwayStrip>) {
+        if let Ok(mut guard) = self.index.ad_hoc.write() {
+            let before = guard.len();
+            guard.extend(strips);
+            if guard.len() != before {
+                self.index.generation.fetch_add(1, Ordering::AcqRel);
+            }
+        }
+    }
+
+    /// Clears all runtime ad-hoc runway strips and increments [`Self::generation`].
+    pub fn clear_ad_hoc_strips(&self) {
+        if let Ok(mut guard) = self.index.ad_hoc.write()
+            && !guard.is_empty()
+        {
+            guard.clear();
+            self.index.generation.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    /// How many runtime ad-hoc runway strips are currently registered.
+    #[must_use]
+    pub fn ad_hoc_strip_len(&self) -> usize {
+        self.index.ad_hoc.read().map_or(0, |guard| guard.len())
     }
 
     /// The runways of [`AirportDatabase::builtin`].
@@ -127,7 +165,35 @@ impl RunwayDatum {
 
     /// Whether any strip reaches into the fine cells covering a latitude/longitude box.
     fn any_strip_in(&self, lats: (f64, f64), lons: (f64, f64)) -> bool {
-        self.strips_in(lats, lons).next().is_some()
+        self.strips_in(lats, lons).next().is_some() || self.any_ad_hoc_in(lats, lons)
+    }
+
+    fn any_ad_hoc_in(&self, (south, north): (f64, f64), (west, east): (f64, f64)) -> bool {
+        let Ok(guard) = self.index.ad_hoc.read() else {
+            return false;
+        };
+        if guard.is_empty() {
+            return false;
+        }
+        let (q_lat_lo, q_lon_lo) = fine_key(south, west);
+        let (q_lat_hi, q_lon_hi) = fine_key(north, east);
+        let q_span = (q_lon_hi - q_lon_lo).rem_euclid(FINE_LON_CELLS);
+        guard.iter().any(|strip| {
+            let corners = strip.skirt_corners();
+            let s_lats = corners.map(|c| c.lat_deg());
+            let s_lons = unwrapped_lons(corners.map(|c| c.lon_deg()));
+            let (s_lat_lo, s_lon_lo) = fine_key(min(s_lats), min(s_lons));
+            let (s_lat_hi, s_lon_hi) = fine_key(max(s_lats), max(s_lons));
+            if s_lat_hi < q_lat_lo || s_lat_lo > q_lat_hi {
+                return false;
+            }
+            if south.abs().max(north.abs()) > POLAR_LAT_DEG {
+                return true;
+            }
+            let s_span = (s_lon_hi - s_lon_lo).rem_euclid(FINE_LON_CELLS);
+            (s_lon_lo - q_lon_lo).rem_euclid(FINE_LON_CELLS) <= q_span
+                || (q_lon_lo - s_lon_lo).rem_euclid(FINE_LON_CELLS) <= s_span
+        })
     }
 
     /// The strips filed in the fine cells covering a latitude/longitude box; a strip
@@ -216,22 +282,37 @@ impl RunwayDatum {
     /// along its resolved profile or straight between its ends.
     fn strongest(&self, strips: &[DatumStrip], position: &Geodetic) -> Option<(f64, f64)> {
         let surface = surface_ecef(position);
-        strips
-            .iter()
-            .filter_map(|datum| {
-                let reach = datum.strip.reach_ecef(surface)?;
-                (reach.weight > 0.0).then_some((datum.runway, reach))
-            })
-            .fold(None, |best: Option<(RunwayRef, _)>, candidate| match best {
+        let charted = strips.iter().filter_map(|datum| {
+            let reach = datum.strip.reach_ecef(surface)?;
+            (reach.weight > 0.0).then_some((Some(datum.runway), reach))
+        });
+        let best_charted = charted.fold(
+            None,
+            |best: Option<(Option<RunwayRef>, Reach)>, candidate| match best {
                 Some(best) if !candidate.1.beats(&best.1) => Some(best),
                 _ => Some(candidate),
-            })
-            .map(|(runway, reach)| {
-                let height = self
-                    .profile_height(runway, reach.fraction)
-                    .unwrap_or(reach.straight_m);
-                (height, reach.weight)
-            })
+            },
+        );
+        let best = if let Ok(ad_hoc) = self.index.ad_hoc.read() {
+            ad_hoc
+                .iter()
+                .filter_map(|strip| {
+                    let reach = strip.reach_ecef(surface)?;
+                    (reach.weight > 0.0).then_some((None, reach))
+                })
+                .fold(best_charted, |best, candidate| match best {
+                    Some(best) if !candidate.1.beats(&best.1) => Some(best),
+                    _ => Some(candidate),
+                })
+        } else {
+            best_charted
+        };
+        best.map(|(runway, reach)| {
+            let height = runway
+                .and_then(|r| self.profile_height(r, reach.fraction))
+                .unwrap_or(reach.straight_m);
+            (height, reach.weight)
+        })
     }
 
     fn profile_height(&self, runway: RunwayRef, fraction: f64) -> Option<f64> {

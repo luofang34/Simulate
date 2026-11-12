@@ -84,7 +84,7 @@ impl FlightApp {
                     // A link's page flies its own route; the app's default aerodrome is
                     // not on it.
                     (earth && !self.flight.shows_page())
-                        .then(|| sup.effective_airport_code(profile)),
+                        .then(|| sup.effective_airport_code(profile).to_owned()),
                     sup.time_scale(),
                 )
             },
@@ -95,7 +95,7 @@ impl FlightApp {
                 &self.flight,
                 viewport_mode,
                 cam_title.as_deref(),
-                aero_code,
+                aero_code.as_deref(),
                 time_scale,
                 &cockpit,
             ),
@@ -195,7 +195,7 @@ impl FlightApp {
 
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
-        let controls = self.mapper.controls();
+        let controls = self.step_efb_guidance(self.mapper.controls(), time_scale);
         let wall_s;
         match self.flight.advance_to_now(controls, time_scale) {
             Ok(elapsed_s) => {

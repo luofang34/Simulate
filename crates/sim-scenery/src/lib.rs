@@ -16,6 +16,7 @@
 //! Photogrammetry is deferred: its source is a [`Deferred`] stub that fails
 //! with a typed error.
 
+mod ad_hoc;
 mod aerodrome;
 mod aerodrome_registry;
 mod airport_db;
@@ -32,6 +33,11 @@ mod sources;
 mod terrarium;
 mod world_query;
 
+pub use ad_hoc::{
+    AdHocAerodrome, AdHocRunwayError, AdHocRunwaySpec, MATHIAS_RUST_1987_WAYPOINTS,
+    MAX_AD_HOC_LENGTH_M, MAX_AD_HOC_WIDTH_M, MIN_AD_HOC_LENGTH_M, MIN_AD_HOC_WIDTH_M,
+    approx_magnetic_variation_deg,
+};
 pub use aerodrome::{AerodromeId, AirspaceControl, OsmAerodromeDiagram};
 pub use aerodrome_registry::{
     AerodromeRecord, AerodromeRegistry, AerodromeSummary, GLIDESLOPE_RAD, RunwaySummary,
