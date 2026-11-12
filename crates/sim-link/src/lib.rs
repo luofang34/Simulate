@@ -23,7 +23,7 @@
 //! | `nav` | navigation sets joined by `;`, each a `.`-joined list of `ins`, `baro`, `gnss`, `stars`, `visual`; `ins` in every set, no means twice in a set, no two sets with the same means |
 //! | `fly` | the set that steers the flight; absent for the first |
 //! | `out` | outages joined by `;`, one entry per sensor, each `sensor:start-end[,start-end...]` in seconds from the start, increasing and not overlapping; an empty end runs to the end of the flight; sensors `gnss`, `baro`, `stars`, `cam` |
-//! | `spoof` | a spoofer dragging the GNSS receiver's fixes, `gnss:rate,bearing:start-end[,start-end...]`: m/s above 0 to 100, degrees from true north 0 to under 360, then spans as `out` writes them; in each span the reported position leaves the true one from no offset at that rate, the reported velocity with it |
+//! | `spoof` | a spoofer dragging the GNSS receiver's fixes, `gnss:rate,bearing:start-end[,start-end...]`: m/s above 0 to 100, degrees from true north 0 to under 360, then spans as `out` writes them; from a span's start the reported position leaves the true one from no offset at that rate, the reported velocity with it, and a span that begins where the one before ends carries the drag on |
 //! | `cam` | terrain camera `WxH,fov_deg,depression_deg,rate_hz`; the field of view is horizontal and depression 90 looks straight down |
 //! | `go` | `1` builds the map package and starts without asking |
 //! | `mb` | storage budget of the map package, MB, 1 to 65536 |

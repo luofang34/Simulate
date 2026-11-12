@@ -34,7 +34,8 @@ pub struct ChainTrialSpec {
 }
 
 /// A spoofer that drags the GNSS receiver's fixes away from the truth, for
-/// every consumer of the receiver. In each span it starts from no offset.
+/// every consumer of the receiver. A capture starts from no offset; a span
+/// that begins where the one before ends carries its drag on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GnssSpoofSpec {

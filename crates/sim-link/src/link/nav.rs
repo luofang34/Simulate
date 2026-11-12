@@ -118,10 +118,11 @@ pub struct Outage {
     pub spans: Vec<Span>,
 }
 
-/// A spoofer dragging the GNSS receiver's fixes away from the truth. In each
-/// span it starts from no offset and the reported position leaves the true
-/// one at `rate` toward `bearing`, the reported velocity carrying the same
-/// drag; a span's end returns the true sky at once.
+/// A spoofer dragging the GNSS receiver's fixes away from the truth. At a
+/// span's start it captures the receiver with no offset and the reported
+/// position leaves the true one at `rate` toward `bearing`, the reported
+/// velocity carrying the same drag; a span's end returns the true sky at
+/// once. A span that begins where the one before ends carries its drag on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Spoof {
     /// The drag, m/s, above 0 and at most 100.

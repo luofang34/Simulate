@@ -26,7 +26,9 @@ pub const VEHICLE_CAMERA: CameraGeometry = CameraGeometry {
 };
 
 /// The link as its hosts fly it: the trial request, and beside it what the
-/// link says that the trial request has no field for.
+/// link says that the trial request has no field for. The link's spoofer is
+/// a fault of the vehicle's own receiver, which only the chain flies:
+/// [`crate::chain_spec`] takes it from the link.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HostedRequest {
     /// The request shared with the headless trial: epoch, route on the

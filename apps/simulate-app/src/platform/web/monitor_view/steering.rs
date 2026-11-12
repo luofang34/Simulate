@@ -20,7 +20,9 @@ pub struct Steering {
 
 /// What the steering block says after the set's name.
 const MEANS: &str = "Pilotage's mission steers on this set's position. The map's aircraft is \
-    this estimate, inside the ring of the one-sigma the set states for it.";
+    this estimate, inside the ring of the one-sigma the set states for it. When the set's \
+    solution degrades, Pilotage flies the same solution on as dead reckoning and reports \
+    it; the map's aircraft stays that solution.";
 /// What it says of the other marks.
 const OTHERS: &str = "The yellow crossed circle is the simulator's true position. The flight \
     controller's own estimate is drawn as flight-controller, one more track to compare: \
