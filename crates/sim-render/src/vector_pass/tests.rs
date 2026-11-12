@@ -183,3 +183,25 @@ fn multiple_targets_encode_into_one_command_buffer_without_clobbering() {
         0
     );
 }
+
+#[test]
+fn a_resized_target_draws_on_its_new_attachments_after_freeing_the_old() {
+    let Ok(gpu) = pollster::block_on(HeadlessGpu::new()) else {
+        return;
+    };
+    let pass = pollster::block_on(VectorScenePass::new(&gpu.device)).unwrap();
+    let mut target = VectorTarget::new(&gpu.device, "pfd", SIZE * 2, SIZE).unwrap();
+    let white = [1.0, 1.0, 1.0, 1.0];
+    let mut v = Vec::new();
+    quad(&mut v, [0.0, 0.0, 12.0, 12.0], white, FULL_CLIP, 0.1);
+    draw(&gpu, &pass, &mut target, &v);
+    // The old textures are destroyed with frames still queued on them; the new
+    // ones draw and read back as a fresh target's would.
+    target.ensure_size(&gpu.device, SIZE, SIZE).unwrap();
+    draw(&gpu, &pass, &mut target, &v);
+    let pixels = read_back(&gpu, &target);
+    gpu.check_device().unwrap();
+    assert_eq!(target.texture().size().width, SIZE);
+    assert_eq!(alpha(&pixels, 4, 4), 255);
+    assert_eq!(alpha(&pixels, 24, 24), 0);
+}
