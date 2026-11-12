@@ -96,17 +96,12 @@ pub fn show_world(view: PageView, feed: PageFeed) {
     }
 }
 
-/// Starts creating the renderer for `window`, and the page map's surface when `host`
-/// has a map canvas; they are posted back to the event loop when the browser has
-/// granted a GPU device.
-pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, host: &Host) {
+/// Starts creating the renderer for `window`; it is posted back to the event
+/// loop when the browser has granted a GPU device.
+pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     let size = window.inner_size();
-    let map_canvas = host.map_canvas();
     wasm_bindgen_futures::spawn_local(async move {
-        let mut gpu = GpuReady::new(window, size.width, size.height).await;
-        if let (Ok(ready), Some(canvas)) = (gpu.as_mut(), map_canvas) {
-            ready.page_map = page_map_presenter(&ready.renderer, canvas).await;
-        }
+        let gpu = GpuReady::new(window, size.width, size.height).await;
         if proxy
             .send_event(AppEvent::RendererReady(Box::new(gpu)))
             .is_err()
@@ -114,18 +109,4 @@ pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, host
             error!("event loop closed before the renderer was ready");
         }
     });
-}
-
-/// The page map's surface on `canvas`, on the renderer's device. Without one the page
-/// keeps its own drawing of the map.
-async fn page_map_presenter(
-    renderer: &sim_render::Renderer,
-    canvas: web_sys::HtmlCanvasElement,
-) -> Option<sim_render::CanvasPresenter> {
-    let (width, height) = (canvas.width().max(1), canvas.height().max(1));
-    let target = wgpu::SurfaceTarget::Canvas(canvas);
-    sim_render::CanvasPresenter::new(renderer, target, width, height)
-        .await
-        .inspect_err(|err| tracing::warn!(error = %err, "the page map has no surface"))
-        .ok()
 }

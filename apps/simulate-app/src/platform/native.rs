@@ -68,6 +68,22 @@ impl Host {
     /// A line of diagnostics the log already carries; the desktop has no other place for it.
     pub fn diagnostics(&self, _text: &str) {}
 
+    /// The desktop has no page around its window, so no page map.
+    pub fn page_map_surface(
+        &self,
+        _renderer: &sim_render::Renderer,
+    ) -> Option<sim_render::PanelSurface> {
+        None
+    }
+
+    /// The desktop docks its instruments over the window view.
+    pub fn page_panels(
+        &self,
+        _renderer: &sim_render::Renderer,
+    ) -> Option<crate::app::page_panels::PagePanels> {
+        None
+    }
+
     /// Shows `title` on the window.
     pub fn set_title(&self, window: &Window, title: &str) {
         window.set_title(title);
@@ -82,7 +98,7 @@ impl Host {
 }
 
 /// Creates the renderer for `window` and posts it back to the event loop.
-pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, _host: &Host) {
+pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     let size = window.inner_size();
     let gpu = pollster::block_on(GpuReady::new(window, size.width, size.height));
     if proxy

@@ -99,6 +99,13 @@ impl CockpitDeviceTier {
     }
 
     /// Frame-time-bounded drape bake budget for 60–120 Hz OTW flight.
+    ///
+    /// A browser's budget stays small: with the window view the only view a frame draws, a
+    /// 2 ms budget re-bakes enough far drapes. Measured on the first link in Chrome, the
+    /// ground under the horizon without imagery is 3 %, 1 % and 0 % at route 0:45, 1:10
+    /// and 1:30. A second view drawn in the same frames re-dirties a shared near drape
+    /// every frame and leaves 45 % at 1:10, which a larger budget only hides at the cost
+    /// of the pace.
     #[must_use]
     pub const fn otw_drape_budget(self) -> DrapeBudget {
         match self {

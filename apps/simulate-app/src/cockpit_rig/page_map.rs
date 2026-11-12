@@ -4,7 +4,7 @@
 
 use sim_core::SensorExposureEvent;
 use sim_maplibre::EfbDisplayMode;
-use sim_render::{Camera, CanvasPresenter, FrameOutcome, OverlayQuad, RenderError};
+use sim_render::{Camera, FrameOutcome, OverlayQuad, PanelSurface, RenderError, Renderer};
 use tracing::warn;
 
 use super::CockpitRig;
@@ -131,12 +131,12 @@ impl CockpitRig {
         resized
     }
 
-    /// Shows the expanded EFB view on `presenter`, and tells the page on `link` what it
-    /// shows.
+    /// Shows the expanded EFB view on the page map's `surface`, and tells the page on
+    /// `link` what it shows.
     pub fn present_page_map(
         &mut self,
-        presenter: &mut CanvasPresenter,
-        queue: &wgpu::Queue,
+        renderer: &mut Renderer,
+        surface: &mut PanelSurface,
         link: &PageMapLink,
     ) -> Result<FrameOutcome, RenderError> {
         let Some(maps) = self.maps.as_ref() else {
@@ -151,7 +151,7 @@ impl CockpitRig {
         else {
             return Ok(FrameOutcome::Skipped);
         };
-        let outcome = presenter.present(&self.device, queue, OverlayQuad::full_map(view))?;
+        let outcome = renderer.present_panel(surface, &[OverlayQuad::full_map(view)])?;
         if outcome == FrameOutcome::Presented {
             self.page_map_shown = drawn;
         }

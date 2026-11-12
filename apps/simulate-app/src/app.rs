@@ -32,6 +32,7 @@ mod actions;
 mod efb_input;
 mod frame;
 mod hub;
+pub(crate) mod page_panels;
 mod pointer;
 
 #[cfg(test)]
@@ -55,9 +56,6 @@ pub struct GpuReady {
     pub hud_pass: VectorScenePass,
     /// Vector pass for the `Esc` menu.
     pub menu_pass: VectorScenePass,
-    /// The surface of a page's own map canvas, when the app is a view inside a page
-    /// that has one.
-    pub page_map: Option<sim_render::CanvasPresenter>,
 }
 
 impl GpuReady {
@@ -70,7 +68,6 @@ impl GpuReady {
             renderer,
             hud_pass,
             menu_pass,
-            page_map: None,
         })
     }
 }
@@ -87,7 +84,8 @@ pub struct FlightApp {
     proxy: EventLoopProxy<AppEvent>,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
-    page_map: Option<sim_render::CanvasPresenter>,
+    /// The surface of a page's own map canvas, when the host has one.
+    page_map: Option<sim_render::PanelSurface>,
     cockpit_rig: Option<CockpitRig>,
     menu_overlay: Option<MenuOverlay>,
     esc_menu: EscMenu,
@@ -110,6 +108,8 @@ pub struct FlightApp {
     look: LookOffset,
     occluded: bool,
     host: platform::Host,
+    /// The PFD and HSI on canvases of their own, when the host lays them out apart.
+    panels: Option<page_panels::PagePanels>,
     #[cfg(not(target_arch = "wasm32"))]
     next_occluded_tick: Option<std::time::Instant>,
 }
@@ -158,6 +158,7 @@ impl FlightApp {
             look: LookOffset::default(),
             occluded: false,
             host,
+            panels: None,
             #[cfg(not(target_arch = "wasm32"))]
             next_occluded_tick: None,
         })
@@ -197,7 +198,6 @@ impl FlightApp {
             mut renderer,
             hud_pass,
             menu_pass,
-            page_map,
         } = gpu;
         let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor());
         if let Some(window) = &self.window {
@@ -205,10 +205,12 @@ impl FlightApp {
             renderer.resize(size.width, size.height);
             window.request_redraw();
         }
+        self.panels = self.host.page_panels(&renderer);
+        let page_map = self.host.page_map_surface(&renderer);
         match CockpitRig::from_renderer(&renderer, hud_pass, self.flight.world_surface().clone()) {
             Ok(mut rig) => {
                 rig.set_pixel_ratio(scale_factor);
-                rig.set_page_map_px(page_map.as_ref().map(sim_render::CanvasPresenter::size));
+                rig.set_page_map_px(page_map.as_ref().map(sim_render::PanelSurface::size));
                 self.page_map = page_map;
                 let code = rig
                     .supervisor()
@@ -310,7 +312,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             Ok(window) => {
                 let window = Arc::new(window);
                 self.window = Some(Arc::clone(&window));
-                platform::spawn_renderer(window, self.proxy.clone(), &self.host);
+                platform::spawn_renderer(window, self.proxy.clone());
             }
             Err(err) => self.fail(event_loop, "creating the window failed", &err),
         }

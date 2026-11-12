@@ -40,7 +40,13 @@ impl Flight {
         let steps = match &mut self.mode {
             Mode::Free { world, panel, .. } => {
                 let steps = world.advance(ticks)?;
-                self.exposures.extend(world.take_exposures());
+                let exposures = world.take_exposures();
+                // A page's navigation camera renders its frames apart from the maps, and
+                // nothing else in a page reads an optical exposure; handed on, they would
+                // only draw the maps' hidden sensor slot.
+                if self.page.is_none() {
+                    self.exposures.extend(exposures);
+                }
                 if let Some(session) = world.session() {
                     mode::observe(panel, session.block().plant(), session.physics_time());
                 }

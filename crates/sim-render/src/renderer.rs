@@ -1,4 +1,7 @@
 use crate::compositor::{CompositorPass, CompositorTarget, OverlayQuad};
+
+mod panel;
+
 use crate::frame::FrameParams;
 use crate::gpu::SurfaceGpu;
 use crate::pipeline::{GlobeLayouts, globe_pipeline};
@@ -6,6 +9,7 @@ use crate::scene::GlobeScene;
 use crate::{
     Camera, EnvironmentFrame, FrameOutcome, GlobeMesh, MAX_PATCHES, OrthoAtlas, RenderError,
 };
+pub use panel::PanelSurface;
 
 /// Globe tessellation: 12 × 24 patches of 15° × 15°, each a 16 × 16 grid.
 const GLOBE_LAT_PATCHES: u32 = 12;

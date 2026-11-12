@@ -4,7 +4,7 @@
 use std::collections::hash_map::Entry;
 
 use sim_geo::BodyEllipsoid;
-use sim_render::{Camera, EnvironmentFrame, FrameOutcome};
+use sim_render::{Camera, EnvironmentFrame};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld, SimTimeScale};
 use winit::event_loop::ActiveEventLoop;
 
@@ -155,6 +155,17 @@ impl FlightApp {
         }
     }
 
+    /// Sizes the panels drawn apart to their canvases, and the instruments to the panels.
+    fn follow_panel_layout(&mut self) {
+        if let (Some(panels), Some(renderer), Some(rig)) = (
+            self.panels.as_mut(),
+            self.renderer.as_ref(),
+            self.cockpit_rig.as_mut(),
+        ) {
+            rig.set_panels_apart(Some(panels.follow_layout(renderer)));
+        }
+    }
+
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.mapper.controls();
@@ -173,6 +184,7 @@ impl FlightApp {
         let Some(camera) = self.frame_camera(event_loop, viewport_mode) else {
             return;
         };
+        self.follow_panel_layout();
         let exposures = self.flight.drain_sensor_exposures();
         let world = self.flight.world();
         let sky = self
@@ -244,9 +256,15 @@ impl FlightApp {
             preview_view,
             &mut quads,
         );
-        match renderer.render_composite(globe, &quads) {
-            Ok(FrameOutcome::Presented | FrameOutcome::Skipped) => {}
-            Err(err) => return self.fail(event_loop, "rendering failed", &err),
+        if let Err(err) = renderer.render_composite(globe, &quads) {
+            return self.fail(event_loop, "rendering failed", &err);
+        }
+        let apart = match (self.panels.as_mut(), rig.apart_panel_quads(world)) {
+            (Some(panels), Some(quads)) => panels.present(renderer, &quads),
+            _ => Ok(()),
+        };
+        if let Err(err) = apart {
+            return self.fail(event_loop, "the instrument panels could not be drawn", &err);
         }
         self.present_page_map();
     }
@@ -264,12 +282,12 @@ impl FlightApp {
 
     /// Shows the EFB's expanded view on the page's map canvas, when there is one.
     fn present_page_map(&mut self) {
-        if let (Some(renderer), Some(presenter), Some(rig), Some(link)) = (
-            self.renderer.as_ref(),
+        if let (Some(renderer), Some(surface), Some(rig), Some(link)) = (
+            self.renderer.as_mut(),
             self.page_map.as_mut(),
             self.cockpit_rig.as_mut(),
             self.flight.page_map(),
-        ) && let Err(err) = rig.present_page_map(presenter, renderer.queue(), link)
+        ) && let Err(err) = rig.present_page_map(renderer, surface, link)
         {
             tracing::warn!(error = %err, "the page map was not drawn");
         }
@@ -281,7 +299,7 @@ impl FlightApp {
 fn page_map_frame(
     (rig, presenter): (
         &mut crate::cockpit_rig::CockpitRig,
-        Option<&mut sim_render::CanvasPresenter>,
+        Option<&mut sim_render::PanelSurface>,
     ),
     flight: &crate::flight::Flight,
     renderer: Option<&sim_render::Renderer>,
@@ -295,7 +313,7 @@ fn page_map_frame(
     if let (Some([width, height]), Some(presenter), Some(renderer)) =
         (rig.take_page_map(link, !occluded), presenter, renderer)
     {
-        presenter.resize(renderer.device(), width, height);
+        renderer.resize_panel(presenter, width, height);
     }
     let Some(renderer) = renderer.filter(|_| page_only) else {
         return false;

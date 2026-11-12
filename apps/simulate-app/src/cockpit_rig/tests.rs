@@ -3,7 +3,7 @@
 //! with the map-less preset.
 
 use sim_maplibre::{EfbDisplayMode, HostGpu};
-use sim_render::{HeadlessGpu, VectorScenePass};
+use sim_render::{HeadlessGpu, VectorScenePass, ViewportRect};
 use sim_scenario::OperatorViewportMode;
 
 use super::CockpitRig;
@@ -119,6 +119,53 @@ fn the_hub_globe_centres_on_the_selection_and_picks_it_back() -> Result<(), AppS
         Some(kewr),
         "the drag moved KEWR off the centre"
     );
+    gpu.check_device()?;
+    Ok(())
+}
+
+#[test]
+fn panels_drawn_apart_leave_the_window_view_to_the_world_and_hud() -> Result<(), AppSimError> {
+    let Ok(gpu) = pollster::block_on(HeadlessGpu::new()) else {
+        return Ok(());
+    };
+    if gpu.backend == wgpu::Backend::Gl {
+        return Ok(());
+    }
+    let host_gpu = HostGpu {
+        instance: gpu.instance.clone(),
+        adapter: gpu.adapter.clone(),
+        device: gpu.device.clone(),
+        queue: gpu.queue.clone(),
+    };
+    let size = [1280_u32, 720_u32];
+    let hud_pass = pollster::block_on(VectorScenePass::new(&gpu.device))?;
+    let surface = WorldSurfaceHandle::new();
+    let scenery = Some(ScenerySource::Catalog);
+    let mut rig = CockpitRig::new_with_gpu(host_gpu, size, scenery, hud_pass, surface.clone())?;
+    let flight = Flight::with_surface(surface)?;
+    rig.supervisor_mut()
+        .set_viewport_mode(OperatorViewportMode::Cockpit);
+    rig.set_avionics_preset(AvionicsPreset::NoMapGauges)?;
+    let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
+    let sky = SkyFrame::of_world(flight.world());
+    let _globe = rig.prepare_frame(&gpu.queue, size, &flight, &cam, &sky, &[])?;
+    assert_eq!(
+        rig.overlay_quads(flight.world()).len(),
+        4,
+        "scene, HUD, PFD, HSI"
+    );
+    assert!(rig.apart_panel_quads(flight.world()).is_none(), "docked");
+
+    rig.set_panels_apart(Some([640, 480]));
+    let _globe = rig.prepare_frame(&gpu.queue, size, &flight, &cam, &sky, &[])?;
+    let window = rig.overlay_quads(flight.world());
+    assert_eq!(window.len(), 2, "scene and HUD only");
+    assert!(window.iter().all(|q| q.rect == ViewportRect::FULL));
+    let [pfd, hsi] = rig
+        .apart_panel_quads(flight.world())
+        .expect("the panels are drawn apart");
+    assert!(!pfd.is_empty() && hsi.len() == 1);
+    assert!(pfd.iter().chain(&hsi).all(|q| q.rect == ViewportRect::FULL));
     gpu.check_device()?;
     Ok(())
 }
