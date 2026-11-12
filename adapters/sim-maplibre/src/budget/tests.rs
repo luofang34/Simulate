@@ -11,12 +11,12 @@ fn desktop_drape_budget_keeps_taxi_frames_short() {
 }
 
 #[test]
-fn a_browsers_drape_budget_rebakes_far_drapes_while_flying() {
+fn a_browsers_drape_budget_stays_small_beside_one_window_view() {
     for tier in [CockpitDeviceTier::Browser, CockpitDeviceTier::Handheld] {
         let budget = tier.otw_drape_budget();
-        assert_eq!(budget.per_frame, 12, "{tier:?}");
-        assert_eq!(budget.per_eye_frame, 12, "{tier:?}");
-        assert_eq!(budget.moving_time, Duration::from_millis(50), "{tier:?}");
+        assert_eq!(budget.per_frame, 4, "{tier:?}");
+        assert_eq!(budget.per_eye_frame, 3, "{tier:?}");
+        assert_eq!(budget.moving_time, Duration::from_micros(2_000), "{tier:?}");
     }
 }
 
