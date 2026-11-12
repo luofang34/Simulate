@@ -62,18 +62,19 @@ pub(super) fn add_plan_layers(
     Ok(())
 }
 
+fn by_state(active: Value, future: Value, flown: Value) -> Value {
+    json!([
+        "match",
+        ["get", "state"],
+        "active",
+        active,
+        "flown",
+        flown,
+        future
+    ])
+}
+
 fn plan_layers() -> [Value; 7] {
-    let by_state = |active: Value, future: Value, flown: Value| {
-        json!([
-            "match",
-            ["get", "state"],
-            "active",
-            active,
-            "flown",
-            flown,
-            future
-        ])
-    };
     // A holding pattern draws as a leg does.
     let leg = json!([
         "any",
@@ -81,20 +82,24 @@ fn plan_layers() -> [Value; 7] {
         ["==", ["get", "kind"], "hold"]
     ]);
     let fix = json!(["==", ["get", "kind"], "fix"]);
+    let overlay = json!({ "maplibre-rs:terrain-structure": "overlay" });
     [
         json!({
             "id": "efb-outline-line", "type": "line", "source": OUTLINES_SOURCE,
+            "metadata": overlay.clone(),
             "paint": { "line-color": OUTLINE_GREEN, "line-width": 1.5,
                        "line-opacity": 0.85, "line-dasharray": [4, 3] }
         }),
         json!({
             "id": "efb-route-casing", "type": "line", "source": ROUTE_SOURCE,
+            "metadata": overlay.clone(),
             "filter": ["all", leg.clone(), ["==", ["get", "state"], "active"]],
             "layout": { "line-join": "round", "line-cap": "round" },
             "paint": { "line-color": CASING, "line-width": 6.0, "line-opacity": 0.8 }
         }),
         json!({
             "id": "efb-route-line", "type": "line", "source": ROUTE_SOURCE,
+            "metadata": overlay.clone(),
             "filter": leg,
             "layout": { "line-join": "round", "line-cap": "round" },
             "paint": {
@@ -104,43 +109,56 @@ fn plan_layers() -> [Value; 7] {
         }),
         json!({
             "id": "efb-track-line", "type": "line", "source": TRACKS_SOURCE,
+            "metadata": overlay,
             "filter": ["==", ["geometry-type"], "LineString"],
             "layout": { "line-join": "round", "line-cap": "round" },
             "paint": { "line-color": ["get", "colour"], "line-width": ["get", "width"] }
         }),
-        json!({
-            "id": "efb-track-mark", "type": "circle", "source": TRACKS_SOURCE,
-            "filter": ["==", ["geometry-type"], "Point"],
-            "paint": {
-                "circle-radius": ["case", ["get", "filled"], 2.5, 3.0],
-                "circle-color": ["get", "colour"],
-                "circle-opacity": ["case", ["get", "filled"], 1.0, 0.0],
-                "circle-stroke-color": ["get", "colour"],
-                "circle-stroke-width": ["case", ["get", "filled"], 0.0, 1.5]
-            }
-        }),
-        json!({
-            "id": "efb-route-fix", "type": "circle", "source": ROUTE_SOURCE,
-            "filter": fix.clone(),
-            "paint": {
-                "circle-radius": 4.5,
-                "circle-color": by_state(json!(ACTIVE_MAGENTA), json!(FUTURE_WHITE), json!(FLOWN_GREY)),
-                "circle-stroke-color": CASING,
-                "circle-stroke-width": 1.5
-            }
-        }),
-        // The fix flown toward, drawn last so a neighbour never covers it.
-        json!({
-            "id": "efb-route-fix-active", "type": "circle", "source": ROUTE_SOURCE,
-            "filter": ["all", fix, ["==", ["get", "state"], "active"]],
-            "paint": {
-                "circle-radius": 6.0,
-                "circle-color": ACTIVE_MAGENTA,
-                "circle-stroke-color": CASING,
-                "circle-stroke-width": 2.0
-            }
-        }),
+        point_mark_layer(),
+        route_fix_layer(fix.clone()),
+        active_fix_layer(fix),
     ]
+}
+
+fn point_mark_layer() -> Value {
+    json!({
+        "id": "efb-track-mark", "type": "circle", "source": TRACKS_SOURCE,
+        "filter": ["==", ["geometry-type"], "Point"],
+        "paint": {
+            "circle-radius": ["case", ["get", "filled"], 2.5, 3.0],
+            "circle-color": ["get", "colour"],
+            "circle-opacity": ["case", ["get", "filled"], 1.0, 0.0],
+            "circle-stroke-color": ["get", "colour"],
+            "circle-stroke-width": ["case", ["get", "filled"], 0.0, 1.5]
+        }
+    })
+}
+
+fn route_fix_layer(fix: Value) -> Value {
+    json!({
+        "id": "efb-route-fix", "type": "circle", "source": ROUTE_SOURCE,
+        "filter": fix,
+        "paint": {
+            "circle-radius": 4.5,
+            "circle-color": by_state(json!(ACTIVE_MAGENTA), json!(FUTURE_WHITE), json!(FLOWN_GREY)),
+            "circle-stroke-color": CASING,
+            "circle-stroke-width": 1.5
+        }
+    })
+}
+
+/// The fix flown toward, drawn last so a neighbour never covers it.
+fn active_fix_layer(fix: Value) -> Value {
+    json!({
+        "id": "efb-route-fix-active", "type": "circle", "source": ROUTE_SOURCE,
+        "filter": ["all", fix, ["==", ["get", "state"], "active"]],
+        "paint": {
+            "circle-radius": 6.0,
+            "circle-color": ACTIVE_MAGENTA,
+            "circle-stroke-color": CASING,
+            "circle-stroke-width": 2.0
+        }
+    })
 }
 
 fn empty_geojson_source() -> Value {

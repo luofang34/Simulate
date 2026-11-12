@@ -9,6 +9,7 @@ use maplibre::{
     background::BackgroundPlugin,
     headless::environment::HeadlessEnvironment,
     hillshade::HillshadePlugin,
+    hud::NavigationHudPlugin,
     overlay::OverlayPlugin,
     plugin::Plugin,
     raster::{DefaultRasterTransferables, RasterPlugin},
@@ -83,6 +84,7 @@ pub(super) fn efb_style(
         .add_layer(
             json!({
                 "id": AIRSPACE_LAYER, "type": "line", "source": AIRSPACE_SOURCE,
+                "metadata": { "maplibre-rs:terrain-structure": "overlay" },
                 "paint": { "line-color": "#60a5fa", "line-width": 1.6, "line-opacity": 0.85 }
             }),
             diagram.as_deref(),
@@ -123,6 +125,7 @@ pub(super) fn plugins(tier: CockpitDeviceTier) -> Vec<Box<dyn Plugin<HeadlessEnv
         Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
         Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
         Box::new(OverlayPlugin),
+        Box::new(NavigationHudPlugin),
     ]
 }
 

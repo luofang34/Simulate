@@ -82,6 +82,7 @@ impl EfbMapSurface {
         };
         camera.follow_ownship(symbology.ownship.as_ref());
         let spec = camera.spec();
+        self.sync_navigation_hud(mode, &spec);
         let mesh = self.overlay(&spec, viewport_px, symbology);
         let slot = self.slot_of(mode);
         self.map

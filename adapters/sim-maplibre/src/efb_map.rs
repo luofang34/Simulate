@@ -23,6 +23,7 @@ use crate::{
 
 mod camera;
 mod hold;
+mod hud;
 mod pacing;
 mod plan;
 mod plan_style;
@@ -40,6 +41,7 @@ pub use camera::{
     EfbFollowMode, EfbLayerFlags, EfbRefreshPolicy,
 };
 pub use hold::HoldPattern;
+pub use hud::HudButton;
 pub use pacing::EfbPacer;
 pub use plan::{EfbBasemap, FixPick};
 pub use plan_style::{ACTIVE_MAGENTA, FLOWN_GREY, FUTURE_WHITE, OUTLINE_GREEN};
@@ -98,6 +100,7 @@ pub struct EfbMapSurface {
     plate_opacity: f32,
     pixel_ratio: Option<f64>,
     frames: u64,
+    navigation: maplibre::navigation::NavigationState,
     plan: plan::PlanState,
 }
 
@@ -141,6 +144,7 @@ impl EfbMapSurface {
             })
         };
         let slots = [register(compact), register(expanded)];
+        let navigation = hud::init_navigation_hud(&mut map, slots)?;
         let [lat, lon] = config.initial_center;
         let camera = EfbCamera::new(lat, lon);
         Ok(Self {
@@ -161,6 +165,7 @@ impl EfbMapSurface {
             plate_opacity: style::DEFAULT_PLATE_OPACITY,
             pixel_ratio: None,
             frames: 0,
+            navigation,
             plan: plan::PlanState::default(),
         })
     }
