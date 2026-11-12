@@ -4,8 +4,9 @@
 //! The four actuator lanes are throttle, aileron, elevator and rudder with
 //! the surfaces neutral at one half. Until the flight controller is armed
 //! the airframe holds the controls JSBSim trimmed it with, as a pilot would
-//! before engaging an autopilot. JSBSim flies in its own still standard
-//! atmosphere; the sensors read the shared air field.
+//! before engaging an autopilot. JSBSim takes its density and temperature
+//! from its own standard atmosphere and its wind from the shared air field,
+//! so the aeroplane drifts with the same wind its sensors read.
 
 use glam::DVec3;
 use sim_atmosphere::AtmosphereField;
@@ -20,6 +21,9 @@ use sim_pack::builtin_c172_package;
 
 use crate::airframe::specific_force_body_m_s2;
 use crate::{Airframe, ChainError, SharedAir};
+
+#[cfg(test)]
+mod tests;
 
 /// Angle of attack the trim search starts from, radians.
 const TRIM_SEARCH_ALPHA_RAD: f64 = 0.035;
@@ -70,6 +74,7 @@ impl C172Airframe {
             engine_start: EngineStartMode::Running,
         })
         .map_err(|e| ChainError::Plant(Box::new(e)))?;
+        set_wind(&mut fdm, &air, start.utc)?;
         let trim = fdm
             .trim_level_flight()
             .map_err(|e| ChainError::Trim(Box::new(e)))?;
@@ -133,6 +138,7 @@ impl Airframe for C172Airframe {
             self.trim
         };
         let before = self.fdm.output();
+        set_wind(&mut self.fdm, &self.air, self.utc)?;
         self.fdm
             .step(&KinematicInput { controls })
             .map_err(|e| ChainError::Plant(Box::new(e)))?;
@@ -141,4 +147,12 @@ impl Airframe for C172Airframe {
         self.utc = self.utc.advanced_by(dt_s);
         Ok(())
     }
+}
+
+/// Gives `fdm` the wind of `air` where the aeroplane is at `utc`.
+fn set_wind(fdm: &mut JsbsimFdmBlock, air: &SharedAir, utc: UtcTime) -> Result<(), ChainError> {
+    let position = ecef_to_geodetic(fdm.output().position_ecef);
+    let sample = air.sample(&position, utc).map_err(ChainError::Air)?;
+    fdm.set_wind_ned_m_s(sample.wind_ned_m_s)
+        .map_err(|e| ChainError::Plant(Box::new(e)))
 }
