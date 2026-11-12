@@ -78,6 +78,7 @@ fn run_feed_and_tessellate(
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: HeadingMode::EarthMagnetic,
+        deviation_scale: sim_indicate::DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let monitored = SourceMonitor::new()
         .step(&mut feed, &FlightSample::truth(SimInstant::START, vehicle))

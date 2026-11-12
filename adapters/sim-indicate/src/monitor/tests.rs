@@ -9,6 +9,7 @@ use sim_core::{Block, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 
 use super::*;
+use crate::DeviationScaleProfile;
 use crate::{AltitudeSource, DisplayAxes, FeedConfig};
 
 const PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / 50);
@@ -53,6 +54,7 @@ impl Lander {
                 origin_id: 11,
                 altitude: AltitudeSource::OriginRelative,
                 heading_mode: crate::HeadingMode::default(),
+                deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
             }),
             monitor: SourceMonitor::new(),
             yaw_rad: 0.0,
@@ -310,6 +312,7 @@ fn a_vehicle_with_one_source_resolves_without_a_comparison() {
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let snapshot = lander
         .panel

@@ -5,10 +5,10 @@ use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 use sim_indicate::{
-    AirDataReading, AltitudeSource, BackgroundMode, DisplayAxes, FeedConfig, FlightSample,
-    HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX, PANEL_WIDTH_PX, PfdConfig,
-    SourceMonitor, StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VectorFlightPanels, VectorHudPanel,
-    ViewPose3D, VolumeInstrument, emit_volume_scene,
+    AirDataReading, AltitudeSource, BackgroundMode, DeviationScaleProfile, DisplayAxes, FeedConfig,
+    FlightSample, HeadingMode, HostFlightGuidance, MonitoredFrame, PANEL_HEIGHT_PX, PANEL_WIDTH_PX,
+    PfdConfig, SourceMonitor, StateFeed, SvsViewport, VOLUME_SCENE_BYTES, VectorFlightPanels,
+    VectorHudPanel, ViewPose3D, VolumeInstrument, emit_volume_scene,
 };
 use sim_maplibre::{
     DynamicEntity3D, TerrainPatchSnapshot, TerrainVolumeRequest, emit_terrain_volume_with_patch,
@@ -57,6 +57,7 @@ impl FeedDomain {
                 origin_id: 1,
                 altitude: AltitudeSource::Barometric,
                 heading_mode: HeadingMode::EarthMagnetic,
+                deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
             },
             Self::ApolloLunarModule => FeedConfig {
                 body: BodyEllipsoid::MOON_IAU,
@@ -65,6 +66,7 @@ impl FeedDomain {
                 origin_id: 11,
                 altitude: AltitudeSource::OriginRelative,
                 heading_mode: HeadingMode::SimLocalTrue,
+                deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
             },
             Self::ApolloCommandModule => FeedConfig {
                 body: BodyEllipsoid::WGS84,
@@ -73,6 +75,7 @@ impl FeedDomain {
                 origin_id: 12,
                 altitude: AltitudeSource::OriginRelative,
                 heading_mode: HeadingMode::SimLocalTrue,
+                deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
             },
         }
     }

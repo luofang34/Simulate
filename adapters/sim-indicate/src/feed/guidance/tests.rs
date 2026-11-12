@@ -5,6 +5,7 @@ use indicate_instrument_state::{
 use sim_core::{SimInstant, VehicleState};
 
 use super::*;
+use crate::DeviationScaleProfile;
 use crate::{AltitudeSource, DisplayAxes, FeedConfig, FlightSample, StateFeed};
 
 const AT: SimInstant = SimInstant::START;
@@ -21,6 +22,7 @@ fn feed() -> StateFeed {
         origin_id: 3,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     })
 }
 
@@ -142,6 +144,7 @@ fn nzsp_panel(vehicle: VehicleState, heading_mode: HeadingMode) -> PanelData {
         origin_id: 9,
         altitude: AltitudeSource::OriginRelative,
         heading_mode,
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample {
         guidance: Some(HostFlightGuidance {
