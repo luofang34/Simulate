@@ -29,6 +29,8 @@ use crate::sky_rig::SkyRig;
 use crate::telemetry;
 
 mod actions;
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) mod cadence;
 mod efb_input;
 mod frame;
 mod hub;
@@ -112,6 +114,9 @@ pub struct FlightApp {
     panels: Option<page_panels::PagePanels>,
     #[cfg(not(target_arch = "wasm32"))]
     next_occluded_tick: Option<std::time::Instant>,
+    /// A browser draws at most every 60 Hz refresh.
+    #[cfg(target_arch = "wasm32")]
+    cadence: cadence::FrameCadence,
 }
 
 impl FlightApp {
@@ -161,6 +166,8 @@ impl FlightApp {
             panels: None,
             #[cfg(not(target_arch = "wasm32"))]
             next_occluded_tick: None,
+            #[cfg(target_arch = "wasm32")]
+            cadence: cadence::FrameCadence::default(),
         })
     }
 
@@ -364,7 +371,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             WindowEvent::PinchGesture { delta, .. } => self.pinch_gesture(delta),
             WindowEvent::RotationGesture { delta, .. } => self.rotation_gesture(delta),
             WindowEvent::Occluded(occluded) => self.set_occluded(occluded),
-            WindowEvent::RedrawRequested => self.redraw(event_loop),
+            WindowEvent::RedrawRequested => self.redraw_when_due(event_loop),
             _ => {}
         }
     }

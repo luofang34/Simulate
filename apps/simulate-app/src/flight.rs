@@ -315,8 +315,9 @@ impl Flight {
         self.last_frame = Some(now);
         let before_s = seconds(self.now());
         let epoch = self.discontinuity;
-        let (sim_elapsed_s, time_scale) =
-            self.page_due_s().map_or((elapsed_s, time_scale), |due_s| {
+        let (sim_elapsed_s, time_scale) = self
+            .page_due_s(elapsed_s)
+            .map_or((elapsed_s, time_scale), |due_s| {
                 (due_s, SimTimeScale::RealTime)
             });
         self.advance_by(sim_elapsed_s, controls, time_scale)?;

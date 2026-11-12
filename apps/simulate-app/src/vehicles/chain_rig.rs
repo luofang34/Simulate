@@ -36,8 +36,14 @@ enum Source {
     /// The app's own trial. On the heap: it carries the board, the host core and every
     /// navigator.
     Own(Box<ChainTrial>),
-    /// The page's trial, read through what the page publishes.
-    Page(PageFeed),
+    /// The page's trial, read through what the page publishes, drawn at the route time
+    /// this rig has stepped to.
+    Page {
+        /// What the page publishes.
+        feed: PageFeed,
+        /// Controller cycles stepped since the flight's start.
+        cycles: u64,
+    },
 }
 
 /// The chain and what the operator reads of it.
@@ -70,7 +76,7 @@ pub(super) fn page_chain_rig(feed: PageFeed) -> ChainRig {
         held_estimate: seen.avionics.estimate.unwrap_or(seen.truth.state),
         seen,
         epoch_utc_s: feed.epoch_utc_s(),
-        source: Source::Page(feed),
+        source: Source::Page { feed, cycles: 0 },
         standings: BTreeMap::new(),
     }
 }
@@ -166,7 +172,12 @@ impl ChainRig {
                 self.seen = seen;
                 self.standings.extend(standings);
             }
-            Source::Page(feed) => self.seen = feed.latest(),
+            Source::Page { feed, cycles } => {
+                // The app's clock runs one flight-controller cycle per step, a little
+                // behind the page's newest instant: draw the flight at this step's time.
+                *cycles = cycles.wrapping_add(1);
+                self.seen = feed.at(*cycles as f64 / C172_RATE_HZ as f64);
+            }
         }
         if let Some(estimate) = self.seen.avionics.estimate {
             self.held_estimate = estimate;

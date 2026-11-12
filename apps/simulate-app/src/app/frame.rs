@@ -166,6 +166,24 @@ impl FlightApp {
         }
     }
 
+    /// Draws this refresh, or in a browser on a display faster than 60 Hz, skips it to
+    /// keep every frame the same length and asks for the next.
+    pub(super) fn redraw_when_due(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let now_s = web_sys::window()
+                .and_then(|window| window.performance())
+                .map_or(0.0, |performance| performance.now() / 1000.0);
+            if !self.cadence.due(now_s) {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+        self.redraw(event_loop);
+    }
+
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.mapper.controls();
