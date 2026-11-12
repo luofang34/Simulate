@@ -1,15 +1,15 @@
 //! Pilotage's navigation display as the HSI's guidance lane: the desired
 //! track as the course, the cross-track deviation on the CDI, the distance
-//! to the active fix and its name. Indicate draws the lane on its terminal
-//! scale, 25 m a dot, and shows TO whenever the leg has a track. In the
-//! holding pattern after the plan the course is the inbound course to the
-//! holding fix and the FROM name reads `HOLD`.
+//! to the active fix and its name, with Pilotage's TO/FROM. The plan names
+//! no airports, so every leg is flown to the en-route scale. In the holding
+//! pattern after the plan the course is the inbound course to the holding
+//! fix, the FROM name reads `HOLD` and the lane annunciates the hold.
 
 use sim_core::SimInstant;
-use sim_flight_chain::{NavQuality, NavigationDisplay};
+use sim_flight_chain::{NavQuality, NavigationDisplay, ToFrom};
 use sim_indicate::{
-    CLOCK_HOST_MONOTONIC, HostNavGuidance, IdentStr, LaneGuidance, ROLE_NAVIGATION_SOLUTION,
-    RawStamp,
+    CLOCK_HOST_MONOTONIC, HostNavGuidance, IdentStr, LaneGuidance, NavFromTo, NavScale,
+    NavSequencing, ROLE_NAVIGATION_SOLUTION, RawStamp,
 };
 
 /// The lane's source identity: Pilotage's mission on this vehicle.
@@ -45,6 +45,17 @@ pub fn navigation_lane(
         lateral_deviation_m: leg.cross_track_m.map_or(f32::NAN, |m| m as f32),
         vertical_deviation_m: leg.vertical_deviation_m.map_or(f32::NAN, |m| m as f32),
         distance_to_waypoint_m: leg.distance_to_go_m as f32,
+        scale: NavScale::Enroute,
+        to_from: match (leg.cross_track_m, leg.to_from) {
+            (None, _) => NavFromTo::Off,
+            (Some(_), ToFrom::To) => NavFromTo::To,
+            (Some(_), ToFrom::From) => NavFromTo::From,
+        },
+        sequencing: if holding {
+            NavSequencing::Hold
+        } else {
+            NavSequencing::Sequencing
+        },
         leg_index: u32::try_from(leg_index).unwrap_or(u32::MAX),
         waypoint_count: u32::try_from(display.waypoints.len()).unwrap_or(u32::MAX),
         solution_quality: quality_code(leg.quality),

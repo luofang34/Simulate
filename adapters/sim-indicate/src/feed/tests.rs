@@ -357,10 +357,10 @@ fn a_frame_that_does_not_fit_or_does_not_parse_says_so() {
         Err(FeedError::Encode { capacity: 16, .. })
     ));
     assert_eq!(
-        decode_frame(&[10, 0]).unwrap_err(),
+        decode_frame(&[11, 0]).unwrap_err(),
         FeedError::Decode {
             length: 2,
-            source: AbiError::BadVersion { found: 10 }
+            source: AbiError::BadVersion { found: 11 }
         },
     );
 }
