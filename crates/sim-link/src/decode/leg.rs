@@ -210,9 +210,6 @@ fn placement(
         PathTerminator::Tf if index == 0 => {
             Some("needs a fix before it: start the route with IF or DF")
         }
-        _ if path.ends_on_command() && !last => {
-            Some("ends only on a command, so it must be the last leg")
-        }
         _ if path.intercepts_next() && last => {
             Some("intercepts the next leg, so a leg must follow it")
         }

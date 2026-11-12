@@ -116,11 +116,6 @@ impl PathTerminator {
         }
     }
 
-    /// Whether the leg ends only on a command, so nothing can follow it.
-    pub const fn ends_on_command(self) -> bool {
-        matches!(self, Self::Fm | Self::Vm | Self::Hm)
-    }
-
     /// Whether the leg ends where it meets the next leg, so a leg must
     /// follow it.
     pub const fn intercepts_next(self) -> bool {

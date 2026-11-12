@@ -15,13 +15,13 @@ impl Draws {
     }
 }
 
-/// 2 to 12 legs: an `IF` or `DF` first, any leg that lets one follow it in
-/// the middle, any leg that needs none last.
+/// 2 to 12 legs: an `IF` or `DF` first, any leg but `IF` in the middle,
+/// any leg that needs none to follow it last.
 pub(super) fn route(draws: &mut Draws) -> Vec<Leg> {
     let count = draws.within(2, 12) as usize;
     let middle: Vec<PathTerminator> = PathTerminator::ALL
         .into_iter()
-        .filter(|path| *path != PathTerminator::If && !path.ends_on_command())
+        .filter(|path| *path != PathTerminator::If)
         .collect();
     let last: Vec<PathTerminator> = PathTerminator::ALL
         .into_iter()
@@ -196,12 +196,12 @@ fn bearing(draws: &mut Draws) -> Bearing {
 fn distance(draws: &mut Draws) -> Distance {
     if draws.flag() {
         Distance {
-            value: Milli::from_scaled(draws.within(1, 1_000_000_000)),
+            value: Milli::from_scaled(draws.within(1, 2_000_000_000)),
             unit: DistanceUnit::Metre,
         }
     } else {
         Distance {
-            value: Milli::from_scaled(draws.within(1, 540_000)),
+            value: Milli::from_scaled(draws.within(1, 1_000_000)),
             unit: DistanceUnit::NauticalMile,
         }
     }

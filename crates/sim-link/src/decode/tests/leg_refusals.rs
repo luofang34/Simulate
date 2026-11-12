@@ -258,7 +258,7 @@ fn malformed_speeds_bearings_and_lengths_are_refused() {
         ("IF,A:41.5/2;FC,A,c90T,d0", Some(2), |r| {
             matches!(r, Reason::OutOfRange { .. })
         }),
-        ("IF,A:41.5/2;FC,A,c90T,d541nm", Some(2), |r| {
+        ("IF,A:41.5/2;FC,A,c90T,d1000.001nm", Some(2), |r| {
             matches!(r, Reason::OutOfRange { .. })
         }),
         ("IF,A:41.5/2;HM,A,tR,c90T,l60", Some(2), |r| {
@@ -310,9 +310,6 @@ fn a_leg_where_its_path_terminator_cannot_stand_is_refused() {
     for (route, leg, item) in [
         ("IF,A:41.5/2;IF,B:41.6/2", "IF", 2),
         ("TF,A:41.5/2;TF,B:41.6/2", "TF", 1),
-        ("IF,A:41.5/2;HM,A,tR,c90T,l1min;TF,B:41.6/2", "HM", 2),
-        ("IF,A:41.5/2;FM,A,c90T;TF,B:41.6/2", "FM", 2),
-        ("IF,A:41.5/2;VM,h90T;TF,B:41.6/2", "VM", 2),
         ("IF,A:41.5/2;CI,c90T", "CI", 2),
         ("IF,A:41.5/2;VI,h90T", "VI", 2),
     ] {
@@ -331,4 +328,22 @@ fn a_refusal_points_at_the_attribute_at_fault() {
     let refused = refusal(&fragment);
     assert_eq!(refused.offset, fragment.find(",tQ").unwrap() + 2);
     assert_eq!(refused.item, Some(2));
+}
+
+/// Published procedures go on after a leg that ends on a command: a SID's
+/// runway transition flown by heading until vectored (`VM`) joins its
+/// common route, a STAR's vectors (`FM`) join the approach, and a transition
+/// holds (`HM`) until cleared on.
+#[test]
+fn a_leg_that_ends_on_a_command_may_be_followed() {
+    for route in [
+        "VM,h88.7M;DF,MSP:44.8965/-93.236531;TF,JEDET:44.461289/-92.727942,a4000ft+",
+        "IF,A:41.5/2;FM,A,c287.5M;DF,B:41.6/2",
+        "IF,A:41.5/2;HM,A,tR,c210.5M,l7nm;TF,B:41.6/2",
+    ] {
+        let fragment = with("r", route);
+        let link = crate::decode_fragment(&fragment)
+            .unwrap_or_else(|refusal| panic!("{route}: {refusal}"));
+        assert_eq!(link.fragment().unwrap(), fragment);
+    }
 }

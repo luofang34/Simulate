@@ -126,6 +126,12 @@ fn a_leg_or_attribute_not_flown_yet_is_refused_by_number_and_code() {
             "IF",
             "window",
         ),
+        (
+            "IF,A:41.7/-1.05;HM,A,tR,c90T,l1min;TF,B:41.7/-0.8",
+            2,
+            "HM",
+            "before the end",
+        ),
     ] {
         let found = refusal(route);
         assert_eq!((found.0, found.1), (leg, code), "{route}: {}", found.2);

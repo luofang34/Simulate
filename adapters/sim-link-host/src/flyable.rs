@@ -86,6 +86,11 @@ pub fn flyable_route(link: &SimulationLink) -> Result<FlyableRoute, HostError> {
                     "a direct-to after the first leg is not flown yet".to_owned(),
                 ));
             }
+            PathTerminator::Hm if number < link.route.len() => {
+                return Err(refuse(
+                    "a hold before the end of the route is not flown yet".to_owned(),
+                ));
+            }
             PathTerminator::Hm => {
                 hold = Some(terminal_hold(leg, &fixes).map_err(refuse)?);
                 continue;

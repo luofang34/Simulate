@@ -215,7 +215,7 @@ fn speed(site: Site, token: Token<'_>) -> Result<Speed, Refusal> {
 fn distance(site: Site, token: Token<'_>) -> Result<Distance, Refusal> {
     token.non_empty(site, "a distance: 7400 (m) or 4nm")?;
     if let Some(miles) = token.strip_suffix("nm") {
-        let value = positive(site, miles, "distance", 540, "more than 0 up to 540 nm")?;
+        let value = positive(site, miles, "distance", 1_000, "more than 0 up to 1000 nm")?;
         return Ok(Distance {
             value,
             unit: DistanceUnit::NauticalMile,
@@ -225,8 +225,8 @@ fn distance(site: Site, token: Token<'_>) -> Result<Distance, Refusal> {
         site,
         token,
         "distance",
-        1_000_000,
-        "more than 0 up to 1000000 m",
+        2_000_000,
+        "more than 0 up to 2000000 m",
     )?;
     Ok(Distance {
         value,
