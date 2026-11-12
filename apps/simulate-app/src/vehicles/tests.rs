@@ -96,7 +96,11 @@ fn the_c172_mission_flies_the_first_link_and_ignores_the_stick() {
         "near Zaragoza, heading east: {position:?}"
     );
     let (phase, standings) = hands_off.chain_readout().expect("a chain plant");
-    assert_eq!(phase, Some("Enroute"));
+    // Pilotage's phase, then the lateral and vertical modes it flies, in its names.
+    assert!(
+        phase.is_some_and(|p| p.starts_with("Enroute · lat ") && p.contains(" · vert ")),
+        "{phase:?}"
+    );
     assert!(standings.contains_key("ins.baro.gnss") && standings.contains_key("flight-controller"));
 
     let full_stick = ControlInputs {

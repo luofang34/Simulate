@@ -55,7 +55,7 @@ fn render_c172_mission_flight() -> Result<(), AppSimError> {
         phases
             .iter()
             .skip(1)
-            .all(|p| p.as_deref() == Some("Enroute")),
+            .all(|p| p.as_deref().is_some_and(|p| p.starts_with("Enroute"))),
         "phases at the shots: {phases:?}"
     );
     h.gpu.check_device()?;

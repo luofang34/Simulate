@@ -3,7 +3,7 @@
 use navigate_contract::{NavigationSolution, SensorClass};
 use sim_core::VehicleState;
 use sim_flight_chain::{
-    HostEvent, MISSION_CLOCK, MissionEvent, SourceIntegrity, SourceIntegrityState,
+    HostEvent, HostStatus, MISSION_CLOCK, MissionEvent, SourceIntegrity, SourceIntegrityState,
 };
 use sim_geo::{Geodetic, geodetic_to_ecef};
 use sim_navigate::trial::{
@@ -144,6 +144,23 @@ pub(super) fn on_mission_clock(solution: &NavigationSolution) -> NavigationSolut
     let mut stamped = *solution;
     stamped.stamp.clock = MISSION_CLOCK;
     stamped
+}
+
+/// The mission's state in Pilotage's own names: its phase, then the lateral
+/// and the vertical mode it flies once it has a navigation display, and
+/// whether a pattern flown by time rests on a stale wind estimate.
+pub(super) fn mission_words(status: &HostStatus) -> Option<String> {
+    let mut words = format!("{:?}", status.mission_state?);
+    if let Some(display) = &status.navigation {
+        words.push_str(&format!(
+            " · lat {:?} · vert {:?}",
+            display.lateral.mode, display.vertical.mode
+        ));
+        if display.lateral.wind_stale {
+            words.push_str(" · wind stale");
+        }
+    }
+    Some(words)
 }
 
 /// What a navigator's check of its receiver states to the mission: the

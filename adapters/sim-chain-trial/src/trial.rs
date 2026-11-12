@@ -358,7 +358,7 @@ impl ChainTrial {
             .holding
             .records(now_s, &events, self.chain.status().navigation.as_ref());
         self.pending.records.extend(held);
-        let phase = self.chain.status().mission_state.map(|s| format!("{s:?}"));
+        let phase = records::mission_words(self.chain.status());
         if let Some(update) = self.records.mission(self.now_s(), phase, &events) {
             self.pending.mission.push(update);
         }
