@@ -95,38 +95,10 @@ pub fn choose_tier(facts: &DeviceFacts) -> TierChoice {
     }
 }
 
-/// Whether a page address's query asks for the tier the device earns (`tier=auto`).
-#[cfg(any(target_arch = "wasm32", test))]
-fn asks_for_device_tier(search: &str) -> bool {
-    search
-        .trim_start_matches('?')
-        .split('&')
-        .any(|pair| pair == "tier=auto")
-}
-
-/// The handheld tier, whatever the device. On the browser tier more of the far ground
-/// waits for imagery while flying, as its drapes wait longer for a re-bake, so a page
-/// runs the handheld tier unless its address asks for the device's own.
-#[cfg(any(target_arch = "wasm32", test))]
-fn held_at_handheld() -> TierChoice {
-    TierChoice {
-        tier: CockpitDeviceTier::Handheld,
-        reasons: vec![
-            "held for every device: the far ground fills in sooner; add ?tier=auto to the address for the device's own tier"
-                .to_owned(),
-        ],
-    }
-}
-
-/// The tier for maps on `adapter` in this browser: the handheld one unless the page's
-/// address asks for the device's own.
+/// The tier for maps on `adapter` in this browser.
 #[cfg(target_arch = "wasm32")]
 #[must_use]
 pub fn choose_for(adapter: &wgpu::Adapter) -> TierChoice {
-    let search = web_sys::window().and_then(|window| window.location().search().ok());
-    if !search.as_deref().is_some_and(asks_for_device_tier) {
-        return held_at_handheld();
-    }
     let navigator = web_sys::window().map(|window| window.navigator());
     let read = |path: &[&str]| -> Option<wasm_bindgen::JsValue> {
         let mut value: wasm_bindgen::JsValue = navigator.clone()?.into();
