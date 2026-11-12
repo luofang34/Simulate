@@ -172,7 +172,7 @@ impl Flight {
 
     /// Draws the C172 a link's page flies, from what the page publishes on `feed`: the
     /// page steps the one trial, and this flight only shows it.
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(test)]
     pub fn show_page_mission(
         &mut self,
         feed: crate::vehicles::PageFeed,

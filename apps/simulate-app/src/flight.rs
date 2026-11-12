@@ -31,6 +31,7 @@ mod jwst_tests;
 mod manual;
 mod mode;
 mod pacing;
+mod page;
 mod panel_gauges;
 mod plant_block;
 mod readouts;
@@ -223,7 +224,9 @@ impl Flight {
         self.sensors = OnboardSensorBus::new(self.sensors.realism());
         self.gauges = PanelGauges::for_pack(self.instrument_pack());
         self.history.clear();
-        if let Some(start) = FlightCheckpoint::capture(&self.mode, &self.sensors) {
+        if self.page.is_none()
+            && let Some(start) = FlightCheckpoint::capture(&self.mode, &self.sensors)
+        {
             self.history.push(start);
         }
         self.after_discontinuity();
@@ -315,12 +318,11 @@ impl Flight {
         self.last_frame = Some(now);
         let before_s = seconds(self.now());
         let epoch = self.discontinuity;
-        let (sim_elapsed_s, time_scale) = self
-            .page_due_s(elapsed_s)
-            .map_or((elapsed_s, time_scale), |due_s| {
-                (due_s, SimTimeScale::RealTime)
-            });
-        self.advance_by(sim_elapsed_s, controls, time_scale)?;
+        if let Some(due_s) = self.page_due_s(elapsed_s) {
+            self.advance_page_by_due(due_s, controls)?;
+        } else {
+            self.advance_by(elapsed_s, controls, time_scale)?;
+        }
         if !matches!(time_scale, SimTimeScale::Paused) && epoch == self.discontinuity {
             self.pacing
                 .record(elapsed_s, seconds(self.now()) - before_s);
@@ -359,13 +361,18 @@ impl Flight {
         }
         if steps > 0 {
             let inputs = self.gauge_inputs();
-            let step_s = self.mode.period().as_seconds();
-            for _ in 0..steps {
-                self.gauges.step(step_s, &inputs);
+            if self.page.is_some() && steps > 8 {
+                self.gauges.settle(&inputs);
+            } else {
+                let step_s = self.mode.period().as_seconds();
+                for _ in 0..steps {
+                    self.gauges.step(step_s, &inputs);
+                }
             }
             self.commit_live_branch();
         }
         if steps > 0
+            && self.page.is_none()
             && self.history.due(self.now())
             && let Some(checkpoint) = FlightCheckpoint::capture(&self.mode, &self.sensors)
         {
@@ -391,24 +398,6 @@ impl Flight {
             Mode::Free { world, .. } => world.submit_at(at, controls),
             Mode::Scenario(_) | Mode::Space(_) => at,
         }
-    }
-
-    /// Hands over the `30 Hz` optical sensor exposures emitted since the last call, oldest
-    /// first, each carrying the exact exposure instant and truth state (never the
-    /// display-interpolated pose).
-    pub fn drain_sensor_exposures(&mut self) -> Vec<SensorExposureEvent> {
-        let drained = std::mem::take(&mut self.exposures);
-        self.exposures_emitted = self
-            .exposures_emitted
-            .wrapping_add(u64::try_from(drained.len()).unwrap_or(u64::MAX));
-        drained
-    }
-
-    /// Exposures handed over by [`Self::drain_sensor_exposures`] since the app started.
-    #[cfg(test)]
-    #[must_use]
-    pub const fn sensor_exposures_drained(&self) -> u64 {
-        self.exposures_emitted
     }
 
     /// The vehicle as the window draws it: interpolated between the last two physics steps by

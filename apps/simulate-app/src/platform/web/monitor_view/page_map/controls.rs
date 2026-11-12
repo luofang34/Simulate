@@ -147,7 +147,12 @@ pub(super) fn listen(
             1 => wheel.delta_y() * 40.0,
             _ => wheel.delta_y() * 400.0,
         };
-        apply(&link, &gestures, &target, PointerInput::Wheel { delta_y });
+        let input = if wheel.ctrl_key() {
+            PointerInput::TrackpadPinch { delta_y }
+        } else {
+            PointerInput::Wheel { delta_y }
+        };
+        apply(&link, &gestures, &target, input);
     });
     let options = AddEventListenerOptions::new();
     options.set_passive(false);

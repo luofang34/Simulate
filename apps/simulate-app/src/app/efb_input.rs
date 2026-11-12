@@ -64,9 +64,22 @@ impl FlightApp {
                 self.efb_command(EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb));
             }
             Some(EfbHit::Map) => {
-                self.hub.drag = Some(PointerDrag::Efb {
-                    last: self.cursor_px,
-                });
+                let rect = chrome.map_viewport();
+                let [sw, sh] = self.surface_size();
+                let [cx, cy] = self.cursor_px;
+                let local_px = [
+                    cx as f32 - rect.x * (sw as f32),
+                    cy as f32 - rect.y * (sh as f32),
+                ];
+                let hud_hit = self
+                    .cockpit_rig
+                    .as_mut()
+                    .is_some_and(|rig| rig.activate_efb_hud(local_px));
+                if !hud_hit {
+                    self.hub.drag = Some(PointerDrag::Efb {
+                        last: self.cursor_px,
+                    });
+                }
             }
             Some(EfbHit::Bezel) => {}
             None => return false,

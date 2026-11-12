@@ -83,10 +83,7 @@ pub fn show_world(view: PageView, feed: PageFeed) {
             return;
         }
     };
-    let app = FlightApp::new(event_loop.create_proxy(), host.clone()).and_then(|mut app| {
-        app.show_page_mission(feed)?;
-        Ok(app)
-    });
+    let app = FlightApp::new_page_mission(event_loop.create_proxy(), host.clone(), feed);
     match app {
         Ok(app) => event_loop.spawn_app(app),
         Err(err) => {

@@ -22,6 +22,7 @@ pub struct PlantBlock {
     plant: FreeFlightPlant,
     surface: WorldSurfaceHandle,
     pending_system: Cell<Option<SystemControls>>,
+    page_target_cycle: Cell<Option<u64>>,
     fault: RefCell<Option<AppSimError>>,
 }
 
@@ -32,8 +33,14 @@ impl PlantBlock {
             plant,
             surface,
             pending_system: Cell::new(None),
+            page_target_cycle: Cell::new(None),
             fault: RefCell::new(None),
         }
+    }
+
+    /// Sets the first controller cycle in the upcoming advance that must sample `PageFeed`.
+    pub fn set_page_target_cycle(&self, cycle: u64) {
+        self.page_target_cycle.set(Some(cycle));
     }
 
     /// The wrapped plant.
@@ -89,6 +96,9 @@ impl Block for PlantBlock {
         }
         if let Some(system) = self.pending_system.take() {
             self.plant.set_system_controls(system);
+        }
+        if let Some(cycle) = self.page_target_cycle.take() {
+            self.plant.set_page_target_cycle(cycle);
         }
         match self.plant.step(*input, &self.surface) {
             Ok(()) => Ok(()),

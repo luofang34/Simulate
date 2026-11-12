@@ -55,8 +55,9 @@ pub use monitor::{
     MeansSwitch, Monitor, MonitorFeed, OfferedPosition, PaceLimit, Pacer, RUN_LINES, Replay,
     RouteEnd, SAMPLES_KEPT, SLICE_BUDGET_S, SensorControl, SensorFault, SetTrace, Slice, SolvedFit,
     SpoofDrag, Spoofing, StepState, TracePoint, clock_words, entry_words, event_words,
-    gnss_check_lines, leg_words, outcome_words, pattern_words, run_lines, run_slice,
-    sensor_controls, sensor_words, starting_lines, state_words, stopped_lines, terrain_words,
+    gnss_check_lines, high_warp_flight_share, leg_words, outcome_words, pattern_words, run_lines,
+    run_slice, sensor_controls, sensor_words, slice_budget_for_speed, starting_lines, state_words,
+    stopped_lines, terrain_words,
 };
 pub use package::{
     BYTES_PER_MB, PACKAGE_LINES, PackageStage, budget_bytes, budget_refusal_lines, error_words,

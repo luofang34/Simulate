@@ -8,15 +8,15 @@ use std::fmt::Display;
 
 use sim_link::SimulationLink;
 use sim_link_host::{
-    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SpoofRun, SwitchLog,
-    run_lines, run_slice, stopped_lines,
+    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SpoofRun, SwitchLog, high_warp_flight_share,
+    run_lines, run_slice, slice_budget_for_speed, stopped_lines,
 };
 use sim_navigate::trial::SensorKind;
 use tracing::{info, warn};
 use wasm_bindgen_futures::JsFuture;
 
 use super::monitor_view::{Controls, MonitorView};
-use crate::app::cadence::FrameCadence;
+use crate::app::cadence::{FrameCadence, WARP_15HZ_FRAME_S};
 
 /// The wall clock of the page.
 #[derive(Clone)]
@@ -48,16 +48,33 @@ async fn animation_frame() {
     JsFuture::from(frame).await.ok();
 }
 
-/// The link of the run as flown, on the page's own address: `link` with
-/// the flight's outages, the stated and the switched, in place of its own.
-/// Waits for the next animation frame at most every 60 Hz refresh, as the world view
-/// draws, so a frame's slice and its drawing fit one steady frame.
-async fn steady_frame(cadence: &mut FrameCadence, clock: &PageClock) {
+/// Yields for one slice turn: paced at 60 Hz below `8×`, or a single browser animation
+/// frame at `>= 8×` / unthrottled so high-warp slices never lose turns to display jitter.
+async fn next_slice_turn(cadence: &mut FrameCadence, clock: &PageClock, speed: Option<f64>) {
+    if speed.is_none_or(|factor| factor >= 8.0) {
+        animation_frame().await;
+        return;
+    }
     loop {
         animation_frame().await;
         if cadence.due(clock.now_s()) {
             return;
         }
+    }
+}
+
+/// Whether `MonitorView::draw` should redraw DOM/2D charts on this turn: immediate on
+/// operator changes or flight completion, ~15 Hz during high-warp slices (`>= 8×`).
+fn monitor_draw_due(
+    draw_cadence: &mut FrameCadence,
+    now_s: f64,
+    speed: Option<f64>,
+    immediate: bool,
+) -> bool {
+    if immediate || speed.is_some_and(|factor| factor < 8.0) {
+        draw_cadence.due_with_interval(now_s, 0.0)
+    } else {
+        draw_cadence.due_with_interval(now_s, WARP_15HZ_FRAME_S)
     }
 }
 
@@ -161,7 +178,8 @@ where
     F: FlightStepper,
 {
     let target_s = pacer.frame(clock.now_s(), flight.sim_time_s());
-    let slice = run_slice(flight, clock, SLICE_BUDGET_S, target_s, out)?;
+    let budget_s = slice_budget_for_speed(pacer.speed());
+    let slice = run_slice(flight, clock, budget_s, target_s, out)?;
     let held = pacer.limit();
     pacer.observe(&slice, flight.take_camera_wall_s());
     let fed = !out.is_empty();
@@ -169,6 +187,18 @@ where
         monitor.apply(feed);
     }
     Ok((!slice.finished, fed || pacer.limit() != held))
+}
+
+fn refuse_flight<E: Display>(view: &mut MonitorView, note: &str, error: &E) {
+    warn!(%error, "the flight failed");
+    view.section().refuse(
+        "The flight stopped",
+        &stopped_lines(note),
+        &[sim_link_host::PlanLine {
+            label: "Reason".to_owned(),
+            text: error.to_string(),
+        }],
+    );
 }
 
 /// Flies `flight` with `view` showing it, for as long as the page is open.
@@ -179,7 +209,7 @@ pub async fn fly<F>(
     mut view: MonitorView,
     mut flight: F,
     (note, link): (&str, Option<&SimulationLink>),
-    publish: &mut dyn FnMut(&F, &Monitor),
+    publish: &mut dyn FnMut(&F, &Monitor, Option<f64>),
     others: Option<&str>,
 ) where
     F: FlightStepper,
@@ -193,20 +223,23 @@ pub async fn fly<F>(
     let (mut monitor, mut share) = (Monitor::default(), FrameShare::default());
     let mut controls = view.controls();
     let mut pacer = Pacer::new(controls.speed);
+    pacer.set_flight_share(high_warp_flight_share(controls.speed));
     let mut out = Vec::new();
     let (mut flying, mut dirty) = (true, true);
     let started_s = clock.now_s();
-    let mut cadence = FrameCadence::default();
+    let (mut cadence, mut draw_cadence) = (FrameCadence::default(), FrameCadence::default());
     loop {
-        steady_frame(&mut cadence, &clock).await;
+        next_slice_turn(&mut cadence, &clock, controls.speed).await;
         share.frame(clock.now_s());
         let now = view.controls();
-        if now != controls {
+        let controls_changed = now != controls;
+        if controls_changed {
             if flying {
                 apply_switches(&mut flight, &controls, &now);
             }
             if now.speed != controls.speed {
                 pacer.set_speed(now.speed);
+                pacer.set_flight_share(high_warp_flight_share(now.speed));
             }
             controls = now;
             dirty = true;
@@ -220,20 +253,9 @@ pub async fn fly<F>(
                         info!(wall_s = clock.now_s() - started_s, "the flight has ended");
                     }
                 }
-                Err(error) => {
-                    warn!(%error, "the flight failed");
-                    view.section().refuse(
-                        "The flight stopped",
-                        &stopped_lines(note),
-                        &[sim_link_host::PlanLine {
-                            label: "Reason".to_owned(),
-                            text: error.to_string(),
-                        }],
-                    );
-                    return;
-                }
+                Err(error) => return refuse_flight(&mut view, note, &error),
             }
-            publish(&flight, &monitor);
+            publish(&flight, &monitor, controls.speed);
             let now = flown(&flight);
             if now != faults {
                 faults = now;
@@ -242,7 +264,14 @@ pub async fn fly<F>(
                 }
             }
         }
-        if dirty {
+        if dirty
+            && monitor_draw_due(
+                &mut draw_cadence,
+                clock.now_s(),
+                controls.speed,
+                controls_changed || !flying,
+            )
+        {
             view.draw(
                 &monitor,
                 &controls,

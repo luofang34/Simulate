@@ -68,3 +68,23 @@ pub(super) fn trim_pending(pending: &mut Vec<SensorExposureEvent>) -> usize {
     }
     excess
 }
+
+impl super::Flight {
+    /// Hands over the `30 Hz` optical sensor exposures emitted since the last call, oldest
+    /// first, each carrying the exact exposure instant and truth state (never the
+    /// display-interpolated pose).
+    pub fn drain_sensor_exposures(&mut self) -> Vec<SensorExposureEvent> {
+        let drained = std::mem::take(&mut self.exposures);
+        self.exposures_emitted = self
+            .exposures_emitted
+            .wrapping_add(u64::try_from(drained.len()).unwrap_or(u64::MAX));
+        drained
+    }
+
+    /// Exposures handed over by [`Self::drain_sensor_exposures`] since the app started.
+    #[cfg(test)]
+    #[must_use]
+    pub const fn sensor_exposures_drained(&self) -> u64 {
+        self.exposures_emitted
+    }
+}

@@ -11,19 +11,53 @@ use sim_navigate::trial::SensorKind;
 
 use super::MonitorFeed;
 
-/// Wall time one slice may take before the page gets the thread back,
-/// seconds: half a frame at 60 Hz, so the page still draws every frame.
-/// A single step longer than this (a navigator frame) still runs whole.
+/// Wall time one slice may take at normal speed (`<= 4×`) before the page
+/// gets the thread back, seconds: half a frame at 60 Hz, so the page still
+/// draws every frame. A single step longer than this (a navigator frame)
+/// still runs whole.
 pub const SLICE_BUDGET_S: f64 = 0.008;
+/// Wall time one slice may take at intermediate warp (`8×..16×`), seconds.
+pub const MEDIUM_WARP_SLICE_BUDGET_S: f64 = 0.022;
+/// Wall time one slice may take at high warp (`>= 32×` or unbounded), seconds:
+/// stays well under the 50 ms browser input-responsiveness budget while
+/// amortizing presentation redraws throttled to 10–15 Hz.
+pub const HIGH_WARP_SLICE_BUDGET_S: f64 = 0.036;
 /// The most wall time one frame may add to the pace, seconds. A hidden tab
 /// gets no frames; when it shows again the flight goes on from where it
 /// was instead of racing to catch up, and a flight slower than its pace
 /// falls behind instead of building a debt.
 pub const MAX_FRAME_S: f64 = 0.1;
 
-/// The share of the wall clock the flight may take at a held pace; the
-/// rest is the page's, to draw and to answer the visitor.
+/// The share of the wall clock the flight may take at a held pace (`<= 4×`);
+/// the rest is the page's, to draw and to answer the visitor.
 pub const FLIGHT_SHARE: f64 = 0.5;
+/// Share of the wall clock granted to the flight at intermediate warp (`8×..16×`),
+/// when presentation redraws drop from 60 Hz to 15 Hz.
+pub const MEDIUM_WARP_FLIGHT_SHARE: f64 = 0.75;
+/// Share of the wall clock granted to the flight at high warp (`>= 32×`), when
+/// presentation redraws drop to 10–15 Hz.
+pub const HIGH_WARP_FLIGHT_SHARE: f64 = 0.88;
+
+/// Slice wall-clock budget, seconds, suited to `speed` (`None` = unbounded max speed).
+#[must_use]
+pub fn slice_budget_for_speed(speed: Option<f64>) -> f64 {
+    match speed {
+        Some(s) if s <= 4.0 => SLICE_BUDGET_S,
+        Some(s) if s <= 16.0 => MEDIUM_WARP_SLICE_BUDGET_S,
+        _ => HIGH_WARP_SLICE_BUDGET_S,
+    }
+}
+
+/// Share of the wall clock granted to the flight when presentation views throttle
+/// at high warp (`speed >= 8×` or `None`).
+#[must_use]
+pub fn high_warp_flight_share(speed: Option<f64>) -> f64 {
+    match speed {
+        Some(s) if s <= 4.0 => FLIGHT_SHARE,
+        Some(s) if s <= 16.0 => MEDIUM_WARP_FLIGHT_SHARE,
+        _ => HIGH_WARP_FLIGHT_SHARE,
+    }
+}
 /// How much of the measured cost each new slice leaves standing: the cost
 /// follows a change in the flight within a few dozen slices.
 const COST_MEMORY: f64 = 0.95;
@@ -107,6 +141,7 @@ pub struct PaceLimit {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pacer {
     speed: Option<f64>,
+    flight_share: f64,
     /// The route time due; `None` until the next frame takes it from the
     /// flight, at the start and after a change of speed.
     target_s: Option<f64>,
@@ -125,12 +160,22 @@ impl Pacer {
     pub const fn new(speed: Option<f64>) -> Self {
         Self {
             speed,
+            flight_share: FLIGHT_SHARE,
             target_s: None,
             last_frame_s: None,
             route_s: 0.0,
             wall_s: 0.0,
             camera_s: 0.0,
             observed_route_s: 0.0,
+        }
+    }
+
+    /// Sets the fraction of the wall clock `(0.0..=1.0]` the flight loop may
+    /// consume when holding an unaffordable speed, so hosts that throttle
+    /// presentation redraws at high warp can hand that budget to simulation.
+    pub fn set_flight_share(&mut self, share: f64) {
+        if share.is_finite() {
+            self.flight_share = share.clamp(0.1, 0.95);
         }
     }
 
@@ -166,7 +211,7 @@ impl Pacer {
         if self.observed_route_s < COST_WARM_UP_S || self.wall_s <= 0.0 {
             return None;
         }
-        let affordable = FLIGHT_SHARE * self.route_s / self.wall_s;
+        let affordable = self.flight_share * self.route_s / self.wall_s;
         (affordable < chosen).then_some(PaceLimit {
             speed: affordable,
             by_camera: self.camera_s >= 0.5 * self.wall_s,

@@ -69,6 +69,7 @@ pub struct PageMap {
     origin: Option<[f64; 2]>,
     coverage: Vec<Vec<[f64; 2]>>,
     handed: Option<(Handed, f64)>,
+    sent_px: [u32; 2],
     _listeners: Vec<Closure<dyn FnMut(web_sys::Event)>>,
 }
 
@@ -97,7 +98,7 @@ impl PageMap {
         }
         let gestures = Rc::new(RefCell::new(Gestures::default()));
         let listeners = controls::listen(&canvas, &setup.link, &gestures);
-        let map = Self {
+        let mut map = Self {
             frame,
             canvas,
             labels,
@@ -108,6 +109,7 @@ impl PageMap {
             origin: setup.origin,
             coverage: setup.coverage,
             handed: None,
+            sent_px: [0, 0],
             _listeners: listeners,
         };
         // Sized while shown, then hidden until the app's map first draws.
@@ -152,42 +154,48 @@ impl PageMap {
             self.link.publish_tracks(Arc::new(tracks));
             self.handed = Some((handed, now_ms));
         }
-        self.follow_width();
         let view = self.link.view();
-        self.link.set_in_sight(!view.live || self.in_sight());
         if view.live {
             self.frame.remove_attribute("hidden").ok();
         }
+        self.follow_width();
+        self.link.set_in_sight(!view.live || self.in_sight());
         self.lay_labels(&view);
         self.lay_truth_label(&view);
         self.lay_card(&view);
         self.controls.show(view.status.as_ref());
     }
 
-    /// Sizes the canvas's drawing buffer to its width on screen in physical pixels.
-    fn size_buffer(&self) {
+    /// Sizes the canvas's drawing buffer to its width on screen in physical pixels and
+    /// notifies the app's map so its offscreen slot matches Retina resolution from frame 1.
+    fn size_buffer(&mut self) {
         let ratio = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
-        let width = f64::from(self.canvas.client_width()).max(320.0) * ratio;
-        self.canvas.set_width(width as u32);
-        self.canvas.set_height((width * ASPECT) as u32);
+        let width = (f64::from(self.canvas.client_width()).max(320.0) * ratio) as u32;
+        let height = (f64::from(width) * ASPECT) as u32;
+        self.canvas.set_width(width);
+        self.canvas.set_height(height);
+        self.link.resize([width, height]);
+        self.sent_px = [width, height];
     }
 
     /// Sizes the drawing buffer again when the canvas's width on screen changed, and
-    /// tells the app's map.
-    fn follow_width(&self) {
+    /// tells the app's map whenever the physical dimensions differ from `sent_px`.
+    fn follow_width(&mut self) {
         let ratio = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
         let css = self.canvas.client_width();
         if css <= 0 {
             return;
         }
         let width = (f64::from(css) * ratio) as u32;
-        if width.abs_diff(self.canvas.width()) <= 1 {
+        let height = (f64::from(width) * ASPECT) as u32;
+        let [sent_w, sent_h] = self.sent_px;
+        if width.abs_diff(sent_w) <= 1 && height.abs_diff(sent_h) <= 1 {
             return;
         }
-        let height = (f64::from(width) * ASPECT) as u32;
         self.canvas.set_width(width);
         self.canvas.set_height(height);
         self.link.resize([width, height]);
+        self.sent_px = [width, height];
     }
 
     /// Whether any of the map is within the browser's window.

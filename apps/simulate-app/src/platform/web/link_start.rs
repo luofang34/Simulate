@@ -69,5 +69,5 @@ async fn continue_with(surface: ProgressSurface, plan: LinkPlan) {
     let Some(flight) = surface.section("Flight", sim_link_host::RUN_LINES) else {
         return;
     };
-    super::chain_start::fly_link(flight, &plan, sealed.as_ref()).await;
+    super::chain_start::fly_link(flight, &plan, sealed).await;
 }

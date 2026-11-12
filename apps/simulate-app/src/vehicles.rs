@@ -451,6 +451,14 @@ impl FreeFlightPlant {
         }
     }
 
+    /// Skips intermediate [`PageFeed::at`] lookups prior to `cycle` during high-warp page
+    /// jumps while sampling the final two controller cycles for display interpolation.
+    pub fn set_page_target_cycle(&mut self, cycle: u64) {
+        if let Self::C172Mission(rig) = self {
+            rig.set_page_target_cycle(cycle);
+        }
+    }
+
     /// Advances the plant by one integration period under `controls`, with JSBSim gear
     /// contact on `surface`'s ground.
     pub fn step(

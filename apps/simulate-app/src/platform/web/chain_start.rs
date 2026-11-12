@@ -66,18 +66,26 @@ async fn yield_to_page() {
 
 /// The chain trial of the link and, when a set is visual, the camera's
 /// world, both from the sealed package.
+///
+/// Consumes `sealed` by value so the compressed tile store is released before
+/// the flight begins instead of staying live across `fly_link`'s future.
 fn prepare(
     plan: &LinkPlan,
-    sealed: Option<&SealedPackage>,
+    sealed: Option<SealedPackage>,
 ) -> Result<(ChainTrial, Option<CameraWorld>, [f64; 2]), HostError> {
-    let identity = sealed.map(|sealed| sealed.summary.identity);
-    let memory = sealed.map_or_else(MemoryStore::default, |sealed| sealed.memory.clone());
+    let (identity, memory) = match sealed {
+        Some(sealed) => (Some(sealed.summary.identity), sealed.memory),
+        None => (None, MemoryStore::default()),
+    };
     let spec = chain_spec(&plan.link, &plan.request, identity)?;
     let started = now_ms();
     // The page shows what the visual navigator matched; the flight is the same
     // without the record.
     let inspect = plan.request.camera.is_some();
-    let trial = ChainTrial::new_inspecting(&spec, &page_stores(memory.clone()), inspect)?;
+    let trial = {
+        let stores = page_stores(memory.clone());
+        ChainTrial::new_inspecting(&spec, &stores, inspect)?
+    };
     info!(ms = now_ms() - started, "the vehicle's software is ready");
     let world = match (plan.request.camera, identity) {
         (Some(_), Some(identity)) => {
@@ -225,7 +233,7 @@ fn memory_line() -> String {
 }
 
 /// Flies the link of `plan` in `section`.
-pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedPackage>) {
+pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<SealedPackage>) {
     section.working(&starting_lines(HEAD));
     yield_to_page().await;
     let (trial, world, origin) = match prepare(plan, sealed) {
@@ -285,7 +293,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
     let flight = ChainFlight::new(trial, world, PageClock::of_page());
     let clock = PageClock::of_page();
     let mut memory_at_s = f64::NEG_INFINITY;
-    let mut publish = |flight: &ChainFlight<PageClock>, monitor: &Monitor| {
+    let mut publish = |flight: &ChainFlight<PageClock>, monitor: &Monitor, speed: Option<f64>| {
         if let Some(line) = memory
             .as_ref()
             .filter(|_| clock.now_s() - memory_at_s >= 2.0)
@@ -294,6 +302,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             line.set_text_content(Some(&memory_line()));
         }
         if let Some(feed) = &feed {
+            feed.set_pace(speed);
             feed.publish(PageSnapshot::of(
                 flight.trial(),
                 monitor.phase().map(str::to_owned),

@@ -64,4 +64,15 @@ impl DisplayClock {
         self.display_s = Some(next);
         next
     }
+
+    /// Advances monotonically to `newest_s` for high-warp (`>= 8×` or unthrottled) runs
+    /// whose slices span multiple display refreshes and advance seconds per slice.
+    pub fn jump_to(&mut self, newest_s: f64) -> f64 {
+        self.newest_s = Some(newest_s);
+        let next = self
+            .display_s
+            .map_or(newest_s, |display| newest_s.max(display));
+        self.display_s = Some(next);
+        next
+    }
 }

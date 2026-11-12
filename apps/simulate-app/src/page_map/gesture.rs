@@ -15,6 +15,8 @@ use crate::map_rig::EfbCommand;
 const TAP_SLOP_CSS_PX: f64 = 6.0;
 /// Wheel travel, CSS pixels, that zooms one level.
 const WHEEL_PX_PER_ZOOM: f64 = 300.0;
+/// Browser `ctrlKey` wheel travel, CSS pixels, that zooms one level on a trackpad pinch.
+const TRACKPAD_PINCH_PX_PER_ZOOM: f64 = 50.0;
 /// Most zoom one wheel event may change, levels: a mouse's notch is a few hundred pixels.
 const MAX_WHEEL_ZOOM: f64 = 1.0;
 /// Tilt per CSS pixel of a tilting drag, degrees: the whole range in about 150 pixels.
@@ -58,6 +60,11 @@ pub enum PointerInput {
     /// The wheel turned by this many CSS pixels, positive scrolling down.
     Wheel {
         /// Vertical travel.
+        delta_y: f64,
+    },
+    /// A browser two-finger trackpad pinch (`ctrlKey` wheel event), positive pinching closed.
+    TrackpadPinch {
+        /// Pinch delta in CSS pixels.
         delta_y: f64,
     },
 }
@@ -122,7 +129,12 @@ impl Gestures {
                 let levels = (-delta_y / WHEEL_PX_PER_ZOOM).clamp(-MAX_WHEEL_ZOOM, MAX_WHEEL_ZOOM);
                 vec![EfbCommand::ZoomBy(levels)]
             }
-            PointerInput::Wheel { .. } => Vec::new(),
+            PointerInput::TrackpadPinch { delta_y } if delta_y.is_finite() && delta_y != 0.0 => {
+                let levels =
+                    (-delta_y / TRACKPAD_PINCH_PX_PER_ZOOM).clamp(-MAX_WHEEL_ZOOM, MAX_WHEEL_ZOOM);
+                vec![EfbCommand::ZoomBy(levels)]
+            }
+            PointerInput::Wheel { .. } | PointerInput::TrackpadPinch { .. } => Vec::new(),
         }
     }
 

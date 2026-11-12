@@ -44,9 +44,18 @@ impl EfbRig {
         });
     }
 
-    /// Picks the fix nearest `at_px` on the shown view, or none.
+    /// Picks the fix nearest `at_px` on the shown view, or activates a MapLibre
+    /// navigation HUD control when `at_px` lands inside the floating capsule.
     #[cfg(any(target_arch = "wasm32", test))]
     pub(super) fn pick(&mut self, at_px: [f32; 2]) {
+        if self
+            .surface
+            .activate_navigation_hud(self.mode(), at_px)
+            .is_some()
+        {
+            self.dirty = true;
+            return;
+        }
         let radius = PICK_RADIUS_CSS_PX * self.surface.pixel_ratio() as f32;
         self.picked = self.surface.pick_fix(self.mode(), at_px, radius);
     }
@@ -152,5 +161,21 @@ impl MapLibreRig {
             .as_ref()
             .filter(|_| self.efb_shown())
             .and_then(|efb| efb.surface.view_of(mode))
+    }
+
+    /// Activates a MapLibre navigation HUD button at `physical_px` inside the focused EFB
+    /// view (`ExpandedEfb` only), returning `true` when the click hit the HUD capsule.
+    pub fn activate_efb_hud(&mut self, physical_px: [f32; 2]) -> bool {
+        let Some(efb) = self.efb.as_mut() else {
+            return false;
+        };
+        let hit = efb
+            .surface
+            .activate_navigation_hud(efb.mode(), physical_px)
+            .is_some();
+        if hit {
+            efb.dirty = true;
+        }
+        hit
     }
 }

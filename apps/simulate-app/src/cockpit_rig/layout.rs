@@ -50,8 +50,14 @@ pub(super) fn try_build_maps(
     source: &ScenerySource,
     preset: AvionicsPreset,
     surface: WorldSurfaceHandle,
+    page_view: bool,
 ) -> Option<MapLibreRig> {
-    MapLibreRig::new(host_gpu, size, source, preset, surface)
+    let built = if page_view {
+        MapLibreRig::new_for_page(host_gpu, size, source, preset, surface)
+    } else {
+        MapLibreRig::new(host_gpu, size, source, preset, surface)
+    };
+    built
         .inspect_err(|err| {
             warn!(error = %err, "MapLibre maps unavailable; using GlobeScene fallback");
         })

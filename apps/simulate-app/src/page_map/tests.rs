@@ -176,6 +176,19 @@ fn the_wheel_zooms_out_scrolling_down_and_at_most_a_level_a_notch() {
 }
 
 #[test]
+fn trackpad_ctrl_pinch_zooms_six_times_finer_per_pixel_than_scroll_wheel() {
+    let mut gestures = Gestures::default();
+    assert_eq!(
+        gestures.handle(PointerInput::TrackpadPinch { delta_y: -25.0 }, 2.0),
+        [EfbCommand::ZoomBy(0.5)]
+    );
+    assert_eq!(
+        gestures.handle(PointerInput::TrackpadPinch { delta_y: 25.0 }, 2.0),
+        [EfbCommand::ZoomBy(-0.5)]
+    );
+}
+
+#[test]
 fn the_link_hands_each_change_over_once() {
     let link = PageMapLink::default();
     let plan = FlightPlan {

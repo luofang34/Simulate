@@ -445,4 +445,5 @@ fn the_route_end_stays_as_the_plan_completed_while_the_hold_flies_on() {
     assert_eq!(lines[2], "Plan done at Z1 · 0:02");
 }
 
+mod pacer_warp;
 mod route;

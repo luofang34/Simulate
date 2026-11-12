@@ -46,12 +46,12 @@ impl Flight {
                 // only draw the maps' hidden sensor slot.
                 if self.page.is_none() {
                     self.exposures.extend(exposures);
+                    for _ in 0..steps {
+                        self.sensors.step(step_s);
+                    }
                 }
                 if let Some(session) = world.session() {
                     mode::observe(panel, session.block().plant(), session.physics_time());
-                }
-                for _ in 0..steps {
-                    self.sensors.step(step_s);
                 }
                 steps
             }
