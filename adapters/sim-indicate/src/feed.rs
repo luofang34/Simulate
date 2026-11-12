@@ -1,4 +1,5 @@
 use glam::{DQuat, DVec3};
+use indicate_instrument_feeder::nav_display::DeviationScaleProfile;
 use indicate_instrument_feeder::nav_guidance::NavGuidanceTracker;
 use indicate_instrument_state::abi::v9::{DecodeReport, decode_state, encode_state};
 use indicate_instrument_state::{
@@ -59,6 +60,9 @@ pub struct FeedConfig {
     pub altitude: AltitudeSource,
     /// North reference convention stamped on primary headings.
     pub heading_mode: HeadingMode,
+    /// The lateral and vertical deviation widths by phase for the navigator
+    /// the vehicle carries; the host's guidance states the phase.
+    pub deviation_scale: DeviationScaleProfile,
 }
 
 /// One instant of flight, as the panels should be told it.
@@ -262,6 +266,7 @@ impl StateFeed {
             guidance::host_nav(
                 &mut self.nav_tracker,
                 &host.nav,
+                &self.config.deviation_scale,
                 &self.config.body,
                 sample.vehicle.position_ecef,
             )

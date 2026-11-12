@@ -45,6 +45,7 @@ fn vector_hud_tessellates_at_window_and_retina_resolution() {
         origin_id: 1,
         altitude: sim_indicate::AltitudeSource::OriginRelative,
         heading_mode: sim_indicate::HeadingMode::EarthMagnetic,
+        deviation_scale: sim_indicate::DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample::truth(SimInstant::START, vehicle);
     let monitored = SourceMonitor::new()

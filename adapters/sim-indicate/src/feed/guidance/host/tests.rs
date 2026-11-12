@@ -1,7 +1,7 @@
 use indicate_instrument_feeder::{CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION};
 use indicate_instrument_state::{
-    AirframeDisplayProfile, FreshnessPolicy, NavFromTo, NavSource, PanelData, UnusualAttitudeState,
-    resolve_stateful,
+    AirframeDisplayProfile, FreshnessPolicy, NavFromTo, NavScale, NavSource, PanelData,
+    UnusualAttitudeState, resolve_stateful,
 };
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{Geodetic, LocalFrame};
@@ -21,6 +21,7 @@ fn feed() -> StateFeed {
         origin_id: 3,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     })
 }
 
@@ -43,15 +44,20 @@ fn stamp(epoch: u32, sequence: u32) -> RawStamp {
     }
 }
 
-/// 50 m right of course on the terminal scale: the bar sits two dots left.
+/// One nautical mile right of course and 1 000 ft above the profile on a
+/// GNSS navigator's terminal scale, whose full scales are one nautical mile
+/// and 1 000 ft at two dots: the bar sits two dots left and the vertical
+/// pointer two dots up.
 fn lane_guidance() -> Guidance {
     Guidance {
         to_ident: IdentStr::new("WPT2").unwrap_or_default(),
         from_ident: IdentStr::new("WPT1").unwrap_or_default(),
         course_rad: 0.5,
-        lateral_deviation_m: 50.0,
-        vertical_deviation_m: 16.0,
+        lateral_deviation_m: 1_852.0,
+        vertical_deviation_m: 304.8,
         distance_to_waypoint_m: 3_704.0,
+        scale: NavScale::Terminal,
+        to_from: NavFromTo::To,
         leg_index: 1,
         waypoint_count: 3,
         solution_quality: 0,
@@ -139,7 +145,14 @@ fn a_rewound_clock_hides_guidance_until_the_feed_resets_it() {
 }
 
 fn lane_age_ms(tracker: &mut NavGuidanceTracker, nav: HostNavGuidance) -> Option<f32> {
-    host_nav(tracker, &nav, &BodyEllipsoid::WGS84, DVec3::ZERO).age_ms
+    host_nav(
+        tracker,
+        &nav,
+        &DeviationScaleProfile::GNSS_NAVIGATOR,
+        &BodyEllipsoid::WGS84,
+        DVec3::ZERO,
+    )
+    .age_ms
 }
 
 #[test]
