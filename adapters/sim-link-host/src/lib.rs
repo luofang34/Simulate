@@ -13,7 +13,7 @@
 //!   ephemeris.
 //! - [`plan_lines`] words the link and its summary in plain language.
 //! - [`package_route_msl`] and [`package_camera`] say what the map package
-//!   is planned for, and [`package_plan_lines`], [`progress_words`] and
+//!   is planned for, and [`package_plan_lines`], [`package_lines`] and
 //!   [`sealed_lines`] word its plan, its progress and its result;
 //!   [`world_memory_bytes`] is what the camera's world of the package takes
 //!   in the tab once decoded, checked against [`WORLD_MEMORY_CEILING_BYTES`].
@@ -50,16 +50,16 @@ pub use flyable::{
     flyable_route, path_words,
 };
 pub use monitor::{
-    CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark, FlightStepper,
-    GreyImage, HoldState, MAX_FRAME_S, MatchLine, MatchShot, MeansSwitch, Monitor, MonitorFeed,
-    OfferedPosition, PaceLimit, Pacer, Replay, RouteEnd, SAMPLES_KEPT, SLICE_BUDGET_S, SetTrace,
-    Slice, SolvedFit, StepState, TracePoint, clock_words, entry_words, event_words, leg_words,
-    outcome_words, pace_words, pattern_words, run_slice, sensor_words, state_words, status_words,
-    terrain_words,
+    ABSENT, CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark,
+    FlightStepper, GreyImage, HoldState, MAX_FRAME_S, MatchLine, MatchShot, MeansSwitch, Monitor,
+    MonitorFeed, OfferedPosition, PaceLimit, Pacer, RUN_LINES, Replay, RouteEnd, SAMPLES_KEPT,
+    SLICE_BUDGET_S, SetTrace, Slice, SolvedFit, StepState, TracePoint, clock_words, entry_words,
+    event_words, leg_words, outcome_words, pattern_words, run_lines, run_slice, sensor_words,
+    starting_lines, state_words, stopped_lines, terrain_words,
 };
 pub use package::{
-    BYTES_PER_MB, budget_bytes, budget_refusal_lines, error_words, package_camera,
-    package_plan_lines, package_route_msl, progress_words, sealed_lines,
+    BYTES_PER_MB, PACKAGE_LINES, PackageStage, budget_bytes, budget_refusal_lines, error_words,
+    package_camera, package_lines, package_plan_lines, package_route_msl, sealed_lines,
 };
 pub use request::{
     CameraGeometry, HostedHold, HostedRequest, StartState, VEHICLE_CAMERA, hosted_request,

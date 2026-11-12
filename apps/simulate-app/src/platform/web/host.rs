@@ -10,6 +10,7 @@ use winit::platform::web::WindowAttributesExtWebSys;
 use winit::window::{Window, WindowAttributes};
 
 use super::progress_surface::ProgressSurface;
+use super::section::write_live;
 use crate::app::page_panels::{PagePanel, PagePanels};
 
 /// A view of the app inside a page: the canvas it draws on and the line
@@ -18,7 +19,7 @@ use crate::app::page_panels::{PagePanel, PagePanels};
 pub struct PageView {
     /// The canvas the app draws on.
     pub canvas: HtmlCanvasElement,
-    /// The line under the canvas.
+    /// The status lines under the canvas.
     pub line: Element,
     /// Where the view states how it runs: the maps' device tier and why.
     pub diagnostics: Element,
@@ -63,17 +64,21 @@ impl Host {
                 ProgressSurface::of_page().fail(&format!("Simulate stopped: {what}"), &detail);
             }
             Self::View(view) => {
-                view.line
-                    .set_text_content(Some(&format!("No world view: {what}: {detail}")));
+                if let Some(document) = view.line.owner_document() {
+                    let lines = ["No world view".to_owned(), what.to_owned(), detail];
+                    write_live(&document, &view.line, &lines);
+                }
                 view.canvas.set_attribute("hidden", "").ok();
             }
         }
     }
 
-    /// States how the app runs, in the view's diagnostics; the whole page has the log.
-    pub fn diagnostics(&self, text: &str) {
+    /// States how the app runs in the view's diagnostics: `line`, with `detail` as its
+    /// tooltip; the whole page has the log.
+    pub fn diagnostics(&self, line: &str, detail: &str) {
         if let Self::View(view) = self {
-            view.diagnostics.set_text_content(Some(text));
+            view.diagnostics.set_text_content(Some(line));
+            view.diagnostics.set_attribute("title", detail).ok();
         }
     }
 
@@ -106,15 +111,27 @@ impl Host {
         }
     }
 
-    /// Shows `title`: on the page's tab, or on the view's line.
+    /// Shows `title` on the page's tab; a view leaves the page's title alone and shows
+    /// its status lines instead.
     pub fn set_title(&self, _window: &Window, title: &str) {
-        match self {
-            Self::Page => {
-                if let Some(document) = web_sys::window().and_then(|window| window.document()) {
-                    document.set_title(title);
-                }
-            }
-            Self::View(view) => view.line.set_text_content(Some(title)),
+        if let Self::Page = self
+            && let Some(document) = web_sys::window().and_then(|window| window.document())
+        {
+            document.set_title(title);
+        }
+    }
+
+    /// Whether the app is a view with status lines under it.
+    pub const fn shows_status(&self) -> bool {
+        matches!(self, Self::View(_))
+    }
+
+    /// Shows `lines` under the view, each line in its own place.
+    pub fn set_status(&self, lines: &[String]) {
+        if let Self::View(view) = self
+            && let Some(document) = view.line.owner_document()
+        {
+            write_live(&document, &view.line, lines);
         }
     }
 

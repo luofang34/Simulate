@@ -78,11 +78,11 @@ impl ProgressSurface {
         write_lines(&elements.document, &elements.lines, lines);
     }
 
-    /// Adds a section under what the surface shows, headed `heading`.
-    /// `None` in a page without the surface.
-    pub fn section(&self, heading: &str) -> Option<Section> {
+    /// Adds a section under what the surface shows, headed `heading`, with
+    /// `rows` lines of status. `None` in a page without the surface.
+    pub fn section(&self, heading: &str, rows: usize) -> Option<Section> {
         let elements = self.elements.as_ref()?;
-        Section::under(&elements.document, &elements.card, heading)
+        Section::under(&elements.document, &elements.card, heading, rows)
     }
 
     /// Removes the surface: the app has something to draw.

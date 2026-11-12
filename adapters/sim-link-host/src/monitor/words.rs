@@ -3,7 +3,7 @@
 
 use sim_navigate::trial::{EventKind, EventRecord, SensorKind, SensorState};
 
-use super::{Monitor, PaceLimit};
+use super::Monitor;
 
 #[cfg(test)]
 mod tests;
@@ -101,46 +101,4 @@ pub fn terrain_words(monitor: &Monitor, set: &str) -> String {
         words.push_str(&format!("; unused: {}", unused.join(", ")));
     }
     words
-}
-
-/// Where the flight is: route time against the plan, the phase and the
-/// last waypoint sequenced.
-pub fn status_words(monitor: &Monitor) -> String {
-    let mut words = format!("route time {}", clock_words(monitor.sim_time_s()));
-    if let Some(planned) = monitor.planned_duration_s() {
-        words.push_str(&format!(" of about {}", clock_words(planned)));
-    }
-    match monitor.phase() {
-        Some(phase) => words.push_str(&format!("; phase {phase}")),
-        None => words.push_str("; no mission phase reported"),
-    }
-    match monitor.route_end() {
-        Some(end) => words.push_str(&format!(
-            "; plan completed at {} on reaching {}",
-            clock_words(end.t_s),
-            end.ident
-        )),
-        None => {
-            if let Some((_, ident)) = monitor.last_waypoint() {
-                words.push_str(&format!("; last sequenced {ident}"));
-            }
-        }
-    }
-    if let Some(hold) = monitor.hold() {
-        words.push_str(&format!("; {}", hold.words()));
-    }
-    if monitor.finished() {
-        words.push_str("; the run has ended");
-    }
-    words
-}
-
-/// Why the flight runs slower than the pace chosen.
-pub fn pace_words(limit: &PaceLimit) -> String {
-    let by = if limit.by_camera {
-        "the terrain camera, whose frames this page renders on its own thread"
-    } else {
-        "the cost of the flight"
-    };
-    format!("pace limited to {:.1}x by {by}", limit.speed)
 }

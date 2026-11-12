@@ -24,6 +24,13 @@
       .bar[data-unknown] .fill { width: 30%; animation: boot-sweep 1.4s ease-in-out infinite; }
       @keyframes boot-sweep { from { margin-left: -30%; } to { margin-left: 100%; } }
       .detail { margin: 0.6rem 0 0; min-height: 1.5em; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+      /* Live status: a fixed number of short lines, each cut rather than wrapped, so a block
+         never changes height while it updates. */
+      .live { margin: 0.6rem 0 0; color: #8f98ad; font-variant-numeric: tabular-nums; user-select: text; }
+      .live-line { min-height: 1.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .lines.live-rows { grid-template-columns: max-content minmax(0, 1fr); }
+      .lines.live-rows dt, .lines.live-rows dd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .detail.run-link { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #boot[data-state="failed"] #boot-bar, #boot[data-state="plan"] #boot-bar, #boot[data-state="refused"] #boot-bar { display: none; }
       #boot[data-state="failed"] #boot-phase, #boot[data-state="refused"] #boot-phase { color: #ff8a80; }
       /* Labelled lines the app writes: the plan of a link, or why it is refused. */
@@ -72,10 +79,10 @@
       .match-panel { margin-top: 1rem; }
       .match { display: block; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
       .frame { display: block; width: 400px; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
-      .legend, .switches { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
+      .legend, .switches { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
       .series { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; }
       .swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
-      .value { color: #8f98ad; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      .value { min-width: 0; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .speeds { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 1rem; color: #8f98ad; }
       .speeds label { display: flex; gap: 0.3rem; align-items: center; color: #d7dbe6; cursor: pointer; }
       .section input { accent-color: #5aa2ff; }

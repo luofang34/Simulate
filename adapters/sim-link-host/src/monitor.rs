@@ -12,6 +12,7 @@ mod hold;
 mod matching;
 mod pacer;
 mod replay;
+mod status_lines;
 mod thinning;
 mod trace;
 mod words;
@@ -34,11 +35,10 @@ pub use pacer::{
     StepState, run_slice,
 };
 pub use replay::Replay;
+pub use status_lines::{ABSENT, RUN_LINES, run_lines, starting_lines, stopped_lines};
 pub use thinning::SAMPLES_KEPT;
 pub use trace::{Column, SetTrace, TracePoint};
-pub use words::{
-    clock_words, event_words, pace_words, sensor_words, state_words, status_words, terrain_words,
-};
+pub use words::{clock_words, event_words, sensor_words, state_words, terrain_words};
 
 /// The flight's picture when the plan completed, which a page keeps
 /// showing while the vehicle flies on in its hold.

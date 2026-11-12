@@ -21,7 +21,7 @@ fn pattern() -> HoldingPatternRecord {
 }
 
 #[test]
-fn a_hold_follows_its_events_into_words() {
+fn a_hold_follows_its_events() {
     assert_eq!(
         HoldState::after(
             None,
@@ -32,9 +32,12 @@ fn a_hold_follows_its_events_into_words() {
         None
     );
     let started = HoldState::after(None, &EventKind::HoldingStarted { pattern: pattern() });
+    let at = |hold: Option<&HoldState>| {
+        hold.map(|hold| (hold.fix_ident.clone(), hold.leg, hold.circuits))
+    };
     assert_eq!(
-        started.as_ref().map(HoldState::words).as_deref(),
-        Some("HOLD at ZA5: to the fix, 0 circuits flown")
+        at(started.as_ref()),
+        Some(("ZA5".to_owned(), HoldingLegName::ToFix, 0))
     );
     let entered = HoldState::after(
         started,
@@ -50,8 +53,8 @@ fn a_hold_follows_its_events_into_words() {
         },
     );
     assert_eq!(
-        flying.as_ref().map(HoldState::words).as_deref(),
-        Some("HOLD at ZA5: inbound, 1 circuit flown")
+        at(flying.as_ref()),
+        Some(("ZA5".to_owned(), HoldingLegName::Inbound, 1))
     );
     assert_eq!(
         pattern_words(&pattern()),

@@ -17,8 +17,8 @@ mod track_map;
 use std::collections::BTreeSet;
 
 use sim_link_host::{
-    CameraWorld, MeansSwitch, Monitor, PlanLine, TracePoint, clock_words, event_words,
-    sensor_words, state_words, status_words, terrain_words,
+    ABSENT, CameraWorld, MeansSwitch, Monitor, PlanLine, TracePoint, clock_words, event_words,
+    sensor_words, state_words, terrain_words,
 };
 use sim_navigate::NavMeans;
 use sim_navigate::trial::SensorKind;
@@ -85,7 +85,6 @@ pub struct MonitorView {
     run_link: Element,
     built_for: Vec<String>,
     can_switch: bool,
-    world_note: Option<String>,
 }
 
 impl MonitorView {
@@ -119,10 +118,15 @@ impl MonitorView {
         let switches = append(&document, &root, "div", "switches")?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, speed);
-        let run_link = append(&document, &root, "p", "detail")?;
-        let terrain = append(&document, &root, "dl", "lines")?;
-        let mission = append(&document, &root, "dl", "lines")?;
-        let events = append(&document, &root, "dl", "lines")?;
+        let run_link = append(&document, &root, "p", "detail run-link")?;
+        if let Some(note) = world_note
+            && let Some(line) = append(&document, &root, "p", "detail")
+        {
+            line.set_text_content(Some(&format!("The camera's world: {note}")));
+        }
+        let terrain = append(&document, &root, "dl", "lines live-rows")?;
+        let mission = append(&document, &root, "dl", "lines live-rows")?;
+        let events = append(&document, &root, "dl", "lines live-rows")?;
         if let Some(closing) = append(&document, &root, "p", "detail") {
             closing.set_text_content(Some(about));
         }
@@ -142,7 +146,6 @@ impl MonitorView {
             run_link,
             built_for: Vec::new(),
             can_switch,
-            world_note,
         })
     }
 
@@ -156,7 +159,7 @@ impl MonitorView {
         };
         let document = self.section.document();
         if let Some(words) = append(document, &self.run_link, "span", "") {
-            words.set_text_content(Some("Link to this run, with the switches so far: "));
+            words.set_text_content(Some("This run, switches included: "));
         }
         if let Some(anchor) = append(document, &self.run_link, "a", "") {
             anchor.set_attribute("href", url).ok();
@@ -196,11 +199,10 @@ impl MonitorView {
         }
     }
 
-    /// Shows `monitor` under `controls`; `note` heads the status line.
-    pub fn draw(&mut self, monitor: &Monitor, controls: &Controls, note: &str) {
+    /// Shows `monitor` under `controls`, with `status` as the section's status.
+    pub fn draw(&mut self, monitor: &Monitor, controls: &Controls, status: &[String]) {
         self.rebuild_if_new(monitor);
-        self.section
-            .settled(&format!("{note}{}", status_words(monitor)));
+        self.section.settled(status);
         self.plot
             .draw(monitor, &|set| !controls.hidden.contains(set));
         self.legend_values(monitor);
@@ -208,24 +210,15 @@ impl MonitorView {
         self.frame.draw(monitor);
         self.matching.draw(monitor);
         self.switch_states(monitor);
-        let mut visual: Vec<PlanLine> = monitor
+        let visual: Vec<PlanLine> = monitor
             .traces()
             .iter()
             .filter(|trace| trace.means.contains(&NavMeans::Visual))
             .map(|trace| PlanLine {
-                label: format!("Terrain camera, {}", trace.name),
+                label: format!("Camera, {}", trace.name),
                 text: terrain_words(monitor, &trace.name),
             })
             .collect();
-        if let Some(note) = self.world_note.as_ref().filter(|_| !visual.is_empty()) {
-            visual.insert(
-                0,
-                PlanLine {
-                    label: "Camera's world".to_owned(),
-                    text: note.clone(),
-                },
-            );
-        }
         write_lines(self.section.document(), &self.terrain, &visual);
         let mission: Vec<PlanLine> = monitor
             .mission_events()
@@ -287,16 +280,17 @@ impl MonitorView {
             .zip(values(&self.legend))
             .enumerate()
         {
-            let now = trace.latest().map(sample_words);
+            let now = trace
+                .latest()
+                .map_or_else(|| ABSENT.to_owned(), sample_words);
             let at_end = ends
                 .and_then(|samples| samples.get(index).copied().flatten())
-                .map(|sample| sample_words(&sample));
-            let text = match (at_end, now) {
-                (Some(end), Some(now)) => format!("at the route's end {end}; now {now}"),
-                (Some(end), None) => format!("at the route's end {end}"),
-                (None, now) => now.unwrap_or_default(),
-            };
-            value.set_text_content(Some(&text));
+                .map_or_else(|| ABSENT.to_owned(), |sample| sample_words(&sample));
+            let text = format!("now {now} · end {at_end}");
+            if value.text_content().as_deref() != Some(text.as_str()) {
+                value.set_text_content(Some(&text));
+                value.set_attribute("title", &text).ok();
+            }
         }
     }
 
@@ -314,10 +308,18 @@ impl MonitorView {
                         SensorKind::Stars => sensors.stars,
                         SensorKind::TerrainCamera => sensors.terrain_camera,
                     };
-                    Some(format!("{} in {}", state_words(state)?, trace.name))
+                    Some(format!("{} {}", trace.name, state_words(state)?))
                 })
                 .collect();
-            value.set_text_content(Some(&states.join("; ")));
+            let text = if states.is_empty() {
+                ABSENT.to_owned()
+            } else {
+                states.join(" · ")
+            };
+            if value.text_content().as_deref() != Some(text.as_str()) {
+                value.set_text_content(Some(&text));
+                value.set_attribute("title", &text).ok();
+            }
         }
     }
 }
@@ -407,16 +409,11 @@ fn speed_choices(document: &Document, speeds: &Element, speed: Option<f64>) {
     }
 }
 
-/// One sample of a set in words: its error and the uncertainty it states.
+/// One sample of a set: its error against the truth and the one-sigma it
+/// states, "12.3 m, σ 8.1".
 fn sample_words(sample: &TracePoint) -> String {
-    match sample.sigma_horizontal_m {
-        Some(sigma) => format!(
-            "{:.1} m off the truth, {sigma:.1} m one-sigma",
-            sample.horizontal_error_m
-        ),
-        None => format!(
-            "{:.1} m off the truth, no uncertainty stated",
-            sample.horizontal_error_m
-        ),
-    }
+    let sigma = sample
+        .sigma_horizontal_m
+        .map_or_else(|| ABSENT.to_owned(), |sigma| format!("{sigma:.1}"));
+    format!("{:.1} m, σ {sigma}", sample.horizontal_error_m)
 }

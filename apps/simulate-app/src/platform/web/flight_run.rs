@@ -8,8 +8,8 @@ use std::fmt::Display;
 
 use sim_link::SimulationLink;
 use sim_link_host::{
-    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SwitchLog, pace_words,
-    run_slice,
+    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SwitchLog, run_lines,
+    run_slice, stopped_lines,
 };
 use sim_navigate::trial::SensorKind;
 use tracing::{info, warn};
@@ -125,25 +125,11 @@ impl FrameShare {
         }
     }
 
-    /// The pace words for the page's other drawing, named `others`, when it
-    /// takes most of the frames.
-    fn words(&self, others: &str) -> Option<String> {
-        let share = self.others.filter(|share| *share > 0.5)?;
-        Some(format!(
-            "{others} takes {:.0} % of the page's time, which slows the pace",
-            share * 100.0
-        ))
+    /// The page's other drawing, named `others`, with its share of the
+    /// page's time once measured.
+    fn of<'a>(&self, others: Option<&'a str>) -> Option<(&'a str, f64)> {
+        others.zip(self.others)
     }
-}
-
-/// The status line: `note`, then why the pace is held, if it is.
-fn status_note(note: &str, pacer: &Pacer, share: &FrameShare, others: Option<&str>) -> String {
-    let mut words: Vec<String> = pacer.limit().iter().map(pace_words).collect();
-    words.extend(others.and_then(|others| share.words(others)));
-    if words.is_empty() {
-        return note.to_owned();
-    }
-    format!("{note}{}. ", words.join("; "))
 }
 
 /// Steps `flight` for one slice toward the pace and hands the monitor what
@@ -170,7 +156,7 @@ where
 }
 
 /// Flies `flight` with `view` showing it, for as long as the page is open.
-/// `note` heads the status line: what is flying. With `link`, the view
+/// `note` heads the status: what is flying. With `link`, the view
 /// offers the link of the run as flown. `publish` sees the flight after
 /// every slice, for `others`, the page's other views of it.
 pub async fn fly<F>(
@@ -222,6 +208,7 @@ pub async fn fly<F>(
                     warn!(%error, "the flight failed");
                     view.section().refuse(
                         "The flight stopped",
+                        &stopped_lines(note),
                         &[sim_link_host::PlanLine {
                             label: "Reason".to_owned(),
                             text: error.to_string(),
@@ -243,7 +230,7 @@ pub async fn fly<F>(
             view.draw(
                 &monitor,
                 &controls,
-                &status_note(note, &pacer, &share, others),
+                &run_lines(note, &monitor, &pacer, share.of(others)),
             );
             dirty = false;
         }

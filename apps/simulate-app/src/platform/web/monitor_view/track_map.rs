@@ -219,10 +219,9 @@ fn key_words(pictured: bool) -> String {
         ""
     };
     format!(
-        "{under}White: the true track. Coloured: each set's estimate, in the plot's colours, \
-         with a ring of its stated one-sigma (sqrt(σN² + σE²), at least {MIN_RING_PX} px) at \
-         the latest point. Dots: where the camera was for each frame a set's filter accepted; \
-         rings: frames it rejected. Dashed: the planned route."
+        "{under}White: the true track. Coloured: each set's estimate with its one-sigma ring \
+         (at least {MIN_RING_PX} px). Dots and rings: camera frames accepted and rejected. \
+         Dashed: the planned route."
     )
 }
 

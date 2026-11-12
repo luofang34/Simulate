@@ -39,15 +39,28 @@ pub struct TierChoice {
 }
 
 impl TierChoice {
-    /// The choice in one line, for a page's diagnostics.
+    /// The choice with its reasons, for the log and a page's tooltip.
     #[must_use]
     pub fn words(&self) -> String {
-        let tier = match self.tier {
+        format!(
+            "map detail: {} tier ({})",
+            self.tier_name(),
+            self.reasons.join("; ")
+        )
+    }
+
+    /// The choice in a short line, for a page's status.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!("Map detail: {} tier", self.tier_name())
+    }
+
+    const fn tier_name(&self) -> &'static str {
+        match self.tier {
             CockpitDeviceTier::Desktop => "desktop",
             CockpitDeviceTier::Browser => "browser",
             CockpitDeviceTier::Handheld => "handheld",
-        };
-        format!("map detail: {tier} tier ({})", self.reasons.join("; "))
+        }
     }
 }
 

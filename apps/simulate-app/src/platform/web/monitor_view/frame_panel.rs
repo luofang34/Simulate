@@ -37,7 +37,7 @@ impl FramePanel {
         if let Some(about) = append(document, &side, "p", "detail") {
             about.set_text_content(Some(ABOUT));
         }
-        let caption = append(document, &side, "dl", "lines")?;
+        let caption = append(document, &side, "dl", "lines live-rows")?;
         panel.set_attribute("hidden", "").ok();
         Some(Self {
             document: document.clone(),
@@ -57,7 +57,7 @@ impl FramePanel {
         };
         let mut lines = vec![PlanLine {
             label: format!("Frame {}", shot.index),
-            text: format!("exposed at route time {}", clock_words(shot.mid_s)),
+            text: format!("exposed at {}", clock_words(shot.mid_s)),
         }];
         lines.extend(
             monitor
@@ -67,12 +67,12 @@ impl FramePanel {
                 .map(|trace| PlanLine {
                     label: trace.name.clone(),
                     text: camera.outcomes(&trace.name).map_or_else(
-                        || "no outcome reported yet".to_owned(),
+                        || "no outcome yet".to_owned(),
                         |keys| {
                             keys.iter()
                                 .map(|key| outcome_words(key))
                                 .collect::<Vec<_>>()
-                                .join("; ")
+                                .join(" · ")
                         },
                     ),
                 }),

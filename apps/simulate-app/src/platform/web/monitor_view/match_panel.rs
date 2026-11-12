@@ -4,7 +4,7 @@
 //! captioned with what the navigator made of the frame and how far its
 //! offered fix lay from the truth.
 
-use sim_link_host::{GreyImage, MatchShot, Monitor, PlanLine, clock_words, outcome_words};
+use sim_link_host::{ABSENT, GreyImage, MatchShot, Monitor, PlanLine, clock_words, outcome_words};
 use sim_navigate::NavMeans;
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, Document, Element, HtmlCanvasElement, ImageData};
@@ -51,7 +51,7 @@ impl MatchPanel {
             )
             .ok();
         let context = canvas.get_context("2d").ok()??.dyn_into().ok()?;
-        let caption = append(document, &root, "dl", "lines")?;
+        let caption = append(document, &root, "dl", "lines live-rows")?;
         Some(Self {
             document: document.clone(),
             root,
@@ -132,73 +132,60 @@ fn put(context: &CanvasRenderingContext2d, image: &GreyImage, x: f64) {
 }
 
 /// The caption of `compared`, and of `latest` when a later frame gave no
-/// comparison.
+/// comparison: always the same four lines, a dash where there is nothing.
 fn caption(monitor: &Monitor, compared: &MatchShot, latest: &MatchShot) -> Vec<PlanLine> {
     let line = |label: &str, text: String| PlanLine {
         label: label.to_owned(),
         text,
     };
     let source = match compared.path.as_deref() {
-        Some("keyframe") => "against a stored keyframe",
-        Some(_) => "against a view rendered from the onboard map",
-        None => "",
+        Some("keyframe") => "keyframe",
+        Some(_) => "rendered view",
+        None => ABSENT,
     };
     let kept = compared.lines.iter().filter(|line| line.inlier).count();
-    let mut lines = vec![
+    let matches = match compared.solved {
+        Some(fit) => format!(
+            "{kept} of {} kept · {:.1} px · {} cells",
+            compared.lines.len(),
+            fit.reprojection_rms_px,
+            fit.spatial_support
+        ),
+        None => format!("{} found · no pose", compared.lines.len()),
+    };
+    let offered = compared.fix.map_or_else(
+        || ABSENT.to_owned(),
+        |fix| match truth_at(monitor, compared.at_s) {
+            Some(truth) => format!(
+                "{:.1} m off truth · σ {:.1} m",
+                metres_between(fix.at_deg, truth),
+                fix.sigma_horizontal_m
+            ),
+            None => format!("σ {:.1} m · no truth then", fix.sigma_horizontal_m),
+        },
+    );
+    let since = if latest.at_s > compared.at_s {
+        format!(
+            "{} · {} · no images",
+            clock_words(latest.at_s),
+            outcome_words(&latest.outcome)
+        )
+    } else {
+        ABSENT.to_owned()
+    };
+    vec![
         line(
             "Frame",
             format!(
-                "route time {}, {source}: {}",
+                "{} · {source} · {}",
                 clock_words(compared.at_s),
                 outcome_words(&compared.outcome)
             ),
         ),
-        line(
-            "Matches",
-            match compared.solved {
-                Some(fit) => format!(
-                    "{kept} of {} kept; reprojection {:.1} px over {} image cells",
-                    compared.lines.len(),
-                    fit.reprojection_rms_px,
-                    fit.spatial_support
-                ),
-                None => format!("{} found, no pose fitted", compared.lines.len()),
-            },
-        ),
-    ];
-    if let Some(fix) = compared.fix {
-        let truth = truth_at(monitor, compared.at_s);
-        lines.push(line(
-            "Offered fix",
-            truth.map_or_else(
-                || {
-                    format!(
-                        "{:.1} m one-sigma; no truth sampled then",
-                        fix.sigma_horizontal_m
-                    )
-                },
-                |truth| {
-                    format!(
-                        "{:.1} m from where the aircraft truly was, offered with {:.1} m \
-                         one-sigma",
-                        metres_between(fix.at_deg, truth),
-                        fix.sigma_horizontal_m
-                    )
-                },
-            ),
-        ));
-    }
-    if latest.at_s > compared.at_s {
-        lines.push(line(
-            "Since",
-            format!(
-                "frame at {}: {}, with no images to compare",
-                clock_words(latest.at_s),
-                outcome_words(&latest.outcome)
-            ),
-        ));
-    }
-    lines
+        line("Matches", matches),
+        line("Offered fix", offered),
+        line("Since", since),
+    ]
 }
 
 /// TRUTH: the aircraft's latitude and longitude at the sample nearest

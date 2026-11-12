@@ -18,6 +18,7 @@ fn a_desktop_or_laptop_browser_runs_the_browser_tier() {
         "{}",
         choice.words()
     );
+    assert_eq!(choice.line(), "Map detail: browser tier");
     // A browser that does not report its memory is not taken for a small one.
     let quiet = DeviceFacts {
         mobile: None,

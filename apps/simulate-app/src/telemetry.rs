@@ -4,6 +4,7 @@ use sim_scenario::{OperatorViewportMode, SimTimeScale};
 use tracing::{debug, info};
 
 use crate::flight::{Flight, SpaceLinkStatus, SpaceReferenceFrame};
+use crate::page_status::{EngineState, PAGE_STATUS_LINES, PageStatus};
 
 /// Reports what changed on the panel since `previous`.
 pub fn log_changes(previous: &CockpitInstrumentSnapshot, current: &CockpitInstrumentSnapshot) {
@@ -53,13 +54,7 @@ pub fn title(
             (None, _) => flight.free_vehicle().map_or("Free Flight", |v| v.title()),
         },
     };
-    let view_label = match viewport_mode {
-        OperatorViewportMode::Cockpit => "OTW",
-        OperatorViewportMode::Chase => "Chase",
-        OperatorViewportMode::SensorAperture => virtual_camera_title.unwrap_or("Sensor"),
-        OperatorViewportMode::ChartMap => "Chart",
-        OperatorViewportMode::VolumetricScene => "Volume",
-    };
+    let view_label = view_label(viewport_mode, virtual_camera_title);
     let mut line = format!(
         "Simulate | {name} | {view_label} | {:.0} m | {:.0} m/s",
         cockpit.height_m.value, cockpit.speed_m_s.value
@@ -97,18 +92,65 @@ pub fn title(
     if let Some(chain) = flight.chain_readout() {
         add(chain_line(&chain));
     }
-    if flight.world().body() == sim_geo::BodyEllipsoid::WGS84 {
-        let nav_mode = match flight.sensor_realism() {
-            crate::sensor_bus::SensorRealism::Realistic => "WAAS [N]",
-            crate::sensor_bus::SensorRealism::DegradedNavigation => "DEGRADED [N]",
-            crate::sensor_bus::SensorRealism::Ideal => "IDEAL [N]",
-        };
+    if let Some(nav_mode) = navigation_label(flight) {
         add(nav_mode.to_owned());
     }
     append_space_status(flight, viewport_mode, time_scale, &mut add);
     append_apollo_status(cockpit, &mut add);
     add(pacing_label(flight));
     line
+}
+
+/// The world view's status lines on a link's page, for the same moment as
+/// [`title`].
+pub fn page_status(
+    flight: &Flight,
+    viewport_mode: OperatorViewportMode,
+    virtual_camera_title: Option<&str>,
+    time_scale: SimTimeScale,
+    cockpit: &CockpitInstrumentSnapshot,
+) -> [String; PAGE_STATUS_LINES] {
+    let chain = flight.chain_readout();
+    let stats = flight.pacing_stats();
+    PageStatus {
+        view: view_label(viewport_mode, virtual_camera_title),
+        height_m: cockpit.height_m.value,
+        speed_m_s: cockpit.speed_m_s.value,
+        engine: match flight.engine_status() {
+            Some(engine) if engine.running => EngineState::Running(engine.propeller_rpm),
+            Some(_) => EngineState::Off,
+            None => EngineState::Absent,
+        },
+        armed: flight.aviate_armed(),
+        phase: chain.as_ref().and_then(|chain| chain.phase.as_deref()),
+        navigation: navigation_label(flight),
+        time_scale,
+        real_time_ratio: stats.real_time_ratio,
+        fps: stats.fps,
+    }
+    .lines()
+}
+
+/// What the view shows, in a word.
+fn view_label(viewport_mode: OperatorViewportMode, virtual_camera_title: Option<&str>) -> &str {
+    match viewport_mode {
+        OperatorViewportMode::Cockpit => "OTW",
+        OperatorViewportMode::Chase => "Chase",
+        OperatorViewportMode::SensorAperture => virtual_camera_title.unwrap_or("Sensor"),
+        OperatorViewportMode::ChartMap => "Chart",
+        OperatorViewportMode::VolumetricScene => "Volume",
+    }
+}
+
+/// The navigation realism of a flight on the Earth.
+fn navigation_label(flight: &Flight) -> Option<&'static str> {
+    (flight.world().body() == sim_geo::BodyEllipsoid::WGS84).then(|| {
+        match flight.sensor_realism() {
+            crate::sensor_bus::SensorRealism::Realistic => "WAAS [N]",
+            crate::sensor_bus::SensorRealism::DegradedNavigation => "DEGRADED [N]",
+            crate::sensor_bus::SensorRealism::Ideal => "IDEAL [N]",
+        }
+    })
 }
 
 /// Rolling real-time pacing, e.g. `RT 1.00x · 60 FPS`.

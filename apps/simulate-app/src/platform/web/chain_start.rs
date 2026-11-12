@@ -7,6 +7,7 @@ use navigate_data::MemoryStore;
 use sim_chain_trial::ChainTrial;
 use sim_link_host::{
     CameraWorld, ChainFlight, Clock, HostError, Monitor, PlanLine, chain_spec, page_stores,
+    starting_lines, stopped_lines,
 };
 use sim_navdata::SealedPackage;
 use sim_navigate::trial::parse_utc;
@@ -16,7 +17,8 @@ use super::PageView;
 use super::flight_run::{PageClock, fly};
 use super::monitor_view::{MonitorView, PageMapSetup};
 use super::package_run::LinkPlan;
-use super::section::{Section, append};
+use super::section::{Section, append, write_live};
+use crate::page_status::PAGE_STATUS_LINES;
 use crate::vehicles::{PageFeed, PageSnapshot};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlCanvasElement};
@@ -24,9 +26,8 @@ use web_sys::{Document, Element, HtmlCanvasElement};
 /// The pace a flight starts at, route seconds per wall second; the page
 /// holds it lower when it cannot afford it.
 const START_SPEED: f64 = 4.0;
-/// What heads the status line.
-const NOTE: &str = "Flown by the vehicle's own software: Pilotage's mission host, Aviate's \
-    flight controller for the C172 and Navigate's navigators. ";
+/// What heads the status: the vehicle and the software that flies it.
+const HEAD: &str = "C172 · Pilotage → Aviate · Navigate";
 /// What the page says of the camera's world beside the visual results.
 const WORLD_NOTE: &str = "the camera sees the same imagery the onboard map was built from, \
     which favours visual navigation.";
@@ -37,7 +38,8 @@ const CAVEAT: &str = "ins.baro has nothing to fix its horizontal position, so it
     unit, with its stated uncertainty growing alongside. Hide a set in the legend to fit the \
     map to the others.";
 /// What closes the section.
-const ABOUT: &str = "About this run: the same link flies the same flight in the same build of \
+const ABOUT: &str = "About this run: the vehicle's own software flies it, Pilotage's mission \
+    host, Aviate's flight controller for the C172 and Navigate's navigators. The same link flies the same flight in the same build of \
     this page, switches included once they are in the link. A desktop build of Simulate may \
     differ in the last digits, because the browser and the desktop compute some mathematical \
     functions differently.";
@@ -102,18 +104,22 @@ fn start_world_view(
     let canvas = append(document, &row, "canvas", "world-view")
         .and_then(|canvas| canvas.dyn_into::<HtmlCanvasElement>().ok());
     let panels = instrument_panels(document, &row);
-    let line = append(document, section.root(), "p", "detail");
-    let notes = append(document, section.root(), "p", "detail");
+    let line = append(document, section.root(), "div", "live");
+    let notes = append(document, section.root(), "div", "live");
     let (Some(canvas), Some(line), Some(notes)) = (canvas, line, notes) else {
         warn!("the page has no room for the world view");
         return None;
     };
-    let diagnostics = append(document, &notes, "span", "")?;
-    let memory = append(document, &notes, "span", "")?;
+    let diagnostics = append(document, &notes, "div", "live-line")?;
+    let memory = append(document, &notes, "div", "live-line")?;
+    diagnostics.set_text_content(Some("Map detail —"));
+    memory.set_text_content(Some("Memory —"));
     canvas
         .set_attribute("aria-label", "The world outside the aircraft")
         .ok();
-    line.set_text_content(Some("Starting the world view."));
+    let mut starting = vec!["Starting the world view".to_owned()];
+    starting.resize(PAGE_STATUS_LINES, "—".to_owned());
+    write_live(document, &line, &starting);
     super::show_world(
         PageView {
             canvas,
@@ -166,19 +172,16 @@ fn instrument_panels(document: &Document, row: &Element) -> Option<[HtmlCanvasEl
     ])
 }
 
-/// The tab's WebAssembly memory in words: it only grows, so it is the most
+/// The tab's WebAssembly memory in a line: it only grows, so it is the most
 /// the run has needed, against the 4 GiB a 32-bit module can address.
-fn memory_words() -> String {
+fn memory_line() -> String {
     let bytes = core::arch::wasm32::memory_size(0) as u64 * 65_536;
-    format!("; WebAssembly memory {} MB of 4096", bytes >> 20)
+    format!("Memory {} / 4096 MB", bytes >> 20)
 }
 
 /// Flies the link of `plan` in `section`.
 pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedPackage>) {
-    section.working(
-        "Starting the vehicle's software: trimming the C172, aligning every navigator and \
-         decoding the camera's world.",
-    );
+    section.working(&starting_lines(HEAD));
     yield_to_page().await;
     let (trial, world, origin) = match prepare(plan, sealed) {
         Ok(ready) => ready,
@@ -186,6 +189,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             warn!(%error, "the flight cannot start");
             section.refuse(
                 "The flight cannot start",
+                &stopped_lines(HEAD),
                 &[PlanLine {
                     label: "Reason".to_owned(),
                     text: error.to_string(),
@@ -238,7 +242,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             .filter(|_| clock.now_s() - memory_at_s >= 2.0)
         {
             memory_at_s = clock.now_s();
-            line.set_text_content(Some(&memory_words()));
+            line.set_text_content(Some(&memory_line()));
         }
         if let Some(feed) = &feed {
             feed.publish(PageSnapshot::of(
@@ -247,6 +251,6 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             ));
         }
     };
-    let others = feed.as_ref().map(|_| "the world view");
-    fly(view, flight, (NOTE, Some(&plan.link)), &mut publish, others).await;
+    let others = feed.as_ref().map(|_| "world view");
+    fly(view, flight, (HEAD, Some(&plan.link)), &mut publish, others).await;
 }

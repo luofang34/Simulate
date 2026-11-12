@@ -42,22 +42,6 @@ impl HoldState {
             _ => hold,
         }
     }
-
-    /// The hold for a page's status line: "HOLD at ZA5: inbound, 2 circuits flown".
-    #[must_use]
-    pub fn words(&self) -> String {
-        format!(
-            "HOLD at {}: {}, {} {} flown",
-            self.fix_ident,
-            leg_words(self.leg),
-            self.circuits,
-            if self.circuits == 1 {
-                "circuit"
-            } else {
-                "circuits"
-            }
-        )
-    }
 }
 
 /// The part of a pattern in words.

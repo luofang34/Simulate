@@ -233,7 +233,8 @@ impl FlightApp {
                 self.host.startup_done();
                 if let Some(maps) = rig.maps() {
                     info!(tier = maps.tier().words(), "the maps' device tier");
-                    self.host.diagnostics(&maps.tier().words());
+                    self.host
+                        .diagnostics(&maps.tier().line(), &maps.tier().words());
                 }
                 self.cockpit_rig = Some(rig);
                 self.apply_vehicle_overlays();

@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorState};
+use sim_navigate::trial::{EventKind, EventRecord, SensorKind, SensorState};
 
-use super::{clock_words, event_words, state_words, status_words, terrain_words};
-use crate::{Monitor, MonitorFeed, PaceLimit, pace_words};
+use super::{clock_words, event_words, state_words, terrain_words};
+use crate::{Monitor, MonitorFeed};
 
 fn event(set: Option<&str>, kind: EventKind) -> EventRecord {
     EventRecord {
@@ -62,24 +62,6 @@ fn a_set_without_a_sensor_says_nothing_of_it() {
 }
 
 #[test]
-fn the_status_says_where_the_flight_is() {
-    let mut monitor = Monitor::default();
-    assert_eq!(
-        status_words(&monitor),
-        "route time 0:00; no mission phase reported"
-    );
-    let line = r#"{"type":"event","t_s":75.0,"set":null,"kind":"waypoint_sequenced","waypoint_index":0,"ident":"ZA1","plan_complete":false}"#;
-    monitor.apply(MonitorFeed::Progress(
-        ProgressRecord::from_json_line(line).unwrap(),
-    ));
-    monitor.apply(MonitorFeed::Phase("Enroute".to_owned()));
-    assert_eq!(
-        status_words(&monitor),
-        "route time 1:15; phase Enroute; last sequenced ZA1"
-    );
-}
-
-#[test]
 fn the_terrain_tally_names_each_reason() {
     let mut monitor = Monitor::default();
     assert_eq!(
@@ -98,22 +80,5 @@ fn the_terrain_tally_names_each_reason() {
     assert_eq!(
         terrain_words(&monitor, "v"),
         "3 accepted; unused: outside_coverage 2"
-    );
-}
-
-#[test]
-fn a_held_pace_says_why() {
-    let camera = PaceLimit {
-        speed: 3.24,
-        by_camera: true,
-    };
-    assert!(pace_words(&camera).starts_with("pace limited to 3.2x by the terrain camera"));
-    let flight = PaceLimit {
-        speed: 0.8,
-        by_camera: false,
-    };
-    assert_eq!(
-        pace_words(&flight),
-        "pace limited to 0.8x by the cost of the flight"
     );
 }

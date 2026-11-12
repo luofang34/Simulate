@@ -1,5 +1,6 @@
-//! A section the app adds to the page's surface: a heading, a line of
-//! status, a progress bar, labelled lines, and a button to wait on.
+//! A section the app adds to the page's surface: a heading, a block of
+//! status lines whose count never changes, a progress bar, labelled lines,
+//! and a button to wait on.
 
 use sim_link_host::PlanLine;
 use wasm_bindgen_futures::JsFuture;
@@ -15,6 +16,7 @@ pub struct Section {
     bar: Element,
     fill: Element,
     detail: Element,
+    rows: usize,
     lines: Element,
 }
 
@@ -33,6 +35,42 @@ pub(super) fn write_lines(document: &Document, lines: &Element, content: &[PlanL
     }
 }
 
+/// Writes `lines` into `block`, one line element each, keeping the elements
+/// already there and changing only text that changed: a block written every
+/// frame does not churn the page. A line's full text is also its tooltip,
+/// for a line a narrow page cuts short.
+pub(super) fn write_live(document: &Document, block: &Element, lines: &[String]) {
+    let children = block.children();
+    if block.child_nodes().length() != children.length() {
+        block.set_text_content(None);
+    }
+    while children.length() as usize > lines.len() {
+        match block.last_element_child() {
+            Some(last) => last.remove(),
+            None => break,
+        }
+    }
+    for (index, text) in lines.iter().enumerate() {
+        let existing = u32::try_from(index)
+            .ok()
+            .and_then(|index| children.item(index));
+        let Some(line) = existing.or_else(|| append(document, block, "div", "live-line")) else {
+            return;
+        };
+        if line.text_content().as_deref() != Some(text.as_str()) {
+            line.set_text_content(Some(text));
+            attribute(&line, "title", Some(text));
+        }
+    }
+}
+
+/// `lines` made exactly `rows` long: a dash for each line missing.
+fn exactly(lines: &[String], rows: usize) -> Vec<String> {
+    (0..rows)
+        .map(|index| lines.get(index).cloned().unwrap_or_else(|| "—".to_owned()))
+        .collect()
+}
+
 /// A new `tag` element of `class` (none when empty) at the end of `parent`.
 pub(super) fn append(
     document: &Document,
@@ -49,8 +87,14 @@ pub(super) fn append(
 }
 
 impl Section {
-    /// A new section at the end of `parent`.
-    pub(super) fn under(document: &Document, parent: &Element, heading: &str) -> Option<Self> {
+    /// A new section at the end of `parent`, whose status block always
+    /// shows `rows` lines.
+    pub(super) fn under(
+        document: &Document,
+        parent: &Element,
+        heading: &str,
+        rows: usize,
+    ) -> Option<Self> {
         let child = |parent: &Element, tag: &str, class: &str| append(document, parent, tag, class);
         let root = child(parent, "section", "section")?;
         let title = child(&root, "h2", "")?;
@@ -59,13 +103,15 @@ impl Section {
         attribute(&bar, "hidden", Some(""));
         let section = Self {
             fill: child(&bar, "div", "fill")?,
-            detail: child(&root, "p", "detail")?,
+            detail: child(&root, "div", "live")?,
+            rows,
             lines: child(&root, "dl", "lines")?,
             document: document.clone(),
             heading: title,
             root,
             bar,
         };
+        section.status(&[]);
         Some(section)
     }
 
@@ -79,28 +125,32 @@ impl Section {
         &self.document
     }
 
+    /// Shows `lines` as the status, exactly as many as the section's rows.
+    fn status(&self, lines: &[String]) {
+        write_live(&self.document, &self.detail, &exactly(lines, self.rows));
+    }
+
     /// Says what the section is doing, as work with no measure.
-    pub fn working(&self, text: &str) {
-        self.detail.set_text_content(Some(text));
+    pub fn working(&self, lines: &[String]) {
+        self.status(lines);
         attribute(&self.fill, "style", None);
         attribute(&self.bar, "data-unknown", Some(""));
         attribute(&self.bar, "hidden", None);
     }
 
-    /// Shows measured progress, `fraction` of the whole, with a line of
-    /// numbers.
-    pub fn progress(&self, fraction: f64, text: &str) {
+    /// Shows measured progress, `fraction` of the whole, with its numbers.
+    pub fn progress(&self, fraction: f64, lines: &[String]) {
         let percent = (fraction.clamp(0.0, 1.0) * 100.0).round();
         attribute(&self.bar, "data-unknown", None);
         attribute(&self.fill, "style", Some(&format!("width: {percent}%")));
         attribute(&self.bar, "hidden", None);
-        self.detail.set_text_content(Some(text));
+        self.status(lines);
     }
 
-    /// Ends the work: no bar, and `text` as the standing status.
-    pub fn settled(&self, text: &str) {
+    /// Ends the work: no bar, and `lines` as the standing status.
+    pub fn settled(&self, lines: &[String]) {
         attribute(&self.bar, "hidden", Some(""));
-        self.detail.set_text_content(Some(text));
+        self.status(lines);
     }
 
     /// Replaces the section's labelled lines.
@@ -108,13 +158,22 @@ impl Section {
         write_lines(&self.document, &self.lines, lines);
     }
 
+    /// Adds `line` after the section's labelled lines.
+    pub fn add_line(&self, line: &PlanLine) {
+        for (tag, text) in [("dt", &line.label), ("dd", &line.text)] {
+            if let Some(cell) = append(&self.document, &self.lines, tag, "") {
+                cell.set_text_content(Some(text));
+            }
+        }
+    }
+
     /// Turns the section into a refusal: `heading` in its place, no bar,
-    /// and the reason in `lines`.
-    pub fn refuse(&self, heading: &str, lines: &[PlanLine]) {
+    /// `status` as the status and the reason in `lines`.
+    pub fn refuse(&self, heading: &str, status: &[String], lines: &[PlanLine]) {
         attribute(&self.root, "data-state", Some("refused"));
         self.heading.set_text_content(Some(heading));
         attribute(&self.bar, "hidden", Some(""));
-        self.detail.set_text_content(None);
+        self.status(status);
         self.lines(lines);
     }
 

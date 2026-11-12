@@ -58,7 +58,7 @@ fn planned(link: sim_link::SimulationLink) -> Result<LinkPlan, HostError> {
 
 /// After the plan: the map package, then the flight.
 async fn continue_with(surface: ProgressSurface, plan: LinkPlan) {
-    let Some(package) = surface.section("Map package") else {
+    let Some(package) = surface.section("Map package", sim_link_host::PACKAGE_LINES) else {
         return;
     };
     let sealed = build_package(&package, &plan).await;
@@ -66,7 +66,7 @@ async fn continue_with(surface: ProgressSurface, plan: LinkPlan) {
     if needs_package && sealed.is_none() {
         return;
     }
-    let Some(flight) = surface.section("Flight") else {
+    let Some(flight) = surface.section("Flight", sim_link_host::RUN_LINES) else {
         return;
     };
     super::chain_start::fly_link(flight, &plan, sealed.as_ref()).await;

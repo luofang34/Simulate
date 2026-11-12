@@ -6,7 +6,7 @@ use sim_navdata::{
 
 use crate::{
     PlanLine, budget_bytes, budget_refusal_lines, error_words, hosted_request, package_camera,
-    package_plan_lines, package_route_msl, plan_summary, progress_words, sealed_lines,
+    package_plan_lines, package_route_msl, plan_summary, sealed_lines,
 };
 
 /// The link of the first closed-loop flight.
@@ -130,27 +130,7 @@ fn a_package_over_its_budget_is_refused_with_the_visitors_choices() {
 }
 
 #[test]
-fn progress_and_a_budget_stop_read_in_megabytes() {
-    let progress = PrefetchProgress {
-        total: 1890,
-        done: 700,
-        reused: 500,
-        fetched: 190,
-        gaps: 10,
-        bytes: 12_340_000,
-    };
-    assert_eq!(
-        progress_words(&progress),
-        "700 of 1890 tiles, 12.3 MB, 500 already in this browser's storage, 10 the source does not have"
-    );
-    let plain = PrefetchProgress {
-        total: 10,
-        done: 1,
-        fetched: 1,
-        bytes: 250_000_000,
-        ..Default::default()
-    };
-    assert_eq!(progress_words(&plain), "1 of 10 tiles, 250 MB");
+fn a_budget_stop_reads_in_megabytes() {
     let stopped = NavdataError::BudgetReached {
         budget_bytes: 5_000_000,
         bytes: 5_010_000,

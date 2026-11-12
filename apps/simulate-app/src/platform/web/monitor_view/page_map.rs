@@ -250,12 +250,10 @@ impl PageMap {
 }
 
 /// What the map's marks mean.
-const KEY: &str = "The moving map, as the cockpit's EFB draws it, expanded. Magenta: the leg \
-    Pilotage flies now and the fix it flies toward; white: legs to come; grey: legs flown, as \
-    Pilotage sequenced them. Yellow: the true track. Coloured: each set's estimate in the \
-    plot's colours, with a ring of its stated one-sigma at the latest point; dots and rings: \
-    terrain-camera fixes accepted and rejected. Dashed green: where the sealed map package has \
-    imagery. Drag to pan, wheel or pinch to zoom, twist to rotate, tap a fix for its details.";
+const KEY: &str = "The cockpit's moving map, expanded. Magenta: the active leg; white: legs \
+    to come; grey: legs flown. Yellow: the true track. Coloured: each set's estimate with its \
+    one-sigma ring; dots and rings: camera fixes accepted and rejected. Dashed green: the map \
+    package's imagery. Drag, zoom or tap a fix.";
 
 /// The plan from `monitor`'s route, flown from `origin`, at the mission host's progress.
 fn plan_of(monitor: &Monitor, origin: Option<[f64; 2]>) -> (FlightPlan, RouteProgress) {
@@ -369,7 +367,8 @@ fn rgb(css: &str) -> [u8; 3] {
     }
 }
 
-/// The picked fix's card, line by line with each line's class.
+/// The picked fix's card, line by line with each line's class: always four
+/// lines, so the card keeps its size from fix to fix.
 fn card_lines(picked: &PickedFix) -> Vec<(&'static str, String)> {
     let [lat, lon] = picked.at_deg;
     let place = match picked.state {
@@ -381,18 +380,21 @@ fn card_lines(picked: &PickedFix) -> Vec<(&'static str, String)> {
         ("ident", picked.ident.clone()),
         ("", format!("{} {}", dms(lat, 'N', 'S'), dms(lon, 'E', 'W'))),
     ];
-    if let Some(altitude_m) = picked.altitude_m {
-        lines.push((
-            "",
-            format!(
-                "{altitude_m:.0} m ({:.0} ft) above the ellipsoid",
-                altitude_m / 0.3048
-            ),
-        ));
-    }
     lines.push((
         "",
-        format!("Waypoint {}, {place}", picked.index.saturating_add(1)),
+        picked.altitude_m.map_or_else(
+            || "Altitude —".to_owned(),
+            |altitude_m| {
+                format!(
+                    "{altitude_m:.0} m ({:.0} ft) ellipsoid",
+                    altitude_m / 0.3048
+                )
+            },
+        ),
+    ));
+    lines.push((
+        "",
+        format!("Waypoint {} · {place}", picked.index.saturating_add(1)),
     ));
     lines
 }

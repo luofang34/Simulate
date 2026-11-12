@@ -4,8 +4,8 @@
 
 use sim_link::SimulationLink;
 use sim_link_host::{
-    BYTES_PER_MB, HostError, HostedRequest, PlanLine, PlanSummary, budget_bytes,
-    budget_refusal_lines, package_camera, package_plan_lines, package_route_msl, progress_words,
+    BYTES_PER_MB, HostError, HostedRequest, PackageStage, PlanLine, PlanSummary, budget_bytes,
+    budget_refusal_lines, package_camera, package_lines, package_plan_lines, package_route_msl,
     sealed_lines, world_line, world_memory_refusal,
 };
 use sim_navdata::browser::{
@@ -75,9 +75,7 @@ fn text_line(label: &str, text: String) -> PlanLine {
 /// section then says which.
 pub async fn build_package(section: &Section, plan: &LinkPlan) -> Option<SealedPackage> {
     let Some(camera) = package_camera(&plan.request) else {
-        section.settled(
-            "No set of this link uses the terrain camera: the flight needs no map package.",
-        );
+        section.settled(&package_lines(PackageStage::NotNeeded));
         return None;
     };
     let quota = storage_quota().await;
@@ -99,7 +97,7 @@ pub async fn build_package(section: &Section, plan: &LinkPlan) -> Option<SealedP
         Err(stop) => {
             let (heading, lines) = refusal(&plan.link, &stop);
             warn!(heading, "the map package was not built");
-            section.refuse(heading, &lines);
+            section.refuse(heading, &package_lines(PackageStage::Refused), &lines);
             None
         }
     }
@@ -114,14 +112,16 @@ async fn in_memory(
     quota: Option<StorageQuota>,
     why: &str,
 ) -> Result<SealedPackage, Stop> {
-    let note = format!(
-        "This browser's storage cannot keep the package ({why}): it is kept in memory and \
-         fetched again after a reload."
-    );
     let mut store = navigate_data::MemoryStore::default();
     package(section, plan, camera, quota, &mut store)
         .await
-        .inspect(|_| section.settled(&note))
+        .inspect(|_| {
+            section.settled(&package_lines(PackageStage::Sealed { stored: false }));
+            section.add_line(&text_line(
+                "Not stored",
+                format!("this browser's storage cannot keep the package: {why}"),
+            ));
+        })
 }
 
 /// A stop for a reader: the heading and the reason with the choices left.
@@ -174,10 +174,7 @@ async fn package<S: RepairPort>(
     let transport = BrowserTransport;
     let route = package_route_msl(&plan.link)?;
     let track: Vec<[f64; 2]> = route.iter().map(|[lat, lon, _]| [*lat, *lon]).collect();
-    section.working(
-        "Reading the terrain height along the route: a few coarse elevation tiles, which the \
-         plan needs before it can say what the package holds.",
-    );
+    section.working(&package_lines(PackageStage::ReadingGround));
     let ground = read_ground(&track, &sources, &transport, store).await?;
     let package_plan = plan_package(&route, camera, &sources, &ground)?;
     let budget = budget_bytes(&plan.link);
@@ -194,7 +191,7 @@ async fn package<S: RepairPort>(
     if plan.link.auto_start {
         info!("the link asks to build the map package without asking");
     } else {
-        section.settled("The plan is above. Nothing of the package has been fetched yet.");
+        section.settled(&package_lines(PackageStage::PlanReady));
         section.clicked("Build the map package").await;
     }
     let kept = request_persistence().await;
@@ -212,17 +209,17 @@ async fn package<S: RepairPort>(
         store,
         &mut |progress| {
             let fraction = progress.done as f64 / progress.total.max(1) as f64;
-            section.progress(fraction, &progress_words(progress));
+            section.progress(fraction, &package_lines(PackageStage::Fetching(progress)));
         },
     )
     .await?;
-    section.working("Sealing the package: Navigate checks every tile and writes the manifest.");
+    section.working(&package_lines(PackageStage::Sealing));
     let release = plan.link.time.compact();
     let sealed = seal_package(&package_plan, &sources, &release, &fetched.absent, store).await?;
     info!(identity = %sealed.summary.identity, "the map package is sealed");
     lines.extend(sealed_lines(&sealed, &fetched.progress));
     section.lines(&lines);
-    section.settled("The map package is sealed and loaded in memory for the navigator.");
+    section.settled(&package_lines(PackageStage::Sealed { stored: true }));
     Ok(sealed)
 }
 

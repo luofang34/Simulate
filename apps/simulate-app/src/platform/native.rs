@@ -66,7 +66,15 @@ impl Host {
     pub fn report_failure(&self, _what: &str, _err: &dyn std::error::Error) {}
 
     /// A line of diagnostics the log already carries; the desktop has no other place for it.
-    pub fn diagnostics(&self, _text: &str) {}
+    pub fn diagnostics(&self, _line: &str, _detail: &str) {}
+
+    /// The desktop window shows its status in its title alone.
+    pub const fn shows_status(&self) -> bool {
+        false
+    }
+
+    /// The desktop window has no status lines; its title carries the status.
+    pub fn set_status(&self, _lines: &[String]) {}
 
     /// The desktop has no page around its window, so no page map.
     pub fn page_map_surface(

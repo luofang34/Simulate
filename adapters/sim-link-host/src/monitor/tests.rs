@@ -441,11 +441,8 @@ fn the_route_end_stays_as_the_plan_completed_while_the_hold_flies_on() {
         9.0
     );
     assert!(!monitor.finished());
-    let words = super::status_words(&monitor);
-    assert!(
-        words.contains("plan completed at 0:02 on reaching Z1"),
-        "{words}"
-    );
+    let lines = super::run_lines("", &monitor, &Pacer::new(Some(1.0)), None);
+    assert_eq!(lines[2], "Plan done at Z1 · 0:02");
 }
 
 mod route;

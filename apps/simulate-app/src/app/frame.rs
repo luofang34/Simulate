@@ -100,6 +100,15 @@ impl FlightApp {
                 &cockpit,
             ),
         );
+        if self.host.shows_status() {
+            self.host.set_status(&telemetry::page_status(
+                &self.flight,
+                viewport_mode,
+                cam_title.as_deref(),
+                time_scale,
+                &cockpit,
+            ));
+        }
     }
 
     /// The window camera on the interpolated display state.

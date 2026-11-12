@@ -9,8 +9,12 @@ use crate::request::stated_height_m;
 use crate::wording::line;
 use crate::{HostError, HostedRequest, PlanLine, PlanSummary, flyable_route};
 
+mod stage;
+
 #[cfg(test)]
 mod tests;
+
+pub use stage::{PACKAGE_LINES, PackageStage, package_lines};
 
 /// Bytes in one megabyte of a link's storage budget.
 pub const BYTES_PER_MB: u64 = 1_000_000;
@@ -188,26 +192,6 @@ pub fn error_words(error: &NavdataError) -> String {
         ),
         other => other.to_string(),
     }
-}
-
-/// How far a prefetch has come, in one line.
-pub fn progress_words(progress: &PrefetchProgress) -> String {
-    let mut words = format!(
-        "{} of {} tiles, {}",
-        progress.done,
-        progress.total,
-        megabytes(progress.bytes)
-    );
-    if progress.reused > 0 {
-        words.push_str(&format!(
-            ", {} already in this browser's storage",
-            progress.reused
-        ));
-    }
-    if progress.gaps > 0 {
-        words.push_str(&format!(", {} the source does not have", progress.gaps));
-    }
-    words
 }
 
 /// A sealed package for a reader: its identity and what it holds.
