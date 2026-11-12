@@ -254,3 +254,15 @@ fn chain_line(chain: &crate::flight::ChainReadout) -> String {
     }
     line
 }
+
+/// Whether the browser console layer takes a callsite: events at `INFO` and above, and
+/// never a span, which the layer would mark on the page's performance timeline at every
+/// entry and keep there for the page's life.
+#[cfg(any(target_arch = "wasm32", test))]
+#[must_use]
+pub fn console_shows(is_event: bool, level: tracing::Level) -> bool {
+    is_event && level <= tracing::Level::INFO
+}
+
+#[cfg(test)]
+mod tests;

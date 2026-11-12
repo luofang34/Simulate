@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use tracing::{Level, error};
-use tracing_wasm::WASMLayerConfigBuilder;
+use tracing_subscriber::Layer;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_wasm::{WASMLayer, WASMLayerConfigBuilder};
 use winit::event_loop::{EventLoop, EventLoopProxy};
 use winit::platform::web::EventLoopExtWebSys;
 use winit::window::Window;
@@ -30,12 +33,19 @@ pub fn run() {
         ProgressSurface::of_page().fail("Simulate stopped: internal error", &info.to_string());
     }));
     // Every event reaches the console, so the default of all levels would
-    // write out each of JSBSim's per-step trace events.
-    tracing_wasm::set_as_global_default_with_config(
+    // write out each of JSBSim's per-step trace events. Spans stay out: the
+    // layer marks and measures each one entered on the page's performance
+    // timeline, which keeps every entry, and the maps enter thousands a second.
+    let console = WASMLayer::new(
         WASMLayerConfigBuilder::new()
             .set_max_level(Level::INFO)
             .build(),
-    );
+    )
+    .with_filter(filter_fn(|meta| {
+        crate::telemetry::console_shows(meta.is_event(), *meta.level())
+    }));
+    // Only a page that already set one is refused, and it then logs through that one.
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(console)).ok();
     let Err(surface) = link_start::show_link(ProgressSurface::of_page()) else {
         return;
     };
