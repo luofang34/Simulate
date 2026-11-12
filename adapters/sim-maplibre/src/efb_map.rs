@@ -22,6 +22,7 @@ use crate::{
 };
 
 mod camera;
+mod hold;
 mod pacing;
 mod plan;
 mod plan_style;
@@ -38,6 +39,7 @@ pub use camera::{
     DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE, EfbDisplayMode, EfbFollowMode,
     EfbLayerFlags, EfbRefreshPolicy,
 };
+pub use hold::HoldPattern;
 pub use pacing::EfbPacer;
 pub use plan::{EfbBasemap, FixPick};
 pub use plan_style::{ACTIVE_MAGENTA, FLOWN_GREY, FUTURE_WHITE, OUTLINE_GREEN};

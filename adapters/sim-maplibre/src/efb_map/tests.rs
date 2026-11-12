@@ -365,4 +365,5 @@ fn polar_nzsp_globe_frame_renders_non_empty_chart() {
 }
 
 mod allocations;
+mod hold;
 mod plan;

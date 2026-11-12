@@ -38,7 +38,7 @@ fn legs_before_the_flown_toward_fix_are_flown_and_after_it_future() {
     let plan = plan();
     let toward = |to_fix| RouteProgress {
         to_fix,
-        complete: false,
+        ..RouteProgress::default()
     };
     assert_eq!(states(&plan, toward(None)), [Future, Future, Future]);
     assert_eq!(states(&plan, toward(Some(0))), [Active, Future, Future]);
@@ -46,6 +46,7 @@ fn legs_before_the_flown_toward_fix_are_flown_and_after_it_future() {
     let complete = RouteProgress {
         to_fix: Some(2),
         complete: true,
+        hold: None,
     };
     assert_eq!(states(&plan, complete), [Flown, Flown, Flown]);
 }

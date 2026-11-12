@@ -74,7 +74,12 @@ fn plan_layers() -> [Value; 7] {
             future
         ])
     };
-    let leg = json!(["==", ["get", "kind"], "leg"]);
+    // A holding pattern draws as a leg does.
+    let leg = json!([
+        "any",
+        ["==", ["get", "kind"], "leg"],
+        ["==", ["get", "kind"], "hold"]
+    ]);
     let fix = json!(["==", ["get", "kind"], "fix"]);
     [
         json!({

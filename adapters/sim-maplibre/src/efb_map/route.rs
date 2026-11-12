@@ -7,6 +7,8 @@
 
 use serde_json::{Value, json};
 
+use super::hold::HoldPattern;
+
 /// A fix's identity in its plan, stable while the plan is amended, so a pick or an edit
 /// names the same fix after fixes before it are inserted or removed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -38,12 +40,14 @@ pub struct FlightPlan {
 }
 
 /// Where the mission host says the flight is along its plan.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RouteProgress {
     /// Index of the fix the plan flies toward; `None` before the host flies the plan.
     pub to_fix: Option<usize>,
     /// The plan's last fix is sequenced: every leg is flown.
     pub complete: bool,
+    /// The holding pattern the host flies, once it holds.
+    pub hold: Option<HoldPattern>,
 }
 
 impl RouteProgress {
@@ -56,10 +60,12 @@ impl RouteProgress {
             None => Self {
                 to_fix: Some(0),
                 complete: false,
+                hold: None,
             },
             Some((index, complete)) => Self {
                 to_fix: Some(index.saturating_add(1)),
                 complete,
+                hold: None,
             },
         }
     }
@@ -144,8 +150,10 @@ impl FlightPlan {
         self.fixes.iter().position(|fix| fix.id == id)
     }
 
-    /// The plan's legs and fixes as a GeoJSON document, each feature carrying its
-    /// `state` (see [`LegState::name`]) and fix features their `ident` and `index`.
+    /// The plan's legs, its holding pattern while the host holds, and its fixes as a
+    /// GeoJSON document, each feature carrying its `kind` and `state` (see
+    /// [`LegState::name`]; a hold flown is active), fix features their `ident` and
+    /// `index`.
     #[must_use]
     pub fn geojson(&self, progress: RouteProgress) -> Value {
         let legs = self.legs(progress).into_iter().map(|leg| {
@@ -170,7 +178,16 @@ impl FlightPlan {
                 "geometry": { "type": "Point", "coordinates": [fix.lon_deg, fix.lat_deg] },
             })
         });
-        json!({ "type": "FeatureCollection", "features": legs.chain(fixes).collect::<Vec<_>>() })
+        let hold = progress.hold.map(|hold| {
+            let coordinates: Vec<[f64; 2]> = hold.racetrack().into_iter().map(lon_lat).collect();
+            json!({
+                "type": "Feature",
+                "properties": { "kind": "hold", "state": LegState::Active.name() },
+                "geometry": { "type": "LineString", "coordinates": coordinates },
+            })
+        });
+        let features: Vec<Value> = legs.chain(hold).chain(fixes).collect();
+        json!({ "type": "FeatureCollection", "features": features })
     }
 }
 
