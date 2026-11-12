@@ -1,13 +1,15 @@
 use std::collections::BTreeSet;
 
 use navigate_data::{
-    GroundHeight, LayerKind, MemoryStore, Package, TileRead, descriptor_path, manifest_path,
+    GroundHeight, LayerKind, MemoryStore, Package, TileRead, blob_path, descriptor_path,
+    manifest_path,
 };
 use pollster::block_on;
 
 use crate::fixtures::{CIRCUIT, FakeSource, camera};
 use crate::{
-    NavdataError, PackagePlan, SealedPackage, SourceSet, plan_package, prefetch, seal_package,
+    NavdataError, PackagePlan, RepairPort, SealedPackage, SourceSet, index_path, lookup,
+    plan_package, prefetch, seal_package,
 };
 
 struct Flat;
@@ -149,4 +151,50 @@ fn sealing_without_the_tiles_is_refused() {
     .unwrap_err();
     assert!(error.to_string().contains("was not prefetched"), "{error}");
     assert!(store.paths().next().is_none());
+}
+
+#[test]
+fn a_store_cut_off_writes_left_heals_on_the_next_visit() {
+    let source = FakeSource::new(300.0);
+    let mut store = MemoryStore::default();
+    let first = build(&source, &mut store).unwrap();
+    let sources = SourceSet::default();
+    let keys = plan().keys(&sources);
+    let of = |layer| keys.iter().find(|key| key.layer == layer).copied().unwrap();
+    let (imagery, elevation) = (of(LayerKind::Imagery), of(LayerKind::Elevation));
+    // An index entry left empty and a chunk cut short, as a page that left
+    // mid-write leaves them. The elevation tiles share their chunk.
+    block_on(RepairPort::replace(&mut store, &index_path(&imagery), b"")).unwrap();
+    let chunk = blob_path(
+        block_on(lookup(&store, &elevation))
+            .unwrap()
+            .unwrap()
+            .digest,
+    );
+    let short = store.get(&chunk).unwrap()[..20].to_vec();
+    block_on(RepairPort::replace(&mut store, &chunk, &short)).unwrap();
+
+    // Sealing what the store holds names what the cut-off writes left.
+    let refused = block_on(seal_package(
+        &plan(),
+        &sources,
+        "circuit",
+        &BTreeSet::new(),
+        &mut store.clone(),
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(
+        refused.contains("holds nothing (an empty file)")
+            || refused.contains("holds 20 bytes that are not the"),
+        "{refused}"
+    );
+
+    // The next visit fetches what was cut off again and seals the same package.
+    let asked = source.asked();
+    let again = build(&source, &mut store).unwrap();
+    assert_eq!(again.summary, first.summary);
+    assert!(source.asked() > asked);
+    assert!(block_on(lookup(&store, &imagery)).unwrap().is_some());
+    assert!(block_on(lookup(&store, &elevation)).unwrap().is_some());
 }

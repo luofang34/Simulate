@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use navigate_data::corridor::corridor_tiles;
 use navigate_data::tile::{decode_terrarium_m, tile_xy};
-use navigate_data::{Fetched, GroundHeight, LayerKind, ReadPort, TileAddress, WritePort};
+use navigate_data::{Fetched, GroundHeight, LayerKind, TileAddress};
 
 use crate::prefetch::obtain;
-use crate::{NavdataError, SourceSet, TileTransport};
+use crate::{NavdataError, RepairPort, SourceSet, TileTransport};
 
 #[cfg(test)]
 mod tests;
@@ -106,7 +106,7 @@ pub async fn read_ground<T, S>(
 ) -> Result<TerrariumGround, NavdataError>
 where
     T: TileTransport,
-    S: ReadPort + WritePort,
+    S: RepairPort,
 {
     let mut ground = TerrariumGround::default();
     for address in ground_tiles(points)? {

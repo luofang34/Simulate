@@ -2,7 +2,6 @@
 //! verdict, the visitor's consent, the fetch with progress, and the sealed
 //! package in memory.
 
-use navigate_data::{ReadPort, WritePort};
 use sim_link::SimulationLink;
 use sim_link_host::{
     BYTES_PER_MB, HostError, HostedRequest, PlanLine, PlanSummary, budget_bytes,
@@ -13,8 +12,8 @@ use sim_navdata::browser::{
     BrowserTransport, OpfsStore, StorageQuota, request_persistence, storage_quota,
 };
 use sim_navdata::{
-    NavdataError, PackagePlan, SealedPackage, SourceSet, plan_package, prefetch, read_ground,
-    seal_package,
+    NavdataError, PackagePlan, RepairPort, SealedPackage, SourceSet, plan_package, prefetch,
+    read_ground, seal_package,
 };
 use tracing::{info, warn};
 
@@ -82,17 +81,16 @@ pub async fn build_package(section: &Section, plan: &LinkPlan) -> Option<SealedP
     };
     let quota = storage_quota().await;
     let outcome = match OpfsStore::open(STORE_DIRECTORY).await {
-        Ok(mut store) => package(section, plan, camera, quota, &mut store).await,
+        Ok(mut store) => match package(section, plan, camera, quota, &mut store).await {
+            Err(Stop::Package(error)) if error.store_fault() => {
+                warn!(%error, "the browser's storage does not keep what the page writes; packing in memory");
+                in_memory(section, plan, camera, quota, &error.to_string()).await
+            }
+            outcome => outcome,
+        },
         Err(refusal) => {
             warn!(%refusal, "no origin private file system; packing in memory");
-            let note = format!(
-                "This browser gives the page no persistent storage ({refusal}): the package is \
-                 kept in memory and fetched again after a reload."
-            );
-            let mut store = navigate_data::MemoryStore::default();
-            package(section, plan, camera, quota, &mut store)
-                .await
-                .inspect(|_| section.settled(&note))
+            in_memory(section, plan, camera, quota, &refusal).await
         }
     };
     match outcome {
@@ -104,6 +102,25 @@ pub async fn build_package(section: &Section, plan: &LinkPlan) -> Option<SealedP
             None
         }
     }
+}
+
+/// Builds the package of `plan` in memory, for a browser whose storage
+/// cannot hold it for the reason `why`; the section says so once it is built.
+async fn in_memory(
+    section: &Section,
+    plan: &LinkPlan,
+    camera: navigate_data::PlannedCamera,
+    quota: Option<StorageQuota>,
+    why: &str,
+) -> Result<SealedPackage, Stop> {
+    let note = format!(
+        "This browser's storage cannot keep the package ({why}): it is kept in memory and \
+         fetched again after a reload."
+    );
+    let mut store = navigate_data::MemoryStore::default();
+    package(section, plan, camera, quota, &mut store)
+        .await
+        .inspect(|_| section.settled(&note))
 }
 
 /// A stop for a reader: the heading and the reason with the choices left.
@@ -145,7 +162,7 @@ fn refusal(link: &SimulationLink, stop: &Stop) -> (&'static str, Vec<PlanLine>) 
 }
 
 /// Plans, asks, fetches and seals over one store.
-async fn package<S: ReadPort + WritePort>(
+async fn package<S: RepairPort>(
     section: &Section,
     plan: &LinkPlan,
     camera: navigate_data::PlannedCamera,
