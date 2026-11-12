@@ -47,7 +47,7 @@ pub(super) fn outages(value: Token<'_>) -> Result<Vec<Outage>, Refusal> {
 }
 
 /// Spans in increasing order; one may begin where the one before ends.
-fn spans(site: Site, value: Token<'_>) -> Result<Vec<Span>, Refusal> {
+pub(super) fn spans(site: Site, value: Token<'_>) -> Result<Vec<Span>, Refusal> {
     let mut spans: Vec<Span> = Vec::new();
     for token in value.split(',') {
         let span = span(site, token)?;

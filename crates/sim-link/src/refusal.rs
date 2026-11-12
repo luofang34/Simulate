@@ -35,6 +35,8 @@ pub enum Parameter {
     Fly,
     /// `out`, the outages.
     Out,
+    /// `spoof`, the spoofing of the GNSS receiver.
+    Spoof,
     /// `cam`, the terrain camera.
     Cam,
     /// `go`, start without asking.
@@ -45,7 +47,7 @@ pub enum Parameter {
 
 impl Parameter {
     /// Every key a link may carry, in the order a link is written.
-    pub const KEYS: [Self; 15] = [
+    pub const KEYS: [Self; 16] = [
         Self::V,
         Self::R,
         Self::H,
@@ -58,6 +60,7 @@ impl Parameter {
         Self::Nav,
         Self::Fly,
         Self::Out,
+        Self::Spoof,
         Self::Cam,
         Self::Go,
         Self::Mb,
@@ -79,6 +82,7 @@ impl Parameter {
             Self::Nav => "nav",
             Self::Fly => "fly",
             Self::Out => "out",
+            Self::Spoof => "spoof",
             Self::Cam => "cam",
             Self::Go => "go",
             Self::Mb => "mb",

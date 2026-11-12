@@ -75,6 +75,16 @@ pub trait FlightStepper {
     fn outages(&self) -> Vec<(SensorKind, f64, Option<f64>)> {
         Vec::new()
     }
+
+    /// Hands the GNSS receiver to the flight's spoofer, or takes it back,
+    /// from the next tick on; a flight that cannot be changed ignores it.
+    fn spoof_gnss(&mut self, _on: bool) {}
+
+    /// The spoofer of the flight so far, its stated spans and the switched;
+    /// `None` when it never held the receiver.
+    fn gnss_spoof(&self) -> Option<crate::SpoofRun> {
+        None
+    }
 }
 
 /// The wall clock, seconds from any fixed origin.

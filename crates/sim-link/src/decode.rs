@@ -6,6 +6,7 @@ mod nav;
 mod number;
 mod outage;
 mod route;
+mod spoof;
 mod time;
 mod token;
 
@@ -207,6 +208,10 @@ fn build(fields: &Fields<'_>) -> Result<SimulationLink, Refusal> {
     let outages = fields
         .optional(Parameter::Out)
         .map_or_else(|| Ok(Vec::new()), outage::outages)?;
+    let spoof = fields
+        .optional(Parameter::Spoof)
+        .map(spoof::spoof)
+        .transpose()?;
     let camera = fields
         .optional(Parameter::Cam)
         .map(camera::camera)
@@ -229,6 +234,7 @@ fn build(fields: &Fields<'_>) -> Result<SimulationLink, Refusal> {
         sets,
         steering_set,
         outages,
+        spoof,
         camera,
         auto_start,
         budget_mb,

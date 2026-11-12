@@ -31,7 +31,7 @@ use crate::{
 mod marks;
 mod runway;
 
-pub(crate) use marks::{append_sigma_rings, screen_positions};
+pub(crate) use marks::{append_sigma_rings, append_truth_mark, screen_positions};
 
 const TILE_PX: f64 = 512.0;
 /// `HeadlessMap`'s default vertical field of view (`2 * atan(1/3)` radians).

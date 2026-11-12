@@ -38,6 +38,20 @@ fn outages_read_as_what_the_sensor_does_not_give_and_when() {
 }
 
 #[test]
+fn a_spoofer_reads_as_what_it_does_to_the_receiver_and_when() {
+    let spoofed = DAY.replace("&go=1", "&spoof=gnss:1.5,90:600-900,1200-&go=1");
+    assert_eq!(
+        texts(&lines(&spoofed), "Spoofing"),
+        [
+            "satellite receiver's position dragged 1.5 m/s toward 90° true from 600 s to 900 s",
+            "satellite receiver's position dragged 1.5 m/s toward 90° true from 1200 s to the \
+             end of the flight",
+        ]
+    );
+    assert!(texts(&lines(DAY), "Spoofing").is_empty());
+}
+
+#[test]
 fn the_plan_says_what_the_link_asks_for() {
     let lines = lines(DAY);
     let route = texts(&lines, "Route");

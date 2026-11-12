@@ -1,5 +1,7 @@
 use super::{FULL, assert_refusals, refusal, with};
-use crate::{Camera, Milli, NumberFault, Outage, Parameter, Reason, Sensor, Span, decode_fragment};
+use crate::{
+    Camera, Milli, NumberFault, Outage, Parameter, Reason, Sensor, Span, Spoof, decode_fragment,
+};
 
 #[test]
 fn outages_keep_their_entries_and_spans() {
@@ -191,4 +193,72 @@ fn a_refusal_in_a_later_outage_entry_points_at_its_span() {
     let fragment = with("out", "baro:1-2;gnss:7-9,8-10");
     let refused = refusal(&fragment);
     assert_eq!(refused.offset, fragment.find("8-10").unwrap());
+}
+
+#[test]
+fn the_spoof_carries_its_drag_and_spans() {
+    let seconds = |text: &str| Milli::parse(text, false).unwrap();
+    assert_eq!(
+        decode_fragment(FULL).unwrap().spoof,
+        Some(Spoof {
+            rate: Milli::from_whole(1),
+            bearing: Milli::from_whole(90),
+            spans: vec![Span {
+                start: seconds("650"),
+                end: Some(seconds("800")),
+            }],
+        })
+    );
+    let link = decode_fragment(&with("spoof", "gnss:0.001,359.999:0-10,10-")).unwrap();
+    let spoof = link.spoof.unwrap();
+    assert_eq!(spoof.rate, seconds("0.001"));
+    assert_eq!(spoof.bearing, seconds("359.999"));
+    assert_eq!(spoof.spans.len(), 2);
+    assert!(decode_fragment(&with("spoof", "gnss:100,0:5-")).is_ok());
+    assert_eq!(
+        decode_fragment(&super::without("spoof")).unwrap().spoof,
+        None
+    );
+}
+
+#[test]
+fn a_malformed_spoof_is_refused() {
+    assert_refusals(
+        "spoof",
+        Parameter::Spoof,
+        &[
+            ("", None, |r| matches!(r, Reason::Empty { .. })),
+            ("gnss", None, |r| matches!(r, Reason::Malformed { .. })),
+            ("gnss:1,90", None, |r| matches!(r, Reason::Malformed { .. })),
+            ("gnss:1:5-", None, |r| matches!(r, Reason::Malformed { .. })),
+            ("baro:1,90:5-", None, |r| {
+                matches!(r, Reason::UnknownWord { what: "sensor", .. })
+            }),
+            ("gnss:0,90:5-", None, |r| {
+                matches!(r, Reason::OutOfRange { what: "drag", .. })
+            }),
+            ("gnss:100.001,90:5-", None, |r| {
+                matches!(r, Reason::OutOfRange { what: "drag", .. })
+            }),
+            ("gnss:1,360:5-", None, |r| {
+                matches!(
+                    r,
+                    Reason::OutOfRange {
+                        what: "bearing",
+                        ..
+                    }
+                )
+            }),
+            ("gnss:1,-90:5-", None, |r| {
+                matches!(r, Reason::BadNumber { .. })
+            }),
+            ("gnss:1,90:", None, |r| matches!(r, Reason::Empty { .. })),
+            ("gnss:1,90:9-5", None, |r| {
+                matches!(r, Reason::ReversedSpan { .. })
+            }),
+            ("gnss:1,90:1-5,4-6", None, |r| {
+                matches!(r, Reason::OverlappingSpans { .. })
+            }),
+        ],
+    );
 }

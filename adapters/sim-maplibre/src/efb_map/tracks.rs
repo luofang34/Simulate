@@ -58,6 +58,22 @@ pub struct EfbTracks {
     pub outlines: Vec<Vec<[f64; 2]>>,
 }
 
+/// What a host lays over the views at each frame's own instant, so it stays
+/// registered with ownship however fast the flight is shown. Tracks, which are
+/// tessellated when handed over, lag a fast flight by more than their own width.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct EfbFrameMarks {
+    /// Ownship's stated one-sigma, as a ring about where ownship is drawn.
+    pub ownship_ring: Option<SigmaRing>,
+    /// TRUTH: `[lat, lon]` of the simulator's true position, degrees, marked apart
+    /// from ownship for a host that judges the navigation from outside. A cockpit
+    /// leaves it `None`.
+    pub truth_deg: Option<[f64; 2]>,
+}
+
+/// The true position's mark: pale yellow, as the true track is drawn.
+pub const TRUTH_MARK: Rgb = [0xff, 0xe0, 0x66];
+
 /// Smallest ring radius drawn, CSS pixels: a sigma of a few metres is under a pixel at
 /// most zooms.
 pub const MIN_RING_PX: f32 = 4.0;

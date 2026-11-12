@@ -6,7 +6,8 @@ mod leg;
 mod tests;
 
 use crate::{
-    MAX_LINK_CHARS, Outage, Parameter, Reason, Refusal, SimulationLink, Start, decode_fragment,
+    MAX_LINK_CHARS, Outage, Parameter, Reason, Refusal, SimulationLink, Span, Start,
+    decode_fragment,
 };
 
 impl SimulationLink {
@@ -87,6 +88,17 @@ impl SimulationLink {
             (!self.outages.is_empty()).then(|| joined(self.outages.iter().map(outage).collect())),
         );
         push(
+            Parameter::Spoof,
+            self.spoof.as_ref().map(|spoof| {
+                format!(
+                    "gnss:{},{}:{}",
+                    spoof.rate.text(0),
+                    spoof.bearing.text(0),
+                    spans(&spoof.spans)
+                )
+            }),
+        );
+        push(
             Parameter::Cam,
             self.camera.map(|camera| {
                 format!(
@@ -140,13 +152,16 @@ fn start(start: &Start) -> String {
 }
 
 fn outage(outage: &Outage) -> String {
-    let spans: Vec<String> = outage
-        .spans
+    format!("{}:{}", outage.sensor.key(), spans(&outage.spans))
+}
+
+fn spans(spans: &[Span]) -> String {
+    let spans: Vec<String> = spans
         .iter()
         .map(|span| {
             let end = span.end.map_or_else(String::new, |end| end.text(0));
             format!("{}-{end}", span.start.text(0))
         })
         .collect();
-    format!("{}:{}", outage.sensor.key(), spans.join(","))
+    spans.join(",")
 }

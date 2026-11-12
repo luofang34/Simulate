@@ -113,3 +113,53 @@ fn a_displaced_receiver_reports_every_fix_that_far_from_where_it_would() {
         assert_eq!(a.position_sigma_ned_m, b.position_sigma_ned_m);
     }
 }
+
+/// What the spoofer adds to the fixes of one receiver: the spoofed
+/// receiver's fixes less those of the same receiver left alone.
+fn spoof_added(spoofed: &GnssReading, clean: &GnssReading) -> (DVec3, DVec3) {
+    (
+        error_ned_m(spoofed) - error_ned_m(clean),
+        spoofed.velocity_ned_m_s - clean.velocity_ned_m_s,
+    )
+}
+
+#[test]
+fn a_spoofed_receiver_is_dragged_at_the_spoofers_rate_and_released_at_once() {
+    let spoof = GnssSpoof::toward(1.0, 90.0_f64.to_radians());
+    let mut clean = GnssReceiver::new(GnssErrorSpec::OPEN_SKY, 5).unwrap();
+    let mut spoofed = clean;
+    spoofed.set_spoof(Some(spoof));
+    for fix in 1..=300 {
+        // Handing the same spoofer over again each cycle keeps its drag.
+        spoofed.set_spoof(Some(spoof));
+        let a = spoofed.measure(&truth(), FIX_PERIOD_S).unwrap();
+        let b = clean.measure(&truth(), FIX_PERIOD_S).unwrap();
+        let (position, velocity) = spoof_added(&a, &b);
+        let dragged_m = f64::from(fix) * FIX_PERIOD_S;
+        assert!((position - DVec3::new(0.0, dragged_m, 0.0)).length() < 1e-6);
+        assert!((velocity - DVec3::new(0.0, 1.0, 0.0)).length() < 1e-9);
+        assert_eq!(a.position_sigma_ned_m, b.position_sigma_ned_m);
+    }
+    spoofed.set_spoof(None);
+    let a = spoofed.measure(&truth(), FIX_PERIOD_S).unwrap();
+    let b = clean.measure(&truth(), FIX_PERIOD_S).unwrap();
+    assert_eq!(a, b, "released, the receiver is the receiver left alone");
+}
+
+#[test]
+fn a_spoofer_drags_on_while_the_receiver_has_no_sky() {
+    let mut receiver = GnssReceiver::new(GnssErrorSpec::OPEN_SKY, 5).unwrap();
+    let mut clean = receiver;
+    receiver.set_spoof(Some(GnssSpoof::toward(2.0, 0.0)));
+    receiver.set_tracking(false);
+    for _ in 0..50 {
+        assert!(receiver.measure(&truth(), FIX_PERIOD_S).is_none());
+        clean.measure(&truth(), FIX_PERIOD_S);
+    }
+    receiver.set_tracking(true);
+    let (position, _) = spoof_added(
+        &receiver.measure(&truth(), FIX_PERIOD_S).unwrap(),
+        &clean.measure(&truth(), FIX_PERIOD_S).unwrap(),
+    );
+    assert!((position - DVec3::new(10.2, 0.0, 0.0)).length() < 1e-6);
+}

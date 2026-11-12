@@ -9,7 +9,7 @@ pub use leg::{
     EVERY_LEG, Fix, Key, Leg, PathTerminator, Role, Shape, TurnDirection, distance_from_navaid,
     shape,
 };
-pub use nav::{Camera, Means, NavSet, Outage, Sensor, Span};
+pub use nav::{Camera, Means, NavSet, Outage, Sensor, Span, Spoof};
 pub use quantity::{
     Bearing, Distance, DistanceUnit, Duration, Height, HeightUnit, HoldLength, Limit, North,
     SecondAltitude, SecondAltitudeKind, Speed, SpeedUnit, TimeUnit,
@@ -54,6 +54,8 @@ pub struct SimulationLink {
     pub steering_set: usize,
     /// Scheduled outages, at most one entry a sensor.
     pub outages: Vec<Outage>,
+    /// The spoofing of the GNSS receiver; absent for a true sky throughout.
+    pub spoof: Option<Spoof>,
     /// The terrain camera; absent means the vehicle's own.
     pub camera: Option<Camera>,
     /// Build the map package and start without asking.

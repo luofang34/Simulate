@@ -6,11 +6,13 @@ mod holding;
 mod records;
 mod sets;
 mod setup;
+mod spoof;
 #[cfg(test)]
 mod tests;
 
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
+use navigate_contract::NavigationSolution;
 use sim_core::SimInstant;
 use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay};
 use sim_navigate::NavMeans;
@@ -21,7 +23,8 @@ use sim_navigate::trial::{
 
 use crate::nav_log::NavLog;
 use crate::{
-    ChainTrialError, ChainTrialSpec, DeviceOutage, FrameRequest, Outputs, Steering, StepOutcome,
+    ChainTrialError, ChainTrialSpec, DeviceOutage, FrameRequest, GnssSpoofSpec, Outputs, Steering,
+    StepOutcome,
 };
 use camera::HostCamera;
 use sets::{SetSlot, has_sensor};
@@ -31,6 +34,15 @@ pub use sets::FLIGHT_CONTROLLER_SET;
 
 /// The C172 under Pilotage's host core.
 pub type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
+
+/// The navigation Pilotage's mission steers on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Steered<'a> {
+    /// The steering set's name.
+    pub set: &'a str,
+    /// The solution last handed to Pilotage; `None` before the set's first.
+    pub solution: Option<&'a NavigationSolution>,
+}
 
 /// A navigation trial flown by the vehicle's own control chain.
 ///
@@ -44,7 +56,10 @@ pub struct ChainTrial {
     nav: NavLog,
     sets: Vec<SetSlot>,
     steering: Option<usize>,
+    /// The solution last handed to Pilotage.
+    offered: Option<NavigationSolution>,
     outages: Vec<DeviceOutage>,
+    spoofer: spoof::Spoofer,
     camera: Option<HostCamera>,
     /// The star camera, when a set navigates on the stars.
     stars: Option<LiveStarCamera>,
@@ -124,7 +139,9 @@ impl ChainTrial {
             nav,
             sets,
             steering,
+            offered: None,
             outages: spec.outages.clone(),
+            spoofer: spoof::Spoofer::new(spec.gnss_spoof.as_ref())?,
             camera,
             stars,
             announced: None,
@@ -250,6 +267,32 @@ impl ChainTrial {
         &self.outages
     }
 
+    /// Hands the GNSS receiver to the spoofer, or takes it back, from the
+    /// next cycle on, and returns that cycle's route time, seconds. Every
+    /// consumer of the receiver takes the dragged fixes; a capture drags
+    /// from no offset.
+    pub fn set_gnss_spoof(&mut self, on: bool) -> f64 {
+        let at_s = self.now_s();
+        self.spoofer.switch(on, at_s);
+        at_s
+    }
+
+    /// The spoofer as flown so far: its drag and every span it held the
+    /// receiver, those the spec stated and those switched.
+    pub const fn gnss_spoof(&self) -> &GnssSpoofSpec {
+        self.spoofer.spec()
+    }
+
+    /// The navigation Pilotage's mission steers on; `None` when it flies
+    /// on the flight controller's own estimate.
+    pub fn steered(&self) -> Option<Steered<'_>> {
+        let slot = self.sets.get(self.steering?)?;
+        Some(Steered {
+            set: &slot.name,
+            solution: self.offered.as_ref(),
+        })
+    }
+
     /// The host's grey image for exposure `index`: exactly width × height
     /// bytes, row-major, top row first.
     pub fn deliver_frame(&mut self, index: u64, luma: &[u8]) -> Result<(), ChainTrialError> {
@@ -278,6 +321,13 @@ impl ChainTrial {
             gnss: out(SensorKind::Gnss),
             air_data: out(SensorKind::Baro),
         });
+        let (fault, spoofing) = self.spoofer.cycle(t_s);
+        self.chain
+            .board_mut()
+            .suite_mut()
+            .receiver_mut()
+            .set_spoof(fault);
+        self.pending.records.extend(spoofing);
         let from = self.chain.now();
         let before = self.chain.true_state();
         self.chain.advance_tick()?;
@@ -373,6 +423,7 @@ impl ChainTrial {
         {
             let solution = records::on_mission_clock(solution.get());
             self.chain.offer_navigation(&solution);
+            self.offered = Some(solution);
         }
         // Before the first step nothing was out, so an outage from the
         // start begins at the first step.

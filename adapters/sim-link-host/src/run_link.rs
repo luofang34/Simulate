@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use sim_link::{Milli, Outage, Refusal, Sensor, SimulationLink, Span};
+use sim_link::{Milli, Outage, Refusal, Sensor, SimulationLink, Span, Spoof};
 use sim_navigate::trial::SensorKind;
 
 #[cfg(test)]
@@ -25,10 +25,25 @@ fn milli(t_s: f64) -> Milli {
     Milli::from_scaled((t_s.max(0.0) * 1000.0).round() as i64)
 }
 
-/// The sensors the visitor switched off during a run, and when.
+/// The spoofer of a flight so far: its drag and when it held the GNSS
+/// receiver.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpoofRun {
+    /// The drag, m/s.
+    pub rate_m_s: f64,
+    /// The direction of the drag, degrees from true north.
+    pub bearing_deg: f64,
+    /// Each stretch it held the receiver: start and end, route seconds,
+    /// open while it holds on.
+    pub spans: Vec<(f64, Option<f64>)>,
+}
+
+/// The sensors the visitor switched off during a run, and when, with the
+/// spoofer the run flew.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SwitchLog {
     spans: BTreeMap<Sensor, Vec<Span>>,
+    spoof: Option<Spoof>,
 }
 
 impl SwitchLog {
@@ -73,13 +88,38 @@ impl SwitchLog {
         log
     }
 
+    /// The log with the spoofer a flight reports, in place of any it had.
+    /// The drag is written to the link's millimetre a second and
+    /// thousandth of a degree.
+    #[must_use]
+    pub fn with_spoof(mut self, spoof: Option<&SpoofRun>) -> Self {
+        self.spoof = spoof.map(|spoof| Spoof {
+            rate: milli(spoof.rate_m_s),
+            bearing: milli(spoof.bearing_deg.rem_euclid(360.0)),
+            spans: joined(
+                spoof
+                    .spans
+                    .iter()
+                    .filter_map(|(start_s, end_s)| {
+                        let (start, end) = (milli(*start_s), end_s.map(milli));
+                        end.is_none_or(|end| end > start)
+                            .then_some(Span { start, end })
+                    })
+                    .collect(),
+            ),
+        });
+        self
+    }
+
     /// Whether the visitor switched nothing.
     pub fn is_empty(&self) -> bool {
-        self.spans.values().all(Vec::is_empty)
+        self.spans.values().all(Vec::is_empty) && self.spoof.is_none()
     }
 
     /// `link` with the switched spans added to its outages: each sensor's
-    /// spans from both, joined where they overlap, in order.
+    /// spans from both, joined where they overlap, in order. The log's
+    /// spoofer, when it has one that held the receiver, replaces the
+    /// link's.
     pub fn link_of_run(&self, link: &SimulationLink) -> SimulationLink {
         let mut all: BTreeMap<Sensor, Vec<Span>> = BTreeMap::new();
         for outage in &link.outages {
@@ -96,6 +136,9 @@ impl SwitchLog {
                 (!spans.is_empty()).then_some(Outage { sensor, spans })
             })
             .collect();
+        if let Some(spoof) = self.spoof.as_ref().filter(|spoof| !spoof.spans.is_empty()) {
+            run.spoof = Some(spoof.clone());
+        }
         run
     }
 

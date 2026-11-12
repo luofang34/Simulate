@@ -5,8 +5,8 @@
 //!
 //! ```text
 //! <base>#v=2&r=<legs>&h=<m>&hd=msl|hae&start=<start>&t=<UTC>&veh=<vehicle>
-//!       &spd=<m/s>&seed=<n>&nav=<sets>&fly=<set>&out=<outages>&cam=<camera>
-//!       &go=1&mb=<MB>
+//!       &spd=<m/s>&seed=<n>&nav=<sets>&fly=<set>&out=<outages>&spoof=<spoof>
+//!       &cam=<camera>&go=1&mb=<MB>
 //! ```
 //!
 //! | key | value |
@@ -23,6 +23,7 @@
 //! | `nav` | navigation sets joined by `;`, each a `.`-joined list of `ins`, `baro`, `gnss`, `stars`, `visual`; `ins` in every set, no means twice in a set, no two sets with the same means |
 //! | `fly` | the set that steers the flight; absent for the first |
 //! | `out` | outages joined by `;`, one entry per sensor, each `sensor:start-end[,start-end...]` in seconds from the start, increasing and not overlapping; an empty end runs to the end of the flight; sensors `gnss`, `baro`, `stars`, `cam` |
+//! | `spoof` | a spoofer dragging the GNSS receiver's fixes, `gnss:rate,bearing:start-end[,start-end...]`: m/s above 0 to 100, degrees from true north 0 to under 360, then spans as `out` writes them; in each span the reported position leaves the true one from no offset at that rate, the reported velocity with it |
 //! | `cam` | terrain camera `WxH,fov_deg,depression_deg,rate_hz`; the field of view is horizontal and depression 90 looks straight down |
 //! | `go` | `1` builds the map package and starts without asking |
 //! | `mb` | storage budget of the map package, MB, 1 to 65536 |
@@ -70,7 +71,7 @@ pub use link::{
     Bearing, Camera, Distance, DistanceUnit, Duration, EVERY_LEG, Fix, Height, HeightDatum,
     HeightUnit, HoldLength, Key, Leg, Limit, MAX_LEGS, MAX_LINK_CHARS, Means, NavSet, North,
     Outage, PathTerminator, Role, SecondAltitude, SecondAltitudeKind, Sensor, Shape,
-    SimulationLink, Span, Speed, SpeedUnit, Start, StartTime, TimeUnit, TurnDirection, Vehicle,
-    distance_from_navaid, shape,
+    SimulationLink, Span, Speed, SpeedUnit, Spoof, Start, StartTime, TimeUnit, TurnDirection,
+    Vehicle, distance_from_navaid, shape,
 };
 pub use refusal::{Parameter, Reason, Refusal};

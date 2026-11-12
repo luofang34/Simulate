@@ -11,7 +11,8 @@ use sim_navigate::trial::{ProgressRecord, SensorKind};
 
 use super::{feeds, finished, intrinsics};
 use crate::{
-    CameraShot, CameraWorld, Clock, FlightStepper, HostError, MatchShot, MonitorFeed, StepState,
+    CameraShot, CameraWorld, Clock, FlightStepper, HostError, MatchShot, MonitorFeed, SpoofRun,
+    StepState,
 };
 
 /// Route time one call of the chain may cover, seconds: a call returns to
@@ -158,5 +159,13 @@ impl<C: Clock> FlightStepper for ChainFlight<C> {
 
     fn outages(&self) -> Vec<(SensorKind, f64, Option<f64>)> {
         super::link_outages(self.trial.outages())
+    }
+
+    fn spoof_gnss(&mut self, on: bool) {
+        self.trial.set_gnss_spoof(on);
+    }
+
+    fn gnss_spoof(&self) -> Option<SpoofRun> {
+        super::link_spoof(self.trial.gnss_spoof())
     }
 }

@@ -118,6 +118,20 @@ pub struct Outage {
     pub spans: Vec<Span>,
 }
 
+/// A spoofer dragging the GNSS receiver's fixes away from the truth. In each
+/// span it starts from no offset and the reported position leaves the true
+/// one at `rate` toward `bearing`, the reported velocity carrying the same
+/// drag; a span's end returns the true sky at once.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Spoof {
+    /// The drag, m/s, above 0 and at most 100.
+    pub rate: Milli,
+    /// The direction of the drag, degrees from true north, 0 to under 360.
+    pub bearing: Milli,
+    /// When, as an [`Outage`]'s spans; at least one.
+    pub spans: Vec<Span>,
+}
+
 /// The terrain camera.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Camera {

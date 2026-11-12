@@ -213,6 +213,21 @@ pub enum EventKind {
         /// The schedule's reason.
         reason: Option<String>,
     },
+    /// A spoofer captured a sensor and began dragging its readings away
+    /// from the truth, for every consumer of the device.
+    SpoofingStart {
+        /// The sensor captured.
+        sensor: SensorKind,
+        /// The rate its reported position leaves the true one, m/s.
+        rate_m_s: f64,
+        /// The direction of the drag, degrees from true north.
+        bearing_deg: f64,
+    },
+    /// The spoofer let the sensor go: its next reading is of the truth.
+    SpoofingEnd {
+        /// The sensor released.
+        sensor: SensorKind,
+    },
     /// Closed-loop guidance began refusing the set's solution; one event per
     /// run of consecutive refused steps.
     GuidanceRefused {

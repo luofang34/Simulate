@@ -28,6 +28,59 @@ pub struct ChainTrialSpec {
     /// standard right-hand hold the mission flies when its plan ends.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hold: Option<HoldSpec>,
+    /// A spoofer of the GNSS receiver; absent for a true sky throughout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gnss_spoof: Option<GnssSpoofSpec>,
+}
+
+/// A spoofer that drags the GNSS receiver's fixes away from the truth, for
+/// every consumer of the receiver. In each span it starts from no offset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GnssSpoofSpec {
+    /// The rate the reported position leaves the true one, m/s, more than
+    /// zero; the reported velocity carries the same drag.
+    pub rate_m_s: f64,
+    /// The direction of the drag, degrees from true north.
+    pub bearing_deg: f64,
+    /// When the spoofer holds the receiver.
+    pub spans: Vec<SpoofSpan>,
+}
+
+impl GnssSpoofSpec {
+    /// The drag a spoofer switched on by hand applies, m/s: slow enough
+    /// that no single fix stands out from the receiver's own errors.
+    pub const DEFAULT_RATE_M_S: f64 = 1.0;
+    /// The direction a spoofer switched on by hand drags toward, degrees
+    /// from true north.
+    pub const DEFAULT_BEARING_DEG: f64 = 90.0;
+
+    /// The spoofer a hand switches: the default drag, holding nothing yet.
+    pub const fn by_hand() -> Self {
+        Self {
+            rate_m_s: Self::DEFAULT_RATE_M_S,
+            bearing_deg: Self::DEFAULT_BEARING_DEG,
+            spans: Vec::new(),
+        }
+    }
+}
+
+/// One stretch of time a spoofer holds a device.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpoofSpan {
+    /// Route time it captures the device, seconds.
+    pub start_s: f64,
+    /// Route time it lets go, seconds; `None` while it holds on.
+    pub end_s: Option<f64>,
+}
+
+impl SpoofSpan {
+    /// Whether the spoofer holds the device for a cycle starting at route
+    /// time `t_s`.
+    pub fn contains(&self, t_s: f64) -> bool {
+        t_s >= self.start_s && self.end_s.is_none_or(|end| t_s < end)
+    }
 }
 
 /// The holding pattern at the last fix, on the inbound course of the last

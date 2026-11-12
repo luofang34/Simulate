@@ -23,6 +23,7 @@ pub use error::ChainTrialError;
 pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, Retained, StepOutcome};
 pub use spec::{
-    CalibrationName, ChainTrialSpec, DeviceOutage, HoldSpec, HoldTurn, StartSpec, Steering,
+    CalibrationName, ChainTrialSpec, DeviceOutage, GnssSpoofSpec, HoldSpec, HoldTurn, SpoofSpan,
+    StartSpec, Steering,
 };
-pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET, TruthSnapshot};
+pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET, Steered, TruthSnapshot};

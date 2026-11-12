@@ -68,6 +68,27 @@ pub struct GnssReading {
     pub velocity_sigma_m_s: f64,
 }
 
+/// A spoofer that has captured the receiver and drags its fixes away: each
+/// fix time it holds the receiver, the reported position leaves the true one
+/// a little further at a constant rate, and the reported velocity carries
+/// the same rate, so position and Doppler agree with each other. The
+/// receiver declares the same spread as under the true sky.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GnssSpoof {
+    /// The rate the reported position leaves the true one, north-east-down,
+    /// m/s.
+    pub drag_ned_m_s: DVec3,
+}
+
+impl GnssSpoof {
+    /// A level drag of `rate_m_s` toward `bearing_rad` from true north.
+    pub fn toward(rate_m_s: f64, bearing_rad: f64) -> Self {
+        Self {
+            drag_ned_m_s: DVec3::new(bearing_rad.cos(), bearing_rad.sin(), 0.0) * rate_m_s,
+        }
+    }
+}
+
 /// A receiver and whether it has the sky.
 ///
 /// Its errors advance at every fix time whether or not it is tracking, so a
@@ -79,6 +100,9 @@ pub struct GnssReceiver {
     noise: WhiteNoise,
     correlated_m: Option<DVec3>,
     displacement_ned_m: DVec3,
+    /// The spoofer holding the receiver and how far it has dragged the
+    /// fixes, north-east-down metres.
+    spoof: Option<(GnssSpoof, DVec3)>,
     tracking: bool,
 }
 
@@ -114,6 +138,7 @@ impl GnssReceiver {
             noise: WhiteNoise::from_seed(seed),
             correlated_m: None,
             displacement_ned_m: DVec3::ZERO,
+            spoof: None,
             tracking: true,
         })
     }
@@ -142,6 +167,24 @@ impl GnssReceiver {
         self.displacement_ned_m = offset_ned_m;
     }
 
+    /// Hands the receiver to `spoof`, or back to the true sky with `None`.
+    /// A spoofer drags from no offset; the one already holding the receiver
+    /// keeps what it has dragged, and released, the next fix is back at the
+    /// true position.
+    pub fn set_spoof(&mut self, spoof: Option<GnssSpoof>) {
+        self.spoof = match (spoof, self.spoof) {
+            (Some(new), Some((held, dragged_m))) if new == held => Some((held, dragged_m)),
+            (Some(new), _) => Some((new, DVec3::ZERO)),
+            (None, _) => None,
+        };
+    }
+
+    /// The spoofer holding the receiver and how far it has dragged the
+    /// fixes from the truth, north-east-down metres.
+    pub const fn spoof(&self) -> Option<(GnssSpoof, DVec3)> {
+        self.spoof
+    }
+
     /// The fix for the vehicle in `truth`, `period_s` after the last fix
     /// time, or `None` while the receiver has no sky.
     pub fn measure(&mut self, truth: &VehicleState, period_s: f64) -> Option<GnssReading> {
@@ -156,8 +199,22 @@ impl GnssReceiver {
         };
         self.correlated_m = Some(correlated);
         let white_sigma = spec.white_sigma_ned_m();
-        let error_ned = correlated + self.noise.next_vec3(white_sigma) + self.displacement_ned_m;
-        let velocity_error = self.noise.next_vec3(DVec3::splat(spec.velocity_sigma_m_s));
+        // The spoofer drags on through a fix time without the sky and draws
+        // no noise, so the receiver's own errors are those of the same
+        // flight unspoofed.
+        let (drag_ned_m_s, dragged_ned_m) = match self.spoof.as_mut() {
+            Some((spoof, dragged_m)) => {
+                *dragged_m += spoof.drag_ned_m_s * period_s;
+                (spoof.drag_ned_m_s, *dragged_m)
+            }
+            None => (DVec3::ZERO, DVec3::ZERO),
+        };
+        let error_ned = correlated
+            + self.noise.next_vec3(white_sigma)
+            + self.displacement_ned_m
+            + dragged_ned_m;
+        let velocity_error =
+            self.noise.next_vec3(DVec3::splat(spec.velocity_sigma_m_s)) + drag_ned_m_s;
         if !self.tracking {
             return None;
         }

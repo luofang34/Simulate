@@ -8,6 +8,8 @@ use sim_navigate::trial::{
 use super::*;
 use crate::{CalibrationName, StartSpec};
 
+mod steered;
+
 /// The first shareable link's route, degrees north and east.
 const FIXES: [(f64, f64); 5] = [
     (41.70, -1.05),
@@ -30,7 +32,7 @@ fn set(name: &str, means: &[NavMeans]) -> SensorSetSpec {
     }
 }
 
-fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
+pub(super) fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
     let route: Vec<RoutePoint> = FIXES
         .iter()
         .map(|&(lat_deg, lon_deg)| RoutePoint {
@@ -63,6 +65,7 @@ fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
         calibration: CalibrationName::Calibrated,
         outages: Vec::new(),
         hold: None,
+        gnss_spoof: None,
     }
 }
 
@@ -94,14 +97,17 @@ fn camera() -> TerrainCameraSpec {
     }
 }
 
-fn advanced(outcome: StepOutcome) -> Outputs {
+pub(super) fn advanced(outcome: StepOutcome) -> Outputs {
     match outcome {
         StepOutcome::Advanced(outputs) => outputs,
         StepOutcome::FrameWanted(request, _) => panic!("unexpected frame request {request:?}"),
     }
 }
 
-fn samples_of<'a>(outputs: &'a Outputs, set: &'a str) -> impl Iterator<Item = &'a SampleRecord> {
+pub(super) fn samples_of<'a>(
+    outputs: &'a Outputs,
+    set: &'a str,
+) -> impl Iterator<Item = &'a SampleRecord> {
     outputs
         .records
         .iter()

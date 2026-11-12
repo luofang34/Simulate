@@ -2,7 +2,7 @@ mod route;
 
 use crate::{
     Camera, HeightDatum, Leg, MAX_LINK_CHARS, Means, Micro, Milli, NavSet, Outage, Parameter,
-    PathTerminator, Reason, Sensor, SimulationLink, Span, Start, StartTime, Vehicle,
+    PathTerminator, Reason, Sensor, SimulationLink, Span, Spoof, Start, StartTime, Vehicle,
     decode_fragment,
 };
 
@@ -111,6 +111,11 @@ fn link(draws: &mut Draws) -> SimulationLink {
         steering_set: draws.within(0, sets.len() as i64 - 1) as usize,
         sets,
         outages,
+        spoof: draws.flag().then(|| Spoof {
+            rate: Milli::from_scaled(draws.within(1, 100_000)),
+            bearing: Milli::from_scaled(draws.within(0, 359_999)),
+            spans: outage(draws, Sensor::Gnss).spans,
+        }),
         camera: draws.flag().then(|| Camera {
             width_px: draws.within(16, 8192) as u32,
             height_px: draws.within(16, 8192) as u32,

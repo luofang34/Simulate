@@ -4,8 +4,8 @@
 
 use navigate_data::{MemoryStore, Sha256Digest};
 use sim_chain_trial::{
-    CalibrationName, ChainTrialSpec, DeviceOutage, FrameRequest, HoldSpec, HoldTurn, Outputs,
-    StartSpec, Steering,
+    CalibrationName, ChainTrialSpec, DeviceOutage, FrameRequest, GnssSpoofSpec, HoldSpec, HoldTurn,
+    Outputs, SpoofSpan, StartSpec, Steering,
 };
 use sim_geo::SensorIntrinsics;
 use sim_link::{Sensor, SimulationLink, TurnDirection, Vehicle};
@@ -14,7 +14,7 @@ use sim_navigate::trial::{
     OnboardMapSpec, PackageRef, ProgressRecord, SensorKind,
 };
 
-use crate::{HostError, HostedHold, HostedRequest, MonitorFeed};
+use crate::{HostError, HostedHold, HostedRequest, MonitorFeed, SpoofRun};
 
 mod flight;
 
@@ -66,7 +66,8 @@ fn bearing_deg(from: [f64; 2], to: [f64; 2]) -> f64 {
 /// package `package` when a set is visual.
 ///
 /// The link's outages are outages of the devices, for every consumer, so
-/// they ride as the spec's outages and not as the sets' schedules. A link
+/// they ride as the spec's outages and not as the sets' schedules; its
+/// spoofer is a fault of the receiver, for every consumer likewise. A link
 /// without a start begins over its first waypoint heading for the second,
 /// as the headless trial does; without a heading it heads for the first
 /// waypoint.
@@ -151,7 +152,24 @@ pub fn chain_spec(
         calibration: CalibrationName::Calibrated,
         outages,
         hold: hosted.hold.map(hold_spec),
+        gnss_spoof: link.spoof.as_ref().map(spoof_spec),
     })
+}
+
+/// The chain trial's spoofer of the link's.
+fn spoof_spec(spoof: &sim_link::Spoof) -> GnssSpoofSpec {
+    GnssSpoofSpec {
+        rate_m_s: spoof.rate.as_f64(),
+        bearing_deg: spoof.bearing.as_f64(),
+        spans: spoof
+            .spans
+            .iter()
+            .map(|span| SpoofSpan {
+                start_s: span.start.as_f64(),
+                end_s: span.end.map(sim_link::Milli::as_f64),
+            })
+            .collect(),
+    }
 }
 
 /// Refuses a vehicle other than the C172, and a cruise speed it does not
@@ -245,6 +263,20 @@ fn finished(wall_time_s: f64) -> ProgressRecord {
     ProgressRecord::Finished(FinishedRecord {
         result_path: None,
         wall_time_s,
+    })
+}
+
+/// The spoofer of a flight as the link's `spoof` sees it; `None` for one
+/// that never held the receiver.
+pub fn link_spoof(spoof: &GnssSpoofSpec) -> Option<SpoofRun> {
+    (!spoof.spans.is_empty()).then(|| SpoofRun {
+        rate_m_s: spoof.rate_m_s,
+        bearing_deg: spoof.bearing_deg,
+        spans: spoof
+            .spans
+            .iter()
+            .map(|span| (span.start_s, span.end_s))
+            .collect(),
     })
 }
 

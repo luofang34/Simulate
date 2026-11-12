@@ -68,6 +68,17 @@ pub fn event_words(event: &EventRecord) -> String {
         EventKind::AvailabilityEnd { sensor, .. } => {
             format!("{} available again", sensor_words(*sensor))
         }
+        EventKind::SpoofingStart {
+            sensor,
+            rate_m_s,
+            bearing_deg,
+        } => format!(
+            "{} spoofed: its position dragged {rate_m_s} m/s toward {bearing_deg:03.0}°",
+            sensor_words(*sensor)
+        ),
+        EventKind::SpoofingEnd { sensor } => {
+            format!("{} spoofing ended", sensor_words(*sensor))
+        }
         EventKind::GuidanceRefused { refusal } => {
             format!("guidance refused the solution ({refusal})")
         }

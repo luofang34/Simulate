@@ -4,7 +4,9 @@
 use serde_json::json;
 
 use super::plan_style::{OUTLINES_SOURCE, ROUTE_SOURCE, SATELLITE_LAYER, TRACKS_SOURCE};
-use super::{EfbDisplayMode, EfbMapSurface, EfbTracks, FixId, FlightPlan, RouteProgress};
+use super::{
+    EfbDisplayMode, EfbFrameMarks, EfbMapSurface, EfbTracks, FixId, FlightPlan, RouteProgress,
+};
 use crate::{MapAdapterError, chart_symbology::screen_positions};
 
 /// What lies under the plan.
@@ -34,6 +36,7 @@ pub(super) struct PlanState {
     pub(super) plan: FlightPlan,
     pub(super) progress: RouteProgress,
     pub(super) tracks: EfbTracks,
+    pub(super) frame_marks: EfbFrameMarks,
     pub(super) basemap: EfbBasemap,
 }
 
@@ -63,6 +66,17 @@ impl EfbMapSurface {
         self.plan.plan = plan.clone();
         self.plan.progress = progress;
         Ok(())
+    }
+
+    /// Lays `marks` over the frames drawn from now on.
+    pub const fn set_frame_marks(&mut self, marks: EfbFrameMarks) {
+        self.plan.frame_marks = marks;
+    }
+
+    /// The marks laid over each frame.
+    #[must_use]
+    pub const fn frame_marks(&self) -> EfbFrameMarks {
+        self.plan.frame_marks
     }
 
     /// What is drawn over the plan besides it.

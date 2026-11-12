@@ -9,7 +9,8 @@ use maplibre::{
 use super::{EfbDisplayMode, EfbMapSurface, FRAME_INTERVAL, effective_globe_zoom, mode_index};
 use crate::{
     ChartCameraSpec, ChartSymbologyInput, MapAdapterError, build_chart_symbology_scaled,
-    chart_symbology::append_sigma_rings, geodesy::wrap_lon_deg,
+    chart_symbology::{append_sigma_rings, append_truth_mark},
+    geodesy::wrap_lon_deg,
 };
 
 /// Both views, in the order they draw.
@@ -90,11 +91,13 @@ impl EfbMapSurface {
             },
             ratio,
         );
-        append_sigma_rings(
-            &mut mesh,
-            (&spec, viewport_px, ratio),
-            &self.plan.tracks.rings,
-        );
+        let chart = (&spec, viewport_px, ratio);
+        append_sigma_rings(&mut mesh, chart, &self.plan.tracks.rings);
+        let marks = self.plan.frame_marks;
+        append_sigma_rings(&mut mesh, chart, marks.ownship_ring.as_slice());
+        if let Some(truth_deg) = marks.truth_deg {
+            append_truth_mark(&mut mesh, chart, truth_deg);
+        }
         let slot = self.slot_of(mode);
         self.map
             .set_view_slot_overlay(slot, mesh)

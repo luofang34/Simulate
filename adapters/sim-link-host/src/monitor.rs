@@ -12,6 +12,7 @@ mod hold;
 mod matching;
 mod pacer;
 mod replay;
+mod sensor_controls;
 mod status_lines;
 mod thinning;
 mod trace;
@@ -35,6 +36,7 @@ pub use pacer::{
     StepState, run_slice,
 };
 pub use replay::Replay;
+pub use sensor_controls::{SensorControl, SensorFault, SpoofDrag, sensor_controls};
 pub use status_lines::{ABSENT, RUN_LINES, run_lines, starting_lines, stopped_lines};
 pub use thinning::SAMPLES_KEPT;
 pub use trace::{Column, SetTrace, TracePoint};
@@ -50,6 +52,17 @@ pub struct RouteEnd {
     pub ident: String,
     /// Each set's latest sample then, in the run's order of sets.
     pub samples: Vec<Option<TracePoint>>,
+}
+
+/// A spoofer holding a sensor of the flight.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Spoofing {
+    /// Route time it captured the sensor, seconds.
+    pub since_s: f64,
+    /// The rate the sensor's reported position leaves the true one, m/s.
+    pub rate_m_s: f64,
+    /// The direction of the drag, degrees from true north.
+    pub bearing_deg: f64,
 }
 
 /// Events the monitor keeps for its log; older ones drop off.
@@ -114,6 +127,7 @@ pub struct Monitor {
     finished: bool,
     route_end: Option<RouteEnd>,
     hold: Option<HoldState>,
+    gnss_spoofing: Option<Spoofing>,
 }
 
 impl Monitor {
@@ -186,6 +200,20 @@ impl Monitor {
                     EventKind::HoldingStarted { pattern } => {
                         self.hold_pattern = Some(pattern.clone());
                     }
+                    EventKind::SpoofingStart {
+                        sensor: SensorKind::Gnss,
+                        rate_m_s,
+                        bearing_deg,
+                    } => {
+                        self.gnss_spoofing = Some(Spoofing {
+                            since_s: event.t_s,
+                            rate_m_s: *rate_m_s,
+                            bearing_deg: *bearing_deg,
+                        });
+                    }
+                    EventKind::SpoofingEnd {
+                        sensor: SensorKind::Gnss,
+                    } => self.gnss_spoofing = None,
                     _ => {}
                 }
                 self.events.push(event);
@@ -275,6 +303,11 @@ impl Monitor {
     /// The sensors of `set` at its latest sample.
     pub fn sensors(&self, set: &str) -> Option<&SensorStates> {
         self.sensors.get(set)
+    }
+
+    /// The spoofer holding the GNSS receiver now, if one does.
+    pub const fn gnss_spoofing(&self) -> Option<&Spoofing> {
+        self.gnss_spoofing.as_ref()
     }
 
     /// The mission phase, once the mission host has named one.

@@ -45,7 +45,10 @@ pub use plan::{EfbBasemap, FixPick};
 pub use plan_style::{ACTIVE_MAGENTA, FLOWN_GREY, FUTURE_WHITE, OUTLINE_GREEN};
 pub use plate::{ApproachPlateOverlay, ProceduralPlateSpec, generate_procedural_approach_plate};
 pub use route::{FixId, FlightPlan, LegState, RouteFix, RouteLeg, RouteProgress, leg_state};
-pub use tracks::{EfbTracks, MIN_RING_PX, PointMark, Rgb, SigmaRing, TrackLine, css_colour};
+pub use tracks::{
+    EfbFrameMarks, EfbTracks, MIN_RING_PX, PointMark, Rgb, SigmaRing, TRUTH_MARK, TrackLine,
+    css_colour,
+};
 
 use camera::EfbCamera;
 use style::{

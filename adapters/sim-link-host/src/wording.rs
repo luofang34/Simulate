@@ -1,7 +1,7 @@
 //! The link and its plan in plain language, for a page or a terminal.
 
 use sim_link::{
-    HeightDatum, Means, NavSet, Outage, Refusal, Sensor, SimulationLink, TurnDirection,
+    HeightDatum, Means, NavSet, Outage, Refusal, Sensor, SimulationLink, Spoof, TurnDirection,
     resolve_escapes,
 };
 
@@ -54,6 +54,27 @@ pub fn outage_words(outage: &Outage) -> Vec<String> {
             format!(
                 "{} from {} s to {until}",
                 withheld(outage.sensor),
+                span.start.text(0)
+            )
+        })
+        .collect()
+}
+
+/// Each span of `spoof` as a sentence: what the spoofer does to the
+/// receiver's fixes, from when to when.
+pub fn spoof_words(spoof: &Spoof) -> Vec<String> {
+    spoof
+        .spans
+        .iter()
+        .map(|span| {
+            let until = span.end.map_or_else(
+                || "the end of the flight".to_owned(),
+                |end| format!("{} s", end.text(0)),
+            );
+            format!(
+                "satellite receiver's position dragged {} m/s toward {}° true from {} s to {until}",
+                spoof.rate.text(0),
+                spoof.bearing.text(0),
                 span.start.text(0)
             )
         })
@@ -114,6 +135,9 @@ pub fn plan_lines(
                 .into_iter()
                 .map(|words| line("Outage", words)),
         );
+    }
+    if let Some(spoof) = &link.spoof {
+        lines.extend(spoof_words(spoof).into_iter().map(|w| line("Spoofing", w)));
     }
     lines.extend(sun_words(link, summary).map(|words| line("Sun", words)));
     if let Some(camera) = request.camera {
