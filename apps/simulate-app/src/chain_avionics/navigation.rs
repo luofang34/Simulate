@@ -1,11 +1,9 @@
 //! Pilotage's navigation display as the HSI's guidance lane: the desired
 //! track as the course, the cross-track deviation on the CDI, the distance
-//! to the active fix and its name, whether that fix is ahead or behind, and
-//! whether the mission sequences legs or holds. The lane is flown on the
-//! enroute scale: the missions a link plans are enroute legs and a hold at
-//! the last fix, with no terminal or approach procedure, and Pilotage states
-//! no other phase. In the holding pattern after the plan the course is the
-//! inbound course to the holding fix and the FROM name reads `HOLD`.
+//! to the active fix and its name, with Pilotage's TO/FROM. The plan names
+//! no airports, so every leg is flown to the en-route scale. In the holding
+//! pattern after the plan the course is the inbound course to the holding
+//! fix, the FROM name reads `HOLD` and the lane annunciates the hold.
 
 use sim_core::SimInstant;
 use sim_flight_chain::{NavQuality, NavigationDisplay, ToFrom};
@@ -48,9 +46,10 @@ pub fn navigation_lane(
         vertical_deviation_m: leg.vertical_deviation_m.map_or(f32::NAN, |m| m as f32),
         distance_to_waypoint_m: leg.distance_to_go_m as f32,
         scale: NavScale::Enroute,
-        to_from: match leg.to_from {
-            ToFrom::To => NavFromTo::To,
-            ToFrom::From => NavFromTo::From,
+        to_from: match (leg.cross_track_m, leg.to_from) {
+            (None, _) => NavFromTo::Off,
+            (Some(_), ToFrom::To) => NavFromTo::To,
+            (Some(_), ToFrom::From) => NavFromTo::From,
         },
         sequencing: if holding {
             NavSequencing::Hold
