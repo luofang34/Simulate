@@ -46,3 +46,32 @@ fn every_name_the_link_grammar_allows_is_a_waypoint_the_route_takes() {
     assert_eq!(summary.sun[0].at, name);
     assert_eq!(summary.legs[1].to, "_");
 }
+
+/// Holds `fpl_to_simulate_url.py --hold` wrote, on the course it computes
+/// for the last leg rounded to a tenth of a degree, over legs east, north
+/// (one rounding to 0°), long and far north, south, across the
+/// antimeridian, and west: the host takes each as the hold at the last fix.
+const CONVERTER_HOLDS: &str = include_str!("../fixtures/converter-holds.txt");
+
+#[test]
+fn every_hold_the_converter_writes_is_flown_at_the_last_fix() {
+    let links: Vec<&str> = CONVERTER_HOLDS
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
+    assert_eq!(links.len(), 7);
+    for text in links {
+        let link = decode_url(text).unwrap().unwrap();
+        let hosted = hosted_request(&link).unwrap_or_else(|error| panic!("{text}: {error}"));
+        let hold = hosted.hold.unwrap_or_else(|| panic!("{text}: no hold"));
+        let fixes = &hosted.route.fixes;
+        let last_course = crate::final_course_deg(&fixes[fixes.len() - 2], &fixes[fixes.len() - 1]);
+        let off = (hold.stated.inbound_course_deg - last_course + 540.0).rem_euclid(360.0) - 180.0;
+        assert!(off.abs() <= 0.05 + 1e-9, "{text}: {off}");
+        let spec = crate::chain_spec(&link, &hosted, None).unwrap();
+        assert_eq!(
+            spec.hold.map(|hold| hold.leg_time_s),
+            Some(hold.stated.leg_time_s)
+        );
+    }
+}

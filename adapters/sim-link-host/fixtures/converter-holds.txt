@@ -1,0 +1,7 @@
+https://luofang34.github.io/Simulate/#v=2&r=IF,EAST0:41.7/-1.05;TF,EAST1:41.7/-1;HM,EAST1,tR,c90T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,NORT0:41.7/-1.05;TF,NORT1:41.8/-1.0499;HM,NORT1,tR,c0T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,NEAR0:41.7/-1.05;TF,NEAR1:41.9/-1.0501;HM,NEAR1,tR,c0T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,LONG0:64/-21;TF,LONG1:66.5/-14;HM,LONG1,tR,c52.8T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,SOUT0:-33.9/151.2;TF,SOUT1:-34.4/150.9;TF,SOUT2:-35.3/149.2;HM,SOUT2,tL,c237.7T,l90s&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,ANTI0:-17/179.5;TF,ANTI1:-17.3/-179.6;HM,ANTI1,tR,c109.1T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
+https://luofang34.github.io/Simulate/#v=2&r=IF,WEST0:39.68/-75.6;TF,WEST1:39.63/-75.3;TF,WEST2:39.58/-75.61;HM,WEST2,tR,c258.1T,l1min&h=1500.0&hd=msl&t=20260615T120000Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro&go=1&mb=200
