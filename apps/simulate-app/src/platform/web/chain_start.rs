@@ -4,10 +4,11 @@
 //! by the trial's own renderer from the sealed package.
 
 use navigate_data::MemoryStore;
-use sim_chain_trial::ChainTrial;
+use sim_chain_trial::{ChainTrial, GnssSpoofSpec};
+use sim_link::SimulationLink;
 use sim_link_host::{
-    CameraWorld, ChainFlight, Clock, HostError, Monitor, PlanLine, chain_spec, page_stores,
-    starting_lines, stopped_lines,
+    CameraWorld, ChainFlight, Clock, HostError, Monitor, PlanLine, SpoofDrag, chain_spec,
+    page_stores, starting_lines, stopped_lines,
 };
 use sim_navdata::SealedPackage;
 use sim_navigate::trial::parse_utc;
@@ -15,7 +16,7 @@ use tracing::{info, warn};
 
 use super::PageView;
 use super::flight_run::{PageClock, fly};
-use super::monitor_view::{MonitorView, PageMapSetup};
+use super::monitor_view::{MonitorSetup, MonitorView, PageMapSetup, Steering};
 use super::package_run::LinkPlan;
 use super::section::{Section, append, write_live};
 use crate::page_status::PAGE_STATUS_LINES;
@@ -155,6 +156,35 @@ fn page_map_setup(
     })
 }
 
+/// The set `link` steers on, with for each other set the link that flies the same plan
+/// on it, on the page's own address. A set whose link cannot be written is left out.
+fn steering_of(link: &SimulationLink) -> Option<Steering> {
+    let base = web_sys::window()?.location().href().ok()?;
+    let others = link
+        .sets
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != link.steering_set)
+        .filter_map(|(index, set)| {
+            let mut other = link.clone();
+            other.steering_set = index;
+            Some((set.text(), other.url(&base).ok()?))
+        })
+        .collect();
+    Some(Steering {
+        set: link.steering()?.text(),
+        others,
+    })
+}
+
+/// The drag the trial's spoofer applies when the visitor switches it on.
+fn spoof_drag(spoof: &GnssSpoofSpec) -> SpoofDrag {
+    SpoofDrag {
+        rate_m_s: spoof.rate_m_s,
+        bearing_deg: spoof.bearing_deg,
+    }
+}
+
 /// The PFD's and the HSI's canvases, in a column beside the world view or a row under it,
 /// as the page's width allows.
 fn instrument_panels(document: &Document, row: &Element) -> Option<[HtmlCanvasElement; 2]> {
@@ -222,15 +252,18 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
     if let Some(feed) = &feed {
         memory = start_world_view(&section, feed.clone(), map_canvas.clone());
     }
-    let Some(view) = MonitorView::inside(
-        section,
-        Some(START_SPEED),
-        true,
-        Some(CAVEAT),
-        (world.clone(), world_note),
-        ABOUT,
-        page_map_setup(map_canvas, feed.as_ref(), origin, world.as_ref()),
-    ) else {
+    let setup = MonitorSetup {
+        speed: Some(START_SPEED),
+        can_switch: true,
+        steering: steering_of(&plan.link),
+        spoof: spoof_drag(trial.gnss_spoof()),
+        caveat: Some(CAVEAT),
+        world: world.clone(),
+        world_note,
+        about: ABOUT,
+        page_map: page_map_setup(map_canvas, feed.as_ref(), origin, world.as_ref()),
+    };
+    let Some(view) = MonitorView::inside(section, setup) else {
         return;
     };
     let flight = ChainFlight::new(trial, world, PageClock::of_page());

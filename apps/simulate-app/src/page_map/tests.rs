@@ -209,3 +209,13 @@ fn the_link_hands_each_change_over_once() {
     });
     assert!(link.view().live);
 }
+
+#[test]
+fn the_colour_of_ownships_set_stays_with_the_link_once_the_page_said() {
+    let link = PageMapLink::default();
+    assert_eq!(link.take().ownship_colour, None);
+    link.set_ownship_colour([0x39, 0x87, 0xe5]);
+    // The app takes its input every frame; the colour is the page's standing word.
+    assert_eq!(link.take().ownship_colour, Some([0x39, 0x87, 0xe5]));
+    assert_eq!(link.take().ownship_colour, Some([0x39, 0x87, 0xe5]));
+}

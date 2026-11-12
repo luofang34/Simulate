@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
-use sim_core::{AirframeArticulation, SensorExposureEvent, SimInstant, VehicleState};
+use sim_core::SimInstant;
 use sim_geo::{BodyEllipsoid, ecef_to_geodetic};
 use sim_maplibre::{
     AvionicsMapSet, ChartAssetStore, ConformalFrameStamp, ConformalMapFrame, HostGpu,
@@ -14,21 +14,18 @@ use sim_maplibre::{
     TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
     UsdAircraftAsset, ViewSlotId, ViewSlotMask, tile_id_to_world_coords, truth_real_world_style,
 };
-use sim_render::Camera;
-use sim_scenario::{OperatorViewportMode, ScenarioProfile};
+use sim_scenario::OperatorViewportMode;
 use sim_scenery::{CatalogScenery, LandingRunwayGeometry, OsmAerodromeDiagram, TileId};
 
 use crate::environment::TruthSky;
 use crate::error::AppSimError;
-use crate::sky_rig::SkyFrame;
-use crate::supervisor_rig::SupervisorRig;
-use crate::vehicles::FreeFlightVehicle;
 use crate::world_surface::WorldSurfaceHandle;
 
 pub(crate) mod aircraft;
 mod charts;
 mod device_tier;
 mod efb;
+mod frame_input;
 mod globe;
 mod live_ground;
 mod preset;
@@ -39,44 +36,13 @@ mod tests;
 
 pub use device_tier::TierChoice;
 pub use efb::{EfbAirport, EfbCommand, EfbStatus};
+pub use frame_input::MapFrameInput;
 pub use globe::GlobeSelection;
 pub use preset::{AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, PFD_SVS_MAP};
 pub use scenery::ScenerySource;
 
 const SENSOR_WIDTH_PX: u32 = 800;
 const SENSOR_HEIGHT_PX: u32 = 600;
-
-/// Inputs driving one frame of every map.
-pub struct MapFrameInput<'a> {
-    /// Window swapchain `[width, height]` in physical pixels.
-    pub surface_size: [u32; 2],
-    /// Current simulation clock instant.
-    pub timestamp: SimInstant,
-    /// Active scripted scenario profile (`None` in free flight).
-    pub profile: Option<ScenarioProfile>,
-    /// Free-flight plant flying now (`None` in a scripted scenario).
-    pub active_vehicle: Option<FreeFlightVehicle>,
-    /// Display-interpolated truth: the physical scene's ownship.
-    pub vehicle: VehicleState,
-    /// Body FRD metres from `vehicle`'s position (its CG) to its drawn model's origin.
-    pub model_origin_from_cg_frd_m: glam::DVec3,
-    /// Ellipsoidal ground height under ownship, which receives its sun shadow.
-    pub ground_m: Option<f64>,
-    /// Display-interpolated navigation solution: the instrument maps' ownship.
-    pub estimated_vehicle: VehicleState,
-    /// `30 Hz` optical sensor exposures since the previous frame, oldest first; the sensor
-    /// slot renders the newest at its exact instant and truth state, whatever the window
-    /// shows.
-    pub sensor_exposures: &'a [SensorExposureEvent],
-    /// Ownship control surfaces, propeller, gear, and lights.
-    pub articulation: AirframeArticulation,
-    /// Active window camera in `sim-render` convention.
-    pub otw_camera: Camera,
-    /// Sun, Moon, stars, and twilight for the scene and relief lighting.
-    pub sky: &'a SkyFrame<'a>,
-    /// Supervisor holding OSM airport diagrams, virtual camera presets, and surveillance belief.
-    pub supervisor: &'a SupervisorRig,
-}
 
 /// The physical scene and the selected preset's instrument maps on one shared runtime.
 pub struct MapLibreRig {
@@ -451,7 +417,7 @@ impl MapLibreRig {
             0.0
         };
         let belief_entities = input.supervisor.belief_entities(ViewSlotMask::ALL);
-        let own = charts::chart_ownship(&input.estimated_vehicle);
+        let own = charts::map_ownship(&input.estimated_vehicle, input.steered);
         for surface in self.avionics.iter_mut() {
             if !surface.is_due(sim_dur) || (skip_dock_chart && surface.id() == MFD_CHART_MAP) {
                 continue;

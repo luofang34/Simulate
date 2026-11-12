@@ -1,7 +1,8 @@
 //! The page's map: the app's EFB map, expanded onto a canvas of the page, with the
-//! flight plan coloured by the mission host's own sequencing, the true track, each set's
-//! estimated track with a ring of its stated one-sigma, the terrain camera's fix marks
-//! and the sealed package's coverage. The page lays the labels, the buttons and the
+//! flight plan coloured by the mission host's own sequencing, the true track and
+//! position, each set's estimated track with a ring of its stated one-sigma, the
+//! terrain camera's fix marks and the sealed package's coverage. The map's aircraft is
+//! the estimate of the set the flight steers on. The page lays the labels, the buttons and the
 //! picked fix's card over the canvas; the app draws everything else.
 //!
 //! Until the map first draws, the page keeps its own drawing of the track map, which is
@@ -13,11 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use sim_link_host::Monitor;
-use sim_maplibre::{
-    EfbBasemap, EfbTracks, FixId, FlightPlan, HoldPattern, LegState, PointMark, RouteFix,
-    RouteProgress, SigmaRing, TrackLine,
-};
-use sim_navigate::trial::{HoldingPatternRecord, HoldingTurnName};
+use sim_maplibre::{EfbBasemap, LegState};
 use wasm_bindgen::closure::Closure;
 use web_sys::{Document, Element, HtmlCanvasElement};
 
@@ -28,9 +25,10 @@ use crate::page_map::gesture::Gestures;
 use crate::page_map::{PageMapLink, PageMapView, PickedFix};
 
 mod controls;
+mod overlays;
 
-/// The true track: pale yellow, since white means the legs to come.
-const TRUTH: [u8; 3] = [0xff, 0xe0, 0x66];
+use overlays::{plan_of, rgb, tracks_of};
+
 /// Least time between two hand-overs of growing tracks, milliseconds: each one is
 /// tessellated again.
 const TRACKS_INTERVAL_MS: f64 = 500.0;
@@ -56,6 +54,7 @@ struct Handed {
     samples: usize,
     marks: usize,
     hidden: BTreeSet<String>,
+    steered: Option<String>,
 }
 
 /// The page's map and what it lays over it.
@@ -118,8 +117,9 @@ impl PageMap {
     }
 
     /// Hands `monitor`'s plan and tracks, with the sets `hidden` names left out, to the
-    /// app's map, and lays what it reports over the canvas.
-    pub fn draw(&mut self, monitor: &Monitor, hidden: &BTreeSet<String>) {
+    /// app's map, and lays what it reports over the canvas. The map's aircraft is the
+    /// estimate of the `steered` set, in that set's colour.
+    pub fn draw(&mut self, monitor: &Monitor, hidden: &BTreeSet<String>, steered: Option<&str>) {
         let now_ms = web_sys::window()
             .and_then(|window| window.performance())
             .map_or(0.0, |performance| performance.now());
@@ -129,13 +129,21 @@ impl PageMap {
             samples: monitor.traces().iter().map(|t| t.points().len()).sum(),
             marks: monitor.camera().marks().len(),
             hidden: hidden.clone(),
+            steered: steered.map(str::to_owned),
         };
+        let steered_index = monitor
+            .traces()
+            .iter()
+            .position(|trace| Some(trace.name.as_str()) == steered);
+        if let Some(index) = steered_index {
+            self.link.set_ownship_colour(rgb(series_colour(index)));
+        }
         let due = self.handed.as_ref().is_none_or(|(last, at_ms)| {
             *last != handed
                 && (last.hidden != handed.hidden || now_ms - at_ms >= TRACKS_INTERVAL_MS)
         });
         if due {
-            let tracks = tracks_of(monitor, hidden, &self.coverage);
+            let tracks = tracks_of(monitor, (hidden, steered), &self.coverage);
             self.link.publish_tracks(Arc::new(tracks));
             self.handed = Some((handed, now_ms));
         }
@@ -250,122 +258,12 @@ impl PageMap {
 }
 
 /// What the map's marks mean.
-const KEY: &str = "The cockpit's moving map, expanded. Magenta: the active leg; white: legs \
-    to come; grey: legs flown. Yellow: the true track. Coloured: each set's estimate with its \
-    one-sigma ring; dots and rings: camera fixes accepted and rejected. Dashed green: the map \
-    package's imagery. Drag, zoom or tap a fix.";
-
-/// The plan from `monitor`'s route, flown from `origin`, at the mission host's progress.
-fn plan_of(monitor: &Monitor, origin: Option<[f64; 2]>) -> (FlightPlan, RouteProgress) {
-    let altitudes = monitor.waypoint_altitudes_m();
-    let fixes = monitor
-        .waypoints()
-        .iter()
-        .enumerate()
-        .map(|(index, (ident, (lat_deg, lon_deg)))| RouteFix {
-            id: FixId(u32::try_from(index).unwrap_or(u32::MAX)),
-            ident: ident.clone(),
-            lat_deg: *lat_deg,
-            lon_deg: *lon_deg,
-            altitude_m: altitudes.get(index).copied(),
-        })
-        .collect();
-    let progress = RouteProgress {
-        hold: monitor.hold_pattern().map(hold_of),
-        ..RouteProgress::after_sequenced(monitor.sequenced())
-    };
-    (FlightPlan { origin, fixes }, progress)
-}
-
-/// The map's drawing of the pattern the mission host reported.
-fn hold_of(pattern: &HoldingPatternRecord) -> HoldPattern {
-    HoldPattern {
-        fix_deg: [
-            pattern.fix.latitude_rad.to_degrees(),
-            pattern.fix.longitude_rad.to_degrees(),
-        ],
-        inbound_course_deg: pattern.inbound_course_rad.to_degrees(),
-        right_turns: matches!(pattern.turn, HoldingTurnName::Right),
-        turn_radius_m: pattern.turn_radius_m,
-        leg_length_m: pattern.leg_length_m,
-    }
-}
-
-/// The true track, each shown set's track, ring and fix marks, and the coverage.
-fn tracks_of(
-    monitor: &Monitor,
-    hidden: &BTreeSet<String>,
-    coverage: &[Vec<[f64; 2]>],
-) -> EfbTracks {
-    let shown = |index: usize| {
-        monitor
-            .traces()
-            .get(index)
-            .is_some_and(|trace| !hidden.contains(&trace.name))
-    };
-    let mut tracks = EfbTracks {
-        outlines: coverage.to_vec(),
-        ..EfbTracks::default()
-    };
-    for (index, trace) in monitor.traces().iter().enumerate() {
-        if !shown(index) {
-            continue;
-        }
-        let colour = rgb(series_colour(index));
-        tracks.lines.push(TrackLine {
-            colour,
-            width_px: 1.5,
-            points: trace
-                .points()
-                .iter()
-                .map(|p| [p.estimate_deg.0, p.estimate_deg.1])
-                .collect(),
-        });
-        if let Some((latest, sigma_m)) = trace
-            .latest()
-            .and_then(|latest| Some((latest, latest.sigma_horizontal_m?)))
-        {
-            tracks.rings.push(SigmaRing {
-                centre_deg: [latest.estimate_deg.0, latest.estimate_deg.1],
-                sigma_m,
-                colour,
-            });
-        }
-    }
-    tracks.lines.push(TrackLine {
-        colour: TRUTH,
-        width_px: 2.0,
-        points: monitor
-            .truth()
-            .iter()
-            .map(|(_, (lat, lon))| [*lat, *lon])
-            .collect(),
-    });
-    tracks.marks = monitor
-        .camera()
-        .marks()
-        .iter()
-        .filter(|mark| shown(mark.set))
-        .map(|mark| PointMark {
-            at_deg: [mark.at_deg.0, mark.at_deg.1],
-            colour: rgb(series_colour(mark.set)),
-            filled: mark.accepted,
-        })
-        .collect();
-    tracks
-}
-
-/// `[r, g, b]` of a `#rrggbb` colour; grey for anything else.
-fn rgb(css: &str) -> [u8; 3] {
-    let channel = |range: std::ops::Range<usize>| {
-        css.get(range)
-            .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-    };
-    match (channel(1..3), channel(3..5), channel(5..7)) {
-        (Some(r), Some(g), Some(b)) if css.len() == 7 => [r, g, b],
-        _ => [0x8f, 0x98, 0xad],
-    }
-}
+const KEY: &str = "The cockpit's moving map, expanded. The aircraft: the estimate of the set \
+    the flight steers on, in its one-sigma ring. Yellow crossed circle and yellow track: \
+    the simulator's true position and track. Coloured: each set's estimated track, the \
+    others' with their one-sigma rings; dots and rings: camera fixes accepted and \
+    rejected. Magenta: the active leg; white: legs to come; grey: legs flown. Dashed \
+    green: the map package's imagery. Drag, zoom or tap a fix.";
 
 /// The picked fix's card, line by line with each line's class: always four
 /// lines, so the card keeps its size from fix to fix.

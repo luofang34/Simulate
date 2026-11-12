@@ -121,3 +121,28 @@ fn a_globe_click_reaches_further_when_zoomed_out_and_near_the_equator() {
     assert!(super::globe::pick_radius_km(0.0, 8.0, 18.0) > near);
     assert!((0.5..=400.0).contains(&super::globe::pick_radius_km(89.9, 16.0, 18.0)));
 }
+
+#[test]
+fn the_maps_ownship_is_where_the_steered_navigator_puts_it_heading_as_the_instruments_do() {
+    use super::charts::{chart_ownship, map_ownship};
+    use crate::vehicles::SteeredFix;
+
+    let (lat, lon, _) = KEWR;
+    let instruments =
+        VehicleState::level_flight(&Geodetic::from_degrees(lat, lon, 900.0), 1.2, 55.0);
+    // Off the chain the maps draw the instruments' own solution.
+    assert_eq!(map_ownship(&instruments, None), chart_ownship(&instruments));
+    let fix = SteeredFix {
+        lat_deg: lat + 0.01,
+        lon_deg: lon - 0.02,
+        ground_velocity_en_m_s: [3.0, 54.0],
+        sigma_horizontal_m: 12.0,
+    };
+    let own = map_ownship(&instruments, Some(fix));
+    assert_eq!((own.lat_deg, own.lon_deg), (fix.lat_deg, fix.lon_deg));
+    assert_eq!(own.ground_velocity_en_mps, [3.0, 54.0]);
+    assert_eq!(
+        own.true_heading_deg,
+        chart_ownship(&instruments).true_heading_deg
+    );
+}

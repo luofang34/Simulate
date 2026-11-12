@@ -45,7 +45,7 @@
       .section [hidden] { display: none; }
       .section button { margin-top: 1rem; padding: 0.5rem 1.1rem; border: 1px solid #5aa2ff; border-radius: 4px; background: #10203a; color: #f2f4f8; font: inherit; cursor: pointer; }
       .section button:hover { background: #17305a; }
-      /* The flight monitor: its plot, the sets' legend, the means' switches and the pace. */
+      /* The flight monitor: its plot, the sets' legend and the pace. */
       .plot { display: block; width: 100%; height: 260px; margin-top: 1rem; }
       /* The world view with the PFD and HSI beside it on a wide page, under it on a narrow one;
          the card widens while it flies so the window view keeps its size. */
@@ -79,7 +79,26 @@
       .match-panel { margin-top: 1rem; }
       .match { display: block; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
       .frame { display: block; width: 400px; max-width: 100%; height: auto; border-radius: 4px; background: #0b0e17; }
-      .legend, .switches { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
+      .legend, .sensor-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1.2rem; margin-top: 1rem; align-items: center; }
+      .role { padding: 0.05rem 0.45rem; border: 1px solid #2b3245; border-radius: 999px; color: #8f98ad; font-size: 12px; white-space: nowrap; }
+      /* Whose navigation the flight is flown on. */
+      .steering { margin-top: 1rem; padding: 0.7rem 0.9rem; border: 1px solid #2b3245; border-radius: 6px; background: #0b0e17; }
+      .steering .detail { margin-top: 0.35rem; }
+      .steering-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0; font-size: 1.05rem; color: #f2f4f8; }
+      .steering-head .swatch { width: 22px; height: 6px; }
+      .steering-others a { margin-right: 0.8rem; color: #5aa2ff; }
+      /* The sensors' fault switches: each a checkbox drawn as a button, with what its sensor's consumers report beside it. */
+      .sensor-controls { margin-top: 1rem; }
+      .sensor-controls > .detail { margin: 0; }
+      .sensor-rows { margin-top: 0.5rem; gap: 0.4rem 1rem; }
+      .fault-switch { display: inline-flex; gap: 0.45rem; align-items: center; min-width: 8.5rem; padding: 0.4rem 0.8rem; border: 1px solid #2b3245; border-radius: 4px; background: #10203a; color: #f2f4f8; cursor: pointer; user-select: none; }
+      .fault-switch:hover { background: #17305a; }
+      .fault-switch:has(input:checked) { border-color: #ffb454; background: #3a2a10; color: #ffd9a0; }
+      .fault-switch:has(input:disabled) { opacity: 0.5; cursor: default; }
+      .section .fault-switch input { accent-color: #ffb454; }
+      .sensor-rows .value { white-space: normal; overflow: visible; }
+      .sensor-rows .value.active { color: #ffd9a0; }
+      @media (max-width: 40rem) { .sensor-rows { grid-template-columns: minmax(0, 1fr); } }
       .series { display: flex; gap: 0.5rem; align-items: center; cursor: pointer; }
       .swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
       .value { min-width: 0; color: #8f98ad; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

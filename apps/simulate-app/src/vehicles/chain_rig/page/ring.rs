@@ -1,6 +1,7 @@
 //! The page's latest published instants, and the chain at any route time between them:
-//! the true aeroplane interpolated between the instants on either side, everything else
-//! the flight controller and the mission host had said by then.
+//! the true aeroplane and the steered navigator's fix interpolated between the instants on
+//! either side, everything else the flight controller and the mission host had said by
+//! then.
 
 use std::collections::VecDeque;
 
@@ -60,7 +61,7 @@ impl SnapshotRing {
     }
 
     /// The chain at `route_s`: the latest instant at or before it, with the true
-    /// aeroplane interpolated toward the next one. The flight controller's account, the
+    /// aeroplane and the steered fix interpolated toward the next one. The flight controller's account, the
     /// mission host's words and the flight model's other outputs stay those of the
     /// earlier instant, so the displays never see a sample from their future.
     pub(super) fn at(&self, route_s: f64) -> PageSnapshot {
@@ -81,6 +82,11 @@ impl SnapshotRing {
             let phase = ((route_s - before.route_s()) / span).clamp(0.0, 1.0);
             snapshot.truth.state =
                 interpolate_vehicle_state(&before.truth.state, &next.truth.state, phase);
+            // The map compares this fix with the truth beside it, so both are of the
+            // one instant drawn.
+            if let (Some(fix), Some(later)) = (before.steered, next.steered) {
+                snapshot.steered = Some(fix.toward(&later, phase));
+            }
         }
         snapshot
     }

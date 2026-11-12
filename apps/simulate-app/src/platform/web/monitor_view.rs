@@ -1,9 +1,9 @@
-//! The flight monitor on the page: the status line, the error plot, a
-//! legend that shows or hides each set, a switch for each means the run
-//! uses, the track map, the terrain camera's latest frame and what the visual
-//! navigator matched it against, the pace, the
-//! link of the run, the terrain camera's tallies, the mission host's
-//! reports and the latest events.
+//! The flight monitor on the page: the status line, whose navigation the
+//! flight is flown on, the sensors' fault switches, the pace, the error plot,
+//! a legend that shows or hides each set, the track map, the terrain camera's
+//! latest frame and what the visual navigator matched it against, the link of
+//! the run, the terrain camera's tallies, the mission host's reports and the
+//! latest events.
 //!
 //! The controls are read when the page draws, not listened to: the flight
 //! loop runs every animation frame anyway, so a click shows within a frame.
@@ -12,16 +12,18 @@ mod frame_panel;
 mod match_panel;
 mod page_map;
 mod plot;
+mod sensor_panel;
+mod steering;
 mod track_map;
 
 use std::collections::BTreeSet;
 
+use sim_chain_trial::FLIGHT_CONTROLLER_SET;
 use sim_link_host::{
-    ABSENT, CameraWorld, MeansSwitch, Monitor, PlanLine, TracePoint, clock_words, event_words,
-    sensor_words, state_words, terrain_words,
+    ABSENT, CameraWorld, Monitor, PlanLine, SpoofDrag, TracePoint, clock_words, event_words,
+    terrain_words,
 };
 use sim_navigate::NavMeans;
-use sim_navigate::trial::SensorKind;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlInputElement};
 
@@ -31,6 +33,9 @@ use match_panel::MatchPanel;
 use page_map::PageMap;
 pub use page_map::PageMapSetup;
 use plot::Plot;
+pub use sensor_panel::FaultsAsked;
+use sensor_panel::SensorPanel;
+pub use steering::Steering;
 use track_map::TrackMap;
 
 /// The colours of the sets, in the run's order, for the page's dark
@@ -62,10 +67,32 @@ pub fn series_colour(index: usize) -> &'static str {
 pub struct Controls {
     /// Sets whose line is hidden.
     pub hidden: BTreeSet<String>,
-    /// Sensors the visitor asks to withhold.
-    pub withheld: BTreeSet<&'static str>,
+    /// The sensor faults the visitor asks for.
+    pub faults: FaultsAsked,
     /// The pace.
     pub speed: Option<f64>,
+}
+
+/// What a monitor is built from.
+pub struct MonitorSetup<'a> {
+    /// The pace the flight starts at.
+    pub speed: Option<f64>,
+    /// Whether the flight takes the visitor's switches; a recorded run cannot.
+    pub can_switch: bool,
+    /// The set the flight steers on and the links that fly on another.
+    pub steering: Option<Steering>,
+    /// The drag a spoofer switched on here applies.
+    pub spoof: SpoofDrag,
+    /// What stands under the sets' results.
+    pub caveat: Option<&'a str>,
+    /// What the terrain camera sees, which the track map lies over.
+    pub world: Option<CameraWorld>,
+    /// What stands beside the terrain camera's results.
+    pub world_note: Option<String>,
+    /// What closes the section.
+    pub about: &'a str,
+    /// The page's map, when the app draws one.
+    pub page_map: Option<PageMapSetup>,
 }
 
 /// The monitor's part of the page.
@@ -77,49 +104,43 @@ pub struct MonitorView {
     frame: FramePanel,
     matching: MatchPanel,
     legend: Element,
-    switches: Element,
+    steering: Option<Steering>,
+    steering_block: Element,
+    sensors: SensorPanel,
     speeds: Element,
     terrain: Element,
     mission: Element,
     events: Element,
     run_link: Element,
     built_for: Vec<String>,
-    can_switch: bool,
 }
 
 impl MonitorView {
-    /// The monitor in `section`, starting at `speed`. `can_switch` says
-    /// whether the flight takes the visitor's switches; a recorded run
-    /// cannot. `caveat` stands under the sets' results, `world_note` beside
-    /// the terrain camera's, and `about` closes the section. The track map
-    /// lies over `world` when there is one.
-    pub fn inside(
-        section: Section,
-        speed: Option<f64>,
-        can_switch: bool,
-        caveat: Option<&str>,
-        (world, world_note): (Option<CameraWorld>, Option<String>),
-        about: &str,
-        page_map: Option<PageMapSetup>,
-    ) -> Option<Self> {
+    /// The monitor of `setup` in `section`.
+    pub fn inside(section: Section, setup: MonitorSetup<'_>) -> Option<Self> {
         let document = section.document().clone();
         let root = section.root().clone();
+        // What the flight is flown on and the visitor's controls stand first, next to
+        // the views they change.
+        let steering_block = append(&document, &root, "div", "")?;
+        let sensors = SensorPanel::under(&document, &root, setup.can_switch, setup.spoof)?;
+        let speeds = append(&document, &root, "div", "speeds")?;
+        speed_choices(&document, &speeds, setup.speed);
         let plot = Plot::under(&document, &root)?;
         let legend = append(&document, &root, "div", "legend")?;
-        if let Some(caveat) = caveat
+        if let Some(caveat) = setup.caveat
             && let Some(line) = append(&document, &root, "p", "detail")
         {
             line.set_text_content(Some(caveat));
         }
-        let page_map = page_map.and_then(|setup| PageMap::under(&document, &root, setup));
-        let map = TrackMap::under(&document, &root, world)?;
+        let page_map = setup
+            .page_map
+            .and_then(|setup| PageMap::under(&document, &root, setup));
+        let map = TrackMap::under(&document, &root, setup.world)?;
         let frame = FramePanel::under(&document, &root)?;
         let matching = MatchPanel::under(&document, &root)?;
-        let switches = append(&document, &root, "div", "switches")?;
-        let speeds = append(&document, &root, "div", "speeds")?;
-        speed_choices(&document, &speeds, speed);
         let run_link = append(&document, &root, "p", "detail run-link")?;
-        if let Some(note) = world_note
+        if let Some(note) = setup.world_note
             && let Some(line) = append(&document, &root, "p", "detail")
         {
             line.set_text_content(Some(&format!("The camera's world: {note}")));
@@ -128,7 +149,7 @@ impl MonitorView {
         let mission = append(&document, &root, "dl", "lines live-rows")?;
         let events = append(&document, &root, "dl", "lines live-rows")?;
         if let Some(closing) = append(&document, &root, "p", "detail") {
-            closing.set_text_content(Some(about));
+            closing.set_text_content(Some(setup.about));
         }
         Some(Self {
             section,
@@ -138,14 +159,15 @@ impl MonitorView {
             frame,
             matching,
             legend,
-            switches,
+            steering: setup.steering,
+            steering_block,
+            sensors,
             speeds,
             terrain,
             mission,
             events,
             run_link,
             built_for: Vec::new(),
-            can_switch,
         })
     }
 
@@ -180,12 +202,6 @@ impl MonitorView {
             .filter(|input| !input.checked())
             .filter_map(|input| input.get_attribute("data-set"))
             .collect();
-        let withheld = inputs(&self.switches)
-            .filter(HtmlInputElement::checked)
-            .filter_map(|input| input.get_attribute("data-sensor"))
-            .filter_map(|name| SensorKind::ALL.into_iter().find(|kind| kind.name() == name))
-            .map(|kind| kind.name())
-            .collect();
         let speed = inputs(&self.speeds)
             .find(HtmlInputElement::checked)
             .and_then(|input| input.get_attribute("data-index"))
@@ -194,7 +210,7 @@ impl MonitorView {
             .map_or(Some(1.0), |(_, speed)| *speed);
         Controls {
             hidden,
-            withheld,
+            faults: self.sensors.asked(),
             speed,
         }
     }
@@ -209,7 +225,7 @@ impl MonitorView {
         self.draw_map(monitor, &controls.hidden);
         self.frame.draw(monitor);
         self.matching.draw(monitor);
-        self.switch_states(monitor);
+        self.sensors.show(self.section.document(), monitor);
         let visual: Vec<PlanLine> = monitor
             .traces()
             .iter()
@@ -245,7 +261,8 @@ impl MonitorView {
     /// The app's map once it draws, the page's own drawing until then.
     fn draw_map(&mut self, monitor: &Monitor, hidden: &BTreeSet<String>) {
         if let Some(page_map) = self.page_map.as_mut() {
-            page_map.draw(monitor, hidden);
+            let steered = self.steering.as_ref().map(|steering| steering.set.as_str());
+            page_map.draw(monitor, hidden, steered);
             if page_map.live() {
                 self.map.retire();
                 return;
@@ -254,7 +271,7 @@ impl MonitorView {
         self.map.draw(monitor, hidden);
     }
 
-    /// Builds the legend and the switches when the run's sets change.
+    /// Builds the legend and the steering block when the run's sets change.
     fn rebuild_if_new(&mut self, monitor: &Monitor) {
         let names: Vec<String> = monitor.traces().iter().map(|t| t.name.clone()).collect();
         if names == self.built_for {
@@ -262,12 +279,20 @@ impl MonitorView {
         }
         let document = self.section.document().clone();
         self.legend.set_text_content(None);
+        let steered = self.steering.as_ref().map(|steering| steering.set.as_str());
         for (index, name) in names.iter().enumerate() {
-            legend_row(&document, &self.legend, name, series_colour(index));
+            let role = match name.as_str() {
+                set if Some(set) == steered => Some("flying on · the map's aircraft"),
+                FLIGHT_CONTROLLER_SET => Some("Aviate's own estimate · compared only"),
+                _ => None,
+            };
+            legend_row(&document, &self.legend, (name, role), series_colour(index));
         }
-        self.switches.set_text_content(None);
-        for switch in monitor.switches() {
-            switch_row(&document, &self.switches, switch, self.can_switch);
+        self.steering_block.set_text_content(None);
+        if let Some(steering) = &self.steering {
+            let index = names.iter().position(|name| *name == steering.set);
+            let colour = index.map_or(SERIES_OTHER, series_colour);
+            steering::steering_block(&document, &self.steering_block, steering, colour);
         }
         self.built_for = names;
     }
@@ -287,35 +312,6 @@ impl MonitorView {
                 .and_then(|samples| samples.get(index).copied().flatten())
                 .map_or_else(|| ABSENT.to_owned(), |sample| sample_words(&sample));
             let text = format!("now {now} · end {at_end}");
-            if value.text_content().as_deref() != Some(text.as_str()) {
-                value.set_text_content(Some(&text));
-                value.set_attribute("title", &text).ok();
-            }
-        }
-    }
-
-    /// Each switch's sensor as the stream reports it, per set that has it.
-    fn switch_states(&self, monitor: &Monitor) {
-        for (switch, value) in monitor.switches().into_iter().zip(values(&self.switches)) {
-            let states: Vec<String> = monitor
-                .traces()
-                .iter()
-                .filter_map(|trace| {
-                    let sensors = monitor.sensors(&trace.name)?;
-                    let state = match switch.sensor {
-                        SensorKind::Gnss => sensors.gnss,
-                        SensorKind::Baro => sensors.baro,
-                        SensorKind::Stars => sensors.stars,
-                        SensorKind::TerrainCamera => sensors.terrain_camera,
-                    };
-                    Some(format!("{} {}", trace.name, state_words(state)?))
-                })
-                .collect();
-            let text = if states.is_empty() {
-                ABSENT.to_owned()
-            } else {
-                states.join(" · ")
-            };
             if value.text_content().as_deref() != Some(text.as_str()) {
                 value.set_text_content(Some(&text));
                 value.set_attribute("title", &text).ok();
@@ -349,7 +345,14 @@ fn checkbox(document: &Document, label: &Element, data: (&str, &str), checked: b
     }
 }
 
-fn legend_row(document: &Document, legend: &Element, name: &str, colour: &str) {
+/// A set's row: its switch, colour and name, and its `role` in the flight when it has
+/// one.
+fn legend_row(
+    document: &Document,
+    legend: &Element,
+    (name, role): (&str, Option<&str>),
+    colour: &str,
+) {
     let Some(label) = append(document, legend, "label", "series") else {
         return;
     };
@@ -362,29 +365,12 @@ fn legend_row(document: &Document, legend: &Element, name: &str, colour: &str) {
     if let Some(text) = append(document, &label, "span", "") {
         text.set_text_content(Some(name));
     }
+    if let Some(role) = role
+        && let Some(badge) = append(document, &label, "span", "role")
+    {
+        badge.set_text_content(Some(role));
+    }
     append(document, legend, "span", "value");
-}
-
-fn switch_row(document: &Document, switches: &Element, switch: MeansSwitch, can_switch: bool) {
-    let Some(label) = append(document, switches, "label", "series") else {
-        return;
-    };
-    checkbox(
-        document,
-        &label,
-        ("data-sensor", switch.sensor.name()),
-        false,
-    );
-    if !can_switch && let Some(input) = label.query_selector("input").ok().flatten() {
-        input.set_attribute("disabled", "").ok();
-        input
-            .set_attribute("title", "A recorded run cannot be changed.")
-            .ok();
-    }
-    if let Some(text) = append(document, &label, "span", "") {
-        text.set_text_content(Some(&format!("Withhold {}", sensor_words(switch.sensor))));
-    }
-    append(document, switches, "span", "value");
 }
 
 fn speed_choices(document: &Document, speeds: &Element, speed: Option<f64>) {

@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+navigate-contract = { workspace = true }
 sim-chain-trial = { workspace = true }
 sim-flight-chain = { workspace = true }
 aviate-core = { workspace = true }
@@ -85,6 +86,3 @@ web-sys = { workspace = true, features = [
     "WheelEvent",
     "Window",
 ] }
-
-[dev-dependencies]
-navigate-contract = { workspace = true }

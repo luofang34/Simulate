@@ -20,7 +20,7 @@ use crate::error::AppSimError;
 
 mod page;
 
-pub use page::{PageFeed, PageSnapshot};
+pub use page::{PageFeed, PageSnapshot, SteeredFix};
 
 /// One navigation set's latest standing against truth.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,6 +108,13 @@ impl ChainRig {
     #[must_use]
     pub fn navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {
         self.seen.navigation.clone()
+    }
+
+    /// Where the navigator the mission steers on places the aeroplane, once it has a
+    /// solution; `None` when the mission steers on the flight controller.
+    #[must_use]
+    pub const fn steered(&self) -> Option<SteeredFix> {
+        self.seen.steered
     }
 
     /// The estimate the displays draw: the flight controller's, or the last one it gave.

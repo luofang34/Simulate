@@ -141,7 +141,8 @@ impl MapLibreRig {
         if !efb.prepare_step(now, sim_time, airport)? {
             return Ok(());
         }
-        let own = charts::chart_ownship(&input.estimated_vehicle);
+        let own = charts::map_ownship(&input.estimated_vehicle, input.steered);
+        efb.lay_frame_marks(input);
         let traffic = input.supervisor.belief_entities(ViewSlotMask::ALL);
         efb.render_prepared(
             now,

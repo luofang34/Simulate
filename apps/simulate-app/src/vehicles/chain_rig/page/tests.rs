@@ -44,6 +44,30 @@ fn the_truth_between_two_instants_is_interpolated_and_the_controller_held() {
     assert!((ring.at(0.0).truth.state.position_ecef.x - x0).abs() < 1e-6);
 }
 
+#[test]
+fn the_steered_fix_between_two_instants_moves_with_the_truth_beside_it() {
+    use super::SteeredFix;
+    let base = first();
+    let fix = |lon_deg: f64, sigma_horizontal_m: f64| SteeredFix {
+        lat_deg: 41.7,
+        lon_deg,
+        ground_velocity_en_m_s: [55.0, 0.0],
+        sigma_horizontal_m,
+    };
+    let mut early = snapshot(&base, 1.0, 0.0, (1.0, 0.0));
+    early.steered = Some(fix(-1.0, 4.0));
+    let mut late = snapshot(&base, 2.0, 55.0, (2.0, 50.0));
+    late.steered = Some(fix(-0.9, 8.0));
+    let mut ring = SnapshotRing::new(early);
+    ring.push(late);
+    let mid = ring.at(1.25).steered.unwrap();
+    assert!((mid.lon_deg + 0.975).abs() < 1e-12 && (mid.sigma_horizontal_m - 5.0).abs() < 1e-12);
+    // Before the navigator's first solution there is nothing to move toward.
+    let mut ring = SnapshotRing::new(snapshot(&base, 1.0, 0.0, (1.0, 0.0)));
+    ring.push(snapshot(&base, 2.0, 55.0, (2.0, 50.0)));
+    assert_eq!(ring.at(1.5).steered, None);
+}
+
 /// The display time after each of `frames` of `dt_s` wall seconds, the page publishing
 /// `published(frame)` as its newest route time.
 fn run(

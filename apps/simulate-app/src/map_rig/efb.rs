@@ -109,6 +109,9 @@ pub struct EfbRig {
     views_shown: Option<[bool; 2]>,
     /// Frames drawn, so a host shows each new one once.
     frames: u64,
+    /// The colour a page judging the flight from outside draws ownship's ring in; a
+    /// cockpit, which has no such page, has none and marks no truth.
+    page_ownship: Option<sim_maplibre::Rgb>,
 }
 
 impl EfbRig {
@@ -148,6 +151,7 @@ impl EfbRig {
             picked: None,
             views_shown: None,
             frames: 0,
+            page_ownship: None,
         };
         rig.apply_layers()?;
         Ok(rig)

@@ -1,7 +1,8 @@
 //! The chain flown by a link's page and shown by the app: the page owns the one trial and
 //! steps it at its own pace; the app only draws what the page published, at a display
 //! time that runs smoothly a little behind the newest instant. The world outside is drawn
-//! at the truth; the displays read the flight controller's account only.
+//! at the truth; the displays read the flight controller's account, and the moving maps
+//! place the aeroplane where the navigator the mission steers on does.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -11,9 +12,11 @@ use sim_flight_chain::{FcAvionics, NavigationDisplay};
 use crate::page_map::PageMapLink;
 use display_clock::DisplayClock;
 use ring::SnapshotRing;
+pub use steered::SteeredFix;
 
 mod display_clock;
 mod ring;
+mod steered;
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +32,9 @@ pub struct PageSnapshot {
     pub phase: Option<String>,
     /// Pilotage's navigation display: the plan, the leg flown and the holding pattern.
     pub navigation: Option<NavigationDisplay>,
+    /// Where the navigator the mission steers on places the aeroplane; `None` before
+    /// its first solution and when the mission steers on the flight controller.
+    pub steered: Option<SteeredFix>,
 }
 
 impl PageSnapshot {
@@ -40,6 +46,10 @@ impl PageSnapshot {
             avionics: trial.avionics(),
             phase,
             navigation: trial.navigation().cloned(),
+            steered: trial
+                .steered()
+                .and_then(|steered| steered.solution)
+                .map(SteeredFix::of),
         }
     }
 

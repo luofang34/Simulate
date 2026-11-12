@@ -11,6 +11,7 @@ use crate::supervisor_rig::{DELAWARE_RUNWAY_BEARING_RAD, default_delaware_spawn}
 use crate::world_surface::WorldSurfaceHandle;
 
 mod aviate_rigs;
+mod chain_displays;
 mod chain_rig;
 mod jsbsim;
 mod selection;
@@ -20,7 +21,7 @@ mod tests;
 
 #[cfg(any(target_arch = "wasm32", test))]
 pub use chain_rig::PageSnapshot;
-pub use chain_rig::{PageFeed, SetStanding};
+pub use chain_rig::{PageFeed, SetStanding, SteeredFix};
 pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
 
@@ -175,25 +176,6 @@ impl FreeFlightPlant {
     pub fn stated_epoch_utc_s(&self) -> Option<f64> {
         match self {
             Self::C172Mission(rig) => Some(rig.epoch_utc_s()),
-            _ => None,
-        }
-    }
-
-    /// The flight controller's account of its last cycle and the estimate the displays
-    /// hold, when flying the real chain.
-    #[must_use]
-    pub fn chain_avionics(&self) -> Option<(sim_flight_chain::FcAvionics, VehicleState)> {
-        match self {
-            Self::C172Mission(rig) => Some((rig.avionics(), rig.held_estimate())),
-            _ => None,
-        }
-    }
-
-    /// Pilotage's navigation display, when flying the real chain.
-    #[must_use]
-    pub fn chain_navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {
-        match self {
-            Self::C172Mission(rig) => rig.navigation(),
             _ => None,
         }
     }

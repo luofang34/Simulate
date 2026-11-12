@@ -32,6 +32,7 @@ pub(super) fn frame_input<'a>(
         model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
         ground_m: flight.display_ground_height_m(),
         estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
+        steered: flight.chain_steered(),
         sensor_exposures,
         articulation: flight.display_articulation(),
         otw_camera: *camera,

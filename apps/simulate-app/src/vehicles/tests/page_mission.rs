@@ -144,3 +144,36 @@ fn a_page_flight_hands_no_optical_exposures_to_the_maps() {
     );
     assert!(page.drain_sensor_exposures().is_empty());
 }
+
+/// The moving maps place the aeroplane where the navigator the mission steers on does,
+/// which is neither the truth nor the flight controller's own estimate.
+#[test]
+fn a_page_missions_maps_draw_the_steered_navigators_fix() {
+    let spec = first_link().unwrap();
+    let mut trial = ChainTrial::new(&spec, &DirectoryStores).unwrap();
+    assert_eq!(
+        PageSnapshot::of(&trial, None).steered,
+        None,
+        "no solution yet"
+    );
+    trial.step_until(20.0).unwrap();
+    let steered = trial.steered().unwrap();
+    let solution = steered.solution.unwrap();
+    let feed = PageFeed::new(1_781_524_800.0, PageSnapshot::of(&trial, None));
+    let mut flight = crate::flight::Flight::new().unwrap();
+    flight.show_page_mission(feed).unwrap();
+    let fix = flight.chain_steered().unwrap();
+    assert_eq!(fix.lat_deg, solution.position.latitude_rad.to_degrees());
+    assert_eq!(fix.lon_deg, solution.position.longitude_rad.to_degrees());
+    assert!(fix.sigma_horizontal_m > 0.0);
+    let (_, held) = flight.chain_avionics().unwrap();
+    let controller = sim_geo::ecef_to_geodetic(held.position_ecef);
+    assert_ne!(
+        (fix.lat_deg, fix.lon_deg),
+        (
+            controller.lat_rad.to_degrees(),
+            controller.lon_rad.to_degrees()
+        ),
+        "the navigator's fix, not the flight controller's estimate"
+    );
+}

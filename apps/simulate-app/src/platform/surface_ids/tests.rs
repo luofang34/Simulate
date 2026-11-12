@@ -36,11 +36,17 @@ fn the_page_styles_what_the_app_builds_by_class() {
         ".lines",
         ".plot",
         ".legend",
-        ".switches",
         ".series",
         ".swatch",
+        ".role",
         ".value",
         ".speeds",
+        ".steering",
+        ".steering-head",
+        ".steering-others",
+        ".sensor-controls",
+        ".sensor-rows",
+        ".fault-switch",
     ] {
         let styled = [" ", ","]
             .iter()

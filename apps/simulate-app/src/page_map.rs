@@ -66,6 +66,7 @@ struct Shared {
     tracks: Option<Arc<EfbTracks>>,
     size_px: Option<[u32; 2]>,
     hidden: bool,
+    ownship_colour: Option<[u8; 3]>,
     view: PageMapView,
 }
 
@@ -106,6 +107,13 @@ impl PageMapLink {
         self.lock().tracks = Some(tracks);
     }
 
+    /// Page: ownship is the estimate of the set the page draws in `colour`, so the map
+    /// draws ownship's one-sigma ring in it.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn set_ownship_colour(&self, colour: [u8; 3]) {
+        self.lock().ownship_colour = Some(colour);
+    }
+
     /// Page: the canvas's drawing buffer is now `size_px`.
     #[cfg(any(target_arch = "wasm32", test))]
     pub fn resize(&self, size_px: [u32; 2]) {
@@ -140,6 +148,7 @@ impl PageMapLink {
                 .flatten(),
             tracks: shared.tracks.take(),
             size_px: shared.size_px.take(),
+            ownship_colour: shared.ownship_colour,
             visible: !shared.hidden,
         }
     }
@@ -161,6 +170,8 @@ pub(crate) struct PageMapInput {
     pub tracks: Option<Arc<EfbTracks>>,
     /// The canvas's new drawing-buffer size, physical pixels.
     pub size_px: Option<[u32; 2]>,
+    /// The colour of the set whose estimate ownship is, once the page said.
+    pub ownship_colour: Option<[u8; 3]>,
     /// Whether the canvas is in sight.
     pub visible: bool,
 }

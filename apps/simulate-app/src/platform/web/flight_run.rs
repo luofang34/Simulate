@@ -8,8 +8,8 @@ use std::fmt::Display;
 
 use sim_link::SimulationLink;
 use sim_link_host::{
-    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SwitchLog, run_lines,
-    run_slice, stopped_lines,
+    Clock, FlightStepper, Monitor, MonitorFeed, Pacer, SLICE_BUDGET_S, SpoofRun, SwitchLog,
+    run_lines, run_slice, stopped_lines,
 };
 use sim_navigate::trial::SensorKind;
 use tracing::{info, warn};
@@ -61,11 +61,20 @@ async fn steady_frame(cadence: &mut FrameCadence, clock: &PageClock) {
     }
 }
 
-fn run_url(link: &SimulationLink, outages: &[(SensorKind, f64, Option<f64>)]) -> Option<String> {
+/// The faults a flight has flown so far: its outages and its spoofer.
+type Flown = (Vec<(SensorKind, f64, Option<f64>)>, Option<SpoofRun>);
+
+fn flown<F: FlightStepper>(flight: &F) -> Flown {
+    (flight.outages(), flight.gnss_spoof())
+}
+
+fn run_url(link: &SimulationLink, (outages, spoof): &Flown) -> Option<String> {
     let base = web_sys::window()?.location().href().ok()?;
     let mut bare = link.clone();
     bare.outages.clear();
-    match SwitchLog::of_outages(outages).url(&bare, &base) {
+    bare.spoof = None;
+    let log = SwitchLog::of_outages(outages).with_spoof(spoof.as_ref());
+    match log.url(&bare, &base) {
         Ok(url) => Some(url),
         Err(refusal) => {
             warn!(%refusal, "the run's link cannot be written");
@@ -78,8 +87,8 @@ fn run_url(link: &SimulationLink, outages: &[(SensorKind, f64, Option<f64>)]) ->
 fn apply_switches<F: FlightStepper>(flight: &mut F, before: &Controls, now: &Controls) {
     for sensor in SensorKind::ALL {
         let (was, is) = (
-            before.withheld.contains(sensor.name()),
-            now.withheld.contains(sensor.name()),
+            before.faults.stopped.contains(sensor.name()),
+            now.faults.stopped.contains(sensor.name()),
         );
         if was != is {
             info!(
@@ -89,6 +98,13 @@ fn apply_switches<F: FlightStepper>(flight: &mut F, before: &Controls, now: &Con
             );
             flight.switch(sensor, !is);
         }
+    }
+    if before.faults.spoof_gnss != now.faults.spoof_gnss {
+        info!(
+            on = now.faults.spoof_gnss,
+            "the GNSS spoofer the visitor switched"
+        );
+        flight.spoof_gnss(now.faults.spoof_gnss);
     }
 }
 
@@ -170,9 +186,9 @@ pub async fn fly<F>(
     F::Error: Display,
 {
     let clock = PageClock::of_page();
-    let mut outages = flight.outages();
+    let mut faults = flown(&flight);
     if let Some(link) = link {
-        view.show_run_link(run_url(link, &outages).as_deref());
+        view.show_run_link(run_url(link, &faults).as_deref());
     }
     let (mut monitor, mut share) = (Monitor::default(), FrameShare::default());
     let mut controls = view.controls();
@@ -218,11 +234,11 @@ pub async fn fly<F>(
                 }
             }
             publish(&flight, &monitor);
-            let flown = flight.outages();
-            if flown != outages {
-                outages = flown;
+            let now = flown(&flight);
+            if now != faults {
+                faults = now;
                 if let Some(link) = link {
-                    view.show_run_link(run_url(link, &outages).as_deref());
+                    view.show_run_link(run_url(link, &faults).as_deref());
                 }
             }
         }

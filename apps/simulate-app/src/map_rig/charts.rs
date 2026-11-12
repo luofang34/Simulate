@@ -16,6 +16,7 @@ use sim_scenery::{AerodromeId, LandingRunwayGeometry};
 use super::{AIRPORT_SURFACE_MAP, MapFrameInput, MapLibreRig};
 use crate::error::AppSimError;
 use crate::supervisor_rig::SupervisorRig;
+use crate::vehicles::SteeredFix;
 
 impl MapLibreRig {
     /// Samples orthometric elevation (`metres above MSL`) from the onboard `PFD_SVS_MAP`
@@ -70,6 +71,19 @@ pub fn chart_ownship(vehicle: &VehicleState) -> ChartOwnship {
             vehicle.velocity_ecef.dot(local.north()),
         ],
     }
+}
+
+/// Ownship as the moving maps place it: where the `steered` navigator does when the
+/// mission flies on one, with the heading of the instruments' own `estimated` solution,
+/// else that solution's position too.
+pub fn map_ownship(estimated: &VehicleState, steered: Option<SteeredFix>) -> ChartOwnship {
+    let own = chart_ownship(estimated);
+    steered.map_or(own, |fix| ChartOwnship {
+        lat_deg: fix.lat_deg,
+        lon_deg: fix.lon_deg,
+        ground_velocity_en_mps: fix.ground_velocity_en_m_s,
+        ..own
+    })
 }
 
 /// Revision of the symbology: changes when ownship moves a few metres or turns half a degree.

@@ -273,6 +273,17 @@ impl Flight {
         world.session()?.block().plant().chain_avionics()
     }
 
+    /// Where the navigator the real chain's mission steers on places the vehicle: the
+    /// moving maps' ownship. `None` off the chain, before the navigator's first solution
+    /// and when the mission steers on the flight controller.
+    #[must_use]
+    pub fn chain_steered(&self) -> Option<crate::vehicles::SteeredFix> {
+        let Mode::Free { world, .. } = &self.mode else {
+            return None;
+        };
+        world.session()?.block().plant().chain_steered()
+    }
+
     /// Pilotage's navigation display, when the free vehicle flies the real control chain.
     #[must_use]
     pub fn chain_navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {

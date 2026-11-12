@@ -3,9 +3,10 @@
 //! the one map. The page hands over the plan and the tracks it lays over it, and reads
 //! back where the plan's fixes are and which one was picked.
 
-use sim_maplibre::{EfbDisplayMode, EfbRefreshPolicy, leg_state};
+use sim_geo::ecef_to_geodetic;
+use sim_maplibre::{EfbDisplayMode, EfbFrameMarks, EfbRefreshPolicy, Rgb, SigmaRing, leg_state};
 
-use super::super::MapLibreRig;
+use super::super::{MapFrameInput, MapLibreRig};
 use super::EfbRig;
 use crate::error::AppSimError;
 use crate::page_map::{FixLabel, PageMapInput, PageMapView, PickedFix};
@@ -18,7 +19,28 @@ const PAGE_ZOOM: f64 = 9.5;
 #[cfg(any(target_arch = "wasm32", test))]
 const PICK_RADIUS_CSS_PX: f32 = 16.0;
 
+/// Ownship's ring where no page gives its colour: the silhouette's own white.
+const OWNSHIP_RING: Rgb = [0xf2, 0xf4, 0xf8];
+
 impl EfbRig {
+    /// Lays this frame's marks over the views: the steered navigator's stated one-sigma
+    /// about ownship and, for a page that judges the flight from outside, the
+    /// simulator's true position. Both are of the instant `input` draws, so they stay
+    /// registered with ownship at any pace.
+    pub(super) fn lay_frame_marks(&mut self, input: &MapFrameInput<'_>) {
+        let truth = ecef_to_geodetic(input.vehicle.position_ecef);
+        self.surface.set_frame_marks(EfbFrameMarks {
+            ownship_ring: input.steered.map(|fix| SigmaRing {
+                centre_deg: [fix.lat_deg, fix.lon_deg],
+                sigma_m: fix.sigma_horizontal_m,
+                colour: self.page_ownship.unwrap_or(OWNSHIP_RING),
+            }),
+            truth_deg: self
+                .page_ownship
+                .map(|_| [truth.lat_rad.to_degrees(), truth.lon_rad.to_degrees()]),
+        });
+    }
+
     /// Picks the fix nearest `at_px` on the shown view, or none.
     #[cfg(any(target_arch = "wasm32", test))]
     pub(super) fn pick(&mut self, at_px: [f32; 2]) {
@@ -89,6 +111,7 @@ impl MapLibreRig {
             efb.views_shown = Some(shown);
             efb.dirty = true;
         }
+        efb.page_ownship = Some(input.ownship_colour.unwrap_or(OWNSHIP_RING));
         for command in input.commands {
             efb.command(command)?;
         }
