@@ -2,7 +2,6 @@
 
 use glam::{DMat4, DVec3};
 use openusd::{
-    ar::AssetBuffer,
     gf, sdf,
     tf::Token,
     usd::{PrimPredicate, SchemaBase, Stage},
@@ -17,11 +16,12 @@ use super::{
 };
 use crate::MapAdapterError;
 
-pub(super) fn load_aircraft_from_bytes(
+mod implicit;
+
+pub(super) fn load_aircraft(
     identifier: &str,
-    bytes: AssetBuffer,
+    resolver: EmbeddedUsdResolver,
 ) -> Result<UsdAircraftAsset, MapAdapterError> {
-    let resolver = EmbeddedUsdResolver::single(identifier, bytes);
     let stage = Stage::builder()
         .schema_registry(openusd_schemas::schema_registry())
         .resolver(resolver)
@@ -59,33 +59,15 @@ fn decode_mesh_prim(
     xform_cache: &mut XformCache,
     path: &sdf::Path,
 ) -> Result<Option<UsdMeshPart>, MapAdapterError> {
-    let mesh = geom::Mesh::get(stage, path.clone()).map_err(usd_err)?;
-    let Some(mesh) = mesh else {
+    let Some((prim, (mut vertices, indices), double_sided)) = part_geometry(stage, path)? else {
         return Ok(None);
     };
-    let prim = mesh.prim();
+    let prim = &prim;
     let gf_mat = xform_cache
         .local_to_world_transform(prim)
         .map_err(schema_err)?;
-    let rest_to_aircraft = DMat4::from_cols_array(&gf_mat.0);
-
-    let points = mesh.points().map_err(usd_err)?.unwrap_or_default();
-    let normals = mesh.normals().map_err(usd_err)?.unwrap_or_default();
-    let counts = mesh
-        .face_vertex_counts()
-        .map_err(usd_err)?
-        .unwrap_or_default();
-    let raw_indices = mesh
-        .face_vertex_indices()
-        .map_err(usd_err)?
-        .unwrap_or_default();
-    let uvs = prim
-        .attribute("primvars:st")
-        .get::<Vec<gf::Vec2f>>()
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    let double_sided = mesh.double_sided().map_err(usd_err)?.unwrap_or(false);
+    let mut rest_to_aircraft = DMat4::from_cols_array(&gf_mat.0);
+    implicit::bake_scale(&mut rest_to_aircraft, &mut vertices);
 
     let role_tok = prim
         .attribute("sim:partRole")
@@ -105,11 +87,6 @@ fn decode_mesh_prim(
     if role == PartRole::CabinExterior && material.opacity < 0.99 {
         role = PartRole::CabinGlass;
     }
-    let (vertices, indices) = triangulate_usd_mesh(&points, &normals, &uvs, &counts, &raw_indices);
-    if indices.is_empty() {
-        return Ok(None);
-    }
-
     Ok(Some(UsdMeshPart {
         prim_path: path.to_string(),
         role,
@@ -125,6 +102,49 @@ fn decode_mesh_prim(
         indices,
     }))
 }
+
+/// Triangles of a `Mesh` or of an implicit gprim (`Cube`, `Sphere`, `Cylinder`, `Cone`,
+/// `Capsule`), with the prim and its `doubleSided`; `None` for other prims or no triangles.
+fn part_geometry(stage: &Stage, path: &sdf::Path) -> Result<Option<Decoded>, MapAdapterError> {
+    if let Some(mesh) = geom::Mesh::get(stage, path.clone()).map_err(usd_err)? {
+        let prim = mesh.prim().clone();
+        let points = mesh.points().map_err(usd_err)?.unwrap_or_default();
+        let normals = mesh.normals().map_err(usd_err)?.unwrap_or_default();
+        let counts = mesh
+            .face_vertex_counts()
+            .map_err(usd_err)?
+            .unwrap_or_default();
+        let raw_indices = mesh
+            .face_vertex_indices()
+            .map_err(usd_err)?
+            .unwrap_or_default();
+        let uvs = prim
+            .attribute("primvars:st")
+            .get::<Vec<gf::Vec2f>>()
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let double_sided = mesh.double_sided().map_err(usd_err)?.unwrap_or(false);
+        let buffers = triangulate_usd_mesh(&points, &normals, &uvs, &counts, &raw_indices);
+        return Ok((!buffers.1.is_empty()).then_some((prim, buffers, double_sided)));
+    }
+    let Ok(prim) = stage.prim(path.clone()) else {
+        return Ok(None);
+    };
+    let Some(buffers) = implicit::geometry(&prim) else {
+        return Ok(None);
+    };
+    let double_sided = prim
+        .attribute("doubleSided")
+        .get::<bool>()
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+    Ok(Some((prim, buffers, double_sided)))
+}
+
+/// A decoded gprim: the prim, its vertex and index buffers, and `doubleSided`.
+type Decoded = (openusd::usd::Prim, (Vec<UsdMeshVertex>, Vec<u32>), bool);
 
 fn resolve_hinge_axis(stage: &Stage, path: &sdf::Path) -> Option<DVec3> {
     for anc in path.ancestors_below_root() {

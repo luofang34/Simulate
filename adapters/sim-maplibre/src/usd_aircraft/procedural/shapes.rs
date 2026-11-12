@@ -10,14 +10,14 @@ use crate::UsdMeshVertex;
 
 /// Accumulates vertices and triangle indices for one part's mesh.
 #[derive(Clone, Debug, Default)]
-pub(super) struct MeshBuilder {
+pub(in crate::usd_aircraft) struct MeshBuilder {
     vertices: Vec<UsdMeshVertex>,
     indices: Vec<u32>,
 }
 
 /// Interior reference used to decide which side of a lofted surface faces outward.
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Inside {
+pub(in crate::usd_aircraft) enum Inside {
     /// The segment between consecutive ring centroids (open tubes, fuselages, blades).
     Axis,
     /// One interior point of a convex solid (ellipsoids, domes).
@@ -25,11 +25,11 @@ pub(super) enum Inside {
 }
 
 impl MeshBuilder {
-    pub(super) fn new() -> Self {
+    pub(in crate::usd_aircraft) fn new() -> Self {
         Self::default()
     }
 
-    pub(super) fn into_buffers(self) -> (Vec<UsdMeshVertex>, Vec<u32>) {
+    pub(in crate::usd_aircraft) fn into_buffers(self) -> (Vec<UsdMeshVertex>, Vec<u32>) {
         (self.vertices, self.indices)
     }
 
@@ -69,7 +69,7 @@ impl MeshBuilder {
     }
 
     /// Flat-shaded convex polygon (fan triangulated) facing `outward`.
-    pub(super) fn polygon(&mut self, points: &[Vec3], outward: Vec3) {
+    pub(in crate::usd_aircraft) fn polygon(&mut self, points: &[Vec3], outward: Vec3) {
         let mut corners = points.iter().copied();
         let (Some(p0), Some(p1), Some(p2)) = (corners.next(), corners.next(), corners.next())
         else {
@@ -89,7 +89,7 @@ impl MeshBuilder {
     }
 
     /// Flat-shaded axis-aligned box.
-    pub(super) fn cuboid(&mut self, min: Vec3, max: Vec3) {
+    pub(in crate::usd_aircraft) fn cuboid(&mut self, min: Vec3, max: Vec3) {
         let centre = (min + max) * 0.5;
         let corner = |x: bool, y: bool, z: bool| {
             Vec3::new(
@@ -134,10 +134,14 @@ impl MeshBuilder {
             }));
         }
         let index = |ring: usize, j: usize| {
-            u32::try_from(base + ring * count + j % count).unwrap_or(u32::MAX)
+            u32::try_from(
+                base.saturating_add(ring.saturating_mul(count))
+                    .saturating_add(j % count),
+            )
+            .unwrap_or(u32::MAX)
         };
         let centroids: Vec<Vec3> = rings.iter().map(|r| centroid(r)).collect();
-        let mut triangles = Vec::with_capacity(rings.len().saturating_mul(count * 2));
+        let mut triangles = Vec::with_capacity(rings.len().saturating_mul(count.saturating_mul(2)));
         let mut vote = 0.0_f32;
         for (i, pair) in centroids.windows(2).enumerate() {
             let reference = match inside {
@@ -145,13 +149,13 @@ impl MeshBuilder {
                 Inside::Point(point) => point,
             };
             for j in 0..count {
-                let quad = [
+                let [q0, q1, q2, q3] = [
                     index(i, j),
-                    index(i, j + 1),
-                    index(i + 1, j + 1),
-                    index(i + 1, j),
+                    index(i, j.saturating_add(1)),
+                    index(i.saturating_add(1), j.saturating_add(1)),
+                    index(i.saturating_add(1), j),
                 ];
-                for tri in [[quad[0], quad[1], quad[2]], [quad[0], quad[2], quad[3]]] {
+                for tri in [[q0, q1, q2], [q0, q2, q3]] {
                     let [a, b, c] = tri.map(|q| self.position(q));
                     vote += (b - a).cross(c - a).dot((a + b + c) / 3.0 - reference);
                     triangles.push(tri);
@@ -188,7 +192,7 @@ impl MeshBuilder {
             let axis_point = centres.iter().copied().sum::<Vec3>() * 0.5;
             let count = lower.len().min(upper.len());
             for j in 0..count {
-                let next = (j + 1) % count;
+                let next = j.saturating_add(1) % count;
                 let quad = [lower.get(j), lower.get(next), upper.get(next), upper.get(j)];
                 let [Some(a), Some(b), Some(c), Some(d)] = quad else {
                     continue;
@@ -226,7 +230,13 @@ impl MeshBuilder {
     }
 
     /// Smooth ellipsoid centred on `centre` with semi-axes `radii`.
-    pub(super) fn ellipsoid(&mut self, centre: Vec3, radii: Vec3, segments: u32, stacks: u32) {
+    pub(in crate::usd_aircraft) fn ellipsoid(
+        &mut self,
+        centre: Vec3,
+        radii: Vec3,
+        segments: u32,
+        stacks: u32,
+    ) {
         let rings: Vec<Vec<Vec3>> = (0..=stacks.max(2))
             .map(|k| {
                 let phi = -std::f32::consts::FRAC_PI_2
@@ -244,7 +254,14 @@ impl MeshBuilder {
     }
 
     /// Capped circular frustum from `a` (radius `ra`) to `b` (radius `rb`).
-    pub(super) fn tube(&mut self, a: Vec3, b: Vec3, ra: f32, rb: f32, segments: u32) {
+    pub(in crate::usd_aircraft) fn tube(
+        &mut self,
+        a: Vec3,
+        b: Vec3,
+        ra: f32,
+        rb: f32,
+        segments: u32,
+    ) {
         let (u, v) = (b - a).normalize_or(Vec3::Z).any_orthonormal_pair();
         let rings = [
             ring(a, u * ra, v * ra, segments),
@@ -265,13 +282,17 @@ impl MeshBuilder {
             })
             .collect();
         for (k, &current) in rim.iter().enumerate() {
-            let next = rim.get(k + 1).or(rim.first()).copied().unwrap_or(current);
+            let next = rim
+                .get(k.saturating_add(1))
+                .or(rim.first())
+                .copied()
+                .unwrap_or(current);
             self.push_oriented([hub, current, next], Vec3::Y);
         }
     }
 
     /// Appends `other` transformed by the rigid `transform`.
-    pub(super) fn append(&mut self, other: MeshBuilder, transform: Mat4) {
+    pub(in crate::usd_aircraft) fn append(&mut self, other: MeshBuilder, transform: Mat4) {
         let base = u32::try_from(self.vertices.len()).unwrap_or(u32::MAX);
         self.vertices.extend(other.vertices.into_iter().map(|v| {
             UsdMeshVertex {
@@ -321,7 +342,7 @@ pub(super) fn aerofoil(leading: Vec3, chord: Vec3, thickness: Vec3) -> Vec<Vec3>
         .iter()
         .rev()
         .skip(1)
-        .take(STATIONS.len() - 2)
+        .take(STATIONS.len().saturating_sub(2))
         .map(|&(s, t)| leading + chord * s - thickness * (0.5 * t));
     upper.chain(lower).collect()
 }
