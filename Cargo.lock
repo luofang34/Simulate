@@ -3875,7 +3875,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -3892,7 +3892,7 @@ dependencies = [
 [[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 dependencies = [
  "serde",
  "serde_json",
@@ -3903,12 +3903,12 @@ dependencies = [
 [[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3920,7 +3920,7 @@ dependencies = [
 [[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -3932,12 +3932,12 @@ dependencies = [
 [[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -3950,7 +3950,7 @@ dependencies = [
 [[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=df239a735c0c1c384830faf53fce4bf7ee6bbc12#df239a735c0c1c384830faf53fce4bf7ee6bbc12"
+source = "git+https://github.com/luofang34/Pilotage?rev=2b7c9393934984862006a2f94679223835c13f01#2b7c9393934984862006a2f94679223835c13f01"
 
 [[package]]
 name = "pin-project"
