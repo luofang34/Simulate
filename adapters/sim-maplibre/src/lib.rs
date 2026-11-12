@@ -30,11 +30,7 @@ pub use chart_assets::{CHART_URL_PREFIX, ChartAssetStore, chart_url};
 pub use chart_symbology::{
     ChartOwnship, ChartSymbologyInput, build_chart_symbology, build_chart_symbology_scaled,
 };
-pub use efb_map::{
-    ApproachPlateOverlay, DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE,
-    EfbDisplayMode, EfbFollowMode, EfbLayerFlags, EfbMapConfig, EfbMapSurface, EfbPacer,
-    EfbRefreshPolicy, ProceduralPlateSpec, generate_procedural_approach_plate,
-};
+pub use efb_map::*;
 pub use entities::{
     DynamicEntity3D, DynamicEntityKind, build_conformal_overlay, entities_from_surveillance_belief,
     entity_depth_probes, orientation_from_ned_body_quat,

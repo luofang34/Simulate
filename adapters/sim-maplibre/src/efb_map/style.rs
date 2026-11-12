@@ -3,10 +3,26 @@
 //! airport surface diagram. Ownship, route and traffic symbology draws above every layer
 //! as the slot's overlay.
 
-use maplibre::style::{Style, source::Source};
+use std::sync::Arc;
+
+use maplibre::{
+    background::BackgroundPlugin,
+    headless::environment::HeadlessEnvironment,
+    hillshade::HillshadePlugin,
+    overlay::OverlayPlugin,
+    plugin::Plugin,
+    raster::{DefaultRasterTransferables, RasterPlugin},
+    render::RenderPlugin,
+    style::{Style, source::Source},
+    terrain::{TerrainPlugin, transferables::DefaultDemTransferables},
+    vector::{DefaultVectorTransferables, VectorPlugin},
+};
 use serde_json::{Value, json};
 
-use crate::{MapAdapterError, SceneryEndpoints, belief_aviation_chart_style, chart_url};
+use crate::{
+    CockpitDeviceTier, MapAdapterError, SceneryEndpoints, belief_aviation_chart_style, chart_url,
+    runtime::{DrapeBudgetPlugin, EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin},
+};
 
 /// Image source carrying the approach plate.
 pub(super) const PLATE_SOURCE: &str = "efb-plate-source";
@@ -23,7 +39,8 @@ pub(super) const NO_PLATE_CHART_ID: &str = "efb-no-plate";
 /// Default plate opacity, so the moving map stays readable beneath it.
 pub(super) const DEFAULT_PLATE_OPACITY: f32 = 0.78;
 
-/// The chart style with the EFB's plate and airspace layers, the plate hidden.
+/// The chart style with the EFB's plate and airspace layers, the plate hidden, and the
+/// plan's layers (see [`super::plan_style`]).
 pub(super) fn efb_style(
     endpoints: &SceneryEndpoints,
     aerodrome_geojson: Value,
@@ -71,6 +88,7 @@ pub(super) fn efb_style(
             diagram.as_deref(),
         )
         .map_err(mutation(AIRSPACE_LAYER))?;
+    super::plan_style::add_plan_layers(&mut style, endpoints, Some(PLATE_LAYER))?;
     Ok(style)
 }
 
@@ -86,4 +104,31 @@ pub(super) fn aerodrome_layer_ids(style: &Style) -> Vec<String> {
 
 fn first_aerodrome_layer(style: &Style) -> Option<String> {
     aerodrome_layer_ids(style).into_iter().next()
+}
+
+/// The plugins the EFB map draws with.
+pub(super) fn plugins(tier: CockpitDeviceTier) -> Vec<Box<dyn Plugin<HeadlessEnvironment>>> {
+    vec![
+        Box::new(RenderPlugin),
+        Box::new(BackgroundPlugin),
+        Box::new(RasterPlugin::<DefaultRasterTransferables>::default()),
+        Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
+        Box::new(HillshadePlugin),
+        Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
+        Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
+        Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
+        Box::new(OverlayPlugin),
+    ]
+}
+
+/// A 1 × 1 transparent PNG for the plate source while no plate is shown.
+pub(super) fn transparent_pixel_png() -> Result<Arc<[u8]>, MapAdapterError> {
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::new(1, 1)
+        .write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|error| MapAdapterError::ChartRaster {
+            chart_id: NO_PLATE_CHART_ID.to_owned(),
+            detail: error.to_string(),
+        })?;
+    Ok(Arc::from(cursor.into_inner()))
 }

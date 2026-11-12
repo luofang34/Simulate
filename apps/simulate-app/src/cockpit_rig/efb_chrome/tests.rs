@@ -29,6 +29,7 @@ fn status(mode: EfbDisplayMode) -> EfbStatus {
         diagram_shown: true,
         airport: "KEWR".to_owned(),
         plate_title: Some("ILS OR LOC RWY 22L".to_owned()),
+        satellite: false,
     }
 }
 
@@ -157,12 +158,13 @@ fn compact_buttons_and_the_map_hit_test_to_what_is_drawn() {
 fn expanded_toolbar_chips_read_in_full_and_hit_test_to_their_commands() {
     for size in WINDOWS {
         let chrome = EfbChrome::new(size, &status(EfbDisplayMode::ExpandedEfb));
-        assert_eq!(chrome.buttons.len(), 8);
+        assert_eq!(chrome.buttons.len(), 9);
         let labels: Vec<&str> = chrome.buttons.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(
             labels,
             [
-                "-", "+", "TRK UP", "PLATE ON", "OPAC 75%", "DIAG ON", "CENTER", "MINIMIZE"
+                "-", "+", "TRK UP", "PLATE ON", "OPAC 75%", "DIAG ON", "SAT OFF", "CENTER",
+                "MINIMIZE"
             ]
         );
         for (i, a) in chrome.buttons.iter().enumerate() {

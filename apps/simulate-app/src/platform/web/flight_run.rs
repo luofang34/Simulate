@@ -16,6 +16,7 @@ use tracing::{info, warn};
 use wasm_bindgen_futures::JsFuture;
 
 use super::monitor_view::{Controls, MonitorView};
+use crate::app::cadence::FrameCadence;
 
 /// The wall clock of the page.
 #[derive(Clone)]
@@ -49,6 +50,17 @@ async fn animation_frame() {
 
 /// The link of the run as flown, on the page's own address: `link` with
 /// the flight's outages, the stated and the switched, in place of its own.
+/// Waits for the next animation frame at most every 60 Hz refresh, as the world view
+/// draws, so a frame's slice and its drawing fit one steady frame.
+async fn steady_frame(cadence: &mut FrameCadence, clock: &PageClock) {
+    loop {
+        animation_frame().await;
+        if cadence.due(clock.now_s()) {
+            return;
+        }
+    }
+}
+
 fn run_url(link: &SimulationLink, outages: &[(SensorKind, f64, Option<f64>)]) -> Option<String> {
     let base = web_sys::window()?.location().href().ok()?;
     let mut bare = link.clone();
@@ -182,8 +194,9 @@ pub async fn fly<F>(
     let mut out = Vec::new();
     let (mut flying, mut dirty) = (true, true);
     let started_s = clock.now_s();
+    let mut cadence = FrameCadence::default();
     loop {
-        animation_frame().await;
+        steady_frame(&mut cadence, &clock).await;
         share.frame(clock.now_s());
         let now = view.controls();
         if now != controls {

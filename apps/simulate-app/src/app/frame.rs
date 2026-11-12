@@ -136,6 +136,25 @@ impl FlightApp {
         Some(camera)
     }
 
+    /// The pilot's keys, throttle and look over `elapsed_s` of wall time.
+    fn pilot_inputs(&mut self, elapsed_s: f64, viewport_mode: OperatorViewportMode) {
+        self.keyboard.update(elapsed_s, &mut self.mapper);
+        let throttle = self.mapper.controls().throttle;
+        if let Some(t) = self.controls.integrate_throttle(elapsed_s, throttle) {
+            self.mapper.set(sim_input::Control::Throttle, t);
+        }
+        self.controls.sync_live(self.mapper.controls());
+        if self.controls.take_look_reset() {
+            self.look.reset();
+        }
+        let look_axes = self.controls.camera_look_axes();
+        if viewport_mode == OperatorViewportMode::Cockpit {
+            self.look.follow_stick(look_axes, elapsed_s);
+        } else {
+            self.look.integrate(look_axes, elapsed_s);
+        }
+    }
+
     /// Sizes the panels drawn apart to their canvases, and the instruments to the panels.
     fn follow_panel_layout(&mut self) {
         if let (Some(panels), Some(renderer), Some(rig)) = (
@@ -147,6 +166,24 @@ impl FlightApp {
         }
     }
 
+    /// Draws this refresh, or in a browser on a display faster than 60 Hz, skips it to
+    /// keep every frame the same length and asks for the next.
+    pub(super) fn redraw_when_due(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let now_s = web_sys::window()
+                .and_then(|window| window.performance())
+                .map_or(0.0, |performance| performance.now() / 1000.0);
+            if !self.cadence.due(now_s) {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+        self.redraw(event_loop);
+    }
+
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.mapper.controls();
@@ -154,21 +191,7 @@ impl FlightApp {
         match self.flight.advance_to_now(controls, time_scale) {
             Ok(elapsed_s) => {
                 if !self.esc_menu.is_open() {
-                    self.keyboard.update(elapsed_s, &mut self.mapper);
-                    let throttle = self.mapper.controls().throttle;
-                    if let Some(t) = self.controls.integrate_throttle(elapsed_s, throttle) {
-                        self.mapper.set(sim_input::Control::Throttle, t);
-                    }
-                    self.controls.sync_live(self.mapper.controls());
-                    if self.controls.take_look_reset() {
-                        self.look.reset();
-                    }
-                    let look_axes = self.controls.camera_look_axes();
-                    if viewport_mode == OperatorViewportMode::Cockpit {
-                        self.look.follow_stick(look_axes, elapsed_s);
-                    } else {
-                        self.look.integrate(look_axes, elapsed_s);
-                    }
+                    self.pilot_inputs(elapsed_s, viewport_mode);
                 }
                 self.update_takeover_hint(elapsed_s);
                 wall_s = elapsed_s;
@@ -186,6 +209,17 @@ impl FlightApp {
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
         let environment = sky.environment;
+        if let Some(rig) = self.cockpit_rig.as_mut()
+            && page_map_frame(
+                (rig, self.page_map.as_mut()),
+                &self.flight,
+                self.renderer.as_ref(),
+                self.occluded,
+                (&camera, &sky),
+            )
+        {
+            return self.present_occluded();
+        }
         let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
             (Some(renderer), Some(rig)) => match rig.prepare_frame(
                 renderer.queue(),
@@ -212,12 +246,7 @@ impl FlightApp {
             return;
         }
         if self.occluded {
-            if let Some(renderer) = &self.renderer
-                && let Err(err) = renderer.device().poll(wgpu::PollType::Poll)
-            {
-                tracing::debug!(?err, "occluded GPU poll failed");
-            }
-            return;
+            return self.present_occluded();
         }
         self.present(
             event_loop,
@@ -253,7 +282,60 @@ impl FlightApp {
             _ => Ok(()),
         };
         if let Err(err) = apart {
-            self.fail(event_loop, "the instrument panels could not be drawn", &err);
+            return self.fail(event_loop, "the instrument panels could not be drawn", &err);
+        }
+        self.present_page_map();
+    }
+
+    /// While the window is occluded: no window frame, but the GPU's work goes on, and the
+    /// page's map, a surface of its own, may be on screen while the world view is not.
+    fn present_occluded(&mut self) {
+        if let Some(renderer) = &self.renderer
+            && let Err(err) = renderer.device().poll(wgpu::PollType::Poll)
+        {
+            tracing::debug!(?err, "occluded GPU poll failed");
+        }
+        self.present_page_map();
+    }
+
+    /// Shows the EFB's expanded view on the page's map canvas, when there is one.
+    fn present_page_map(&mut self) {
+        if let (Some(renderer), Some(surface), Some(rig), Some(link)) = (
+            self.renderer.as_mut(),
+            self.page_map.as_mut(),
+            self.cockpit_rig.as_mut(),
+            self.flight.page_map(),
+        ) && let Err(err) = rig.present_page_map(renderer, surface, link)
+        {
+            tracing::warn!(error = %err, "the page map was not drawn");
         }
     }
+}
+
+/// Hands the page's input to its map; with the window `occluded` and a page's map to
+/// show, draws the page's map alone and returns `true`.
+fn page_map_frame(
+    (rig, presenter): (
+        &mut crate::cockpit_rig::CockpitRig,
+        Option<&mut sim_render::PanelSurface>,
+    ),
+    flight: &crate::flight::Flight,
+    renderer: Option<&sim_render::Renderer>,
+    occluded: bool,
+    view: (&Camera, &crate::sky_rig::SkyFrame<'_>),
+) -> bool {
+    let Some(link) = flight.page_map() else {
+        return false;
+    };
+    let page_only = occluded && presenter.is_some();
+    if let (Some([width, height]), Some(presenter), Some(renderer)) =
+        (rig.take_page_map(link, !occluded), presenter, renderer)
+    {
+        renderer.resize_panel(presenter, width, height);
+    }
+    let Some(renderer) = renderer.filter(|_| page_only) else {
+        return false;
+    };
+    rig.prepare_page_map_only(renderer.surface_size(), flight, view);
+    true
 }

@@ -20,6 +20,7 @@ mod hangar;
 mod host_guidance;
 mod keyboard;
 mod map_rig;
+mod page_map;
 mod platform;
 mod sensor_bus;
 mod sky_rig;

@@ -22,7 +22,9 @@ mod tests;
 use std::collections::BTreeMap;
 
 use sim_navigate::NavMeans;
-use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
+use sim_navigate::trial::{
+    EventKind, EventRecord, HoldingPatternRecord, ProgressRecord, SensorKind, SensorStates,
+};
 
 pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
 pub use hold::{HoldState, entry_words, leg_words, pattern_words};
@@ -97,6 +99,9 @@ pub struct Monitor {
     traces: Vec<SetTrace>,
     truth: thinning::Thinned<(f64, (f64, f64))>,
     waypoints: Vec<(String, (f64, f64))>,
+    altitudes_m: Vec<f64>,
+    sequenced: Option<(usize, bool)>,
+    hold_pattern: Option<HoldingPatternRecord>,
     camera: CameraLog,
     matches: MatchLog,
     sensors: BTreeMap<String, SensorStates>,
@@ -138,7 +143,9 @@ impl Monitor {
     fn progress(&mut self, record: ProgressRecord) {
         match record {
             ProgressRecord::Started(started) => {
+                let altitudes_m = started.route.waypoints.iter().map(|w| w.altitude_m);
                 *self = Self {
+                    altitudes_m: altitudes_m.collect(),
                     traces: started.sets.into_iter().map(SetTrace::new).collect(),
                     waypoints: started
                         .route
@@ -170,6 +177,17 @@ impl Monitor {
                 self.sim_time_s = self.sim_time_s.max(event.t_s);
                 self.note_route_end(&event);
                 self.hold = HoldState::after(self.hold.take(), &event.kind);
+                match &event.kind {
+                    EventKind::WaypointSequenced {
+                        waypoint_index,
+                        plan_complete,
+                        ..
+                    } => self.sequenced = Some((*waypoint_index, *plan_complete)),
+                    EventKind::HoldingStarted { pattern } => {
+                        self.hold_pattern = Some(pattern.clone());
+                    }
+                    _ => {}
+                }
                 self.events.push(event);
                 let over = self.events.len().saturating_sub(EVENTS_KEPT);
                 self.events.drain(..over);
@@ -226,6 +244,22 @@ impl Monitor {
     /// degrees.
     pub fn waypoints(&self) -> &[(String, (f64, f64))] {
         &self.waypoints
+    }
+
+    /// Each waypoint's height above the WGS84 ellipsoid, metres, in fly order.
+    pub fn waypoint_altitudes_m(&self) -> &[f64] {
+        &self.altitudes_m
+    }
+
+    /// The waypoint the mission host last sequenced, its index in fly order, and
+    /// whether that completed the plan; kept however many events follow.
+    pub const fn sequenced(&self) -> Option<(usize, bool)> {
+        self.sequenced
+    }
+
+    /// The holding pattern the mission host flies, once it holds.
+    pub const fn hold_pattern(&self) -> Option<&HoldingPatternRecord> {
+        self.hold_pattern.as_ref()
     }
 
     /// Each visual set's latest terrain matches.

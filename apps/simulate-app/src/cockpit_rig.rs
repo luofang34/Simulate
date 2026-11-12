@@ -10,17 +10,17 @@ use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::host_guidance::StandInPilotageHost;
 use crate::map_rig::{
-    AIRPORT_SURFACE_MAP, AvionicsPreset, EfbAirport, EfbCommand, MFD_CHART_MAP, MapFrameInput,
-    MapLibreRig, PFD_SVS_MAP, ScenerySource,
+    AIRPORT_SURFACE_MAP, AvionicsPreset, EfbAirport, EfbCommand, MFD_CHART_MAP, MapLibreRig,
+    PFD_SVS_MAP, ScenerySource,
 };
 use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
 use crate::world_surface::WorldSurfaceHandle;
-use efb_chrome::{EfbChrome, efb_map_rect, rect_px};
-use sim_maplibre::EfbDisplayMode;
+use efb_chrome::EfbChrome;
 
 pub mod efb_chrome;
 mod layout;
+mod page_map;
 mod panels_apart;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
@@ -41,6 +41,9 @@ pub struct CockpitRig {
     show_conformal_hud: bool,
     sources: layout::FlightSources,
     surface: WorldSurfaceHandle,
+    page_map_px: Option<[u32; 2]>,
+    /// The EFB frame the page's map last showed.
+    page_map_shown: u64,
     /// The size of the PFD and HSI when drawn apart from the window view, each on its own
     /// surface; `None` docks them over it.
     panels_apart: Option<[u32; 2]>,
@@ -109,6 +112,8 @@ impl CockpitRig {
             show_conformal_hud: true,
             sources: layout::FlightSources::default(),
             surface,
+            page_map_px: None,
+            page_map_shown: 0,
             panels_apart: None,
         })
     }
@@ -136,15 +141,15 @@ impl CockpitRig {
     }
 
     /// The EFB's chrome over `world` this frame, when shown: on Earth with the dock up,
-    /// outside the full-window chart and a link's page, on a map preset.
+    /// outside the full-window chart, on a map preset; beside a page's map, as its inset.
     #[must_use]
     pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
         let shown = world.body() == BodyEllipsoid::WGS84
             && self.show_instruments
-            && !self.sources.page
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
         let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
-        Some(EfbChrome::new(self.surface_size, &maps.efb_status()?))
+        let status = self.inset_status(maps.efb_status()?);
+        Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
     }
 
     /// Applies an operator command to the EFB.
@@ -382,29 +387,19 @@ impl CockpitRig {
         Option<sim_maplibre::TerrainPatchSnapshot>,
         Option<sim_scenery::LandingRunwayGeometry>,
     ) {
+        let expanded_px = self.efb_expanded_px(surface_size);
         let Some(maps) = self.maps.as_mut() else {
             return (false, false, None, None);
         };
-        let expanded = efb_map_rect(surface_size, EfbDisplayMode::ExpandedEfb);
-        let step = maps
-            .set_efb_expanded_px(rect_px(expanded, surface_size))
-            .and_then(|()| {
-                maps.render_earth_frame(&MapFrameInput {
-                    surface_size,
-                    timestamp: flight.now(),
-                    profile: flight.profile(),
-                    active_vehicle: flight.free_vehicle(),
-                    vehicle: flight.display_vehicle_state(),
-                    model_origin_from_cg_frd_m: flight.model_origin_from_cg_frd_m(),
-                    ground_m: flight.display_ground_height_m(),
-                    estimated_vehicle: flight.onboard_sensors().estimated_vehicle,
-                    sensor_exposures,
-                    articulation: flight.display_articulation(),
-                    otw_camera: *camera,
-                    sky,
-                    supervisor: &self.supervisor,
-                })
-            });
+        let step = maps.set_efb_expanded_px(expanded_px).and_then(|()| {
+            maps.render_earth_frame(&page_map::frame_input(
+                &self.supervisor,
+                surface_size,
+                flight,
+                (camera, sky),
+                sensor_exposures,
+            ))
+        });
         let runway = match step {
             Ok(runway) => runway,
             Err(error) => {
@@ -452,7 +447,7 @@ impl CockpitRig {
         let maps = self.maps.as_ref().filter(|_| earth);
         let svs_view = maps.and_then(|m| m.instrument_view(PFD_SVS_MAP));
         let efb = self.efb_chrome(world).and_then(|chrome| {
-            let view = maps.and_then(MapLibreRig::efb_view)?;
+            let view = maps.and_then(|m| self.inset_view(m))?;
             Some(OverlayQuad::inset_map(chrome.map_viewport(), view, true))
         });
         // Without an EFB, a map preset keeps its moving map in the middle of the dock.

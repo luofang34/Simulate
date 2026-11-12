@@ -24,10 +24,13 @@ fn the_page_mission_shows_what_the_page_published_and_steps_nothing() {
     assert_eq!(plant.state(), start);
     assert_eq!(plant.stated_epoch_utc_s(), Some(1_781_524_800.0));
 
-    // The page steps its trial and publishes; the plant shows the published chain.
+    // The page steps its trial and publishes; the plant, stepped to the published
+    // instant one controller cycle at a time, shows the published chain.
     trial.step_until(5.0).unwrap();
     feed.publish(PageSnapshot::of(&trial, Some("Enroute".to_owned())));
-    plant.step(ControlInputs::default(), &world).unwrap();
+    for _ in 50..1250 {
+        plant.step(ControlInputs::default(), &world).unwrap();
+    }
     assert_eq!(plant.state(), trial.chain().true_state());
     assert_ne!(plant.state().position_ecef, start.position_ecef);
     assert_eq!(
@@ -64,9 +67,9 @@ fn a_flight_shown_a_page_mission_flies_the_pages_chain() {
     assert!(flight.chain_readout().is_some());
 }
 
-/// A page paces its flight, so the app's clock trails the page's by up to a frame; the
-/// displays still read one instant, the flight controller's, so Indicate never sees a
-/// frame's readings skewed apart.
+/// A page paces its flight, so the app's clock trails the page's; the displays read one
+/// instant, the flight controller's latest at the app's clock, so Indicate never sees a
+/// frame's readings skewed apart nor a sample from the app's future.
 #[test]
 fn a_page_missions_displays_read_the_controllers_instant() {
     let spec = first_link().unwrap();
@@ -74,19 +77,31 @@ fn a_page_missions_displays_read_the_controllers_instant() {
     let feed = PageFeed::new(1_781_524_800.0, PageSnapshot::of(&trial, None));
     let mut flight = crate::flight::Flight::new().unwrap();
     flight.show_page_mission(feed.clone()).unwrap();
-    // Past the arming, so the controller flies on its air data; the app's clock takes a
-    // few cycles, enough to read the page's latest, while the page has flown on.
-    trial.step_until(5.0).unwrap();
-    feed.publish(PageSnapshot::of(&trial, Some("Enroute".to_owned())));
-    flight
-        .advance_by(
-            0.02,
-            ControlInputs::default(),
-            sim_scenario::SimTimeScale::RealTime,
-        )
-        .unwrap();
-    let at = trial.avionics().at;
-    assert!(flight.now() < at, "the app's clock trails the page's");
+    // Past the arming, so the controller flies on its air data. The page publishes every
+    // frame; the app's clock trails it, as a page's display time does.
+    for frame in 0..250 {
+        trial.step_until(trial.now_s() + 0.02).unwrap();
+        feed.publish(PageSnapshot::of(&trial, Some("Enroute".to_owned())));
+        if frame > 0 {
+            flight
+                .advance_by(
+                    0.02,
+                    ControlInputs::default(),
+                    sim_scenario::SimTimeScale::RealTime,
+                )
+                .unwrap();
+        }
+    }
+    assert!(
+        flight.now() < trial.avionics().at,
+        "the app's clock trails the page's"
+    );
+    let now_s = flight
+        .now()
+        .duration_since(sim_core::SimInstant::START)
+        .as_seconds();
+    let at = feed.at(now_s).avionics.at;
+    assert!(at <= flight.now(), "no sample from the app's future");
     assert_eq!(flight.display_instant(), at);
     let onboard = flight.onboard_sensors();
     let cockpit = onboard.cockpit;

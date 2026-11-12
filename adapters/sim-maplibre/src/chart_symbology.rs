@@ -28,7 +28,10 @@ use crate::{
     geodesy::{destination, wrap_lon_deg},
 };
 
+mod marks;
 mod runway;
+
+pub(crate) use marks::{append_sigma_rings, screen_positions};
 
 const TILE_PX: f64 = 512.0;
 /// `HeadlessMap`'s default vertical field of view (`2 * atan(1/3)` radians).

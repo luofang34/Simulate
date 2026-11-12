@@ -68,6 +68,14 @@ impl Host {
     /// A line of diagnostics the log already carries; the desktop has no other place for it.
     pub fn diagnostics(&self, _text: &str) {}
 
+    /// The desktop has no page around its window, so no page map.
+    pub fn page_map_surface(
+        &self,
+        _renderer: &sim_render::Renderer,
+    ) -> Option<sim_render::PanelSurface> {
+        None
+    }
+
     /// The desktop docks its instruments over the window view.
     pub fn page_panels(
         &self,

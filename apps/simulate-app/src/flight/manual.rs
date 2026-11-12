@@ -143,15 +143,22 @@ impl Flight {
     /// Route time the page's flight is ahead of this flight's clock, seconds, when this
     /// flight shows a page's: the page sets the pace, so sky, Sun and everything timed on
     /// this clock follow the route.
-    pub(super) fn page_due_s(&self) -> Option<f64> {
+    pub(super) fn page_due_s(&self, wall_dt_s: f64) -> Option<f64> {
         let feed = self.page.as_ref()?;
-        Some((feed.latest().route_s() - super::seconds(self.now())).max(0.0))
+        let display_s = feed.display_route_s(wall_dt_s);
+        Some((display_s - super::seconds(self.now())).max(0.0))
     }
 
     /// Whether this flight shows a link's page's flight instead of flying its own.
     #[must_use]
     pub const fn shows_page(&self) -> bool {
         self.page.is_some()
+    }
+
+    /// The link to the page's own map canvas, when this flight shows a page's.
+    #[must_use]
+    pub fn page_map(&self) -> Option<&crate::page_map::PageMapLink> {
+        self.page.as_ref().map(crate::vehicles::PageFeed::map)
     }
 
     /// Whether the onboard instruments have a source to draw. A page's flight draws its
