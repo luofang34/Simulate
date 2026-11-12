@@ -308,7 +308,10 @@ where
     mission.vehicle_class = route.class;
     mission.ownship_source = match route.ownship {
         OwnshipFeed::FlightController => OwnshipSource::vehicle_estimate(),
-        OwnshipFeed::Navigator => OwnshipSource::onboard_navigation(),
+        // A navigator's solution that degrades, a visual one over water or a
+        // GNSS one in an outage, is flown on by dead reckoning with the
+        // degradation shown, never dropped for a straight line.
+        OwnshipFeed::Navigator => OwnshipSource::onboard_navigation_gnss_denied(),
     };
     Ok(HostCoreConfig {
         link: LinkConfig::simulator(),
