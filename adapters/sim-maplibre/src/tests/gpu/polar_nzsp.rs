@@ -89,6 +89,9 @@ fn stamp_at(
         .expect("conformal stamp")
 }
 
+/// Most frames a phase may draw before its views must have drawn every drape.
+const SETTLE_FRAMES: u64 = 120;
+
 fn assert_otw_snowfield_gap_free(rgba: &[u8], context: &str) {
     let y_start = OTW_H * 62 / 100;
     for y in y_start..OTW_H {
@@ -225,12 +228,8 @@ fn warm_up_delaware_frames(truth: &mut TruthSceneMap, svs_set: &mut AvionicsMapS
     }
 }
 
-fn exercise_nzsp_frames(
-    truth: &mut TruthSceneMap,
-    svs_set: &mut AvionicsMapSet,
-    base_ms: u64,
-    phase: &str,
-) {
+/// The window's, the sensor's and the synthetic vision's stamps on the short final.
+fn nzsp_stamps() -> [ConformalFrameStamp; 3] {
     let otw = stamp_at(
         NZSP_SHORT_FINAL_LAT_DEG,
         NZSP_SHORT_FINAL_LON_DEG,
@@ -258,8 +257,25 @@ fn exercise_nzsp_frames(
         40.0_f64.to_radians(),
         [SVS_W as u32, SVS_H as u32],
     );
+    [otw, sen, svs_stamp]
+}
 
-    for step in 0_u64..8 {
+fn exercise_nzsp_frames(
+    truth: &mut TruthSceneMap,
+    svs_set: &mut AvionicsMapSet,
+    base_ms: u64,
+    phase: &str,
+) {
+    let [otw, sen, svs_stamp] = nzsp_stamps();
+
+    // A view draws only a few of its drapes a frame, and a frame of both slots may
+    // draw none of the window's, so the views are whole once a frame of each kind in
+    // a row redrew none; the count of frames that takes is the map's to choose.
+    let mut quiet_frames = 0_u32;
+    for step in 0_u64..SETTLE_FRAMES {
+        if quiet_frames >= 2 {
+            break;
+        }
         let timestamp = Duration::from_millis(base_ms + step * 16);
         let mask = if step % 2 == 0 {
             TruthSlotMask::BOTH
@@ -292,7 +308,16 @@ fn exercise_nzsp_frames(
             entities: &[],
         })
         .expect("nzsp svs frame");
+        quiet_frames = if truth.drape_redraws_last_frame() == 0 {
+            quiet_frames.saturating_add(1)
+        } else {
+            0
+        };
     }
+    assert!(
+        quiet_frames >= 2,
+        "{phase}: the views still redrew drapes after {SETTLE_FRAMES} frames"
+    );
 
     let otw_rgba = truth.read_slot_rgba(truth.otw_slot()).expect("otw rgba");
     assert_otw_snowfield_gap_free(&otw_rgba, phase);

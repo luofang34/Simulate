@@ -58,3 +58,13 @@ pub(super) const fn plan_slots(
         sensor: mask.sensor && has_sensor_stamp,
     }
 }
+
+impl super::TruthSceneMap {
+    /// Terrain drapes the last frame drew again for the views it rendered. A view
+    /// draws a bounded number of its drapes a frame, so a host that needs a view
+    /// whole, such as one reading its pixels back, draws until a frame redraws none.
+    #[must_use]
+    pub fn drape_redraws_last_frame(&self) -> u32 {
+        self.map.last_frame_stats().drape_redraws
+    }
+}
