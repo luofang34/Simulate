@@ -99,6 +99,13 @@ impl CockpitDeviceTier {
     }
 
     /// Frame-time-bounded drape bake budget for 60–120 Hz OTW flight.
+    ///
+    /// A browser gets more drapes a frame than the desktop. Where WebGPU has no timestamp
+    /// queries maplibre assumes each drape costs 2 ms, so a 2 ms budget re-bakes one drape
+    /// a frame, and the near drapes that newly arrived tiles dirty take every one of them.
+    /// Measured on the first link in Chrome, that leaves 45 % of the ground under the
+    /// horizon without imagery at route 1:10; twelve drapes a frame within 50 ms leave 1 %,
+    /// at the same pace and frame rate.
     #[must_use]
     pub const fn otw_drape_budget(self) -> DrapeBudget {
         match self {
@@ -108,9 +115,9 @@ impl CockpitDeviceTier {
                 moving_time: Duration::from_micros(3_000),
             },
             Self::Browser | Self::Handheld => DrapeBudget {
-                per_frame: 4,
-                per_eye_frame: 3,
-                moving_time: Duration::from_micros(2_000),
+                per_frame: 12,
+                per_eye_frame: 12,
+                moving_time: Duration::from_millis(50),
             },
         }
     }

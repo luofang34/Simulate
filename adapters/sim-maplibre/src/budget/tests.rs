@@ -11,6 +11,16 @@ fn desktop_drape_budget_keeps_taxi_frames_short() {
 }
 
 #[test]
+fn a_browsers_drape_budget_rebakes_far_drapes_while_flying() {
+    for tier in [CockpitDeviceTier::Browser, CockpitDeviceTier::Handheld] {
+        let budget = tier.otw_drape_budget();
+        assert_eq!(budget.per_frame, 12, "{tier:?}");
+        assert_eq!(budget.per_eye_frame, 12, "{tier:?}");
+        assert_eq!(budget.moving_time, Duration::from_millis(50), "{tier:?}");
+    }
+}
+
+#[test]
 fn conformal_interval_admits_every_second_60hz_frame() {
     let interval = CockpitDeviceTier::Desktop.conformal_min_interval();
     let two_frames = Duration::from_secs_f64(2.0 / 60.0);

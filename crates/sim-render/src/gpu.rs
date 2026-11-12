@@ -2,6 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::RenderError;
 
+#[cfg(test)]
+mod tests;
+
 /// The first GPU error reported outside an error scope. wgpu's default
 /// handler panics; recording it instead lets the next frame fail with a typed
 /// error the app can report.
@@ -29,9 +32,13 @@ impl LimitedDevice {
             wgpu::Limits::default()
         };
         let required_limits = base_limits.using_resolution(adapter.limits());
+        // maplibre times its terrain drapes with timestamp queries; without them it
+        // assumes a mobile GPU's cost per drape and re-bakes fewer while the view moves.
+        let required_features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("simulate device"),
+                required_features,
                 required_limits,
                 ..Default::default()
             })
