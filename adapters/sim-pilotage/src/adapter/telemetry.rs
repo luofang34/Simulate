@@ -297,6 +297,7 @@ impl AvionicsModel {
                 landed_state: approach.map(|(_, landed)| landed),
                 motor_state: None,
                 landing_approach: approach.map(|(ranging, _)| ranging),
+                ready_to_arm: None,
                 stamp: Some(self.stamp(SourceRole::FcState, FC_STATE_SOURCE, at)),
             }),
             gimbal: None,

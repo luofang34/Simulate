@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+aviate-airframe-fixed-wing = { workspace = true }
 aviate-core = { workspace = true }
 aviate-hal-io = { workspace = true }
 aviate-xil-contract = { workspace = true }

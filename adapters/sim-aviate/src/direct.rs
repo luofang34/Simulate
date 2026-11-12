@@ -23,8 +23,8 @@ use world_core::{DecimalYear, GeodeticPosition};
 use crate::{AviateBridgeError, AviateStimulus, DirectInitStage};
 
 pub use kernels::{
-    DirectFixedWingKernel, DirectX500Kernel, PassthroughFixedWingMixer,
-    build_direct_fixed_wing_kernel, build_direct_x500_kernel, direct_fixed_wing_controls,
+    DirectFixedWingKernel, DirectX500Kernel, build_direct_fixed_wing_kernel,
+    build_direct_x500_kernel, direct_fixed_wing_controls,
 };
 
 const TICKS_PER_MICROSECOND: u64 = TICKS_PER_SECOND / 1_000_000;

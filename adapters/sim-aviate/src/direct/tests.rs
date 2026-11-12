@@ -136,7 +136,7 @@ fn tier0_direct_runner_climbs_6dof_x500_rigid_body_and_emits_mavlink_tx() {
 fn direct_fixed_wing_kernel_drives_aileron_elevator_and_throttle() {
     let origin = Geodetic::from_degrees(39.1582, -75.5244, 300.0);
     let period = TickSpan::from_ticks(TICKS_PER_SECOND / 400);
-    let kernel = build_direct_fixed_wing_kernel().unwrap();
+    let kernel = build_direct_fixed_wing_kernel(&crate::c172_airframe()).unwrap();
     let mut runner = AviateDirectRunner::new(kernel, AviateDirectConfig::ideal(origin)).unwrap();
 
     let cruise = VehicleState::level_flight(&origin, 0.0, 28.0);
