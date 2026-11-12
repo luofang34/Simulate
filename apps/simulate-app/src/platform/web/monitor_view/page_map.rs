@@ -140,6 +140,7 @@ impl PageMap {
         }
         self.follow_width();
         let view = self.link.view();
+        self.link.set_in_sight(!view.live || self.in_sight());
         if view.live {
             self.frame.remove_attribute("hidden").ok();
         }
@@ -172,6 +173,16 @@ impl PageMap {
         self.canvas.set_width(width);
         self.canvas.set_height(height);
         self.link.resize([width, height]);
+    }
+
+    /// Whether any of the map is within the browser's window.
+    fn in_sight(&self) -> bool {
+        let rect = self.frame.get_bounding_client_rect();
+        let height = web_sys::window()
+            .and_then(|window| window.inner_height().ok())
+            .and_then(|height| height.as_f64())
+            .unwrap_or(f64::INFINITY);
+        rect.bottom() > 0.0 && rect.top() < height
     }
 
     /// CSS pixels per drawing-buffer pixel.

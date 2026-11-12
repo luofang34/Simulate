@@ -152,7 +152,7 @@ fn tracks_and_marks_carry_their_colours_and_outlines_are_lines() {
 }
 
 /// An EFB map over the sample catalog.
-fn sample_efb() -> Option<EfbMapSurface> {
+pub(super) fn sample_efb() -> Option<EfbMapSurface> {
     let gpu = try_host_gpu()?;
     let (scenery, _, catalog_runtime) = sample_scenery_and_runtime(gpu.clone());
     drop(catalog_runtime);

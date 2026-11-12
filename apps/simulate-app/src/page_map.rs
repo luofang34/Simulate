@@ -65,6 +65,7 @@ struct Shared {
     route_new: bool,
     tracks: Option<Arc<EfbTracks>>,
     size_px: Option<[u32; 2]>,
+    hidden: bool,
     view: PageMapView,
 }
 
@@ -111,11 +112,22 @@ impl PageMapLink {
         self.lock().size_px = Some(size_px);
     }
 
+    /// Page: whether the canvas is in sight; out of it the map is not drawn.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn set_in_sight(&self, in_sight: bool) {
+        self.lock().hidden = !in_sight;
+    }
+
     /// Page: what the map shows now.
     #[cfg(any(target_arch = "wasm32", test))]
     #[must_use]
     pub fn view(&self) -> PageMapView {
         self.lock().view.clone()
+    }
+
+    /// App: whether the page's canvas is in sight.
+    pub(crate) fn in_sight(&self) -> bool {
+        !self.lock().hidden
     }
 
     /// App: everything handed over since the last call, oldest command first.
@@ -128,6 +140,7 @@ impl PageMapLink {
                 .flatten(),
             tracks: shared.tracks.take(),
             size_px: shared.size_px.take(),
+            visible: !shared.hidden,
         }
     }
 
@@ -148,4 +161,6 @@ pub(crate) struct PageMapInput {
     pub tracks: Option<Arc<EfbTracks>>,
     /// The canvas's new drawing-buffer size, physical pixels.
     pub size_px: Option<[u32; 2]>,
+    /// Whether the canvas is in sight.
+    pub visible: bool,
 }

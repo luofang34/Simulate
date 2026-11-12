@@ -41,6 +41,8 @@ pub struct CockpitRig {
     sources: layout::FlightSources,
     surface: WorldSurfaceHandle,
     page_map_px: Option<[u32; 2]>,
+    /// The EFB frame the page's map last showed.
+    page_map_shown: u64,
 }
 
 impl CockpitRig {
@@ -107,6 +109,7 @@ impl CockpitRig {
             sources: layout::FlightSources::default(),
             surface,
             page_map_px: None,
+            page_map_shown: 0,
         })
     }
 

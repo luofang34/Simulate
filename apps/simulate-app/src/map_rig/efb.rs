@@ -105,6 +105,10 @@ pub struct EfbRig {
     merged_diagram: Value,
     merged_diagram_shown: bool,
     picked: Option<sim_maplibre::FixPick>,
+    /// Which of `[compact, expanded]` a page's host draws, once it chose.
+    views_shown: Option<[bool; 2]>,
+    /// Frames drawn, so a host shows each new one once.
+    frames: u64,
 }
 
 impl EfbRig {
@@ -142,6 +146,8 @@ impl EfbRig {
             merged_diagram: aerodrome_geojson.clone(),
             merged_diagram_shown: true,
             picked: None,
+            views_shown: None,
+            frames: 0,
         };
         rig.apply_layers()?;
         Ok(rig)
@@ -300,6 +306,7 @@ impl EfbRig {
     ) -> Result<(), AppSimError> {
         self.view = self.surface.render(symbology)?.cloned();
         self.pacer.record_rendered(now, sim_time);
+        self.frames = self.frames.wrapping_add(1);
         self.dirty = false;
         Ok(())
     }

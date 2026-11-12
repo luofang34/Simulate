@@ -115,15 +115,16 @@ impl CockpitRig {
     }
 
     /// Applies what the page handed over on `link` before the frame draws; returns the
-    /// canvas's new size when the page resized it.
-    pub fn take_page_map(&mut self, link: &PageMapLink) -> Option<[u32; 2]> {
+    /// canvas's new size when the page resized it. The window's inset draws only while
+    /// the window is `window_shown`.
+    pub fn take_page_map(&mut self, link: &PageMapLink, window_shown: bool) -> Option<[u32; 2]> {
         let input = link.take();
         let resized = input.size_px.filter(|size| !size.contains(&0));
         if resized.is_some() && self.page_map_px.is_some() {
             self.page_map_px = resized;
         }
         if let Some(maps) = self.maps.as_mut()
-            && let Err(err) = maps.take_page_map(input)
+            && let Err(err) = maps.take_page_map(input, window_shown)
         {
             warn!(error = %err, "the page map refused the page's input");
         }
@@ -141,11 +142,19 @@ impl CockpitRig {
         let Some(maps) = self.maps.as_ref() else {
             return Ok(FrameOutcome::Skipped);
         };
-        let Some(view) = maps.efb_view_of(EfbDisplayMode::ExpandedEfb) else {
+        link.show(maps.page_map_view());
+        // The canvas keeps its last frame: only a new one is shown, and only in sight.
+        let drawn = maps.efb_frames();
+        let Some(view) = maps
+            .efb_view_of(EfbDisplayMode::ExpandedEfb)
+            .filter(|_| link.in_sight() && self.page_map_shown != drawn)
+        else {
             return Ok(FrameOutcome::Skipped);
         };
         let outcome = presenter.present(&self.device, queue, OverlayQuad::full_map(view))?;
-        link.show(maps.page_map_view());
+        if outcome == FrameOutcome::Presented {
+            self.page_map_shown = drawn;
+        }
         Ok(outcome)
     }
 }

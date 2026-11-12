@@ -190,6 +190,10 @@ fn the_link_hands_each_change_over_once() {
     link.resize([800, 496]);
     let first = link.take();
     assert_eq!(first.size_px, Some([800, 496]));
+    assert!(
+        first.visible && link.in_sight(),
+        "in sight until the page says otherwise"
+    );
     assert_eq!(first.commands, [EfbCommand::Recenter]);
     assert_eq!(first.route, Some((plan.clone(), progress)));
     assert!(first.tracks.is_some());
@@ -197,6 +201,8 @@ fn the_link_hands_each_change_over_once() {
     let again = link.take();
     assert!(again.commands.is_empty() && again.route.is_none() && again.tracks.is_none());
     assert_eq!(again.size_px, None);
+    link.set_in_sight(false);
+    assert!(!link.take().visible && !link.in_sight());
     link.show(PageMapView {
         live: true,
         ..PageMapView::default()

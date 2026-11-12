@@ -3,7 +3,7 @@
 //! the one map. The page hands over the plan and the tracks it lays over it, and reads
 //! back where the plan's fixes are and which one was picked.
 
-use sim_maplibre::{EfbDisplayMode, leg_state};
+use sim_maplibre::{EfbDisplayMode, EfbRefreshPolicy, leg_state};
 
 use super::super::MapLibreRig;
 use super::EfbRig;
@@ -66,16 +66,27 @@ impl EfbRig {
 
 impl MapLibreRig {
     /// Applies what the page handed over: its commands address the page's map, the
-    /// expanded view, which draws every frame alongside the compact inset.
-    pub fn take_page_map(&mut self, input: PageMapInput) -> Result<(), AppSimError> {
+    /// expanded view. Each view draws, at most 30 times a second, only while it can be
+    /// seen: the page's map while the page shows it, the inset while `window_shown`.
+    pub fn take_page_map(
+        &mut self,
+        input: PageMapInput,
+        window_shown: bool,
+    ) -> Result<(), AppSimError> {
         let Some(efb) = self.efb.as_mut() else {
             return Ok(());
         };
         if !efb.surface.all_views_shown() {
-            efb.surface.set_all_views_shown(true);
+            efb.pacer.set_policy(EfbRefreshPolicy::Coalesced);
             efb.command(super::EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb))?;
             let zoom = PAGE_ZOOM - efb.surface.zoom();
             efb.command(super::EfbCommand::ZoomBy(zoom))?;
+        }
+        let shown = [window_shown, input.visible];
+        if efb.views_shown != Some(shown) {
+            efb.surface.set_views_shown(shown);
+            efb.views_shown = Some(shown);
+            efb.dirty = true;
         }
         for command in input.commands {
             efb.command(command)?;
@@ -97,6 +108,12 @@ impl MapLibreRig {
         self.efb
             .as_ref()
             .map_or_else(PageMapView::default, EfbRig::page_view)
+    }
+
+    /// How many frames the EFB has drawn.
+    #[must_use]
+    pub fn efb_frames(&self) -> u64 {
+        self.efb.as_ref().map_or(0, |efb| efb.frames)
     }
 
     /// `mode`'s last frame, when the preset shows the EFB.

@@ -56,6 +56,10 @@ pub enum EfbRefreshPolicy {
     /// Standalone or dedicated tablet EFB pacing: arrived tiles and animations draw immediately
     /// (`0 ms`), and ownship/traffic updates pace at `30 Hz` (`33 ms`).
     StandaloneInteractive,
+    /// A map beside other work on one page, at most `30 Hz`: arrived tiles, animations
+    /// and ownship motion all wait for the next `33 ms` frame, so streaming tiles never
+    /// draw it at the display's own rate.
+    Coalesced,
 }
 
 impl EfbRefreshPolicy {
@@ -65,6 +69,7 @@ impl EfbRefreshPolicy {
         match self {
             Self::StandaloneInteractive => true,
             Self::CockpitAdaptive => matches!(mode, EfbDisplayMode::ExpandedEfb),
+            Self::Coalesced => false,
         }
     }
 
@@ -74,7 +79,7 @@ impl EfbRefreshPolicy {
         match (self, mode) {
             (Self::CockpitAdaptive, EfbDisplayMode::CompactCorner) => Duration::from_millis(66),
             (Self::CockpitAdaptive, EfbDisplayMode::ExpandedEfb)
-            | (Self::StandaloneInteractive, _) => Duration::from_millis(33),
+            | (Self::StandaloneInteractive | Self::Coalesced, _) => Duration::from_millis(33),
         }
     }
 }

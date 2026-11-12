@@ -85,8 +85,8 @@ pub struct EfbMapSurface {
     cameras: [EfbCamera; 2],
     /// The view commands address, and in a cockpit the one shown.
     focus: EfbDisplayMode,
-    /// Whether every view is drawn each frame, not only the focused one.
-    all_views: bool,
+    /// Which of `[compact, expanded]` draw each frame; `None` draws the focused one.
+    shown: Option<[bool; 2]>,
     layers: EfbLayerFlags,
     aerodrome_layers: Vec<String>,
     plate: Option<ApproachPlateOverlay>,
@@ -149,7 +149,7 @@ impl EfbMapSurface {
                 camera.with_mode(EfbDisplayMode::ExpandedEfb),
             ],
             focus: EfbDisplayMode::CompactCorner,
-            all_views: false,
+            shown: None,
             layers: EfbLayerFlags::default(),
             aerodrome_layers,
             plate: None,

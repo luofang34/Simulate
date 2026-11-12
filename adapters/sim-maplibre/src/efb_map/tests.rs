@@ -364,4 +364,5 @@ fn polar_nzsp_globe_frame_renders_non_empty_chart() {
     assert!(bright > 20 && dark > 200, "bright={bright}, dark={dark}");
 }
 
+mod allocations;
 mod plan;

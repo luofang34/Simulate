@@ -179,13 +179,12 @@ impl FlightApp {
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
         let environment = sky.environment;
-        let page_only = self.occluded && self.page_map.is_some();
         if let Some(rig) = self.cockpit_rig.as_mut()
             && page_map_frame(
                 (rig, self.page_map.as_mut()),
                 &self.flight,
                 self.renderer.as_ref(),
-                page_only,
+                self.occluded,
                 (&camera, &sky),
             )
         {
@@ -277,8 +276,8 @@ impl FlightApp {
     }
 }
 
-/// Hands the page's input to its map; with `page_only` (the window out of sight, the
-/// page's map on screen) draws the page's map alone and returns `true`.
+/// Hands the page's input to its map; with the window `occluded` and a page's map to
+/// show, draws the page's map alone and returns `true`.
 fn page_map_frame(
     (rig, presenter): (
         &mut crate::cockpit_rig::CockpitRig,
@@ -286,14 +285,15 @@ fn page_map_frame(
     ),
     flight: &crate::flight::Flight,
     renderer: Option<&sim_render::Renderer>,
-    page_only: bool,
+    occluded: bool,
     view: (&Camera, &crate::sky_rig::SkyFrame<'_>),
 ) -> bool {
     let Some(link) = flight.page_map() else {
         return false;
     };
+    let page_only = occluded && presenter.is_some();
     if let (Some([width, height]), Some(presenter), Some(renderer)) =
-        (rig.take_page_map(link), presenter, renderer)
+        (rig.take_page_map(link, !occluded), presenter, renderer)
     {
         presenter.resize(renderer.device(), width, height);
     }

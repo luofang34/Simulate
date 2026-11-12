@@ -19,19 +19,28 @@ impl EfbMapSurface {
     /// Draws every view as well as the focused one each frame (`true`), as a host with
     /// room for both does, or only the focused one (`false`), as a cockpit does.
     pub fn set_all_views_shown(&mut self, all: bool) {
-        self.all_views = all;
+        self.shown = all.then_some([true, true]);
+    }
+
+    /// Draws `[compact, expanded]` each frame as given, whichever is focused: a host
+    /// with room for both leaves out a view nobody can see.
+    pub fn set_views_shown(&mut self, shown: [bool; 2]) {
+        self.shown = Some(shown);
     }
 
     /// Whether every view is drawn each frame.
     #[must_use]
     pub const fn all_views_shown(&self) -> bool {
-        self.all_views
+        self.shown.is_some()
     }
 
     /// The views drawn each frame.
     fn shown_views(&self) -> impl Iterator<Item = EfbDisplayMode> + use<> {
-        let (all, focus) = (self.all_views, self.focus);
-        VIEWS.into_iter().filter(move |mode| all || *mode == focus)
+        let (shown, focus) = (self.shown, self.focus);
+        VIEWS.into_iter().filter(move |mode| match shown {
+            Some(shown) => shown.get(mode_index(*mode)).copied().unwrap_or(false),
+            None => *mode == focus,
+        })
     }
 
     /// The camera `mode`'s view drew with last.

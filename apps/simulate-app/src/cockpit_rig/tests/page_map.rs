@@ -75,7 +75,7 @@ fn frame(
     flight: &Flight,
     link: &PageMapLink,
 ) -> Result<(), AppSimError> {
-    rig.take_page_map(link);
+    rig.take_page_map(link, true);
     let cam = flight.display_camera(OperatorViewportMode::Cockpit)?;
     let sky = SkyFrame::of_world(flight.world());
     rig.prepare_frame(&gpu.queue, SIZE, flight, &cam, &sky, &[])?;
