@@ -8,7 +8,7 @@
 
 use glam::DVec3;
 use indicate_instrument_feeder::RawStamp;
-use indicate_instrument_feeder::nav_display::nav_display_state;
+use indicate_instrument_feeder::nav_display::{DeviationScaleProfile, nav_display_state};
 use indicate_instrument_feeder::nav_guidance::{Guidance, NavGuidanceTracker};
 use indicate_instrument_state::{IdentStr, NavData, Stamped};
 use sim_geo::BodyEllipsoid;
@@ -72,6 +72,7 @@ pub struct HostFlightGuidance {
 pub(in crate::feed) fn host_nav(
     tracker: &mut NavGuidanceTracker,
     nav: &HostNavGuidance,
+    deviation_scale: &DeviationScaleProfile,
     body: &BodyEllipsoid,
     position_fixed_m: DVec3,
 ) -> Stamped<NavData> {
@@ -83,7 +84,7 @@ pub(in crate::feed) fn host_nav(
             now_ms,
         } => {
             let snapshot = tracker.observe(Some(&(*stamp, *guidance)), *now_ms);
-            nav_display_state(snapshot.as_ref()).unwrap_or_default()
+            nav_display_state(snapshot.as_ref(), deviation_scale).unwrap_or_default()
         }
         HostNavGuidance::RunwayReceiver(receiver) => runway_nav(receiver, body, position_fixed_m),
     }

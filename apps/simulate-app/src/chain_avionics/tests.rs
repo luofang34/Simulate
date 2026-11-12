@@ -130,6 +130,7 @@ fn display(hold: bool) -> NavigationDisplay {
             circuits: 2,
             outbound_time_s: 60.0,
         }),
+        dead_reckoning: None,
     }
 }
 

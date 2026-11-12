@@ -10,6 +10,7 @@ use sim_geo::{BodyEllipsoid, Geodetic};
 use sim_render::VectorVertex;
 
 use super::*;
+use crate::DeviationScaleProfile;
 use crate::{
     AltitudeSource, DisplayAxes, FeedConfig, FlightSample, PANEL_SCENE_BYTES, PanelBuffers,
     StateFeed, render_hud,
@@ -272,6 +273,7 @@ fn hud_inputs() -> (PanelData, HudContext) {
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample::truth(SimInstant::START, vehicle);
     let data = resolve(&feed.state(&sample).unwrap(), &FreshnessPolicy::default());

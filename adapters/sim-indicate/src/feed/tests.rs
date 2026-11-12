@@ -1,4 +1,4 @@
-use indicate_instrument_state::abi::v9::{AbiError, CAPACITY};
+use indicate_instrument_state::abi::v10::{AbiError, CAPACITY};
 use indicate_instrument_state::{
     AirframeDisplayProfile, FreshnessPolicy, HeadingReference, IdentStr, PanelData, SignalStatus,
     UnusualAttitudeState, resolve_stateful,
@@ -26,6 +26,7 @@ fn config(altitude: AltitudeSource) -> FeedConfig {
         origin_id: 7,
         altitude,
         heading_mode: HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     }
 }
 
@@ -371,6 +372,7 @@ fn earth_magnetic_mode_resolves_newark_rwy_22l_in_magnetic_degrees() {
     let mut mag_feed = StateFeed::new(FeedConfig {
         origin: threshold,
         heading_mode: HeadingMode::EarthMagnetic,
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
         ..config(AltitudeSource::OriginRelative)
     });
     let vehicle = VehicleState::level_flight(&threshold, course_rad, 50.0);
@@ -416,6 +418,7 @@ fn earth_magnetic_mode_reverts_to_true_north_in_polar_keyhole() {
         let mut mag_feed = StateFeed::new(FeedConfig {
             origin: polar,
             heading_mode: HeadingMode::EarthMagnetic,
+            deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
             ..config(AltitudeSource::OriginRelative)
         });
         let vehicle = VehicleState::level_flight(&polar, 1.2, 50.0);
