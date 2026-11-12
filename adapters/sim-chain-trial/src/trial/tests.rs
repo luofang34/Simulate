@@ -329,3 +329,47 @@ fn the_feed_keeps_its_rate_and_its_two_sides_apart() {
     assert!(after.avionics.is_empty());
     assert_eq!(trial.truth().at, trial.avionics().at);
 }
+
+/// The link's waypoint names are the plan's: Pilotage's navigation display,
+/// its leg and its holding pattern after the plan name the fixes as the
+/// link does, and so does the hold in the progress stream.
+#[test]
+fn the_links_waypoint_names_reach_the_display_and_the_hold() {
+    let mut short = spec(None);
+    let fixes = [(41.70, -1.055, "ZA1"), (41.70, -1.04, "ZA2")];
+    short.request.waypoints.truncate(2);
+    for (waypoint, (lat_deg, lon_deg, ident)) in short.request.waypoints.iter_mut().zip(fixes) {
+        waypoint.lat_deg = lat_deg;
+        waypoint.lon_deg = lon_deg;
+        waypoint.ident = ident.to_owned();
+    }
+    short.request.sensor_sets.truncate(1);
+    let mut trial = ChainTrial::new(&short, &DirectoryStores).unwrap();
+    advanced(trial.step_until(10.0).unwrap());
+    let names: Vec<String> = trial
+        .navigation()
+        .unwrap()
+        .waypoints
+        .iter()
+        .map(|w| w.fix.ident.clone())
+        .collect();
+    assert_eq!(names, ["ZA1", "ZA2"]);
+    assert_eq!(
+        trial.navigation().unwrap().leg.as_ref().unwrap().to.ident,
+        "ZA1"
+    );
+    let mut held = None;
+    while trial.now_s() < 150.0 && held.is_none() {
+        let outputs = advanced(trial.step_until(trial.now_s() + 5.0).unwrap());
+        held = outputs.records.into_iter().find_map(|record| match record {
+            ProgressRecord::Event(event) => match event.kind {
+                EventKind::HoldingStarted { pattern } => Some(pattern.fix_ident),
+                _ => None,
+            },
+            _ => None,
+        });
+    }
+    assert_eq!(held.as_deref(), Some("ZA2"));
+    let hold = trial.navigation().unwrap().holding_pattern.clone().unwrap();
+    assert_eq!(hold.pattern.fix_ident, "ZA2");
+}

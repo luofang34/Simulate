@@ -43,8 +43,11 @@ pub enum OwnshipFeed {
 }
 
 /// One fix of a route.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RouteFix {
+    /// The fix's name, which the mission and its displays report; `None`
+    /// takes the host's generated `WP<n>`.
+    pub ident: Option<String>,
     /// Geodetic latitude, degrees.
     pub lat_deg: f64,
     /// Longitude, degrees east.
@@ -329,7 +332,10 @@ fn waypoint_plan(route: &ChainRoute) -> WaypointPlan {
         route
             .fixes
             .iter()
-            .map(|fix| PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m))
+            .map(|fix| PlannedWaypoint {
+                name: fix.ident.clone(),
+                ..PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m)
+            })
             .collect(),
     )
 }
