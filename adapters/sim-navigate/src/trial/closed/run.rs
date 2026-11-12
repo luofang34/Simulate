@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use glam::DVec3;
 use navigate_contract::{NavigationSolution, Waypoint};
 use sim_core::{SimInstant, VehicleState};
+use sim_devices::AirDataSample;
 
 use super::flight::Flight;
 use super::sensors::LiveSensors;
@@ -37,6 +38,7 @@ pub(in crate::trial) struct ClosedSet<'a> {
     clock: MasterClockBridge,
     sample_steps: usize,
     rate: DVec3,
+    air_data: Option<AirDataSample>,
     trace: Option<Vec<(PilotInput, PilotOutput)>>,
     done: bool,
     progress: Progress,
@@ -69,6 +71,7 @@ impl<'a> ClosedSet<'a> {
         let means = set.ablation_set();
         let mut sensors = LiveSensors::new(request, means.contains(NavMeans::Celestial))?;
         sensors.start(SimInstant::START, &start)?;
+        let initial_air_data = sensors.held_air_data();
         let log = empty_log(request, &start);
         let run = replay_set_blocking(request, set, &log)?;
         Ok(Self {
@@ -84,6 +87,7 @@ impl<'a> ClosedSet<'a> {
             clock,
             sample_steps: context.sample_steps,
             rate: DVec3::ZERO,
+            air_data: initial_air_data,
             trace: trace.then(Vec::new),
             done: false,
             progress: Progress {
@@ -123,6 +127,7 @@ impl<'a> ClosedSet<'a> {
         let input = PilotInput {
             estimate,
             sensed_rate_body: self.rate,
+            sensed_air_data: self.air_data,
             now: self.clock.to_monotonic(at)?,
         };
         let output = self.pilot.step(&input, step_span().as_seconds());
@@ -141,9 +146,11 @@ impl<'a> ClosedSet<'a> {
         }
         self.flight.fly(&output)?;
         let next = step.wrapping_add(1);
-        self.rate = self
+        let sensed = self
             .sensors
             .sense(&self.flight.truth, next, &mut self.log)?;
+        self.rate = sensed.rate_body;
+        self.air_data = sensed.air_data;
         self.run.advance_to(&self.log, next)
     }
 

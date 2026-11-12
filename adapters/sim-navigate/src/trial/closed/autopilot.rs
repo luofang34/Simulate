@@ -1,8 +1,9 @@
 //! The closed-loop autopilot: the linked flight director sequences the
 //! route and computes the guidance setpoint from the navigator's solution,
 //! and Simulate's route follower turns that setpoint into stick and
-//! throttle from the attitude the navigator believes and the IMU's sensed
-//! rates. It holds no truth and takes none.
+//! throttle from the attitude the navigator believes, the IMU's sensed
+//! rates, and the pitot-static probe's sensed air data. It holds no truth
+//! and takes none.
 
 use std::collections::BTreeMap;
 
@@ -10,6 +11,7 @@ use glam::{DQuat, DVec3};
 use navigate_contract::{MonotonicNanos, NavigationSolution};
 use navigate_onboard::{DirectorEvent, FlightDirector};
 use sim_core::{ControlInputs, VehicleState};
+use sim_devices::{AirDataSample, sensed_true_airspeed_m_s};
 use sim_geo::{LocalFrame, ecef_to_geodetic};
 
 use crate::trial::VehicleSpec;
@@ -21,13 +23,17 @@ use crate::{Estimate, solution_position_ecef};
 const STARTING_THROTTLE: f64 = 0.35;
 
 /// What the autopilot reads at one step: nothing but the navigator's
-/// estimate, the IMU's sensed body rate, and the clock.
+/// estimate, the IMU's sensed body rate, the pitot-static probe's air-data
+/// sample, and the clock.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PilotInput {
     /// The navigator's solution at this step, when it has one.
     pub estimate: Option<Estimate<NavigationSolution>>,
     /// Body rate the IMU sensed over the last increment, rad/s.
     pub sensed_rate_body: DVec3,
+    /// Simulated pitot-static pressure and temperature sample (`Pa`, `K`) for
+    /// airspeed hold.
+    pub sensed_air_data: Option<AirDataSample>,
     /// The navigator's clock.
     pub now: MonotonicNanos,
 }
@@ -88,11 +94,16 @@ impl Autopilot {
             let count = self.refusals.entry(kind.to_owned()).or_default();
             *count = count.wrapping_add(1);
         }
+        let sensed_airspeed_m_s = input
+            .sensed_air_data
+            .as_ref()
+            .and_then(sensed_true_airspeed_m_s);
         let controls = match believed_state(solution, input.sensed_rate_body) {
             Some(state) => self.follower.controls(
                 output.setpoint.as_ref(),
                 &state,
                 output.commanded_speed_mps,
+                sensed_airspeed_m_s,
                 dt_s,
             ),
             None => starting,

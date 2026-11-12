@@ -11,7 +11,7 @@ use aviate_core::state::{EstimateQuality, StateEstimate};
 use aviate_hal_io::SystemCommand;
 use aviate_xil_direct::{
     DirectActuatorCmd, DirectBoardConfig, DirectMeasuredKinematics, DirectNoiseTier,
-    DirectTruthSample, DirectXilBoard,
+    DirectSensorRates, DirectTruthSample, DirectXilBoard,
 };
 use glam::{DQuat, DVec3};
 use sim_core::{
@@ -30,6 +30,9 @@ pub use kernels::{
 
 const TICKS_PER_MICROSECOND: u64 = TICKS_PER_SECOND / 1_000_000;
 const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(1_000_000));
+/// Simulated pitot-static air-data cadence (`25 Hz`, `40,000 µs`), matching
+/// the C172 air-data sensor suite.
+const AIRSPEED_PERIOD_US: u64 = 40_000;
 
 /// Local north-east-down tangent frame anchored at a WGS84 origin for
 /// [`DirectXilBoard`] truth synthesis.
@@ -283,11 +286,12 @@ where
             sys_id: config.sys_id,
             comp_id: config.comp_id,
         };
-        let board = DirectXilBoard::new(kernel, board_cfg).map_err(|err| {
+        let mut board = DirectXilBoard::new(kernel, board_cfg).map_err(|err| {
             AviateBridgeError::DirectInit {
                 stage: DirectInitStage::from(err),
             }
         })?;
+        configure_board_sensor_rates(&mut board);
         Ok(Self {
             board,
             world,
@@ -352,6 +356,7 @@ where
     pub fn reset_world(&mut self, kernel: DefaultAviateKernel<C, M>) {
         self.reset_generation = self.reset_generation.wrapping_add(1);
         self.board.reset_with_kernel(kernel);
+        configure_board_sensor_rates(&mut self.board);
         self.inbox.clear();
     }
 
@@ -464,6 +469,22 @@ fn micros_since_start(at: SimInstant) -> Result<u64, AviateBridgeError> {
         .checked_mul(1_000_000)
         .and_then(|us| us.checked_add(subsec_ticks / TICKS_PER_MICROSECOND))
         .ok_or(AviateBridgeError::TimeOutOfRange { seconds })
+}
+
+fn configure_board_sensor_rates<C, M>(board: &mut DirectXilBoard<C, M>)
+where
+    C: VehicleController,
+    M: Mixer,
+{
+    let pipeline = board.kernel().pipeline();
+    let needs_pitot =
+        pipeline.controller.flies_airspeed_target() || pipeline.estimator.has_air_aiding();
+    let rates = if needs_pitot {
+        DirectSensorRates::default().with_airspeed(AIRSPEED_PERIOD_US)
+    } else {
+        DirectSensorRates::default()
+    };
+    board.set_sensor_rates(rates);
 }
 
 fn check_vec3(v: DVec3, field: &'static str) -> Result<(), AviateBridgeError> {

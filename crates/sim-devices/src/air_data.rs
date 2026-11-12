@@ -17,6 +17,10 @@ mod tests;
 const GAMMA: f64 = 1.4;
 /// Specific gas constant of dry air, J/(kg·K).
 const GAS_CONSTANT_J_KG_K: f64 = 287.052_87;
+/// Sea-level standard static pressure for calibrated/indicated airspeed, Pa.
+const ISA_SEA_LEVEL_PRESSURE_PA: f64 = 101_325.0;
+/// Sea-level standard temperature for calibrated/indicated airspeed, K.
+const ISA_SEA_LEVEL_TEMPERATURE_K: f64 = 288.15;
 
 /// The undisturbed air at the vehicle and the vehicle's motion through it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -67,6 +71,31 @@ pub fn speed_from_impact_pressure_m_s(
     let ratio = (impact_pa.max(0.0) / static_pressure_pa + 1.0).powf((GAMMA - 1.0) / GAMMA);
     let mach_squared = 2.0 * (ratio - 1.0) / (GAMMA - 1.0);
     (mach_squared * GAMMA * GAS_CONSTANT_J_KG_K * static_temperature_k).sqrt()
+}
+
+/// Calibrated/indicated airspeed at ICAO sea-level standard atmosphere
+/// (`101,325 Pa`, `288.15 K`) for a pitot impact pressure `impact_pa`, m/s.
+#[must_use]
+pub fn indicated_airspeed_m_s(impact_pa: f64) -> f64 {
+    speed_from_impact_pressure_m_s(
+        ISA_SEA_LEVEL_PRESSURE_PA,
+        ISA_SEA_LEVEL_TEMPERATURE_K,
+        impact_pa,
+    )
+}
+
+/// True airspeed inferred solely from an [`AirDataSample`]'s pitot impact
+/// pressure, sensed static pressure, and static air temperature, m/s. Returns
+/// `None` when no pitot probe reading is present.
+#[must_use]
+pub fn sensed_true_airspeed_m_s(sample: &AirDataSample) -> Option<f64> {
+    sample.differential_pressure_pa.map(|impact_pa| {
+        speed_from_impact_pressure_m_s(
+            sample.static_pressure_pa.max(1.0),
+            sample.static_temperature_k.max(1.0),
+            impact_pa,
+        )
+    })
 }
 
 /// Error statistics of one pressure sensor.

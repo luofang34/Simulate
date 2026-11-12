@@ -52,16 +52,22 @@ impl RouteFollower {
     }
 
     /// Stick and throttle for `setpoint` from the vehicle believed to be in
-    /// `state`; `None` holds the present track and height.
+    /// `state`; `sensed_airspeed_m_s` feeds the pitot-static airspeed to the
+    /// throttle loop when present, falling back to `state`'s speed otherwise.
     pub(crate) fn controls(
         &mut self,
         setpoint: Option<&GuidanceSetpoint>,
         state: &VehicleState,
         speed_m_s: f64,
+        sensed_airspeed_m_s: Option<f64>,
         dt_s: f64,
     ) -> ControlInputs {
         let frame = LocalFrame::at(&ecef_to_geodetic(state.position_ecef));
-        let reading = FlightReading::of(state, state.position_ecef, &frame);
+        let base_reading = FlightReading::of(state, state.position_ecef, &frame);
+        let reading = match sensed_airspeed_m_s {
+            Some(tas_m_s) => base_reading.with_airspeed(tas_m_s),
+            None => base_reading,
+        };
         let speed = reading.speed_m_s.max(1.0);
         let (desired_track, vertical_m) = match setpoint.copied() {
             Some(GuidanceSetpoint::DeviationTracking {

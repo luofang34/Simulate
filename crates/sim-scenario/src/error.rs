@@ -1,5 +1,7 @@
 use mbd_core::MbdError;
+use sim_atmosphere::AtmosphereError;
 use sim_core::{BlockError, VisualHarnessError};
+use sim_devices::DeviceError;
 use sim_pack::PackError;
 #[cfg(feature = "render")]
 use sim_render::RenderError;
@@ -25,6 +27,12 @@ pub enum ScenarioError {
     /// The scenario's start time is outside the time-scale record.
     #[error("the scenario clock failed")]
     Time(#[from] TimeError),
+    /// A simulated air-data or onboard sensor device rejected its configuration.
+    #[error("the scenario sensor device failed")]
+    Device(#[from] DeviceError),
+    /// The atmosphere model could not be sampled at the vehicle position.
+    #[error("the scenario atmosphere failed")]
+    Atmosphere(#[from] AtmosphereError),
     /// The scenery has no data or is malformed.
     #[error("the scenario scenery failed")]
     Scenery(#[from] SceneryError),

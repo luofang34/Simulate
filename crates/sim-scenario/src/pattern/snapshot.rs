@@ -3,6 +3,7 @@ use sim_core::{ControlInputs, RateAdapter, SimInstant, VirtualCameraRigBlock};
 
 use super::{AirportPatternRun, PatternAutopilot, PatternLeg, PatternPlant, PatternReport};
 use crate::ScenarioError;
+use crate::corridor::ScenarioPitot;
 use crate::run::snapshot::FdmSnapshot;
 
 /// Everything an [`AirportPatternRun`] changes while it flies. The aerodrome
@@ -12,6 +13,7 @@ use crate::run::snapshot::FdmSnapshot;
 pub(crate) struct PatternState {
     plant: FdmSnapshot,
     autopilot: PatternAutopilot,
+    pitot: ScenarioPitot,
     last_controls: ControlInputs,
     leg: PatternLeg,
     camera_rig: VirtualCameraRigBlock,
@@ -29,6 +31,7 @@ impl AirportPatternRun {
                 PatternPlant::C172Jsbsim(model) => FdmSnapshot::of_jsbsim(model),
             },
             autopilot: self.autopilot,
+            pitot: self.pitot,
             last_controls: self.last_controls,
             leg: self.leg,
             camera_rig: self.camera_rig.clone(),
@@ -45,6 +48,7 @@ impl AirportPatternRun {
             PatternPlant::C172Jsbsim(model) => state.plant.restore_jsbsim(model)?,
         }
         self.autopilot = state.autopilot;
+        self.pitot = state.pitot;
         self.last_controls = state.last_controls;
         self.leg = state.leg;
         self.camera_rig.clone_from(&state.camera_rig);

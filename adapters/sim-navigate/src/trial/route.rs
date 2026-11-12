@@ -170,6 +170,7 @@ fn fly_plan(waypoints: &[Waypoint], vehicle: &VehicleSpec) -> Result<Flown, Tria
             output.setpoint.as_ref(),
             &state,
             output.commanded_speed_mps,
+            None,
             step.as_seconds(),
         );
         model

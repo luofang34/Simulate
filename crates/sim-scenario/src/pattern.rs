@@ -16,6 +16,7 @@ use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to
 use sim_pack::builtin_c172_package;
 use sim_scenery::{AerodromeId, AuthoritativeWorldSurface, OsmAerodromeDiagram, WorldSurfaceQuery};
 
+use crate::corridor::ScenarioPitot;
 use crate::{FlightDynamics, ScenarioError};
 
 mod cameras;
@@ -222,6 +223,7 @@ pub struct AirportPatternRun {
     threshold_frame: LocalFrame,
     plant: PatternPlant,
     autopilot: PatternAutopilot,
+    pitot: ScenarioPitot,
     last_controls: ControlInputs,
     leg: PatternLeg,
     camera_rig: VirtualCameraRigBlock,
@@ -299,6 +301,7 @@ impl AirportPatternRun {
             threshold_frame,
             plant,
             autopilot: PatternAutopilot::default(),
+            pitot: ScenarioPitot::new(0x5041_5454_4552_4E01)?,
             last_controls: ControlInputs::default(),
             leg: PatternLeg::Upwind,
             camera_rig,
@@ -417,7 +420,9 @@ impl AirportPatternRun {
         if self.finished() {
             return Ok(());
         }
+        let dt_s = PERIOD.as_seconds();
         let state = self.plant.output();
+        let sensed_airspeed_m_s = self.pitot.sense(&state, dt_s)?;
         let reading = RunwayReading::observe(
             &state,
             self.threshold_ecef,
@@ -425,6 +430,7 @@ impl AirportPatternRun {
             self.diagram.field_elevation_m,
             self.runway_bearing_rad,
             self.direction,
+            sensed_airspeed_m_s,
         );
         if self.leg == PatternLeg::Final
             && reading.along_m.abs() <= 40.0
@@ -449,7 +455,7 @@ impl AirportPatternRun {
         self.plant.set_flaps(cmd.flaps_norm);
         self.plant
             .sync_ground_at(state.position_ecef, self.diagram.field_elevation_m)?;
-        let controls = self.autopilot.step(&cmd, &reading, PERIOD.as_seconds());
+        let controls = self.autopilot.step(&cmd, &reading, dt_s);
         self.last_controls = controls;
         self.plant.step(&KinematicInput { controls })?;
         self.now = self.now.advanced(PERIOD);

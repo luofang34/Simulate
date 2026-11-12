@@ -24,8 +24,8 @@ mod report;
 pub(crate) mod snapshot;
 mod visual;
 
-pub(crate) use autopilot::angle_difference;
 pub use autopilot::{Autopilot, FlightReading, Guidance, Steering};
+pub(crate) use autopilot::{ScenarioPitot, angle_difference};
 pub use dynamics::FlightDynamics;
 use dynamics::{CorridorStart, Source};
 use image_mode::VisualSource;
@@ -215,6 +215,7 @@ pub struct CorridorRun {
     dynamics: FlightDynamics,
     source: Source,
     autopilot: Autopilot,
+    pitot: ScenarioPitot,
     last_controls: ControlInputs,
     camera: CameraSensorBlock,
     camera_rate: RateAdapter,
@@ -263,6 +264,7 @@ impl CorridorRun {
             dynamics,
             source,
             autopilot: Autopilot::default(),
+            pitot: ScenarioPitot::new(ESTIMATOR_SEED.wrapping_add(0x5049_544F))?,
             last_controls: ControlInputs::default(),
             camera,
             camera_rate: RateAdapter::new(CAMERA_DEFAULT_PERIOD),
@@ -350,7 +352,10 @@ impl CorridorRun {
         if self.now == SimInstant::START || self.camera_rate.steps_for_u128(PERIOD) > 0 {
             self.expose(vehicle)?;
         }
-        let reading = FlightReading::of(&vehicle, self.origin_ecef, &self.anchor_frame);
+        let dt_s = PERIOD.as_seconds();
+        let sensed_airspeed_m_s = self.pitot.sense(&vehicle, dt_s)?;
+        let reading = FlightReading::of(&vehicle, self.origin_ecef, &self.anchor_frame)
+            .with_airspeed(sensed_airspeed_m_s);
         let navigated = navigated.or_else(|| match &self.visual {
             VisualSource::Image(mode) => {
                 Some(mode.navigated(&vehicle, self.origin_ecef, &self.anchor_frame))
@@ -359,11 +364,10 @@ impl CorridorRun {
         });
         let steered_on = navigated.map_or(reading, |state| {
             FlightReading::of(&state, self.origin_ecef, &self.anchor_frame)
+                .with_airspeed(sensed_airspeed_m_s)
         });
         let guidance = guidance_of(self.profile, self.dynamics, self.elapsed_s());
-        let controls = self
-            .autopilot
-            .update(&guidance, &steered_on, PERIOD.as_seconds());
+        let controls = self.autopilot.update(&guidance, &steered_on, dt_s);
         self.last_controls = controls;
         self.source.sync_ground_at(vehicle.position_ecef)?;
         self.source.step(&KinematicInput { controls })?;
