@@ -42,6 +42,13 @@ pub(super) struct PartMesh {
     pub(super) count: u32,
 }
 
+impl Drop for PartMesh {
+    fn drop(&mut self) {
+        self.vertices.destroy();
+        self.indices.destroy();
+    }
+}
+
 /// One draw recorded for the node: which part, which pipeline, which uniform offset.
 pub(super) struct DrawCommand {
     pub(super) asset: AssetKey,
@@ -61,15 +68,21 @@ pub(super) enum PipelineKind {
 
 /// A slot's own uniform buffer and the draws it holds this frame.
 pub(super) struct SlotGpu {
+    pub(super) bind_group: wgpu::BindGroup,
     uniforms: wgpu::Buffer,
     capacity: u64,
-    pub(super) bind_group: wgpu::BindGroup,
     pub(super) commands: Vec<DrawCommand>,
     pub(super) shadow: SlotShadow,
     /// Whether this frame's slot has a light volume, so its casters fill the map.
     pub(super) shadowed: bool,
     /// Whether the ground receiver under ownship is drawn.
     pub(super) ground_shadow: bool,
+}
+
+impl Drop for SlotGpu {
+    fn drop(&mut self) {
+        self.uniforms.destroy();
+    }
 }
 
 /// Pipelines, layouts, and meshes, built once the render target exists.
@@ -79,10 +92,10 @@ pub(super) struct UsdPassGpu {
     pub(super) translucent: wgpu::RenderPipeline,
     pub(super) shadow: ShadowGpu,
     layout: wgpu::BindGroupLayout,
-    textures: AssetTexturesGpu,
     pub(super) meshes: BTreeMap<AssetKey, Vec<Option<PartMesh>>>,
-    /// The textures of each asset with a skin or a display atlas.
+    /// The textures of each asset with a skin or a display atlas; dropped before `textures`.
     pub(super) texture_groups: BTreeMap<AssetKey, wgpu::BindGroup>,
+    textures: AssetTexturesGpu,
     pub(super) slots: BTreeMap<ViewSlotId, SlotGpu>,
 }
 

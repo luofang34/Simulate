@@ -28,6 +28,10 @@ pub enum CockpitDeviceTier {
     Handheld,
 }
 
+/// Browser tab available-memory ceiling (`900 MiB`), bounding MapLibre GPU/CPU
+/// caches inside a shared browser tab alongside WebAssembly linear memory.
+pub const BROWSER_AVAILABLE_MEMORY_BYTES: u64 = 900 << 20;
+
 /// Handheld available-memory ceiling (`700 MiB`), matching `visionOS` reserve rules.
 pub const HANDHELD_AVAILABLE_MEMORY_BYTES: u64 = 700 << 20;
 
@@ -71,7 +75,8 @@ impl CockpitDeviceTier {
     #[must_use]
     pub const fn available_memory_bytes(self) -> Option<u64> {
         match self {
-            Self::Desktop | Self::Browser => None,
+            Self::Desktop => None,
+            Self::Browser => Some(BROWSER_AVAILABLE_MEMORY_BYTES),
             Self::Handheld => Some(HANDHELD_AVAILABLE_MEMORY_BYTES),
         }
     }

@@ -22,6 +22,7 @@ pub(crate) struct Attachments {
 /// The shadow map and everything that writes or reads it.
 pub(crate) struct ShadowGpu {
     pub(crate) map: wgpu::TextureView,
+    map_texture: wgpu::Texture,
     sampler: wgpu::Sampler,
     caster_layout: wgpu::BindGroupLayout,
     /// `@group(1)` of every pipeline drawing into the slot: block, map, comparison sampler.
@@ -30,13 +31,26 @@ pub(crate) struct ShadowGpu {
     pub(crate) ground: wgpu::RenderPipeline,
 }
 
+impl Drop for ShadowGpu {
+    fn drop(&mut self) {
+        self.map_texture.destroy();
+    }
+}
+
 /// One slot's `Shadow` block and its two bind groups.
 pub(crate) struct SlotShadow {
+    pub(crate) caster_group: wgpu::BindGroup,
+    pub(crate) receiver_group: wgpu::BindGroup,
     pub(crate) block: wgpu::Buffer,
     /// The slot's `Sky` block (`usd_pass::sky`), read through the receiver group.
     pub(crate) sky: wgpu::Buffer,
-    pub(crate) caster_group: wgpu::BindGroup,
-    pub(crate) receiver_group: wgpu::BindGroup,
+}
+
+impl Drop for SlotShadow {
+    fn drop(&mut self) {
+        self.block.destroy();
+        self.sky.destroy();
+    }
 }
 
 impl ShadowGpu {
@@ -46,23 +60,21 @@ impl ShadowGpu {
         module: &wgpu::ShaderModule,
         attachments: Attachments,
     ) -> Self {
-        let map = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("usd aircraft shadow map"),
-                size: wgpu::Extent3d {
-                    width: SHADOW_MAP_SIZE,
-                    height: SHADOW_MAP_SIZE,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: MAP_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let map_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("usd aircraft shadow map"),
+            size: wgpu::Extent3d {
+                width: SHADOW_MAP_SIZE,
+                height: SHADOW_MAP_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: MAP_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let map = map_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("usd aircraft shadow compare"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -89,6 +101,7 @@ impl ShadowGpu {
         let ground = ground_pipeline(device, draw_layout, &receiver_layout, module, attachments);
         Self {
             map,
+            map_texture,
             sampler,
             caster_layout,
             receiver_layout,

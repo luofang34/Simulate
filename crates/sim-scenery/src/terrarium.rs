@@ -22,11 +22,16 @@ pub fn encode_terrarium(height_m: f64) -> [u8; 3] {
 
 /// A decoded elevation raster: one height per pixel, row-major, north row
 /// first. A pixel's height applies at its centre.
+///
+/// Terrarium pixels are signed 24-bit fixed-point numbers with a `1/256` m
+/// step (`[-32_768, 32_767 + 255/256]` m), so IEEE-754 `f32` (24-bit
+/// significand) stores every possible Terrarium height bit-for-bit without
+/// rounding while halving decoded tile memory.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerrariumTile {
     width: u32,
     height: u32,
-    heights_m: Vec<f64>,
+    heights_m: Vec<f32>,
 }
 
 impl TerrariumTile {
@@ -58,7 +63,7 @@ impl TerrariumTile {
         Ok(Self {
             width,
             height,
-            heights_m,
+            heights_m: heights_m.into_iter().map(|height| height as f32).collect(),
         })
     }
 
@@ -98,12 +103,24 @@ impl TerrariumTile {
                 actual: pixels.len(),
             });
         }
-        let heights_m = pixels
+        let heights_m: Vec<f32> = pixels
             .chunks_exact(stride)
             .filter_map(|pixel| pixel.first_chunk::<3>())
-            .map(|rgb| decode_terrarium(*rgb))
+            .map(|rgb| decode_terrarium(*rgb) as f32)
             .collect();
-        Self::from_heights(width, height, heights_m)
+        if heights_m.is_empty() {
+            return Err(SceneryError::InvalidRaster {
+                width,
+                height,
+                expected: expected.unwrap_or(usize::MAX),
+                actual: pixels.len(),
+            });
+        }
+        Ok(Self {
+            width,
+            height,
+            heights_m,
+        })
     }
 
     /// Width in pixels.
@@ -122,7 +139,7 @@ impl TerrariumTile {
             return None;
         }
         let index = y as usize * self.width as usize + x as usize;
-        self.heights_m.get(index).copied()
+        self.heights_m.get(index).copied().map(f64::from)
     }
 
     /// Replaces every pixel's height with `f(x, y, height)`, row by row.
@@ -130,7 +147,7 @@ impl TerrariumTile {
         let width = self.width.max(1) as usize;
         for (index, height) in self.heights_m.iter_mut().enumerate() {
             let (x, y) = (index % width, index / width);
-            *height = f(x as u32, y as u32, *height);
+            *height = f(x as u32, y as u32, f64::from(*height)) as f32;
         }
     }
 

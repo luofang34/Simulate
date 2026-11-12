@@ -1,6 +1,19 @@
 use std::time::Duration;
 
-use super::CockpitDeviceTier;
+use super::{BROWSER_AVAILABLE_MEMORY_BYTES, CockpitDeviceTier, HANDHELD_AVAILABLE_MEMORY_BYTES};
+
+#[test]
+fn browser_and_handheld_tiers_report_bounded_available_memory() {
+    assert_eq!(CockpitDeviceTier::Desktop.available_memory_bytes(), None);
+    assert_eq!(
+        CockpitDeviceTier::Browser.available_memory_bytes(),
+        Some(BROWSER_AVAILABLE_MEMORY_BYTES)
+    );
+    assert_eq!(
+        CockpitDeviceTier::Handheld.available_memory_bytes(),
+        Some(HANDHELD_AVAILABLE_MEMORY_BYTES)
+    );
+}
 
 #[test]
 fn desktop_drape_budget_keeps_taxi_frames_short() {

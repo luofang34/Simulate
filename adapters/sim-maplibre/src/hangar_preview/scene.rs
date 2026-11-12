@@ -29,13 +29,14 @@ impl SceneAsset {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         asset: &UsdAircraftAsset,
-        textures: &AssetTexturesGpu,
+        textures: &mut AssetTexturesGpu,
     ) -> Self {
+        let textures = match asset.skin() {
+            Some(skin) => textures.upload(device, queue, Some(skin.as_ref()), None),
+            None => textures.blank.clone(),
+        };
         Self {
-            textures: asset.skin().map_or_else(
-                || textures.blank.clone(),
-                |skin| textures.upload(device, queue, Some(skin.as_ref()), None),
-            ),
+            textures,
             fingerprint: fingerprint(asset),
             asset: asset.clone(),
             meshes: asset

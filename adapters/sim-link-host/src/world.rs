@@ -24,11 +24,11 @@ pub use overview::{MapView, mercator, unmercator};
 pub const WORLD_MEMORY_CEILING_BYTES: u64 = 1_000_000_000;
 
 /// Bytes a decoded pixel of `layer` takes in the camera's world: imagery
-/// as four 8-bit channels, elevation as one 64-bit height.
+/// as four 8-bit channels, elevation as one 32-bit float height.
 const fn decoded_bytes_per_pixel(layer: LayerKind) -> u64 {
     match layer {
         LayerKind::Imagery => 4,
-        LayerKind::Elevation => 8,
+        LayerKind::Elevation => 4,
         LayerKind::Unsupported => 0,
     }
 }

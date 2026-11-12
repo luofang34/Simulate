@@ -12,7 +12,11 @@ use crate::{AuthoritativeWorldSurface, SceneryError, TerrariumTile, TileId};
 mod tests;
 
 /// Tiles decoded and waiting for the simulation thread.
-type Pending = Vec<(TileId, Arc<TerrariumTile>)>;
+type Pending = VecDeque<(TileId, Arc<TerrariumTile>)>;
+
+/// Maximum decoded Terrarium tiles buffered in [`LiveDemBridge`] before a consumer drains
+/// them, bounding memory when a map streams DEM tiles on a host that never drains the bridge.
+const MAX_PENDING_TILES: usize = 256;
 
 /// Bounded deduplication window kept comfortably below `DEFAULT_LIVE_TILE_CAPACITY` (`1,024`)
 /// so a tile still in `RecentTiles` has not yet been evicted from the default `LiveDem`.
@@ -182,12 +186,24 @@ impl LiveDemBridge {
     }
 
     fn push(&self, id: TileId, tile: Arc<TerrariumTile>) {
-        // A loader that panicked mid-push left a complete Vec behind, so its
+        // A loader that panicked mid-push left a complete VecDeque behind, so its
         // contents are still sound.
-        self.pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push((id, tile));
+        let dropped = {
+            let mut pending = self.pending.lock().unwrap_or_else(PoisonError::into_inner);
+            let evicted = if pending.len() >= MAX_PENDING_TILES {
+                pending.pop_front().map(|(evicted_id, _)| evicted_id)
+            } else {
+                None
+            };
+            pending.push_back((id, tile));
+            evicted.filter(|evicted_id| pending.iter().all(|(queued, _)| queued != evicted_id))
+        };
+        if let Some(evicted_id) = dropped {
+            self.recent
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(evicted_id);
+        }
         self.generation.fetch_add(1, Ordering::AcqRel);
     }
 }

@@ -54,10 +54,10 @@ fn the_world_costs_each_tile_whole_and_decoded() {
             .sum::<u64>()
     };
     let expected =
-        tiles(LayerKind::Imagery) * 256 * 256 * 4 + tiles(LayerKind::Elevation) * 256 * 256 * 8;
+        tiles(LayerKind::Imagery) * 256 * 256 * 4 + tiles(LayerKind::Elevation) * 256 * 256 * 4;
     let sources = SourceSet::default();
     assert_eq!(world_memory_bytes(&plan, &sources), expected);
-    // The page measured 144 MB for the 517 + 15 tiles of this link.
+    // The page measured ~140 MB for the 517 + 15 tiles of this link.
     assert!((100_000_000..200_000_000).contains(&expected), "{expected}");
     assert!(world_memory_refusal(&plan, &sources).is_none());
     let said = world_line(&plan, &sources);
