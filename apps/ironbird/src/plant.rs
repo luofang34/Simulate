@@ -11,7 +11,7 @@ use sim_core::{
     RigidBodyInput, RigidBodySnapshot, TICKS_PER_SECOND, ThrusterWrench, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
-use sim_pack::{LoadedSyspack, builtin_c172_package};
+use sim_pack::{LoadedSyspack, builtin_c172p_package, builtin_c172s_package};
 use sim_xil::XilStimulus;
 use world_core::{GeodeticPosition, normal_gravity};
 
@@ -20,8 +20,10 @@ use crate::IronbirdError;
 /// Built-in SHA-256-verified JSBSim fixed-wing aircraft packages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixedWingVehicle {
-    /// Cessna 172 Skyhawk (`vehicles/c172`).
+    /// Cessna 172S Skyhawk SP (`vehicles/c172s`, default `N642SP`).
     C172,
+    /// Cessna 172P Skyhawk II (`vehicles/c172p`, default `D-ECJB`).
+    C172p,
 }
 
 impl FixedWingVehicle {
@@ -30,6 +32,7 @@ impl FixedWingVehicle {
     pub const fn nominal_cruise_speed_m_s(self) -> f64 {
         match self {
             Self::C172 => 52.0,
+            Self::C172p => 50.0,
         }
     }
 }
@@ -46,7 +49,8 @@ impl JsbsimPlant {
     /// Loads `vehicle` trimmed in running cruise at `initial` heading North.
     pub fn new_cruise(vehicle: FixedWingVehicle, initial: Geodetic) -> Result<Self, IronbirdError> {
         let package = match vehicle {
-            FixedWingVehicle::C172 => builtin_c172_package()?,
+            FixedWingVehicle::C172 => builtin_c172s_package()?,
+            FixedWingVehicle::C172p => builtin_c172p_package()?,
         };
         Self::from_package(&package, initial, vehicle.nominal_cruise_speed_m_s())
     }

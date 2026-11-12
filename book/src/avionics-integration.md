@@ -32,7 +32,7 @@ $$0 < V_{S0} \le V_{S1} < V_{FE} \le V_{NO} < V_{NE}$$
 
 and ensures every optional reference bug ($V_R, V_X, V_Y, V_G, V_A, V_{REF}$) lies within $(V_{S0}, V_{NO}]$ with $V_X \le V_Y$ and $V_A > V_{S1}$.
 
-### Example (`vehicles/c172/performance/airspeed_envelope.json`)
+### Example (`vehicles/c172s/performance/airspeed_envelope.json`)
 
 ```json
 {

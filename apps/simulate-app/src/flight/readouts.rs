@@ -7,7 +7,7 @@ use glam::DVec3;
 use sim_core::{AirframeArticulation, EngineStatus, SystemControls, VehicleState};
 use sim_pack::{
     AirspeedEnvelope, LoadedSyspack, PitotStaticCalibration, ResolvedAirspeedEnvelope,
-    builtin_c172_package, builtin_p38g_package,
+    builtin_c172p_package, builtin_c172s_package, builtin_p38g_package,
 };
 use sim_scenario::ScenarioProfile;
 use syspack::InstrumentPackDocument;
@@ -27,6 +27,7 @@ struct CachedAeroSpecs {
 }
 
 static C172_SPECS: OnceLock<CachedAeroSpecs> = OnceLock::new();
+static C172P_SPECS: OnceLock<CachedAeroSpecs> = OnceLock::new();
 static P38_SPECS: OnceLock<CachedAeroSpecs> = OnceLock::new();
 
 fn package_aero_specs(pkg: Result<LoadedSyspack, sim_pack::PackError>) -> CachedAeroSpecs {
@@ -54,7 +55,11 @@ fn package_aero_specs(pkg: Result<LoadedSyspack, sim_pack::PackError>) -> Cached
 }
 
 fn cached_c172_specs() -> &'static CachedAeroSpecs {
-    C172_SPECS.get_or_init(|| package_aero_specs(builtin_c172_package()))
+    C172_SPECS.get_or_init(|| package_aero_specs(builtin_c172s_package()))
+}
+
+fn cached_c172p_specs() -> &'static CachedAeroSpecs {
+    C172P_SPECS.get_or_init(|| package_aero_specs(builtin_c172p_package()))
 }
 
 fn cached_p38_specs() -> &'static CachedAeroSpecs {
@@ -69,6 +74,7 @@ impl Flight {
                 | FreeFlightVehicle::AviateFixedWingDirect
                 | FreeFlightVehicle::C172Mission
                 | FreeFlightVehicle::Kinematic => Some(cached_c172_specs()),
+                FreeFlightVehicle::JsbsimC172p => Some(cached_c172p_specs()),
                 FreeFlightVehicle::JsbsimP38g => Some(cached_p38_specs()),
                 FreeFlightVehicle::AviateX500Direct => None,
             },

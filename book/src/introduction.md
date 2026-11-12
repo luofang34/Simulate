@@ -33,8 +33,8 @@ This manual covers the end-to-end engineering lifecycle of an aircraft model in 
 cargo run --release -p ironbird -- --mode calibrate-c172 --sensitivity --report-out c172_calibration.md
 
 # 2. Estimate V-speeds, ceiling, glide polar, specific range, and payload-range for a design directory
-cargo run --release -p ironbird -- --mode estimate-dir --package-dir vehicles/c172 --report-out c172_estimate.md
+cargo run --release -p ironbird -- --mode estimate-dir --package-dir vehicles/c172s --report-out c172_estimate.md
 
 # 3. Fly any on-disk syspack directory in Tier-0 closed-loop Aviate XIL (30 Hz optical channel)
-cargo run --release -p ironbird -- --mode tier0-dir --package-dir vehicles/c172 --duration-s 20
+cargo run --release -p ironbird -- --mode tier0-dir --package-dir vehicles/c172s --duration-s 20
 ```

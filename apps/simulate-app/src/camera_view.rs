@@ -2,7 +2,7 @@ use glam::{DMat3, DQuat, DVec3};
 use sim_core::{CameraMount, CameraPoseEcef, VehicleState, VirtualCameraSpec};
 use sim_geo::{BodyEllipsoid, LocalFrame};
 use sim_render::{Camera, CameraPose};
-use sim_scenario::{OperatorViewportMode, ScenarioProfile};
+use sim_scenario::{C172_PILOT_EYE_BODY_M, OperatorViewportMode, ScenarioProfile};
 
 use crate::vehicles::FreeFlightVehicle;
 
@@ -37,15 +37,9 @@ const VOLUMETRIC_UP_M: f64 = 85.0;
 /// take their bearing from the vehicle's other forward axis (`|cos|` of the angle to up).
 const NEAR_VERTICAL_COS: f64 = 0.7;
 
-/// Left-seat pilot eye in FRD body axes at the C172 structural eyepoint (`1.36 m` AGL on gear,
-/// `-3.0°` over the cowling).
+/// Left-seat pilot eye at [`C172_PILOT_EYE_BODY_M`], looking `-3.0°` over the cowling.
 pub fn pilot_eye_mount() -> CameraMount {
-    CameraMount::oblique(
-        DVec3::new(0.10, -0.26, -0.12),
-        0.0,
-        -3.0_f64.to_radians(),
-        0.0,
-    )
+    CameraMount::oblique(C172_PILOT_EYE_BODY_M, 0.0, -3.0_f64.to_radians(), 0.0)
 }
 
 /// Seated cockpit or nose FPV camera mount matched to `vehicle`'s airframe geometry.
@@ -53,6 +47,7 @@ pub fn pilot_eye_mount() -> CameraMount {
 pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
     match vehicle {
         FreeFlightVehicle::JsbsimC172
+        | FreeFlightVehicle::JsbsimC172p
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::C172Mission
         | FreeFlightVehicle::Kinematic => pilot_eye_mount(),
@@ -82,10 +77,15 @@ pub fn belly_sensor_mount() -> CameraMount {
     )
 }
 
-/// Centerline-boresighted PFD `ConformalSvs3D` camera mount at the C172 cockpit eyepoint
-/// height (`0°` angular offset so the PFD zero-pitch horizon line matches aircraft nose `+X`).
+/// Centerline-boresighted PFD `ConformalSvs3D` camera mount at the C172 pilot eye's station
+/// and height (`0°` angular offset so the PFD zero-pitch horizon line matches aircraft
+/// nose `+X`).
 pub fn svs_nose_mount() -> CameraMount {
-    CameraMount::forward_nose(DVec3::new(0.10, 0.0, -0.12))
+    CameraMount::forward_nose(DVec3::new(
+        C172_PILOT_EYE_BODY_M.x,
+        0.0,
+        C172_PILOT_EYE_BODY_M.z,
+    ))
 }
 
 /// Centerline-boresighted PFD `ConformalSvs3D` mount at `vehicle`'s cockpit eyepoint height.
@@ -94,6 +94,7 @@ pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
     match vehicle {
         Some(
             FreeFlightVehicle::JsbsimC172
+            | FreeFlightVehicle::JsbsimC172p
             | FreeFlightVehicle::AviateFixedWingDirect
             | FreeFlightVehicle::C172Mission
             | FreeFlightVehicle::Kinematic,

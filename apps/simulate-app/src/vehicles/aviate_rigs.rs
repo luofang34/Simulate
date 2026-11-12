@@ -16,7 +16,7 @@ use sim_core::{
     TICKS_PER_SECOND, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime};
-use sim_pack::builtin_c172_package;
+use sim_pack::builtin_c172s_package;
 use world_core::{GeodeticPosition, normal_gravity};
 
 use super::jsbsim::{build_jsbsim_fdm, step_jsbsim_with_force};
@@ -276,7 +276,7 @@ pub(super) fn build_aviate_fixed_wing(
     heading_rad: f64,
     field_elev_m: f64,
 ) -> Result<AviateFixedWingRig, AppSimError> {
-    let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
+    let pkg = builtin_c172s_package().map_err(sim_scenario::ScenarioError::from)?;
     let (fdm, specific_force_frd_m_s2) =
         build_jsbsim_fdm(&pkg, origin, heading_rad, 52.0, field_elev_m)?;
     let kernel: DirectFixedWingKernel =

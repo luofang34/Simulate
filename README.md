@@ -72,9 +72,10 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `nav-trial` | `apps/nav-trial` | Headless route navigation trial: Navigate's filter scored per sensor set |
 | `simulate-app` | `apps/simulate-app` | Interactive cockpit for desktop and browser |
 
-`vehicles/c172` is a data-only package with no crate of its own. A vehicle
-package is a `syspack`: a `syspack.json` manifest plus the assets it lists with
-their SHA-256 and size, and one that does not verify will not load.
+`vehicles/c172s` and `vehicles/c172p` are data-only packages with no crates of
+their own. A vehicle package is a `syspack`: a `syspack.json` manifest plus the
+assets it lists with their SHA-256 and size, and one that does not verify will
+not load.
 
 ## Documentation
 

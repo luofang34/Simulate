@@ -40,4 +40,6 @@ pub struct MapFrameInput<'a> {
     pub sky: &'a SkyFrame<'a>,
     /// Supervisor holding OSM airport diagrams, virtual camera presets, and surveillance belief.
     pub supervisor: &'a SupervisorRig,
+    /// Optional explicit per-tail OpenUSD ownship livery override (`(aircraft_id, livery_id, gen)`).
+    pub ownship_livery_override: Option<crate::livery_session::OwnshipLiveryRef<'a>>,
 }

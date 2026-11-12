@@ -33,7 +33,7 @@ fn vector_hud_tessellates_at_window_and_retina_resolution() {
         conformal_surface: ConformalSurface::earth_globe(),
         vertical_datum: Some(CatalogVerticalDatum::EllipsoidWgs84),
     };
-    let c172_env = sim_pack::builtin_c172_package()
+    let c172_env = sim_pack::builtin_c172s_package()
         .expect("C172 package")
         .resolved_airspeed_envelope();
     let ctx = hud_context(&vehicle, &view, rwy.as_ref(), c172_env.as_ref());

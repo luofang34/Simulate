@@ -112,14 +112,14 @@ fn assert_parked_wheels_touch(
 }
 
 /// Within tolerance once drawn from its structural datum; the static per-leg check
-/// (`c172_wheels_meet_the_fdm_gear_red_while_the_mesh_wheelbase_is_70_in`) still sees
+/// (`c172_wheels_meet_the_fdm_gear_red_while_the_fit_leaves_the_gear_1_in_aft`) still sees
 /// the mesh's wheels off the flight model's gear fore and aft.
 #[test]
 #[ignore = "checks parked wheels against drawn terrain on the GPU; needs $SIMULATE_VERIFY_OUT"]
 fn c172_parked_wheels_touch_the_drawn_terrain() -> Result<(), AppSimError> {
     assert_parked_wheels_touch(
         FreeFlightVehicle::JsbsimC172,
-        &UsdAircraftAsset::embedded_c172()?,
+        &UsdAircraftAsset::embedded_n642sp()?,
     )
 }
 

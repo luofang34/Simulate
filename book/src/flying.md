@@ -14,7 +14,8 @@ directly:
 
 | Vehicle | Flight model | What the stick commands |
 |---|---|---|
-| C172 Skyhawk | JSBSim, `vehicles/c172` | Control surfaces and throttle directly |
+| C172S Skyhawk SP | JSBSim, `vehicles/c172s` (`N642SP` default, `N172SP` selectable) | Control surfaces and throttle directly |
+| C172P Skyhawk II | JSBSim, `vehicles/c172p` (`D-ECJB` default, `N53295` selectable) | Control surfaces and throttle directly |
 | Lockheed P-38G Lightning | JSBSim, `vehicles/p38g` | Control surfaces and throttle directly; opens on its period panel with the HUD and glass dock hidden |
 | X500 quadrotor | Rigid body flown by Aviate's multirotor controller in-process | Velocity: stick for horizontal speed, throttle above or below centre to climb or descend, rudder for yaw rate |
 | Fixed-wing fly-by-wire | JSBSim C172 flown by Aviate's fixed-wing controller in-process | Bank and pitch attitude, throttle, rudder for heading |

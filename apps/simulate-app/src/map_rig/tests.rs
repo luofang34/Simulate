@@ -76,6 +76,7 @@ fn the_ownship_airframe_follows_the_scenario_then_the_free_flight_plant() {
         (Some(P::AirportKewrToweredPattern), None, K::C172),
         (Some(P::Airport47NUncontrolledPattern), None, K::C172),
         (None, Some(V::JsbsimC172), K::C172),
+        (None, Some(V::JsbsimC172p), K::C172p),
         (None, Some(V::JsbsimP38g), K::P38g),
         (None, Some(V::AviateFixedWingDirect), K::C172),
         (None, Some(V::Kinematic), K::FixedWingUav),

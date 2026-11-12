@@ -1,6 +1,6 @@
 # Case Study: 1998 Cessna 172S `N642SP`
 
-The reference piston aircraft in `vehicles/c172` is anchored to an actual certificated aircraft: **`N642SP`**, a **1998 Cessna 172S Skyhawk SP** (Serial Number `172S8050`, FAA Type Certificate Data Sheet `3A12` Rev 84, based at Solberg-Hunterdon Airport `N51`, Readington, NJ).
+The reference piston aircraft in `vehicles/c172s` is anchored to an actual certificated aircraft: **`N642SP`**, a **1998 Cessna 172S Skyhawk SP** (Serial Number `172S8050`, FAA Type Certificate Data Sheet `3A12` Rev 84, based at Solberg-Hunterdon Airport `N51`, Readington, NJ).
 
 ---
 
@@ -22,7 +22,7 @@ The reference piston aircraft in `vehicles/c172` is anchored to an actual certif
 
 ## 2. Reconciling POH Tables with Real `N642SP` Operations
 
-Calibrating `vehicles/c172` against both the **1998 Cessna 172S POH** (`172SPHUS-00`) and **`N642SP`** operational data highlights four physical couplings that every fixed-wing calibration must account for:
+Calibrating `vehicles/c172s` against both the **1998 Cessna 172S POH** (`172SPHUS-00`) and **`N642SP`** operational data highlights four physical couplings that every fixed-wing calibration must account for:
 
 1. **Speed Fairings (`+2 KTAS` in Cruise)**:
    The factory POH Section 5 cruise table assumes main/nose wheel fairings are installed (`124 KTAS` at `6,000 ft / 2,600 RPM`). Aircraft operated without fairings lose `2–3 KTAS` ($\Delta C_{D0} \approx +0.0012$). `TailProfile::wheel_fairings_installed = true` records this configuration explicitly.

@@ -44,6 +44,15 @@ pub(super) fn build(
         WidgetStyle::Chip,
         false,
     );
+    if !status.hangar_liveries.is_empty() {
+        view.widget(
+            WidgetId::ImportLivery,
+            [px + 320.0, controls_y, 140.0, 32.0],
+            "Import Livery",
+            WidgetStyle::Chip,
+            false,
+        );
+    }
     view.text(
         [px + pw, controls_y + 16.0],
         10.0,
@@ -56,7 +65,16 @@ pub(super) fn build(
         vehicle.and_then(|v| v.mode_or_default(menu.vehicle_mode().or(status.active_vehicle)));
     if let Some(vehicle) = vehicle {
         details(view, vehicle, mode, status, [px, controls_y + 48.0, pw]);
-        if vehicle.modes().len() > 1 {
+        let has_modes = vehicle.modes().len() > 1;
+        if !status.hangar_liveries.is_empty() {
+            let ly = if has_modes {
+                y + h - 86.0
+            } else {
+                y + h - CHIP_H
+            };
+            livery_chips(view, status, [px, ly, pw - APPLY_W - 16.0]);
+        }
+        if has_modes {
             mode_chips(view, vehicle, mode, [px, y + h - CHIP_H]);
         }
     }
@@ -68,6 +86,26 @@ pub(super) fn build(
         WidgetStyle::Primary,
         false,
     );
+}
+
+/// Selectable per-tail livery chips for the previewed airframe.
+fn livery_chips(view: &mut HubView, status: &MenuStatus, [x, y, max_w]: [f32; 3]) {
+    view.text([x, y - 10.0], 10.0, HAlign::Left, Palette::LABEL, "LIVERY");
+    let mut cx = x;
+    for (idx, (tail, _name)) in status.hangar_liveries.iter().enumerate() {
+        let width = tail.len() as f32 * 11.0 * ADVANCE_PER_SIZE + 26.0;
+        if cx > x && (cx + width - x) > max_w {
+            break;
+        }
+        view.widget(
+            WidgetId::LiveryChoice(idx),
+            [cx, y, width, CHIP_H],
+            tail,
+            WidgetStyle::Chip,
+            status.active_livery_index == Some(idx),
+        );
+        cx += width + 8.0;
+    }
 }
 
 /// The `FLIGHT DYNAMICS` chips of an airframe flown on several plants.
@@ -165,10 +203,15 @@ fn details(
     } else {
         "LUNAR DESCENT".to_owned()
     };
+    let role_or_family = vehicle.family_title.unwrap_or(vehicle.role);
+    let livery_line = status.active_livery_name.as_deref().map_or_else(
+        || "MOVE STICK OR KEYS TO TEST CONTROL SURFACES".to_owned(),
+        |liv| format!("ACTIVE LIVERY {liv}"),
+    );
     let lines = [
         format!(
             "{}   {}   {}",
-            vehicle.role,
+            role_or_family,
             vehicle.fdm(mode).badge(),
             cruise
         ),
@@ -178,7 +221,7 @@ fn details(
             vehicle.mass_kg,
             vehicle.default_preset().title()
         ),
-        "MOVE STICK OR KEYS TO TEST CONTROL SURFACES".to_owned(),
+        livery_line,
     ];
     for (i, line) in lines.iter().enumerate() {
         let ink = if i == 2 {

@@ -116,3 +116,55 @@ fn lunar_chase_frames_the_lander_from_behind_its_windows() {
     let above = (chart.pose.position_ecef - lm.position_ecef).dot(frame.up());
     assert!((above - 4_500.0).abs() < 1e-6);
 }
+
+/// `(x, y, z)` inches of the FDM `<location name="{name}" ...>` element.
+fn fdm_location_in(xml: &str, name: &str) -> DVec3 {
+    let start = xml
+        .find(&format!("<location name=\"{name}\""))
+        .unwrap_or_else(|| panic!("no {name}"));
+    let tail = &xml[start..];
+    let field = |tag: &str| -> f64 {
+        let open = format!("<{tag}>");
+        let from = tail.find(&open).unwrap() + open.len();
+        let to = tail[from..].find('<').unwrap() + from;
+        tail[from..to].trim().parse().unwrap()
+    };
+    DVec3::new(field("x"), field("y"), field("z"))
+}
+
+#[test]
+fn the_c172_eye_is_one_point_for_the_cameras_and_the_fdm() {
+    let origins = crate::vehicles::ModelOrigins::default();
+    let eye_frd = sim_scenario::C172_PILOT_EYE_BODY_M;
+    for (visual, xml) in [
+        (
+            sim_maplibre::OwnshipVisualKind::C172,
+            include_str!("../../../../vehicles/c172s/fdm/c172s.xml"),
+        ),
+        (
+            sim_maplibre::OwnshipVisualKind::C172p,
+            include_str!("../../../../vehicles/c172p/fdm/c172p.xml"),
+        ),
+    ] {
+        let origin = origins.origin_in(visual).unwrap();
+        let eye = fdm_location_in(xml, "EYEPOINT");
+        // Structural axes are x aft, y right, z up, in inches; body axes are FRD metres. The
+        // eye mounts on the drawn model's origin, which sits at its structural datum.
+        let fdm_eye_frd = DVec3::new(origin.x - eye.x, eye.y, -(eye.z - origin.z)) * 0.0254;
+        let eye_in = origin + DVec3::new(-eye_frd.x, eye_frd.y, -eye_frd.z) / 0.0254;
+        assert!(
+            (fdm_eye_frd - eye_frd).length() < 2e-3,
+            "{visual:?}: EYEPOINT should be ({:.2}, {:.2}, {:.2}) in",
+            eye_in.x,
+            eye_in.y,
+            eye_in.z
+        );
+    }
+    let pose = super::pilot_eye_mount().pose(&state(), DVec3::ZERO);
+    let svs = super::svs_nose_mount().pose(&state(), DVec3::ZERO);
+    let s = state();
+    let body = |p: DVec3| s.attitude.inverse() * (p - s.position_ecef);
+    assert!((body(pose.position_ecef) - eye_frd).length() < 1e-6);
+    let svs_body = body(svs.position_ecef);
+    assert!((svs_body.x - eye_frd.x).abs() < 1e-6 && (svs_body.z - eye_frd.z).abs() < 1e-6);
+}

@@ -2,20 +2,16 @@ use std::sync::Arc;
 
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::{
-    AirframeArticulation, CameraPoseEcef, ControlInputs, RateAdapter, RealTimeClock,
-    SensorExposureEvent, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
+    AirframeArticulation, ControlInputs, RateAdapter, RealTimeClock, SensorExposureEvent,
+    SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
 };
-use sim_render::Camera;
-use sim_scenario::{
-    AirportPatternRun, OperatorViewportMode, PatternLeg, ScenarioProfile, ScenarioWorld,
-    SimTimeScale,
-};
+use sim_scenario::{AirportPatternRun, PatternLeg, ScenarioProfile, ScenarioWorld, SimTimeScale};
 use sim_spacetime::{SimEpoch, TimeScaleCatalog};
 use tracing::debug;
 use web_time::Instant;
 
-use crate::camera_view::{pilot_eye_mount_for, viewport_camera_for};
 use crate::error::AppSimError;
+use crate::livery_session::LiverySession;
 use crate::sensor_bus::{OnboardSensorBus, SensorRealism};
 use crate::vehicles::FreeFlightVehicle;
 use crate::world_surface::WorldSurfaceHandle;
@@ -28,6 +24,7 @@ mod free_world;
 mod gauge_hud_tests;
 #[cfg(test)]
 mod jwst_tests;
+mod liveries;
 mod manual;
 mod mode;
 mod pacing;
@@ -96,6 +93,7 @@ pub struct Flight {
     solar: Arc<SolarSystem>,
     epoch: SimEpoch,
     model_origins: crate::vehicles::ModelOrigins,
+    liveries: LiverySession,
     /// A link's page whose flight the C172 mission draws, when the app runs inside one.
     page: Option<crate::vehicles::PageFeed>,
 }
@@ -146,6 +144,7 @@ impl Flight {
             solar,
             epoch,
             model_origins: crate::vehicles::ModelOrigins::default(),
+            liveries: LiverySession::new()?,
             page: None,
         };
         flight.begin_flight()?;
@@ -464,33 +463,5 @@ impl Flight {
             Mode::Scenario(run) => run.cockpit(),
             Mode::Space(world) => world.cockpit(),
         }
-    }
-
-    /// Aboard pilot eye pose in body-fixed ECEF coordinates, the eye mounted on the drawn
-    /// airframe.
-    pub fn aboard_eye_pose(&self) -> Result<CameraPoseEcef, AppSimError> {
-        match &self.mode {
-            Mode::Free { vehicle, world, .. } => Ok(pilot_eye_mount_for(*vehicle)
-                .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m())),
-            Mode::Scenario(run) => Ok(run.eye_pose()?),
-            Mode::Space(world) => Ok(world.eye_pose()),
-        }
-    }
-
-    /// Camera positioned for `viewport_mode` on [`Self::display_vehicle_state`].
-    pub fn display_camera(
-        &self,
-        viewport_mode: OperatorViewportMode,
-    ) -> Result<Camera, AppSimError> {
-        let exact = self.vehicle_state();
-        let shown = self.display_vehicle_state();
-        let aboard = display::reanchor(self.aboard_eye_pose()?, &exact, &shown);
-        Ok(viewport_camera_for(
-            viewport_mode,
-            self.profile(),
-            self.chase_back_up_m(),
-            &shown,
-            aboard,
-        ))
     }
 }

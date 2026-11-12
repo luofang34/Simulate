@@ -412,7 +412,7 @@ fn cli_supports_directory_tier0_and_design_estimation() {
     use std::path::PathBuf;
 
     let c172_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vehicles/c172")
+        .join("../../vehicles/c172s")
         .display()
         .to_string();
 
@@ -435,7 +435,7 @@ fn cli_supports_directory_tier0_and_design_estimation() {
     assert_eq!(est_args.mode, CliMode::EstimateDir);
     match execute_cli(&est_args).unwrap() {
         CliOutcome::DesignEstimate(rep) => {
-            assert_eq!(rep.package_id, "c172_class_reference");
+            assert_eq!(rep.package_id, "c172s");
             assert!(rep.service_ceiling_ft > 10_000.0);
             assert_eq!(rep.payload_range.len(), 3);
             assert_eq!(rep.mission_profiles.len(), 4);

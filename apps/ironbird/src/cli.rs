@@ -9,7 +9,7 @@ use sim_geo::Geodetic;
 use sim_pack::{
     AceFeedbackReport, AceVehicleInputs, CalibrationReport, DesignPerformanceReport,
     DesignTradeStudyReport, DirectoryPackageSource, LoadedSyspack, SensitivityReport,
-    build_ace_feedback_report, builtin_c172_package, default_design_trades,
+    build_ace_feedback_report, builtin_c172s_package, default_design_trades,
     estimate_design_performance, evaluate_package, identify_package_sensitivities,
     run_design_trade_study, write_syspack_with_manual_assets,
 };
@@ -247,7 +247,7 @@ pub fn execute_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
 
 fn execute_calibration_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError> {
     let package = match args.mode {
-        CliMode::CalibrateC172 | CliMode::EstimateC172 => builtin_c172_package()?,
+        CliMode::CalibrateC172 | CliMode::EstimateC172 => builtin_c172s_package()?,
         CliMode::CalibrateDir | CliMode::EstimateDir => {
             let dir = args.package_dir.as_ref().ok_or_else(|| {
                 usage("--mode calibrate-dir|estimate-dir requires --package-dir <path>")
@@ -312,7 +312,7 @@ fn execute_trades_or_ace_cli(args: &CliArgs) -> Result<CliOutcome, IronbirdError
         return execute_ace_bridge(args);
     }
     let package = match args.mode {
-        CliMode::TradeC172 => builtin_c172_package()?,
+        CliMode::TradeC172 => builtin_c172s_package()?,
         CliMode::TradeDir => {
             let dir = args
                 .package_dir

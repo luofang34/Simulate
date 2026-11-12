@@ -15,7 +15,7 @@ use sim_core::{
     SimInstant, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, ecef_to_geodetic};
-use sim_pack::{LoadedSyspack, builtin_c172_package};
+use sim_pack::{LoadedSyspack, builtin_c172p_package, builtin_c172s_package};
 #[cfg(not(target_arch = "wasm32"))]
 use sim_xil::{
     XilStimulus,
@@ -178,7 +178,8 @@ pub fn run_tier0_fixed_wing_cruise(
     noise_seed: u64,
 ) -> Result<RigSummary, IronbirdError> {
     let package = match vehicle {
-        FixedWingVehicle::C172 => builtin_c172_package()?,
+        FixedWingVehicle::C172 => builtin_c172s_package()?,
+        FixedWingVehicle::C172p => builtin_c172p_package()?,
     };
     run_tier0_package_cruise(&package, origin, duration_s, noise, noise_seed)
 }

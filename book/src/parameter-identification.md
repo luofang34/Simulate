@@ -7,7 +7,7 @@ Passing `--sensitivity` to `ironbird` (or calling `sim_pack::identify_package_se
 ```sh
 cargo run --release -p ironbird -- \
   --mode calibrate-dir \
-  --package-dir vehicles/c172 \
+  --package-dir vehicles/c172s \
   --sensitivity \
   --report-out c172_sensitivity.md
 ```
@@ -45,7 +45,7 @@ $$\left(\tilde{\mathbf{J}}^\top \tilde{\mathbf{J}} + \lambda \mathbf{I}\right) \
 
 ## 3. Interpreting the Identification Report
 
-On `vehicles/c172` (`N642SP`), the Jacobian table reports both the physical partial derivatives ($\partial\mathrm{ROC}/\partial\theta$, $\partial\mathrm{KTAS}/\partial\theta$, $\partial\mathrm{GPH}/\partial\theta$) and the recommended parameter step $\Delta\theta$:
+On `vehicles/c172s` (`N642SP`), the Jacobian table reports both the physical partial derivatives ($\partial\mathrm{ROC}/\partial\theta$, $\partial\mathrm{KTAS}/\partial\theta$, $\partial\mathrm{GPH}/\partial\theta$) and the recommended parameter step $\Delta\theta$:
 
 | Parameter | Step $\delta\theta$ | $\partial\mathrm{ROC}/\partial\theta$ (`fpm`) | $\partial\mathrm{KTAS}/\partial\theta$ (`kt`) | $\partial\mathrm{GPH}/\partial\theta$ | Recommended $\Delta\theta$ |
 |---|---:|---:|---:|---:|---:|

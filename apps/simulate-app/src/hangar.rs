@@ -18,6 +18,7 @@ pub struct HangarRig {
     orbit: HangarOrbit,
     assets: HashMap<HangarModel, Arc<UsdAircraftAsset>>,
     model: Option<HangarModel>,
+    custom_key: Option<(HangarModel, String, u32)>,
     elapsed_s: f64,
     shown: bool,
 }
@@ -30,6 +31,7 @@ impl HangarRig {
             orbit: HangarOrbit::default(),
             assets: HashMap::new(),
             model: None,
+            custom_key: None,
             elapsed_s: 0.0,
             shown: false,
         })
@@ -63,6 +65,7 @@ impl HangarRig {
     }
 
     /// Renders `model` at `size_px`, posed by `controls`; the view is shown this frame.
+    #[cfg(test)]
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -72,11 +75,41 @@ impl HangarRig {
         controls: ControlInputs,
         elapsed_s: f64,
     ) -> Result<(), AppSimError> {
+        self.render_with_livery(device, queue, model, None, size_px, controls, elapsed_s)
+    }
+
+    /// Renders `model` (or an explicit per-tail OpenUSD `livery` override) at `size_px`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_with_livery(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        model: HangarModel,
+        livery: Option<((&str, u32), &Arc<UsdAircraftAsset>)>,
+        size_px: [u32; 2],
+        controls: ControlInputs,
+        elapsed_s: f64,
+    ) -> Result<(), AppSimError> {
         self.pass.ensure_size(device, size_px)?;
-        if self.model != Some(model) {
-            let asset = self.asset(model)?;
-            self.pass.set_asset(device, queue, &asset)?;
-            self.model = Some(model);
+        match livery {
+            Some(((livery_id, generation), asset)) => {
+                let same = self
+                    .custom_key
+                    .as_ref()
+                    .is_some_and(|(m, l, g)| *m == model && l == livery_id && *g == generation);
+                if !same {
+                    self.pass.set_asset(device, queue, asset)?;
+                    self.custom_key = Some((model, livery_id.to_owned(), generation));
+                    self.model = Some(model);
+                }
+            }
+            None => {
+                if self.custom_key.take().is_some() || self.model != Some(model) {
+                    let asset = self.asset(model)?;
+                    self.pass.set_asset(device, queue, &asset)?;
+                    self.model = Some(model);
+                }
+            }
         }
         self.orbit.advance(elapsed_s);
         if elapsed_s.is_finite() && elapsed_s > 0.0 {
@@ -93,7 +126,7 @@ impl HangarRig {
         Ok(())
     }
 
-    /// Hides the preview until the next [`Self::render`].
+    /// Hides the preview until the next [`Self::render_with_livery`].
     pub fn hide(&mut self) {
         self.shown = false;
     }
@@ -117,7 +150,8 @@ impl HangarRig {
 /// The built-in asset behind `model`.
 pub fn load_model(model: HangarModel) -> Result<UsdAircraftAsset, AppSimError> {
     Ok(match model {
-        HangarModel::C172 => UsdAircraftAsset::embedded_c172()?,
+        HangarModel::C172 => UsdAircraftAsset::embedded_n642sp()?,
+        HangarModel::C172p => UsdAircraftAsset::embedded_c172p_d_ecjb()?,
         HangarModel::P38g => UsdAircraftAsset::p38g()?,
         HangarModel::X500 => UsdAircraftAsset::x500_quadrotor()?,
         HangarModel::FixedWingUav => UsdAircraftAsset::fixed_wing_uav()?,

@@ -72,7 +72,7 @@ Synthesizes the three classic mission corners of the aircraft's payload–range 
 Running `cargo run --release -p ironbird -- --mode estimate-c172` produces the following Markdown engineering report directly from 6-DoF JSBSim sweeps:
 
 ```markdown
-# New-Design Performance & Range Estimate — `c172_class_reference` (C172-Class Reference Aircraft)
+# New-Design Performance & Range Estimate — `c172s` (Cessna 172S Skyhawk SP)
 
 - **Mass Breakdown**: Empty `767.0 kg` | Usable Fuel `144.2 kg` (`53.0 US gal`) | Nominal Payload `230.0 kg` | Ref Gross `1156.7 kg`
 - **Synthesized V-Speeds (KCAS)**: Vs0 = 48.1 | Vs1 = 53.1 | Vx = 63.9 (gamma_max = 5.9 deg) | Vy = 74.2 (`758 fpm` SL) | Vg = 68.0 (L/D = 9.12, `1.50 NM / 1,000 ft`) | Va = 103.5 | Vmax,SL = 128.1 KTAS
@@ -102,4 +102,4 @@ Running `cargo run --release -p ironbird -- --mode estimate-c172` produces the f
 ```
 
 > **Propulsion Modelling Tip for Ceiling & Range Estimation:**
-> A `<piston_engine>` coupled to a `<propeller>` (as in `vehicles/c172/fdm/c172_class_reference.xml`) naturally models manifold-pressure density lapse with altitude and BSFC fuel burn (`propulsion/engine[0]/fuel-flow-rate-gph`), yielding realistic service ceilings (`~15,200 ft`) and altitude specific-range curves. By contrast, a simplified `<electric_engine>` driving a `<direct>` thruster produces density-independent thrust (`T = const`), so its climb rate does not lapse with altitude unless an atmospheric density table is included in the propulsion or drag model.
+> A `<piston_engine>` coupled to a `<propeller>` (as in `vehicles/c172s/fdm/c172s.xml`) naturally models manifold-pressure density lapse with altitude and BSFC fuel burn (`propulsion/engine[0]/fuel-flow-rate-gph`), yielding realistic service ceilings (`~15,200 ft`) and altitude specific-range curves. By contrast, a simplified `<electric_engine>` driving a `<direct>` thruster produces density-independent thrust (`T = const`), so its climb rate does not lapse with altitude unless an atmospheric density table is included in the propulsion or drag model.
