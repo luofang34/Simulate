@@ -101,3 +101,31 @@ fn a_page_missions_displays_read_the_controllers_instant() {
     }
     assert_eq!(onboard.air_data.expect("air data").timestamp, at);
 }
+
+#[test]
+fn a_page_flight_hands_no_optical_exposures_to_the_maps() {
+    let spec = first_link().unwrap();
+    let mut trial = ChainTrial::new(&spec, &DirectoryStores).unwrap();
+    let feed = PageFeed::new(1_781_524_800.0, PageSnapshot::of(&trial, None));
+    let mut page = crate::flight::Flight::new().unwrap();
+    page.show_page_mission(feed.clone()).unwrap();
+    let mut own = crate::flight::Flight::new().unwrap();
+    for _ in 0..30 {
+        trial.step_until(trial.now_s() + 0.02).unwrap();
+        feed.publish(PageSnapshot::of(&trial, Some("Enroute".to_owned())));
+        for flight in [&mut page, &mut own] {
+            flight
+                .advance_by(
+                    0.02,
+                    ControlInputs::default(),
+                    sim_scenario::SimTimeScale::RealTime,
+                )
+                .unwrap();
+        }
+    }
+    assert!(
+        !own.drain_sensor_exposures().is_empty(),
+        "the app's own flight exposes its optical sensor"
+    );
+    assert!(page.drain_sensor_exposures().is_empty());
+}
