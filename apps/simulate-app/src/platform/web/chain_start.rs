@@ -71,7 +71,10 @@ fn prepare(
     let memory = sealed.map_or_else(MemoryStore::default, |sealed| sealed.memory.clone());
     let spec = chain_spec(&plan.link, &plan.request, identity)?;
     let started = now_ms();
-    let trial = ChainTrial::new(&spec, &page_stores(memory.clone()))?;
+    // The page shows what the visual navigator matched; the flight is the same
+    // without the record.
+    let inspect = plan.request.camera.is_some();
+    let trial = ChainTrial::new_inspecting(&spec, &page_stores(memory.clone()), inspect)?;
     info!(ms = now_ms() - started, "the vehicle's software is ready");
     let world = match (plan.request.camera, identity) {
         (Some(_), Some(identity)) => {

@@ -130,6 +130,18 @@ pub fn trial_navigator_with_stores(
     set: &SensorSetSpec,
     stores: &dyn MapStores,
 ) -> Result<Box<dyn Navigator>, TrialError> {
+    trial_navigator_inspecting(request, set, stores, false)
+}
+
+/// [`trial_navigator_with_stores`], whose visual navigator keeps a record of
+/// its latest terrain match when `inspect` is on. The navigator's outputs
+/// are the same either way; the record costs a copy of the matched images.
+pub fn trial_navigator_inspecting(
+    request: &TrialRequest,
+    set: &SensorSetSpec,
+    stores: &dyn MapStores,
+    inspect: bool,
+) -> Result<Box<dyn Navigator>, TrialError> {
     let suite = sensor_suite(request, set)?;
     let stars = set
         .means
@@ -139,6 +151,7 @@ pub fn trial_navigator_with_stores(
     let mut navigator = ReferenceNavigator::new(suite, MASTER_CLOCK_DOMAIN, stars)?;
     if set.means.contains(&NavMeans::Visual) {
         load_onboard_map(request, &mut navigator, stores)?;
+        navigator.set_terrain_match_inspection(inspect);
     }
     Ok(Box::new(navigator))
 }

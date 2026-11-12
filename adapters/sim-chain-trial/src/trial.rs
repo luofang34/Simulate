@@ -15,7 +15,8 @@ use sim_core::SimInstant;
 use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
+    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, TerrainMatch,
+    replay_set_inspecting,
 };
 
 use crate::nav_log::NavLog;
@@ -59,6 +60,17 @@ impl ChainTrial {
     /// The trial of `spec`, its onboard packages read from `stores`: the
     /// aeroplane trimmed at the start, every set aligned, nothing flown.
     pub fn new(spec: &ChainTrialSpec, stores: &dyn MapStores) -> Result<Self, ChainTrialError> {
+        Self::new_inspecting(spec, stores, false)
+    }
+
+    /// [`Self::new`], whose visual sets keep a record of their latest
+    /// terrain match when `inspect` is on ([`Self::terrain_matches`]). The
+    /// flight and every navigator's output are the same either way.
+    pub fn new_inspecting(
+        spec: &ChainTrialSpec,
+        stores: &dyn MapStores,
+        inspect: bool,
+    ) -> Result<Self, ChainTrialError> {
         let resolved = setup::resolve(spec)?;
         let chain = setup::chain(spec, &resolved)?;
         let start = chain.true_state();
@@ -69,7 +81,7 @@ impl ChainTrial {
             .sensor_sets
             .iter()
             .map(|set| {
-                let run = replay_set_with_stores(request, set, &nav.log, stores)?;
+                let run = replay_set_inspecting(request, set, &nav.log, (stores, inspect))?;
                 Ok(SetSlot::new(set.name.clone(), run, |kind| {
                     has_sensor(&set.means, kind)
                 }))
@@ -146,6 +158,16 @@ impl ChainTrial {
     /// flight-management side, apart from the flight controller's account.
     pub fn navigation(&self) -> Option<&NavigationDisplay> {
         self.chain.status().navigation.as_ref()
+    }
+
+    /// Each visual set's latest terrain match, by set name, for a trial built
+    /// inspecting them.
+    pub fn terrain_matches(&self) -> impl Iterator<Item = (&str, &TerrainMatch)> {
+        self.sets.iter().filter_map(|slot| {
+            slot.run
+                .last_terrain_match()
+                .map(|found| (slot.name.as_str(), found))
+        })
     }
 
     /// The true aeroplane now, for drawing the world outside it only.

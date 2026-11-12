@@ -15,7 +15,8 @@ use super::{
     CameraWorld, MapView, WORLD_MEMORY_CEILING_BYTES, world_line, world_memory_bytes,
     world_memory_refusal,
 };
-use crate::{HostError, hosted_request, package_camera, package_route_msl};
+use crate::{HostError, HostedRequest, hosted_request, package_camera, package_route_msl};
+use sim_navdata::SealedPackage;
 
 const FIRST: &str = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3;\
 41.800000,-1.000000,,,ZA4;41.740000,-1.050000,,,ZA5&h=2000.0&hd=msl&start=41.700000,-1.070000,,90.0\
@@ -92,6 +93,9 @@ fn a_world_too_big_for_the_tab_is_refused_with_its_numbers() {
     assert!(refusal[1].text.contains("does not lower the map detail"));
 }
 
+/// The short leg, flown on its visual set from the leg's start.
+const VISUAL: &str = "v=1&r=41.700000,-1.050000,,,A;41.700000,-1.030000,,,B&h=2000.0&hd=msl\
+&t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual&fly=ins.baro.visual&mb=200";
 /// A short leg flown over a visual set.
 const SHORT: &str = "v=1&r=41.700000,-1.050000,,,A;41.700000,-1.030000,,,B&h=2000.0&hd=msl\
 &t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual&mb=200";
@@ -126,9 +130,10 @@ impl TileTransport for Uniform {
     }
 }
 
-#[test]
-fn the_camera_sees_the_sealed_package_the_way_the_trial_does() {
-    let link = decode_fragment(SHORT).unwrap();
+/// The link of `fragment`, its hosted request, and its package sealed from
+/// the uniform server.
+fn sealed(fragment: &str) -> (sim_link::SimulationLink, HostedRequest, SealedPackage) {
+    let link = decode_fragment(fragment).unwrap();
     let request = hosted_request(&link).unwrap();
     let sources = SourceSet::default();
     let plan = plan_package(
@@ -157,6 +162,12 @@ fn the_camera_sees_the_sealed_package_the_way_the_trial_does() {
         &mut store,
     ))
     .unwrap();
+    (link, request, sealed)
+}
+
+#[test]
+fn the_camera_sees_the_sealed_package_the_way_the_trial_does() {
+    let (_, request, sealed) = sealed(SHORT);
     let world = CameraWorld::open_blocking(sealed.memory.clone(), sealed.summary.identity).unwrap();
 
     let spec = request.trial.terrain_camera.unwrap();
@@ -212,4 +223,73 @@ fn the_map_view_projects_and_keeps_its_shape() {
     // About 21 km across at 41.75° north on 800 pixels.
     let m = view.metres_per_pixel(800.0);
     assert!((20.0..40.0).contains(&m), "{m}");
+}
+
+/// A wall clock that moves a millisecond each time it is read.
+struct Ticking(std::cell::Cell<f64>);
+
+impl crate::Clock for Ticking {
+    fn now_s(&self) -> f64 {
+        let now = self.0.get() + 0.001;
+        self.0.set(now);
+        now
+    }
+}
+
+/// What a chain flight of the visual link hands the monitor in its first
+/// seconds, built inspecting terrain matches or not.
+fn visual_feeds(inspect: bool) -> Vec<crate::MonitorFeed> {
+    let (link, hosted, sealed) = sealed(VISUAL);
+    let identity = sealed.summary.identity;
+    let spec = crate::chain_spec(&link, &hosted, Some(identity)).unwrap();
+    let stores = crate::page_stores(sealed.memory.clone());
+    let trial = sim_chain_trial::ChainTrial::new_inspecting(&spec, &stores, inspect).unwrap();
+    let world = CameraWorld::open_blocking(sealed.memory, identity).unwrap();
+    let mut flight = crate::ChainFlight::new(trial, Some(world), Ticking(Default::default()));
+    let clock = Ticking(Default::default());
+    let mut out = Vec::new();
+    while crate::FlightStepper::sim_time_s(&flight) < 4.0 {
+        crate::run_slice(&mut flight, &clock, 0.05, 4.0, &mut out).unwrap();
+    }
+    out
+}
+
+#[test]
+fn inspecting_the_terrain_matches_shows_them_and_changes_no_output() {
+    let plain = visual_feeds(false);
+    let inspected = visual_feeds(true);
+    let without_matches: Vec<_> = inspected
+        .iter()
+        .filter(|feed| !matches!(feed, crate::MonitorFeed::Match(_)))
+        .cloned()
+        .collect();
+    let progress = |feeds: &[crate::MonitorFeed]| -> Vec<crate::MonitorFeed> {
+        feeds
+            .iter()
+            .filter(|feed| {
+                !matches!(
+                    feed,
+                    crate::MonitorFeed::Progress(sim_navigate::trial::ProgressRecord::Finished(_))
+                )
+            })
+            .filter(|feed| !matches!(feed, crate::MonitorFeed::Frame(_)))
+            .cloned()
+            .collect()
+    };
+    assert_eq!(progress(&plain), progress(&without_matches));
+    assert!(
+        plain
+            .iter()
+            .all(|feed| !matches!(feed, crate::MonitorFeed::Match(_)))
+    );
+    let shots: Vec<_> = inspected
+        .iter()
+        .filter_map(|feed| match feed {
+            crate::MonitorFeed::Match(shot) => Some(shot),
+            _ => None,
+        })
+        .collect();
+    assert!(!shots.is_empty(), "the visual set matched no frame");
+    assert!(shots.iter().all(|shot| shot.set == "ins.baro.visual"));
+    assert!(shots.windows(2).all(|pair| pair[0].at_s < pair[1].at_s));
 }
