@@ -17,7 +17,8 @@ use pilotage_adapter_aviate::{AviateAirframe, EmbeddedIncarnations};
 use pilotage_host_core::{HostCore, HostCoreConfig, HostEvent, HostStatus, MISSION_CLOCK};
 use pilotage_mavlink::link::LinkConfig;
 use pilotage_mission::{
-    MissionConfig, MissionLimits, OwnshipSource, PlannedWaypoint, WaypointPlan, WaypointPlanRecord,
+    MissionConfig, MissionLimits, OwnshipSource, PlannedWaypoint, TerminalHoldingPattern,
+    WaypointPlan, WaypointPlanRecord,
 };
 use pilotage_protocol::VehicleClass;
 use sim_core::{SimInstant, VehicleState};
@@ -80,6 +81,9 @@ pub struct ChainRoute {
     pub plan_loaded_at_s: f64,
     /// The civil time the run starts at, which fixes the magnetic field.
     pub utc: UtcTime,
+    /// The holding pattern the mission flies at the last fix when its plan
+    /// ends; each value left unset takes Pilotage's standard.
+    pub terminal_hold: TerminalHoldingPattern,
 }
 
 /// What crossed the link between the host and the flight controller.
@@ -297,6 +301,7 @@ where
     mission.cruise_mps = route.cruise_mps;
     mission.climb_rate_mps = route.climb_rate_mps;
     mission.route_bank_deg = route.route_bank_deg;
+    mission.terminal_holding_pattern = route.terminal_hold;
     mission.limits = MissionLimits {
         max_horizontal_mps: route.max_horizontal_mps,
         max_vertical_mps: route.climb_rate_mps,

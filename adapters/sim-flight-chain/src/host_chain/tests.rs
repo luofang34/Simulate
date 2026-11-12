@@ -68,6 +68,7 @@ fn route(plan_loaded_at_s: f64) -> ChainRoute {
         airframe: crate::c172_pilotage_airframe().unwrap(),
         plan_loaded_at_s,
         utc: UtcTime::from_unix_seconds(START_UNIX_S),
+        terminal_hold: crate::TerminalHoldingPattern::default(),
     }
 }
 

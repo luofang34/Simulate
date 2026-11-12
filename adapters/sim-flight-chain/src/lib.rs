@@ -28,7 +28,7 @@ pub use hosted_board::{DeviceOutages, HostedBoard};
 pub use pilotage_host_core::{HostEvent, HostStatus, MISSION_CLOCK};
 pub use pilotage_mission::{
     DisplayFix, DisplayWaypoint, HoldingEntry, HoldingLeg, HoldingPattern, HoldingPatternStatus,
-    HoldingTurn, LegDisplay, MissionEvent, MissionState, NavQuality, NavigationDisplay, ToFrom,
-    WaypointProgress,
+    HoldingTurn, LegDisplay, MissionEvent, MissionState, NavQuality, NavigationDisplay,
+    TerminalHoldingPattern, ToFrom, WaypointProgress,
 };
 pub use pilotage_protocol::{VehicleClass, VehicleId};
