@@ -27,7 +27,7 @@ use super::stars::{roof_star_mount, star_camera_config};
 use super::terrain_camera::TerrainCameraSpec;
 use super::{QualityFloor, SensorSetSpec, TrialError, TrialRequest, VehicleSpec};
 use crate::{MASTER_CLOCK_DOMAIN, NavMeans, imager_model, inertial_config, navigate_mount};
-pub(super) use readings::{altimeter_budget, baro_altitude_data, gnss_fix_data};
+pub(super) use readings::{altimeter_budget, baro_altitude_data, gnss_budget, gnss_fix_data};
 
 mod readings;
 
@@ -74,7 +74,7 @@ pub fn sensor_suite(
             imager: None,
             mount: None,
             rate_hz: request.gnss.rate_hz,
-            budget: ErrorBudget::Declared,
+            budget: gnss_budget(&super::devices::receiver(request)?.spec()),
         },
         SensorSpec {
             id: BARO_SOURCE,

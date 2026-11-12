@@ -46,7 +46,7 @@ pub use indicate_instrument_analog::{
 };
 pub use indicate_instrument_descriptor::{decode_v_speeds_payload, encode_v_speeds_payload};
 pub use indicate_instrument_feeder::{
-    CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION, RawStamp,
+    CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION, RawStamp, nav_display::DeviationScaleProfile,
     nav_guidance::Guidance as LaneGuidance,
 };
 pub use indicate_instrument_glyphs::{Face, FaceTable, Typeface};
@@ -57,8 +57,8 @@ pub use indicate_instrument_hud::{
 pub use indicate_instrument_panels::{BackgroundMode, PfdConfig, SvsViewport, VSpeeds};
 pub use indicate_instrument_raster::{FrameId, FramebufferDims};
 pub use indicate_instrument_state::{
-    AircraftState, HeadingReference, IdentStr, Quat as IndicateQuat, Sig, SignalStatus, VSpeedBug,
-    VSpeedBugs,
+    AircraftState, HeadingReference, IdentStr, NavFromTo, NavScale, NavSequencing,
+    Quat as IndicateQuat, Sig, SignalStatus, VSpeedBug, VSpeedBugs,
 };
 pub use indicate_instrument_symbology::v_speeds::{
     DialVSpeedScale, LinearVSpeedScale, draw_dial_arcs, draw_dial_bugs, draw_linear_bands,

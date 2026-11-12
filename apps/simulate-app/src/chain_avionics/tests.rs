@@ -2,6 +2,7 @@ use glam::DQuat;
 use sim_core::SimInstant;
 use sim_flight_chain::{FcAirData, FcTargets};
 use sim_geo::{Geodetic, geodetic_to_ecef};
+use sim_indicate::{NavFromTo, NavScale, NavSequencing};
 
 use super::*;
 
@@ -112,7 +113,7 @@ fn display(hold: bool) -> NavigationDisplay {
             vertical_deviation_m: None,
             distance_to_go_m: 3_704.0,
             time_to_go_s: Some(61.0),
-            to_from: ToFrom::To,
+            to_from: if hold { ToFrom::From } else { ToFrom::To },
             quality: NavQuality::Degraded,
         }),
         holding_pattern: hold.then(|| HoldingPatternStatus {
@@ -130,6 +131,7 @@ fn display(hold: bool) -> NavigationDisplay {
             circuits: 2,
             outbound_time_s: 60.0,
         }),
+        dead_reckoning: None,
     }
 }
 
@@ -155,6 +157,10 @@ fn the_hsi_lane_is_pilotages_leg() {
     assert_eq!(guidance.to_ident, ident("WP2").unwrap_or_default());
     assert_eq!(guidance.from_ident, ident("WP1").unwrap_or_default());
     assert_eq!(guidance.solution_quality, 1);
+    assert_eq!(
+        (guidance.scale, guidance.to_from, guidance.sequencing),
+        (NavScale::Enroute, NavFromTo::To, NavSequencing::Sequencing)
+    );
     assert_eq!((stamp.epoch, now_ms), (3, 90_000.0));
     let HostNavGuidance::PilotageLane { guidance, .. } = navigation_lane(&display(true), at, 3)
     else {
@@ -162,6 +168,10 @@ fn the_hsi_lane_is_pilotages_leg() {
     };
     assert_eq!(guidance.from_ident, ident("HOLD").unwrap_or_default());
     assert_eq!(guidance.to_ident, ident("WP3").unwrap_or_default());
+    assert_eq!(
+        (guidance.to_from, guidance.sequencing),
+        (NavFromTo::From, NavSequencing::Hold)
+    );
     let mut idle = display(false);
     idle.leg = None;
     assert_eq!(navigation_lane(&idle, at, 3), HostNavGuidance::None);

@@ -28,6 +28,7 @@ fn display(leg: HoldingLeg, circuits: u32) -> NavigationDisplay {
             circuits,
             outbound_time_s: 60.0,
         }),
+        dead_reckoning: None,
     }
 }
 

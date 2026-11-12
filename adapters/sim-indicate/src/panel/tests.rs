@@ -6,6 +6,7 @@ use sim_core::{SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic};
 
 use super::*;
+use crate::DeviationScaleProfile;
 use crate::{AltitudeSource, DisplayAxes, FeedConfig, FlightSample, StateFeed};
 
 struct Target {
@@ -60,6 +61,7 @@ fn panel(pitch_rad: f64, heading_rad: f64) -> PanelData {
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample::truth(SimInstant::START, vehicle);
     resolve(&feed.state(&sample).unwrap(), &FreshnessPolicy::default())
@@ -74,6 +76,7 @@ fn failed_panel() -> PanelData {
         origin_id: 1,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: crate::HeadingMode::default(),
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample::truth(
         SimInstant::START,

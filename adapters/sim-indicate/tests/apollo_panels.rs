@@ -4,7 +4,7 @@
 use glam::{BVec3, DQuat, DVec3};
 use indicate_instrument_panels::PfdConfig;
 use indicate_instrument_raster::{FrameId, FramebufferDims};
-use indicate_instrument_state::abi::v9::CAPACITY;
+use indicate_instrument_state::abi::v10::CAPACITY;
 use sim_apollo::{
     CockpitInstrumentPanel, InertialSiteSample, LunarContactOutput, LunarModuleSources,
     RateGyroOutput, StrapdownAsaBlock, StrapdownAsaConfig, ThreeGimbalImuBlock,
@@ -13,9 +13,10 @@ use sim_apollo::{
 use sim_core::{Block, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 use sim_indicate::{
-    AGS_SOURCE, AltitudeSource, DisplayAxes, FeedConfig, FlightSample, MonitoredFrame,
-    PANEL_HEIGHT_PX, PANEL_RGBA_BYTES, PANEL_SCENE_BYTES, PANEL_WIDTH_PX, PGNS_SOURCE,
-    PanelBuffers, SourceMonitor, StateFeed, decode_frame, encode_frame, render_hsi, render_pfd,
+    AGS_SOURCE, AltitudeSource, DeviationScaleProfile, DisplayAxes, FeedConfig, FlightSample,
+    MonitoredFrame, PANEL_HEIGHT_PX, PANEL_RGBA_BYTES, PANEL_SCENE_BYTES, PANEL_WIDTH_PX,
+    PGNS_SOURCE, PanelBuffers, SourceMonitor, StateFeed, decode_frame, encode_frame, render_hsi,
+    render_pfd,
 };
 
 const PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / 50);
@@ -45,6 +46,7 @@ fn fly() -> Frames {
         origin_id: 11,
         altitude: AltitudeSource::OriginRelative,
         heading_mode: sim_indicate::HeadingMode::SimLocalTrue,
+        deviation_scale: DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let mut monitor = SourceMonitor::new();
     let moon = InertialTransform::moon_at(UtcTime::from_unix_seconds(-14_182_940.0));

@@ -66,6 +66,7 @@ fn p38_needles_stand_where_their_scales_put_the_hud_airspeed_and_altitude() {
         origin_id: 1,
         altitude: AltitudeSource::Barometric,
         heading_mode: HeadingMode::EarthMagnetic,
+        deviation_scale: sim_indicate::DeviationScaleProfile::GNSS_NAVIGATOR,
     });
     let sample = FlightSample {
         air_data: Some(air),
