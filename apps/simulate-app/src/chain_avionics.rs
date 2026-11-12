@@ -10,15 +10,18 @@
 use aviate_core::control::ControlMode;
 use glam::DVec3;
 use sim_core::{SourceValidity, StampedReading, VehicleState};
-use sim_flight_chain::FcAvionics;
+use sim_flight_chain::{FcAvionics, NavigationDisplay};
 use sim_geo::{LocalFrame, ecef_to_geodetic, egm96_undulation_m};
 use sim_indicate::{
     AirDataReading, AirDataSample, AutopilotModeSummary, HostFlightGuidance, HostNavGuidance,
     IdentStr, PilotSelections,
 };
 
+mod navigation;
 #[cfg(test)]
 mod tests;
+
+pub use navigation::navigation_lane;
 
 /// Sea-level standard density, kg/m³, which defines indicated airspeed.
 const SEA_LEVEL_DENSITY_KG_M3: f64 = 1.225;
@@ -53,11 +56,13 @@ pub fn air_data_reading(avionics: &FcAvionics) -> Option<AirDataReading> {
 
 /// What the flight controller flies toward, as the guidance panel shows it: its heading
 /// target (else the heading it holds), its height target above mean sea level, the
-/// standard altimeter setting, and its mode. `estimate` is the controller's.
+/// standard altimeter setting, and its mode, beside Pilotage's `navigation` on the HSI.
+/// `estimate` is the controller's.
 #[must_use]
 pub fn guidance(
     avionics: &FcAvionics,
     estimate: &VehicleState,
+    navigation: Option<&NavigationDisplay>,
     source_epoch: u32,
 ) -> HostFlightGuidance {
     let position = ecef_to_geodetic(estimate.position_ecef);
@@ -69,7 +74,9 @@ pub fn guidance(
             altitude_m: targets.altitude_m.map(|height| height - undulation_m),
             baro_setting_hpa: None,
         },
-        nav: HostNavGuidance::None,
+        nav: navigation.map_or(HostNavGuidance::None, |display| {
+            navigation_lane(display, avionics.at, source_epoch)
+        }),
         autopilot: AutopilotModeSummary {
             lateral: ident(lateral_label(avionics)),
             vertical: ident(vertical_label(avionics)),

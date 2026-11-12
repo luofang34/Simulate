@@ -5688,6 +5688,7 @@ dependencies = [
  "indicate-instrument-scene",
  "mbd-airdata",
  "mbd-core",
+ "navigate-contract",
  "pollster 0.4.0",
  "serde_json",
  "sim-analysis",

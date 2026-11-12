@@ -273,6 +273,15 @@ impl Flight {
         world.session()?.block().plant().chain_avionics()
     }
 
+    /// Pilotage's navigation display, when the free vehicle flies the real control chain.
+    #[must_use]
+    pub fn chain_navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {
+        let Mode::Free { world, .. } = &self.mode else {
+            return None;
+        };
+        world.session()?.block().plant().chain_navigation()
+    }
+
     /// Pilotage's mission phase and each navigation set's standing, when the free
     /// vehicle flies the real control chain.
     #[must_use]

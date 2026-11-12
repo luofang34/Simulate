@@ -181,6 +181,15 @@ impl FreeFlightPlant {
         }
     }
 
+    /// Pilotage's navigation display, when flying the real chain.
+    #[must_use]
+    pub fn chain_navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {
+        match self {
+            Self::C172Mission(rig) => rig.navigation(),
+            _ => None,
+        }
+    }
+
     /// Pilotage's mission phase and each navigation set's standing, when flying the real
     /// chain.
     #[must_use]

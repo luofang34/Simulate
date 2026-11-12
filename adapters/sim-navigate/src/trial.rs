@@ -54,7 +54,8 @@ pub use maps::{
     PackageRefusal, PackageReport, WORLD_GEOID, maps_report_blocking,
 };
 pub use progress::{
-    EventKind, EventRecord, FinishedRecord, NoProgress, PROGRESS_SCHEMA, ProgressPosition,
+    EventKind, EventRecord, FinishedRecord, HoldingEntryName, HoldingFix, HoldingLegName,
+    HoldingPatternRecord, HoldingTurnName, NoProgress, PROGRESS_SCHEMA, ProgressPosition,
     ProgressRecord, ProgressRoute, ProgressSet, ProgressSink, ProgressWaypoint, SampleRecord,
     SensorStates, StartedRecord,
 };

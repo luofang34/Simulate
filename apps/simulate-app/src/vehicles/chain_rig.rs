@@ -73,6 +73,12 @@ impl ChainRig {
         self.trial.avionics()
     }
 
+    /// Pilotage's navigation display: the plan, the leg flown and the holding pattern.
+    #[must_use]
+    pub fn navigation(&self) -> Option<sim_flight_chain::NavigationDisplay> {
+        self.trial.navigation().cloned()
+    }
+
     /// The estimate the displays draw: the flight controller's, or the last one it gave.
     #[must_use]
     pub const fn held_estimate(&self) -> VehicleState {
