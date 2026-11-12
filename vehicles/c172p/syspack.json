@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "id": "c172p",
+  "name": "Cessna 172P Skyhawk II",
+  "version": "0.1.0",
+  "kind": "FixedWing",
+  "assets": {
+    "Liveries/catalog.json": { "sha256": "825580892f814ef997ff8a3fc15daf16dc32e9f5d2fe58d06c30abac8007f966", "size_bytes": 2148 },
+    "Models/Liveries/d-ecjb.xml": { "sha256": "3000aa79026cfa47e4e4619769d63fa856cc58d9b8fa5a446c816a7043674328", "size_bytes": 1166 },
+    "Models/Liveries/n53295.xml": { "sha256": "8de7e33ce69ac670e6a2d5af9bf1caf8bc7f86eeffaefa6c95ac2cffdad2a012", "size_bytes": 1102 },
+    "c172p-set.xml": { "sha256": "480fa30855ac59298b53d403cb3584547f36c49e844cb99d398048c15e52edc2", "size_bytes": 653 },
+    "fdm/c172p.xml": { "sha256": "477c3deb4021984e10533acc9097a8e419e3501648a88bbb6552d601b9b40db5", "size_bytes": 24445 },
+    "geometry/landmarks.json": { "sha256": "3ee1e4e6e83ccb3fbcad414933854745e387f5319b9c0e383a13f5c50fc23aae", "size_bytes": 1381 },
+    "performance/airspeed_envelope.json": { "sha256": "da40c5ab9e4827f16361f5b030b287578f82bad51c0f98fa421a93576f37e196", "size_bytes": 482 },
+    "performance/pitot_static_calibration.json": { "sha256": "071b541ec04d765664ec4384eb946bb2dde1017ab6047ac8c2b2dbf3e79818fe", "size_bytes": 1789 },
+    "performance/poh_benchmarks.json": { "sha256": "d9134efc8f4410d97e6fda597af73dc201399f1b57a4f3971dbdcd2b48b4878b", "size_bytes": 7349 },
+    "usd/c172.usdc": { "sha256": "f5904a4344cc7db3154861c291656384f277644c807c91535f703ea485a32b68", "size_bytes": 295715 },
+    "usd/c172p_airframe.usda": { "sha256": "9a57eb6e9e255e387bb02defd0c4e6ac053549a81abb6aa78d06ec0565b0e5f1", "size_bytes": 31305 },
+    "usd/d_ecjb.usda": { "sha256": "25ba981a456e531ca79757171bdc7ba5cf0c863cb0664e252b7faa79cc6c56b4", "size_bytes": 461 },
+    "usd/d_ecjb_livery.json": { "sha256": "751b7bb357cc27ebb087a97bd588a0dfdf8cc42dda1569652c0cafd46ab64041", "size_bytes": 3356 },
+    "usd/d_ecjb_livery.usda": { "sha256": "870b9a4aea8ae818bd964372bec9c80d1be3abea7fb9f7de821066de2c3d5285", "size_bytes": 186665 },
+    "usd/n53295.usda": { "sha256": "9e0226a10377db06d9e2c8b74a1c34c3aa8e3a520dafa92a4ca948bc60827c86", "size_bytes": 374 },
+    "usd/n53295_livery.json": { "sha256": "ca5749d921414f7d0846f354c6f47c238eba78505b2e877a8b7a5e70cec80f95", "size_bytes": 2104 },
+    "usd/n53295_livery.usda": { "sha256": "9cc51c27c9c0c2b94ef33f7dd067a32617b7c4a3e923e77d55e031dc9b589cda", "size_bytes": 196861 },
+    "views/cameras.json": { "sha256": "ee266d85c366b379bcc1cb28b869521fbbc7f5fac5dab430cc76cc906fb50347", "size_bytes": 2575 }
+  },
+  "components": [
+    {
+      "key": "airframe",
+      "name": "Airframe",
+      "parent": null,
+      "translation_m": [-2.99212, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 665.4199869,
+      "dry_inertia_body": [
+        [1285.315415, 0.0, 0.0],
+        [0.0, 1824.930958, 0.0],
+        [0.0, 0.0, 2666.893904]
+      ],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "left_fuel_tank",
+      "name": "Left wing fuel tank",
+      "parent": "airframe",
+      "translation_m": [-0.230632, -1.5748, -0.762],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 48.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "right_fuel_tank",
+      "name": "Right wing fuel tank",
+      "parent": "airframe",
+      "translation_m": [-0.230632, 1.5748, -0.762],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 48.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "payload_station",
+      "name": "Front seats",
+      "parent": "airframe",
+      "translation_m": [0.048768, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 154.221406,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "rear_seats",
+      "name": "Rear seats",
+      "parent": "airframe",
+      "translation_m": [-0.865632, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 72.574779,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "imu_mount",
+      "name": "IMU mount",
+      "parent": "airframe",
+      "translation_m": [0.3, 0.0, -0.2],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "baro_mount",
+      "name": "Barometer mount",
+      "parent": "airframe",
+      "translation_m": [0.3, 0.0, -0.2],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    },
+    {
+      "key": "fpv_camera_mount",
+      "name": "FPV camera mount",
+      "parent": "airframe",
+      "translation_m": [2.0, 0.0, 0.0],
+      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "dry_mass_kg": 0.0,
+      "dry_inertia_body": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      "initial_fluid_mass_kg": 0.0,
+      "initial_payload_mass_kg": 0.0,
+      "attached": true,
+      "thermal_capacity_j_k": 0.0,
+      "nominal_power_w": 0.0
+    }
+  ],
+  "dynamics": {
+    "JsbsimXml": {
+      "aircraft_dir": "aircraft",
+      "model_name": "c172p",
+      "entry_asset": "fdm/c172p.xml",
+      "virtual_path": "aircraft/c172p/c172p.xml",
+      "additional_assets": []
+    }
+  },
+  "controls": {
+    "has_magnetos": true,
+    "has_starter": true,
+    "has_mixture": true,
+    "has_prop_pitch": false,
+    "has_fuel_cutoff": true,
+    "has_flaps": true,
+    "has_retractable_gear": false,
+    "has_wheel_brakes": true
+  },
+  "devices": [
+    { "id": "imu", "site": "imu_mount", "kind": { "Icm42688": { "seed": 1 } } },
+    { "id": "barometer", "site": "baro_mount", "kind": { "Bmp390": { "bus_id": 0, "i2c_addr": 118 } } },
+    {
+      "id": "fpv_camera",
+      "site": "fpv_camera_mount",
+      "kind": {
+        "PinholeCamera": {
+          "offset_body_m": [-1.0499999999999998, 0.0, -0.0],
+          "body_to_camera_xyzw": [0.5, 0.5, -0.5, 0.5],
+          "width": 800,
+          "height": 600,
+          "fx": 600.0,
+          "fy": 600.0,
+          "cx": 399.5,
+          "cy": 299.5,
+          "rate_hz": 30
+        }
+      }
+    },
+    {
+      "id": "pitot_static",
+      "site": "airframe",
+      "kind": {
+        "PitotStatic": {
+          "pitot_body_m": [0.35, -2.4, -0.53],
+          "static_body_m": [1.25, -0.55, -0.2],
+          "probe": "left_wing_pitot_left_fuselage_static",
+          "total_line_tau_s": 0.1,
+          "static_line_tau_s": 0.2
+        }
+      }
+    }
+  ],
+  "instrument_pack": {
+    "id": "ga-analog-six-pack",
+    "version": "1.0.0",
+    "manifest_sha256": "13f26b928e861734ca25b30ebc5eb039192f98aef4639a979d5705d94aa5f7ea"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "type_designator": "C172",
+  "type_designator": "C172S",
   "reference_document": "Cessna 172S Information Manual, original issue 8 July 1998, revision 5 of 2004, for serials 172S8001 and on (N642SP is 172S8050) (POH 172SPHUS05: Figures 5-3 stall, 5-5 takeoff, 5-6 climb, 5-8 cruise, its standard-temperature column on pp. 5-19/5-20) + N642SP (S/N 172S8050, Solberg-Hunterdon N51) recorded flights",
   "rated_bhp": 180.0,
   "fuselage_station_origin_in": 78.8787,
@@ -306,7 +306,10 @@
     }
   ],
   "handbook_configuration": [
-    { "property": "systems/wheel-fairings-installed", "value": 1.0 }
+    {
+      "property": "systems/wheel-fairings-installed",
+      "value": 1.0
+    }
   ],
   "empirical_segments": [],
   "excluded_empirical_segments": [

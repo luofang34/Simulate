@@ -81,7 +81,7 @@
       "id": "cockpit_left_strut",
       "title": "Cockpit: Left Window, Wing Strut",
       "fov_y_deg": 58.0,
-      "airframe": "external",
+      "airframe": "cabin_window",
       "placement": {
         "kind": "cockpit_look",
         "yaw_deg": -76.0,
@@ -93,7 +93,7 @@
       "id": "cockpit_right_window",
       "title": "Cockpit: Right Seat Window",
       "fov_y_deg": 58.0,
-      "airframe": "external",
+      "airframe": "cabin_window",
       "placement": {
         "kind": "cockpit_look",
         "yaw_deg": 76.0,

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <model>
+      <livery>
+        <id type="string">n172sp</id>
+        <name type="string">N172SP — Skyhawk SP Factory Sapphire and Silver</name>
+        <variant type="string">Cessna 172S Skyhawk SP</variant>
+        <serial_number type="string">172S8001</serial_number>
+        <tail_code type="string">N172SP</tail_code>
+        <tactical_number type="string">172SP</tactical_number>
+        <unit type="string">Cessna Factory Demonstrator</unit>
+        <pilot type="string">Civil Part 91</pilot>
+        <upper_surface_ana type="string">Matterhorn White</upper_surface_ana>
+        <lower_surface_ana type="string">Matterhorn White / Pewter Silver</lower_surface_ana>
+        <upper_rgb type="string">0.900, 0.905, 0.910</upper_rgb>
+        <lower_rgb type="string">0.560, 0.580, 0.610</lower_rgb>
+        <accent_rgb type="string">0.045, 0.145, 0.420</accent_rgb>
+        <metallic type="double">0.08</metallic>
+        <roughness type="double">0.28</roughness>
+      </livery>
+    </model>
+  </sim>
+</PropertyList>

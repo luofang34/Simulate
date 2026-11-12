@@ -1,0 +1,35 @@
+{
+  "source_station_offset_in": 78.8787,
+  "source_frame": "Cessna 172P Skyhawk Information Manual (POH D1220-13PH) fuselage stations, inches aft of the front face of the firewall; the flight model's structural x is the POH station + 78.8787 in.",
+  "height": {
+    "feature": { "rule": "propeller_disc_centre" },
+    "structural_up_in": 0.0,
+    "source": "flight model thruster on the structural z = 0 line"
+  },
+  "landmarks": [
+    {
+      "name": "propeller disc",
+      "station_in": -38.4,
+      "source": "172P POH Section 6 Equipment List ch. 61, McCauley propeller arm -38.4 in",
+      "feature": { "rule": "propeller_disc_centre" }
+    },
+    {
+      "name": "main axles",
+      "station_in": 58.2,
+      "source": "172P POH Section 6 Equipment List ch. 32, main wheel assembly and tire arm 58.2 in",
+      "feature": { "rule": "main_axles_centre" }
+    },
+    {
+      "name": "nose axle",
+      "station_in": -6.8,
+      "source": "172P POH Section 6 Equipment List ch. 32, nose wheel and tire arm -6.8 in (Fig. 1-1 Note 2: WHEEL BASE LENGTH IS 65 in)",
+      "feature": { "rule": "nose_axle_centre" }
+    },
+    {
+      "name": "wing leading edge",
+      "station_in": 25.90,
+      "source": "TCDS 3A12 / 172P POH Section 6 LEMAC FS 25.90 on the unswept leading edge",
+      "feature": { "rule": "wing_leading_edge", "span_from_m": 0.6, "span_to_m": 2.5 }
+    }
+  ]
+}

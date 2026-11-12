@@ -1,0 +1,273 @@
+{
+  "type_designator": "C172P",
+  "reference_document": "1982 Cessna Model 172P Skyhawk Information Manual (D1220-13PH: Figures 5-1 PEC, 5-3 stall, 5-4 takeoff, 5-6 climb, 5-7 cruise standard-temperature column) & FAA TCDS 3A12 / EASA TCDS A4EU (Reims F172P)",
+  "rated_bhp": 160.0,
+  "fuselage_station_origin_in": 78.8787,
+  "cg_note": "Stall rows follow 172P POH Figure 5-3's most-rearward CG column (FS 47.3) at 2,400 lb MTOW (47 KCAS clean / 44 KCAS flaps 10 / 41 KCAS flaps 30). Short-field takeoffs at 2,400 lb fly at FS 40.0 inside the forward Normal Category CG envelope (FS 38.5 at 2,400 lb).",
+  "tail_profile": {
+    "registration": "D-ECJB",
+    "serial_number": "F17202087",
+    "model_year": 1987,
+    "home_base_icao": "EDHE",
+    "powerplant_summary": "Lycoming O-320-D2J (160 BHP @ 2,700 RPM, 319.8 in3, CR 8.5:1, carbureted MA-4SPA) + McCauley 1C160/DTM7557 75-in fixed-pitch prop",
+    "avionics_suite": "Standard 1980s Cessna/ARC Navomatic 300A VFR/IFR six-pack + dual VHF COM/NAV + ADF + Mode C transponder",
+    "wheel_fairings_installed": false,
+    "basic_empty_mass_kg": 665.42,
+    "basic_empty_cg_in": 38.92,
+    "usable_fuel_kg": 108.86
+  },
+  "tolerances": {
+    "stall_kt": 1.5,
+    "climb_fpm": 35.0,
+    "cruise_ktas": 2.5,
+    "cruise_gph": 0.55,
+    "cruise_pct_bhp": 5.5
+  },
+  "static_runup": {
+    "pressure_alt_ft": 0.0,
+    "min_rpm": 2280.0,
+    "max_rpm": 2400.0
+  },
+  "stalls": [
+    {
+      "label": "Flaps UP (0 deg), 0 deg bank, 2,400 lbs",
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "bank_deg": 0.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": 44.0,
+      "target_kcas": 47.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps UP (0 deg), 30 deg bank, 2,400 lbs",
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "bank_deg": 30.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 51.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps UP (0 deg), 45 deg bank, 2,400 lbs",
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "bank_deg": 45.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 56.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps UP (0 deg), 60 deg bank, 2,400 lbs",
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "bank_deg": 60.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 66.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps 10 deg, 0 deg bank, 2,400 lbs",
+      "flap_deg": 10.0,
+      "flap_norm": 0.33333,
+      "bank_deg": 0.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": 38.0,
+      "target_kcas": 44.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps 10 deg, 30 deg bank, 2,400 lbs",
+      "flap_deg": 10.0,
+      "flap_norm": 0.33333,
+      "bank_deg": 30.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 47.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps 30 deg, 0 deg bank, 2,400 lbs",
+      "flap_deg": 30.0,
+      "flap_norm": 1.0,
+      "bank_deg": 0.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": 33.0,
+      "target_kcas": 41.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps 30 deg, 30 deg bank, 2,400 lbs",
+      "flap_deg": 30.0,
+      "flap_norm": 1.0,
+      "bank_deg": 30.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 44.0,
+      "cg_fs_in": 47.3
+    },
+    {
+      "label": "Flaps 30 deg, 45 deg bank, 2,400 lbs",
+      "flap_deg": 30.0,
+      "flap_norm": 1.0,
+      "bank_deg": 45.0,
+      "gross_mass_kg": 1088.6217,
+      "target_kias": null,
+      "target_kcas": 49.0,
+      "cg_fs_in": 47.3
+    }
+  ],
+  "climb_points": [
+    {
+      "pressure_alt_ft": 0.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 75.0,
+      "target_kias": 76.0,
+      "lean_best_power": false,
+      "target_fpm": 700.0
+    },
+    {
+      "pressure_alt_ft": 2000.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 74.0,
+      "target_kias": 75.0,
+      "lean_best_power": false,
+      "target_fpm": 610.0
+    },
+    {
+      "pressure_alt_ft": 4000.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 73.0,
+      "target_kias": 74.0,
+      "lean_best_power": true,
+      "target_fpm": 515.0
+    },
+    {
+      "pressure_alt_ft": 6000.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 72.0,
+      "target_kias": 73.0,
+      "lean_best_power": true,
+      "target_fpm": 420.0
+    },
+    {
+      "pressure_alt_ft": 8000.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 71.0,
+      "target_kias": 72.0,
+      "lean_best_power": true,
+      "target_fpm": 325.0
+    },
+    {
+      "pressure_alt_ft": 10000.0,
+      "gross_mass_kg": 1088.6217,
+      "climb_kcas": 71.0,
+      "target_kias": 71.0,
+      "lean_best_power": true,
+      "target_fpm": 230.0
+    }
+  ],
+  "cruise_points": [
+    {
+      "pressure_alt_ft": 2000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2500.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 75.0,
+      "target_ktas": 116.0,
+      "target_gph": 8.4
+    },
+    {
+      "pressure_alt_ft": 2000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2400.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 66.0,
+      "target_ktas": 110.0,
+      "target_gph": 7.4
+    },
+    {
+      "pressure_alt_ft": 4000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2550.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 75.0,
+      "target_ktas": 118.0,
+      "target_gph": 8.4
+    },
+    {
+      "pressure_alt_ft": 4000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2400.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 63.0,
+      "target_ktas": 109.0,
+      "target_gph": 7.1
+    },
+    {
+      "pressure_alt_ft": 6000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2600.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 75.0,
+      "target_ktas": 120.0,
+      "target_gph": 8.4
+    },
+    {
+      "pressure_alt_ft": 6000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2450.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 63.0,
+      "target_ktas": 111.0,
+      "target_gph": 7.1
+    },
+    {
+      "pressure_alt_ft": 8000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2650.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 75.0,
+      "target_ktas": 122.0,
+      "target_gph": 8.4
+    },
+    {
+      "pressure_alt_ft": 8000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2500.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 63.0,
+      "target_ktas": 112.0,
+      "target_gph": 7.1
+    },
+    {
+      "pressure_alt_ft": 10000.0,
+      "gross_mass_kg": 1088.6217,
+      "target_rpm": 2600.0,
+      "fixed_throttle": null,
+      "target_pct_bhp": 67.0,
+      "target_ktas": 117.0,
+      "target_gph": 7.5
+    }
+  ],
+  "takeoff_points": [
+    {
+      "label": "Short field, flaps 10, 2,400 lb, SL ISA",
+      "pressure_alt_ft": 0.0,
+      "gross_mass_kg": 1088.6217,
+      "flap_norm": 0.33333,
+      "lift_off_kcas": 52.0,
+      "obstacle_kcas": 56.0,
+      "target_ground_roll_ft": 890.0,
+      "target_total_50ft_ft": 1625.0,
+      "cg_fs_in": 40.0
+    }
+  ],
+  "handbook_configuration": [
+    { "property": "systems/wheel-fairings-installed", "value": 1.0 }
+  ],
+  "empirical_segments": []
+}

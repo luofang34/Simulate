@@ -1,0 +1,144 @@
+{
+  "type_designator": "C172S",
+  "reference_document": "1998 Cessna 172S Skyhawk SP POH Section 5 Figure 5-1 & Figure 5-3 (Normal Static Source; Garmin G3X Touch STC SA01899WI KIAS Calibration)",
+  "curves": [
+    {
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "points": [
+        {
+          "kias": 0.0,
+          "kcas": 0.0
+        },
+        {
+          "kias": 48.0,
+          "kcas": 53.0
+        },
+        {
+          "kias": 50.0,
+          "kcas": 56.0
+        },
+        {
+          "kias": 60.0,
+          "kcas": 62.0
+        },
+        {
+          "kias": 70.0,
+          "kcas": 70.0
+        },
+        {
+          "kias": 80.0,
+          "kcas": 78.0
+        },
+        {
+          "kias": 90.0,
+          "kcas": 87.0
+        },
+        {
+          "kias": 100.0,
+          "kcas": 97.0
+        },
+        {
+          "kias": 110.0,
+          "kcas": 107.0
+        },
+        {
+          "kias": 120.0,
+          "kcas": 117.0
+        },
+        {
+          "kias": 130.0,
+          "kcas": 127.0
+        },
+        {
+          "kias": 140.0,
+          "kcas": 137.0
+        },
+        {
+          "kias": 150.0,
+          "kcas": 147.0
+        },
+        {
+          "kias": 163.0,
+          "kcas": 160.0
+        }
+      ]
+    },
+    {
+      "flap_deg": 10.0,
+      "flap_norm": 0.33333,
+      "points": [
+        {
+          "kias": 0.0,
+          "kcas": 0.0
+        },
+        {
+          "kias": 42.0,
+          "kcas": 50.0
+        },
+        {
+          "kias": 50.0,
+          "kcas": 57.0
+        },
+        {
+          "kias": 60.0,
+          "kcas": 63.0
+        },
+        {
+          "kias": 70.0,
+          "kcas": 71.0
+        },
+        {
+          "kias": 80.0,
+          "kcas": 80.0
+        },
+        {
+          "kias": 90.0,
+          "kcas": 89.0
+        },
+        {
+          "kias": 100.0,
+          "kcas": 99.0
+        },
+        {
+          "kias": 110.0,
+          "kcas": 109.0
+        }
+      ]
+    },
+    {
+      "flap_deg": 30.0,
+      "flap_norm": 1.0,
+      "points": [
+        {
+          "kias": 0.0,
+          "kcas": 0.0
+        },
+        {
+          "kias": 40.0,
+          "kcas": 48.0
+        },
+        {
+          "kias": 50.0,
+          "kcas": 56.0
+        },
+        {
+          "kias": 60.0,
+          "kcas": 63.0
+        },
+        {
+          "kias": 70.0,
+          "kcas": 72.0
+        },
+        {
+          "kias": 80.0,
+          "kcas": 81.0
+        },
+        {
+          "kias": 85.0,
+          "kcas": 86.0
+        }
+      ]
+    }
+  ]
+}

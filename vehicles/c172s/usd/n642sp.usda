@@ -1,0 +1,14 @@
+#usda 1.0
+(
+    defaultPrim = "C172"
+    doc = """N642SP (1998 Cessna 172S Skyhawk SP, S/N 172S8050, Blue Sky Aviation Association)
+composed over c172s_airframe.usda and the generic BSD-3-Clause c172.usdc airframe."""
+    metersPerUnit = 1
+    subLayers = [@n642sp_livery.usda@, @c172s_airframe.usda@, @c172.usdc@]
+    upAxis = "Z"
+)
+
+over "C172"
+{
+    string sim:tail = "N642SP"
+}

@@ -1,0 +1,885 @@
+#usda 1.0
+(
+    defaultPrim = "C172"
+    doc = """Cessna 172P Skyhawk II / Reims F172P variant airframe layer over the generic
+BSD-3-Clause c172.usdc mesh: 65.0-in POH wheelbase (Cessna 172P Information Manual
+Fig. 1-1 Note 2 & Fig. 6-7), bare 6.00-6 main and 5.00-5 nose gear, brake discs and
+calipers, cabin headliner, 1980s Cessna 172P VHF roof whips, VOR fin dipole, dorsal
+ELT whip, belly transponder & marker-beacon antennas, left-wing landing/taxi lamps,
+wingtip nav/strobe lights, pitot mast & tube, right-elevator trim tab, static wicks,
+and overall white base coat."""
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "C172"
+{
+    over "Materials"
+    {
+        def Material "MatPropBladeSatinBlack"
+        {
+            token outputs:surface.connect = </C172/Materials/MatPropBladeSatinBlack/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.035, 0.035, 0.04)
+                float inputs:metallic = 0.05
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        def Material "MatPropTipWhite"
+        {
+            token outputs:surface.connect = </C172/Materials/MatPropTipWhite/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.88, 0.88, 0.86)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.4
+                token outputs:surface
+            }
+        }
+
+        def Material "MatExhaustSteel"
+        {
+            token outputs:surface.connect = </C172/Materials/MatExhaustSteel/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.36, 0.33, 0.31)
+                float inputs:metallic = 0.6
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        def Material "MatAntennaBeige"
+        {
+            token outputs:surface.connect = </C172/Materials/MatAntennaBeige/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.86, 0.83, 0.71)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.45
+                token outputs:surface
+            }
+        }
+
+        def Material "MatAntennaWhite"
+        {
+            token outputs:surface.connect = </C172/Materials/MatAntennaWhite/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.88, 0.89, 0.9)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.35
+                token outputs:surface
+            }
+        }
+
+        def Material "MatNavRed"
+        {
+            token outputs:surface.connect = </C172/Materials/MatNavRed/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.8, 0.05, 0.04)
+                color3f inputs:emissiveColor = (1, 0.06, 0.04)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.15
+                token outputs:surface
+            }
+        }
+
+        def Material "MatNavGreen"
+        {
+            token outputs:surface.connect = </C172/Materials/MatNavGreen/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.05, 0.7, 0.2)
+                color3f inputs:emissiveColor = (0.05, 1, 0.3)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.15
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLensClear"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLensClear/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.9, 0.9, 0.88)
+                color3f inputs:emissiveColor = (0.6, 0.6, 0.58)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.1
+                token outputs:surface
+            }
+        }
+
+        def Material "MatLandingLens"
+        {
+            token outputs:surface.connect = </C172/Materials/MatLandingLens/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.92, 0.92, 0.9)
+                color3f inputs:emissiveColor = (1, 0.97, 0.9)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.08
+                token outputs:surface
+            }
+        }
+
+        def Material "MatInletDark"
+        {
+            token outputs:surface.connect = </C172/Materials/MatInletDark/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.04, 0.04, 0.045)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Material "MatHeadliner"
+        {
+            token outputs:surface.connect = </C172/Materials/MatHeadliner/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.62, 0.59, 0.53)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "MatWheelAlloy"
+        {
+            token outputs:surface.connect = </C172/Materials/MatWheelAlloy/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.56, 0.57)
+                float inputs:metallic = 0.7
+                float inputs:roughness = 0.45
+                token outputs:surface
+            }
+        }
+
+        def Material "MatBrakeSteel"
+        {
+            token outputs:surface.connect = </C172/Materials/MatBrakeSteel/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.3, 0.29, 0.28)
+                float inputs:metallic = 0.8
+                float inputs:roughness = 0.55
+                token outputs:surface
+            }
+        }
+    }
+
+    over "Airframe"
+    {
+        over "HighWingTrim"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        over "CabinStripe"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        over "NoseCowlingStripe"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        over "CabinTrim"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+
+        over "WingStruts"
+        {
+            rel material:binding = </C172/Materials/MatExhaustSteel>
+        }
+
+        over "RoofAntennaLeft" (
+            active = false
+        )
+        {
+        }
+
+        over "RoofAntennaRight" (
+            active = false
+        )
+        {
+        }
+
+        over "WheelFairingLeft" (
+            active = false
+        )
+        {
+        }
+
+        over "WheelFairingRight" (
+            active = false
+        )
+        {
+        }
+
+        over "NoseWheelFairing" (
+            active = false
+        )
+        {
+        }
+
+        over "MainGearLegLeft"
+        {
+            double3 xformOp:translate = (0, 0.019, 0.0423)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        over "MainGearLegRight"
+        {
+            double3 xformOp:translate = (0, 0.024, 0.0423)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        over "NoseGearStrut"
+        {
+            double3 xformOp:translate = (0, -0.115, 0.015)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Cube "BrakeCaliperLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-1.2, -0.49, -1.035)
+            float3 xformOp:scale = (0.035, 0.05, 0.06)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatBrakeSteel>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cube "BrakeCaliperRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (1.2, -0.49, -1.035)
+            float3 xformOp:scale = (0.035, 0.05, 0.06)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatBrakeSteel>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cube "Headliner" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, -0.3, 0.6955)
+            float xformOp:rotateX = 6.56
+            float3 xformOp:scale = (0.94, 1.3, 0.01)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatHeadliner>
+            custom token sim:partRole = "cabin_interior"
+        }
+
+        # 1980s Cessna 172P / Reims F172P twin swept-back VHF roof whips.
+        def Cone "Com1WhipBase" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.09
+            double radius = 0.02
+            double3 xformOp:translate = (0.36, -0.85, 0.682)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "Com1Whip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.52
+            double radius = 0.0035
+            double3 xformOp:translate = (0.398, -1.01, 0.918)
+            float xformOp:rotateY = 10.0
+            float xformOp:rotateX = 38.0
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cone "Com2WhipBase" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.09
+            double radius = 0.02
+            double3 xformOp:translate = (-0.36, -0.85, 0.682)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "Com2Whip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.52
+            double radius = 0.0035
+            double3 xformOp:translate = (-0.398, -1.01, 0.918)
+            float xformOp:rotateY = -10.0
+            float xformOp:rotateX = 38.0
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "EltWhip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.42
+            double radius = 0.003
+            double3 xformOp:translate = (0, -2.05, 0.42)
+            float xformOp:rotateX = 28.0
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatBrakeSteel>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "VorMountRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0.035, -5.27, 1.33)
+            float3 xformOp:scale = (0.02, 0.04, 0.03)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "VorElementRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.56
+            double radius = 0.004
+            double3 xformOp:translate = (0.254, -5.116, 1.263)
+            float xformOp:rotateY = 106.7
+            float xformOp:rotateX = -33.4
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "VorMountLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-0.035, -5.27, 1.33)
+            float3 xformOp:scale = (0.02, 0.04, 0.03)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "VorElementLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.56
+            double radius = 0.004
+            double3 xformOp:translate = (-0.254, -5.116, 1.263)
+            float xformOp:rotateY = -106.7
+            float xformOp:rotateX = -33.4
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:rotateX"]
+            rel material:binding = </C172/Materials/MatAntennaWhite>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "TransponderAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, 0.55, -0.84)
+            float3 xformOp:scale = (0.008, 0.05, 0.075)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "MarkerBeaconAntenna" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (0, -2.3, -0.68)
+            float3 xformOp:scale = (0.04, 0.14, 0.022)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatAntennaBeige>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "NavLightLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-5.44, 0.27, 0.8)
+            float3 xformOp:scale = (0.022, 0.035, 0.02)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatNavRed>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "StrobeLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-5.44, 0.2, 0.8)
+            float3 xformOp:scale = (0.02, 0.03, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLensClear>
+            custom token sim:partRole = "beacon_light"
+        }
+
+        def Sphere "NavLightRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (5.4, 0.27, 0.8)
+            float3 xformOp:scale = (0.022, 0.035, 0.02)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatNavGreen>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Sphere "StrobeRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (5.4, 0.2, 0.8)
+            float3 xformOp:scale = (0.02, 0.03, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLensClear>
+            custom token sim:partRole = "beacon_light"
+        }
+
+        def Sphere "LandingLight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-2.95, 0.432, 0.735)
+            float3 xformOp:scale = (0.08, 0.018, 0.04)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLandingLens>
+            custom token sim:partRole = "landing_light"
+        }
+
+        def Sphere "TaxiLight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            double3 xformOp:translate = (-3.17, 0.402, 0.735)
+            float3 xformOp:scale = (0.08, 0.018, 0.04)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatLandingLens>
+            custom token sim:partRole = "landing_light"
+        }
+
+        def Cube "StallWarningInlet" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-1.9, 0.458, 0.722)
+            float3 xformOp:scale = (0.05, 0.012, 0.018)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatInletDark>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cube "PitotMast" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-2.4, 0.3, 0.62)
+            float3 xformOp:scale = (0.015, 0.05, 0.1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatWhitePaint>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "PitotTube" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Y"
+            double height = 0.24
+            double radius = 0.008
+            double3 xformOp:translate = (-2.4, 0.384, 0.585)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "cabin_exterior"
+        }
+
+        def Cylinder "NoseOleoCylinder" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.2
+            double radius = 0.034
+            double3 xformOp:translate = (0, 1.262, -0.76)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatWhitePaint>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cylinder "NoseOleoPiston" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            double height = 0.09
+            double radius = 0.024
+            double3 xformOp:translate = (0, 1.256, -0.9)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatPolishedChrome>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cube "NoseForkCrown" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0, 1.252, -0.955)
+            float3 xformOp:scale = (0.2, 0.06, 0.03)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cube "NoseForkLeft" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (-0.088, 1.248, -1.005)
+            float3 xformOp:scale = (0.014, 0.05, 0.11)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cube "NoseForkRight" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double size = 1
+            double3 xformOp:translate = (0.088, 1.248, -1.005)
+            float3 xformOp:scale = (0.014, 0.05, 0.11)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </C172/Materials/MatWheelAlloy>
+            custom token sim:partRole = "gear_struts"
+        }
+
+        def Cylinder "NoseShimmyDamper" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token axis = "Y"
+            double height = 0.17
+            double radius = 0.018
+            double3 xformOp:translate = (0.05, 1.21, -0.82)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel material:binding = </C172/Materials/MatWhitePaint>
+            custom token sim:partRole = "gear_struts"
+        }
+    }
+
+    over "ControlSurfaces"
+    {
+        over "AileronLeft"
+        {
+            def Cylinder "StaticWickOuter" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.95, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_left"
+            }
+
+            def Cylinder "StaticWickInner" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.55, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_left"
+            }
+        }
+
+        over "AileronRight"
+        {
+            def Cylinder "StaticWickOuter" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (0.95, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_right"
+            }
+
+            def Cylinder "StaticWickInner" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (0.55, -0.59, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "aileron_right"
+            }
+        }
+
+        over "Elevator"
+        {
+            def Cube "TrimTab" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double size = 1
+                double3 xformOp:translate = (0.375, -0.535, 0)
+                float3 xformOp:scale = (0.45, 0.06, 0.012)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                rel material:binding = </C172/Materials/MatWhitePaint>
+                custom token sim:partRole = "elevator"
+            }
+
+            def Cylinder "StaticWickLeft" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-1.3, -0.45, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "elevator"
+            }
+
+            def Cylinder "StaticWickRight" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (1.3, -0.45, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "elevator"
+            }
+        }
+
+        over "Rudder"
+        {
+            def Sphere "TailLight" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double radius = 1
+                double3 xformOp:translate = (-0.015, -0.625, 0.12)
+                float3 xformOp:scale = (0.016, 0.025, 0.016)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+                rel material:binding = </C172/Materials/MatLensClear>
+                custom token sim:partRole = "rudder"
+            }
+
+            def Cylinder "StaticWick" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "Y"
+                double height = 0.1
+                double radius = 0.0025
+                double3 xformOp:translate = (-0.005, -1.16, 1.62)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "rudder"
+            }
+        }
+    }
+
+    over "Powerplant"
+    {
+        over "PropellerHub"
+        {
+            over "Spinner"
+            {
+                rel material:binding = </C172/Materials/MatWhitePaint>
+            }
+
+            over "PropellerBlades"
+            {
+                rel material:binding = </C172/Materials/MatPropBladeSatinBlack>
+            }
+
+            over "PropellerSafetyTips"
+            {
+                rel material:binding = </C172/Materials/MatPropTipWhite>
+            }
+        }
+    }
+
+    over "LandingGear"
+    {
+        over "NoseWheel"
+        {
+            double3 xformOp:translate = (0, 1.245, -1.0547)
+
+            over "Tire"
+            {
+                float3 xformOp:scale = (1.336, 1.093, 1.093)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+
+            over "Hubcap"
+            {
+                rel material:binding = </C172/Materials/MatWheelAlloy>
+                float3 xformOp:scale = (1.336, 1, 1)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+        }
+
+        over "WheelLeft"
+        {
+            double3 xformOp:translate = (-1.29, -0.406, -1.0077)
+
+            over "Tire"
+            {
+                float3 xformOp:scale = (1.481, 1.235, 1.235)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+
+            over "Hubcap"
+            {
+                rel material:binding = </C172/Materials/MatWheelAlloy>
+                float3 xformOp:scale = (1.481, 1, 1)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+
+            def Cylinder "BrakeDisc" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "X"
+                double height = 0.008
+                double radius = 0.1
+                double3 xformOp:translate = (0.088, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "wheel_left"
+            }
+        }
+
+        over "WheelRight"
+        {
+            double3 xformOp:translate = (1.29, -0.406, -1.0077)
+
+            over "Tire"
+            {
+                float3 xformOp:scale = (1.481, 1.235, 1.235)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+
+            over "Hubcap"
+            {
+                rel material:binding = </C172/Materials/MatWheelAlloy>
+                float3 xformOp:scale = (1.481, 1, 1)
+                uniform token[] xformOpOrder = ["xformOp:scale"]
+            }
+
+            def Cylinder "BrakeDisc" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token axis = "X"
+                double height = 0.008
+                double radius = 0.1
+                double3 xformOp:translate = (-0.088, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </C172/Materials/MatBrakeSteel>
+                custom token sim:partRole = "wheel_right"
+            }
+        }
+    }
+}

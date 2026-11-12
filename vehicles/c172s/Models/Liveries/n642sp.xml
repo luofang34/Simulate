@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <model>
+      <livery>
+        <id type="string">n642sp</id>
+        <name type="string">N642SP — Blue Sky Aviation Association (Solberg N51)</name>
+        <variant type="string">Cessna 172S Skyhawk SP</variant>
+        <serial_number type="string">172S8050</serial_number>
+        <tail_code type="string">N642SP</tail_code>
+        <tactical_number type="string">642SP</tactical_number>
+        <unit type="string">Blue Sky Aviation Association (Solberg-Hunterdon N51)</unit>
+        <pilot type="string">Club Fleet</pilot>
+        <upper_surface_ana type="string">Matterhorn White</upper_surface_ana>
+        <lower_surface_ana type="string">Matterhorn White</lower_surface_ana>
+        <upper_rgb type="string">0.900, 0.905, 0.910</upper_rgb>
+        <lower_rgb type="string">0.890, 0.895, 0.900</lower_rgb>
+        <accent_rgb type="string">0.400, 0.030, 0.050</accent_rgb>
+        <metallic type="double">0.08</metallic>
+        <roughness type="double">0.30</roughness>
+      </livery>
+    </model>
+  </sim>
+</PropertyList>

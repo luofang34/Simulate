@@ -1,0 +1,57 @@
+{
+  "type_designator": "C172P",
+  "reference_document": "1982 Cessna Model 172P Skyhawk Information Manual (D1220-13PH) Section 5 Figure 5-1 & Figure 5-3 (Normal Static Source)",
+  "curves": [
+    {
+      "flap_deg": 0.0,
+      "flap_norm": 0.0,
+      "points": [
+        { "kias": 0.0, "kcas": 0.0 },
+        { "kias": 40.0, "kcas": 46.0 },
+        { "kias": 44.0, "kcas": 47.0 },
+        { "kias": 50.0, "kcas": 51.0 },
+        { "kias": 60.0, "kcas": 59.0 },
+        { "kias": 70.0, "kcas": 69.0 },
+        { "kias": 80.0, "kcas": 78.0 },
+        { "kias": 90.0, "kcas": 88.0 },
+        { "kias": 100.0, "kcas": 98.0 },
+        { "kias": 110.0, "kcas": 108.0 },
+        { "kias": 120.0, "kcas": 118.0 },
+        { "kias": 130.0, "kcas": 128.0 },
+        { "kias": 140.0, "kcas": 138.0 },
+        { "kias": 150.0, "kcas": 148.0 },
+        { "kias": 160.0, "kcas": 158.0 }
+      ]
+    },
+    {
+      "flap_deg": 10.0,
+      "flap_norm": 0.33333,
+      "points": [
+        { "kias": 0.0, "kcas": 0.0 },
+        { "kias": 38.0, "kcas": 44.0 },
+        { "kias": 40.0, "kcas": 46.0 },
+        { "kias": 50.0, "kcas": 52.0 },
+        { "kias": 60.0, "kcas": 60.0 },
+        { "kias": 70.0, "kcas": 69.0 },
+        { "kias": 80.0, "kcas": 79.0 },
+        { "kias": 90.0, "kcas": 89.0 },
+        { "kias": 100.0, "kcas": 99.0 },
+        { "kias": 110.0, "kcas": 108.0 }
+      ]
+    },
+    {
+      "flap_deg": 30.0,
+      "flap_norm": 1.0,
+      "points": [
+        { "kias": 0.0, "kcas": 0.0 },
+        { "kias": 33.0, "kcas": 41.0 },
+        { "kias": 40.0, "kcas": 45.0 },
+        { "kias": 50.0, "kcas": 52.0 },
+        { "kias": 60.0, "kcas": 61.0 },
+        { "kias": 70.0, "kcas": 70.0 },
+        { "kias": 80.0, "kcas": 80.0 },
+        { "kias": 85.0, "kcas": 85.0 }
+      ]
+    }
+  ]
+}

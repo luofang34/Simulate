@@ -1,37 +1,35 @@
 <?xml version="1.0"?>
-<!-- Cessna 172S Skyhawk SP as N642SP (S/N 172S8050, Blue Sky Aviation Association,
-     Solberg-Hunterdon N51). Sources: Cessna 172S Information Manual, original issue
-     8 July 1998 revision 5 (the club's copy of the POH, 172SPHUS05); the club's weight
-     and balance sheet of 6 Feb 2026; Lycoming IO-360-L2A operator's manual. Station
-     x = POH fuselage station + 78.8787 in (the POH datum is the front face of the
-     firewall). Stability derivatives without a Cessna source follow the JSBSim c172p
-     model (Cessna 172 class data); tail areas are its values too. -->
-<fdm_config name="c172_class_reference" version="2.0" release="BETA">
+<!-- Cessna 172P Skyhawk II / Reims F172P (default tail D-ECJB, c/n F17202087, 1987).
+     Sources: 1982 Cessna 172P Skyhawk Information Manual (D1220-13PH), FAA TCDS 3A12,
+     EASA/DGAC TCDS A4EU (Reims F172P), Lycoming O-320 Operator's Manual 60297-30, and
+     John T. Lowry, Performance of Light Aircraft (AIAA, 1999) C172P flight tests.
+     Station x = POH fuselage station + 78.8787 in (datum = front face of firewall). -->
+<fdm_config name="c172p" version="2.0" release="BETA">
   <metrics>
     <wingarea unit="FT2"> 174.0 </wingarea>
     <wingspan unit="FT"> 36.083 </wingspan>
-    <!-- MAC 58.80 in from LEMAC FS 25.90 (POH Figure 6-1). -->
+    <!-- MAC 58.80 in from LEMAC FS 25.90 (TCDS 3A12 / POH Section 6). -->
     <chord unit="FT"> 4.900 </chord>
     <htailarea unit="FT2"> 21.9 </htailarea>
     <htailarm unit="FT"> 15.7 </htailarm>
     <vtailarea unit="FT2"> 16.5 </vtailarea>
     <vtailarm unit="FT"> 15.7 </vtailarm>
     <location name="AERORP" unit="IN"> <x> 122.1128 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
-    <location name="EYEPOINT" unit="IN"> <x> 127.9528 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
+    <location name="EYEPOINT" unit="IN"> <x> 118.31 </x> <y> -10.24 </y> <z> 18.70 </z> </location>
     <location name="VRP" unit="IN"> <x> 0.0000 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
   </metrics>
   <mass_balance>
-    <ixx unit="SLUG*FT2"> 1069.5458 </ixx>
-    <iyy unit="SLUG*FT2"> 1389.9817 </iyy>
-    <izz unit="SLUG*FT2"> 1992.8044 </izz>
+    <!-- NASA TP-1516 / Roskam published moments of inertia for O-320 Cessna 172. -->
+    <ixx unit="SLUG*FT2"> 948.0 </ixx>
+    <iyy unit="SLUG*FT2"> 1346.0 </iyy>
+    <izz unit="SLUG*FT2"> 1967.0 </izz>
     <ixy unit="SLUG*FT2"> 0 </ixy>
     <ixz unit="SLUG*FT2"> 0 </ixz>
     <iyz unit="SLUG*FT2"> 0 </iyz>
-    <!-- N642SP basic empty weight 1697.42 lb at FS 40.26, weighed 6 Feb 2026, with
-         unusable fuel and full oil. -->
-    <emptywt unit="LBS"> 1697.42 </emptywt>
-    <location name="CG" unit="IN"> <x> 119.14 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
-    <!-- POH Figure 6-3 loading stations; the first carries a payload set as one item. -->
+    <!-- 1982 Cessna 172P POH Fig. 6-5 Sample Airplane basic empty weight 1,467.0 lb
+         at FS 38.92 in (x = 117.80 in), including unusable fuel and full oil. -->
+    <emptywt unit="LBS"> 1467.00 </emptywt>
+    <location name="CG" unit="IN"> <x> 117.80 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
     <pointmass name="front-seats">
       <weight unit="LBS"> 340.0 </weight>
       <location unit="IN"> <x> 115.88 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
@@ -46,10 +44,8 @@
     </pointmass>
   </mass_balance>
   <ground_reactions>
-    <!-- Wheel contacts at the POH Figure 6-9 equipment arms: nose wheel and tire
-         FS -6.8 (item 32-02-R), main wheel and tire FS 58.2 (item 32-01-R), the
-         65.0 in wheelbase of Figure 1-1 note 2. The nose wheel steers 10 degrees
-         through the rudder pedals. -->
+    <!-- POH Fig. 1-1 Note 2 & Sec. 6 Equipment List: nose wheel FS -6.8, main wheels FS 58.2
+         (65.0 in wheelbase). -->
     <contact type="BOGEY" name="NOSE">
       <location unit="IN"> <x> 72.08 </x> <y> 0.0000 </y> <z> -51.1811 </z> </location>
       <static_friction> 0.8 </static_friction>
@@ -102,21 +98,20 @@
     </contact>
   </ground_reactions>
   <propulsion>
-    <!-- Two 28 gal wing tanks, 26.5 gal usable each, usable fuel at FS 48.0 (POH
-         Figure 6-3); the selector on BOTH feeds from both. -->
+    <!-- Standard C172P tanks: two 21.5 gal wing tanks, 20.0 gal (120 lb) usable each at FS 48.0. -->
     <tank type="FUEL">
       <location unit="IN"> <x> 126.88 </x> <y> -62.0 </y> <z> 30.0 </z> </location>
       <density unit="LBS/GAL"> 6.0 </density>
-      <capacity unit="LBS"> 168.0 </capacity>
+      <capacity unit="LBS"> 129.0 </capacity>
       <unusable-volume unit="GAL"> 1.5 </unusable-volume>
-      <contents unit="LBS"> 125.6634 </contents>
+      <contents unit="LBS"> 105.8219 </contents>
     </tank>
     <tank type="FUEL">
       <location unit="IN"> <x> 126.88 </x> <y> 62.0 </y> <z> 30.0 </z> </location>
       <density unit="LBS/GAL"> 6.0 </density>
-      <capacity unit="LBS"> 168.0 </capacity>
+      <capacity unit="LBS"> 129.0 </capacity>
       <unusable-volume unit="GAL"> 1.5 </unusable-volume>
-      <contents unit="LBS"> 125.6634 </contents>
+      <contents unit="LBS"> 105.8219 </contents>
     </tank>
     <engine>
       <feed> 0 </feed>
@@ -124,55 +119,40 @@
       <piston_engine name="piston">
         <minmp unit="INHG"> 10.0 </minmp>
         <maxmp unit="INHG"> 29.2 </maxmp>
-        <displacement unit="IN3"> 361.0 </displacement>
+        <!-- Lycoming O-320-D2J: 4 cyl, bore 5.125 in, stroke 3.875 in, 319.8 in3, CR 8.5:1,
+             carbureted Marvel-Schebler MA-4SPA, rated 160 BHP @ 2,700 rpm (~138 BHP @ 2,300 rpm
+             on Lycoming 60297-30 sea-level full-throttle curve). -->
+        <displacement unit="IN3"> 319.8 </displacement>
         <bore unit="IN"> 5.125 </bore>
-        <stroke unit="IN"> 4.375 </stroke>
+        <stroke unit="IN"> 3.875 </stroke>
         <cylinders> 4 </cylinders>
-        <maxhp> 180.00 </maxhp>
+        <maxhp> 160.00 </maxhp>
         <cycles> 4 </cycles>
         <idlerpm> 600 </idlerpm>
         <maxrpm> 2700 </maxrpm>
         <maxthrottle> 1 </maxthrottle>
         <minthrottle> 0.0 </minthrottle>
         <sparkfaildrop> 0.1 </sparkfaildrop>
-        <!-- Full throttle, full rich, sea level standard: the IO-360-L2A's rated 180 BHP
-             at 2,700 rpm and 155 BHP at 2,300 rpm, read from Lycoming operator's
-             manual 60297-12 Fig. 3-25 (curve 13516-A: 151 hp at 2,200 rpm and 160 hp
-             at 2,400 rpm on the full-throttle line). Volumetric efficiency and the
-             static and dynamic friction MEP are set to pass both points (asserted by
-             the c172_engine tests). JSBSim prices fuel as indicated power times
-             bsfc, so moving friction moves cruise fuel flow: bsfc is set to keep
-             the Figure 5-8 fuel flows, which put it near the IO-360's best-power
-             0.43 lb/hp/hr. -->
-        <volumetric-efficiency> 0.808 </volumetric-efficiency>
-        <static-fmep unit="PA"> 85000 </static-fmep>
+        <volumetric-efficiency> 0.758 </volumetric-efficiency>
+        <static-fmep unit="PA"> 95000 </static-fmep>
         <dynamic-fmep unit="PA"> 5000 </dynamic-fmep>
-        <bsfc unit="LBS/HP*HR"> 0.434 </bsfc>
+        <bsfc unit="LBS/HP*HR"> 0.400 </bsfc>
         <compression-ratio> 8.5 </compression-ratio>
-        <!-- MIXTURE: JSBSim prices power as fuel flow / isfc x this table, so each
-             entry is 0.0906 x P/(F/A), with P the brake power relative to best power:
-             0.0473:0.250, 0.0500:0.500, 0.0545:0.700, 0.0591:0.800, 0.0636:0.880, 0.0682:0.935, 0.0727:0.965, 0.0773:0.985, 0.0791:0.990, 0.0827:1.000, 0.0864:0.997, 0.0909:0.985, 0.0973:0.970, 0.1045:0.955, 0.1136:0.920, 0.1273:0.850, 0.1455:0.700, 0.1636:0.400.
-             Best power (about 125 F rich of peak EGT) is at F/A 0.083, where the
-             leaned climbs of POH Figure 5-6 are matched; JSBSim's default combustion
-             curve puts peak EGT near stoichiometric and 50 F rich of it at about
-             0.079, where the Figure 5-8 cruise fuel flows fall. The rich-side slope
-             prices the cooling enrichment of the full-rich stop (0.097 at sea level),
-             set by the sea-level and 2,000 ft full-rich climb points. -->
         <table name="MIXTURE" type="internal">
           <tableData>
             0.0455  0.0000
             0.0473  0.4789
             0.0500  0.9060
             0.0545  1.1637
-            0.0591  1.2264
-            0.0636  1.2536
-            0.0682  1.2421
-            0.0727  1.2026
-            0.0773  1.1545
-            0.0791  1.1339
-            0.0827  1.0955
-            0.0864  1.0455
-            0.0909  0.9817
+            0.0591  1.1960
+            0.0636  1.2250
+            0.0682  1.2090
+            0.0727  1.1710
+            0.0773  1.1230
+            0.0791  1.1020
+            0.0827  1.0600
+            0.0864  1.0150
+            0.0909  0.9660
             0.0973  0.9032
             0.1045  0.8280
             0.1136  0.7337
@@ -187,56 +167,53 @@
         <location unit="IN"> <x> 41.3386 </x> <y> 0.0000 </y> <z> 0.0000 </z> </location>
         <sense> 1 </sense>
         <propeller name="prop">
-          <!-- McCauley 1A170E/JHA7660: 2 blades, 76 in, 60 in pitch, elliptical tip.
-               C_THRUST(J) and C_POWER(J) are printed by vehicles/tools/propeller_measured.py
-               (ct1, cp1) from vehicles/c172/design/mccauley_1a170e_jha7660.json: below J 0.3
-               NACA TR 640's measured 2-blade Clark-Y 5868-9 maps with TR 684's tip-Mach
-               loss, from J 0.4 the blade-element maps of a 60 in helix, blended between.
-               What they cannot meet is recorded in performance/validation.json. -->
-          <ixx> 2.0 </ixx>
-          <diameter unit="IN"> 76.0 </diameter>
+          <!-- McCauley 1C160/DTM7557: 2 blades, 75 in, 57 in pitch (TCDS 3A12 / A4EU).
+               Generated by vehicles/tools/propeller_measured.py from
+               vehicles/c172p/design/mccauley_1c160_dtm7557.json. -->
+          <ixx> 1.85 </ixx>
+          <diameter unit="IN"> 75.0 </diameter>
           <numblades> 2 </numblades>
           <gearratio> 1 </gearratio>
           <table name="C_THRUST" type="internal">
             <tableData>
-             0.00    0.10250
-             0.10    0.10130
-             0.20    0.09850
-             0.30    0.09410
-             0.35    0.09978
-             0.40    0.10381
-             0.50    0.08907
-             0.60    0.07173
-             0.70    0.05332
-             0.80    0.03405
-             0.90    0.01401
-             1.00   -0.00678
-             1.10   -0.02826
-             1.20   -0.05008
-             1.30   -0.07110
-             1.50   -0.09720
-             2.00   -0.12485
+             0.00    0.10222
+             0.10    0.10080
+             0.20    0.09766
+             0.30    0.09281
+             0.35    0.09808
+             0.40    0.10157
+             0.50    0.08660
+             0.60    0.06904
+             0.70    0.05051
+             0.80    0.03113
+             0.90    0.01096
+             1.00   -0.00996
+             1.10   -0.03159
+             1.20   -0.05325
+             1.30   -0.07356
+             1.50   -0.09765
+             2.00   -0.12586
             </tableData>
           </table>
           <table name="C_POWER" type="internal">
             <tableData>
-             0.00    0.06218
-             0.10    0.06097
-             0.20    0.05958
-             0.30    0.05766
-             0.35    0.06086
-             0.40    0.06528
-             0.50    0.06231
-             0.60    0.05607
-             0.70    0.04691
-             0.80    0.03467
-             0.90    0.01910
-             1.00    0.00003
-             1.10   -0.02273
-             1.20   -0.04889
-             1.30   -0.07700
-             1.50   -0.11709
-             2.00   -0.14995
+             0.00    0.06092
+             0.10    0.05976
+             0.20    0.05840
+             0.30    0.05649
+             0.35    0.05950
+             0.40    0.06359
+             0.50    0.06040
+             0.60    0.05390
+             0.70    0.04455
+             0.80    0.03209
+             0.90    0.01628
+             1.00   -0.00306
+             1.10   -0.02611
+             1.20   -0.05220
+             1.30   -0.07947
+             1.50   -0.11643
+             2.00   -0.14869
             </tableData>
           </table>
         </propeller>
@@ -244,11 +221,7 @@
     </engine>
   </propulsion>
   <flight_control name="fcs">
-    <!-- Wheel speed fairings: the POH speeds assume them (about 2 kt); N642SP flies
-         without them, so a handbook test card sets this to 1. -->
     <property value="0"> systems/wheel-fairings-installed </property>
-    <!-- Control travel: elevator 28 up / 23 down, ailerons 20 up / 15 down (their
-         mean, as one surface), rudder 16 each way. -->
     <channel name="Pitch">
       <summer name="fcs/pitch-sum">
         <input>fcs/elevator-cmd-norm</input>
@@ -277,8 +250,6 @@
         <range> <min> -0.2793 </min> <max> 0.2793 </max> </range>
         <output>fcs/rudder-pos-rad</output>
       </aerosurface_scale>
-      <!-- JSBSim's positive rudder yaws the nose left and its positive steering
-           turns right, so the pedal linkage reverses the sign. -->
       <pure_gain name="fcs/nose-wheel-steering">
         <input>fcs/rudder-cmd-norm</input>
         <gain> -1.0 </gain>
@@ -286,6 +257,7 @@
       </pure_gain>
     </channel>
     <channel name="Flaps">
+      <!-- 172P reduced max flaps from 40 deg (172N) to 30 deg (10 / 20 / 30 deg detents). -->
       <kinematic name="fcs/flap-control">
         <input>fcs/flap-cmd-norm</input>
         <traverse>
@@ -296,10 +268,9 @@
       </kinematic>
     </channel>
     <channel name="Mixture">
-      <!-- The RSA fuel servo meters fuel by the venturi's impact pressure, so its
-           F/A at a fixed lever richens as 1/sqrt(sigma); JSBSim's lever law richens
-           as p0/p, which this cancels. The full-rich stop meters F/A 0.097 at sea
-           level (1.10 x the 1.3 lever law), rich of best power for cooling. -->
+      <!-- Marvel-Schebler MA-4SPA float carburetor venturi metering: fuel/air richens
+           as 1/sqrt(sigma) at fixed mixture lever position; full-rich stop meters ~0.097
+           F/A at sea level for cylinder head cooling. -->
       <fcs_function name="fcs/mixture-servo">
         <function>
           <quotient>
@@ -360,8 +331,7 @@
       </table>
     </function>
     <function name="aero/function/qbar-tail-psf">
-      <description>Dynamic pressure at the tail: the full slipstream (free stream plus
-        twice the disk's induced velocity) washes the elevator and rudder</description>
+      <description>Dynamic pressure at the tail including propeller slipstream</description>
       <product>
         <value> 0.5 </value>
         <property>atmosphere/rho-slugs_ft3</property>
@@ -376,9 +346,7 @@
       </product>
     </function>
     <function name="aero/function/qbar-slip-psf">
-      <description>Mean dynamic pressure over the parts in the slipstream: free stream
-        plus 1.5 times the disk's induced velocity, between the disk (1) and the
-        far wake (2)</description>
+      <description>Mean dynamic pressure over airframe components in the slipstream</description>
       <product>
         <value> 0.5 </value>
         <property>atmosphere/rho-slugs_ft3</property>
@@ -396,8 +364,8 @@
     </function>
     <axis name="LIFT">
       <function name="aero/force/lift">
-        <description>NACA 2412 wing-body lift through stall plus single-slotted flap
-          increment, scaled in ground effect</description>
+        <description>NACA 2412 wing-body lift through stall calibrated to 172P POH Fig. 5-3
+          aft-CG stalls at 2,400 lb (47 KCAS clean, 44 KCAS flaps 10, 41 KCAS flaps 30)</description>
         <product>
           <property>aero/qbar-psf</property>
           <property>metrics/Sw-sqft</property>
@@ -410,13 +378,13 @@
               -0.24000 -1.07000
               -0.04000  0.00000
                0.10000  0.74900
-               0.21000  1.32000
-               0.25000  1.47500
-               0.28000  1.54000
-               0.31500  1.46000
-               0.36000  1.23000
-               0.45000  1.02000
-               0.75655  0.82000
+               0.21000  1.36000
+               0.26000  1.68000
+               0.29500  1.84200
+               0.33000  1.72000
+               0.38000  1.38000
+               0.45000  1.08000
+               0.75655  0.84000
               </tableData>
             </table>
             <table>
@@ -425,12 +393,12 @@
               <tableData>
                         0.00000  0.33333  0.66667  1.00000
               -0.35000  0.00000  0.18000  0.34000  0.48000
-               0.00000  0.00000  0.24000  0.44000  0.60000
-               0.18000  0.00000  0.23000  0.41000  0.55000
-               0.24000  0.00000  0.21500  0.35500  0.42500
-               0.27000  0.00000  0.19500  0.29500  0.34200
-               0.30000  0.00000  0.15000  0.23000  0.26000
-               0.45000  0.00000  0.10000  0.16000  0.19000
+               0.00000  0.00000  0.26000  0.46000  0.64000
+               0.18000  0.00000  0.26000  0.45000  0.62000
+               0.26000  0.00000  0.26000  0.43000  0.58500
+               0.29500  0.00000  0.26000  0.42000  0.57900
+               0.33000  0.00000  0.20000  0.32000  0.42000
+               0.45000  0.00000  0.12000  0.18000  0.22000
                0.75655  0.00000  0.08000  0.12000  0.15000
               </tableData>
             </table>
@@ -438,8 +406,7 @@
         </product>
       </function>
       <function name="aero/force/lift_dynamic">
-        <description>Lift from pitch rate and alpha rate; the tail's trim load is inside
-          the wing-body table, which is fitted to the POH stall speeds</description>
+        <description>Lift from pitch rate and alpha rate</description>
         <product>
           <property>aero/qbar-psf</property>
           <property>metrics/Sw-sqft</property>
@@ -452,22 +419,20 @@
     </axis>
     <axis name="DRAG">
       <function name="aero/force/drag">
-        <description>Parasite (with speed fairings 0.0295; their removal adds 0.0018,
-          the POH's 2 kt), induced (reduced in ground effect), post-stall, flap
-          and sideslip drag. Parasite and induced factor (0.0631, e 0.67) are fitted
-          with the propeller's blade angle to the POH climbs, cruise speeds and
-          fuel flows; Lowry's sawtooth and glide tests give e 0.72 for a C172P,
-          for reference.</description>
+        <description>Parasite (0.0256 with speed fairings; +0.0018 without fairings),
+          induced (0.0631, Oswald e = 0.67 fitted with 1C160 propeller to POH climbs &amp; cruises;
+          Lowry C172P flight test gives e = 0.72), post-stall, single-slotted flap (30 deg max)
+          and sideslip drag.</description>
         <product>
           <property>aero/qbar-psf</property>
           <property>metrics/Sw-sqft</property>
           <sum>
-            <value> 0.029500 </value>
+            <value> 0.025600 </value>
             <product>
               <value> 0.0018 </value>
               <difference> <value> 1 </value> <property>systems/wheel-fairings-installed</property> </difference>
             </product>
-            <product> <value> 0.063100 </value> <property>aero/cl-squared</property> <property>aero/function/kCDge</property> </product>
+            <product> <value> 0.069500 </value> <property>aero/cl-squared</property> <property>aero/function/kCDge</property> </product>
             <table>
               <independentVar lookup="row">aero/alpha-rad</independentVar>
               <tableData>
@@ -477,7 +442,7 @@
                0.14000  0.00000
                0.17500  0.00200
                0.22000  0.00600
-               0.28500  0.03200
+               0.29500  0.03200
                0.36000  0.11500
                0.50000  0.26000
                0.75655  0.48000
@@ -497,11 +462,7 @@
         </product>
       </function>
       <function name="aero/force/drag_slipstream">
-        <description>Added drag of the parts washed by the slipstream (NACA TR 640
-          p. 23, TR 684 p. 10): their drag area times the slipstream's dynamic
-          pressure in excess of the free stream. Drag area 2.9 ft2 from a component
-          build-up: fuselage and cowl 1.4, nose gear and the mains' washed share 0.6,
-          wing roots 0.3, strut roots 0.05, tail 0.3, cooling 0.3.</description>
+        <description>Slipstream drag of washed fuselage, cowl, gear, and tail (2.9 ft2)</description>
         <product>
           <value> 2.9 </value>
           <max>
@@ -539,8 +500,7 @@
     </axis>
     <axis name="ROLL">
       <function name="aero/moment/roll">
-        <description>Dihedral, damping, roll due to yaw rate (rising with lift),
-          ailerons and rudder</description>
+        <description>Dihedral, damping, roll due to yaw rate, ailerons and rudder</description>
         <product>
           <property>aero/qbar-psf</property>
           <property>metrics/Sw-sqft</property>

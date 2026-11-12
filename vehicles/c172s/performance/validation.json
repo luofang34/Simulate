@@ -46,10 +46,10 @@
     "lift-off Short field, flaps 10, 2,550 lb, 4,000 ft ISA"
   ],
   "known_table_steps": [
-    "c172 C_POWER rises from J 0.30 to 0.35",
-    "c172 C_POWER rises from J 0.35 to 0.40",
-    "c172 C_THRUST rises from J 0.30 to 0.35",
-    "c172 C_THRUST rises from J 0.35 to 0.40"
+    "c172s C_POWER rises from J 0.30 to 0.35",
+    "c172s C_POWER rises from J 0.35 to 0.40",
+    "c172s C_THRUST rises from J 0.30 to 0.35",
+    "c172s C_THRUST rises from J 0.35 to 0.40"
   ],
   "residuals": {
     "Short field, flaps 10, 2,550 lb, 4,000 ft ISA": "ground roll 1167 ft against 1305 (-10.6 %), 50 ft 2076 against 2242 (-7.4 %), lift-off 59.0 KCAS against 57.6, at FS 41.0",
