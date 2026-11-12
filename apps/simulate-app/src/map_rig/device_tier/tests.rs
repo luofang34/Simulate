@@ -1,6 +1,6 @@
 use sim_maplibre::CockpitDeviceTier;
 
-use super::{DeviceFacts, choose_tier};
+use super::{DeviceFacts, asks_for_device_tier, choose_tier, held_at_handheld};
 
 const LAPTOP: DeviceFacts = DeviceFacts {
     mobile: Some(false),
@@ -58,4 +58,16 @@ fn a_phone_a_small_device_or_a_software_gpu_runs_the_handheld_tier() {
         max_buffer_bytes: 128 << 20,
     };
     assert_eq!(choose_tier(&all).reasons.len(), 4);
+}
+
+#[test]
+fn a_page_holds_the_handheld_tier_unless_its_address_asks_for_the_devices() {
+    assert_eq!(held_at_handheld().tier, CockpitDeviceTier::Handheld);
+    assert!(held_at_handheld().words().contains("?tier=auto"));
+    for asks in ["?tier=auto", "?x=1&tier=auto", "tier=auto"] {
+        assert!(asks_for_device_tier(asks), "{asks}");
+    }
+    for holds in ["", "?", "?tier=browser", "?tier=autox", "?xtier=auto"] {
+        assert!(!asks_for_device_tier(holds), "{holds}");
+    }
 }
