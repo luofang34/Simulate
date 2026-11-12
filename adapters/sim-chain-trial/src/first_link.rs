@@ -69,5 +69,6 @@ pub fn first_link() -> Result<ChainTrialSpec, ChainTrialError> {
         steering: Steering::Set(STEERING_SET.to_owned()),
         calibration: CalibrationName::Calibrated,
         outages: Vec::new(),
+        hold: None,
     })
 }

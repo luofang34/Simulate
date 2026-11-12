@@ -99,12 +99,12 @@ impl fmt::Display for Parameter {
     }
 }
 
-/// A link that is not a version 1 link, and where it stops being one.
+/// A link that is not a version 2 link, and where it stops being one.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub struct Refusal {
     /// The parameter at fault.
     pub parameter: Parameter,
-    /// Which entry of the parameter's list, from 1: the waypoint of `r`,
+    /// Which entry of the parameter's list, from 1: the leg of `r`,
     /// the set of `nav`, the sensor entry of `out`.
     pub item: Option<usize>,
     /// Characters before the fault in the fragment, after its percent
@@ -133,11 +133,17 @@ impl fmt::Display for Refusal {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum Reason {
     /// The version is not one this build reads.
-    #[error("version {found:?} is not supported; this build reads version 1")]
+    #[error("version {found:?} is not supported; this build reads version 2")]
     UnsupportedVersion {
         /// The version given.
         found: String,
     },
+    /// A version 1 link, whose route held points and not legs.
+    #[error(
+        "version 1 links are retired: regenerate the link with fpl_to_simulate_url.py, \
+         which writes version 2"
+    )]
+    RetiredVersion,
     /// The link is longer than a link may be.
     #[error("{length} characters; a link has at most {limit}")]
     TooLong {
@@ -152,7 +158,7 @@ pub enum Reason {
     /// A parameter appears twice.
     #[error("the parameter appears twice")]
     Repeated,
-    /// A key no version 1 link has.
+    /// A key no version 2 link has.
     #[error("unknown parameter {name:?}")]
     UnknownParameter {
         /// The key given.
@@ -209,27 +215,77 @@ pub enum Reason {
         /// The words allowed.
         choices: &'static str,
     },
-    /// A waypoint name that is not 1 to 32 of `[A-Za-z0-9_-]`.
+    /// A fix name that is not 1 to 32 of `[A-Za-z0-9_-]`.
     #[error("name {text:?} is not 1 to 32 of A-Z a-z 0-9 _ -")]
     BadName {
         /// The name given.
         text: String,
     },
-    /// More waypoints than a route carries.
-    #[error("{count} waypoints; a route has at most {limit}")]
-    TooManyWaypoints {
-        /// Waypoints given.
+    /// More legs than a route carries.
+    #[error("{count} legs; a route has at most {limit}")]
+    TooManyLegs {
+        /// Legs given.
         count: usize,
         /// The most a route has.
         limit: usize,
     },
-    /// Fewer than two waypoints.
-    #[error("{count} waypoint(s); a route needs at least two")]
-    TooFewWaypoints {
-        /// Waypoints given.
+    /// Fewer than two legs.
+    #[error("{count} leg(s); a route needs at least two")]
+    TooFewLegs {
+        /// Legs given.
         count: usize,
     },
-    /// A waypoint or start gives no height and the link has no `h`.
+    /// A leg that ends at or starts from a fix gives none.
+    #[error("a {leg} leg needs its fix after the code: NAME:lat/lon, lat/lon or an earlier NAME")]
+    MissingFix {
+        /// The path terminator.
+        leg: &'static str,
+    },
+    /// A leg lacks an attribute its path terminator needs.
+    #[error("a {leg} leg needs {key} ({meaning})")]
+    MissingKey {
+        /// The key it needs.
+        key: char,
+        /// The path terminator.
+        leg: &'static str,
+        /// What the key gives.
+        meaning: &'static str,
+    },
+    /// A leg carries an attribute its path terminator does not take.
+    #[error("a {leg} leg takes no {key}")]
+    KeyNotAllowed {
+        /// The key given.
+        key: char,
+        /// The path terminator.
+        leg: &'static str,
+    },
+    /// A leg gives one attribute twice.
+    #[error("{key} appears twice in the leg")]
+    RepeatedKey {
+        /// The key given twice.
+        key: char,
+    },
+    /// A bare fix name no earlier fix defines.
+    #[error("no earlier fix is named {name:?}; write {name}:lat/lon the first time")]
+    UnknownFix {
+        /// The name given.
+        name: String,
+    },
+    /// A leg where its path terminator cannot stand.
+    #[error("a {leg} leg {rule}")]
+    MisplacedLeg {
+        /// The path terminator.
+        leg: &'static str,
+        /// Where it may stand.
+        rule: &'static str,
+    },
+    /// A range whose lower end is not below its upper end.
+    #[error("{text:?} is not lower..upper with lower below upper")]
+    ReversedLimit {
+        /// The range given.
+        text: String,
+    },
+    /// The start gives no height and the link has no `h`.
     #[error("no height here and no default height `h` in the link")]
     MissingHeight,
     /// A date or time of day that does not exist.
@@ -285,7 +341,7 @@ pub enum Reason {
         span: String,
     },
     /// A value whose written form does not read back as itself, such as an
-    /// empty waypoint name.
+    /// empty fix name.
     #[error("the value has no link form that reads back as itself")]
     NotRepresentable,
 }

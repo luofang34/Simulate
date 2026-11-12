@@ -22,5 +22,7 @@ mod trial;
 pub use error::ChainTrialError;
 pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, Retained, StepOutcome};
-pub use spec::{CalibrationName, ChainTrialSpec, DeviceOutage, StartSpec, Steering};
+pub use spec::{
+    CalibrationName, ChainTrialSpec, DeviceOutage, HoldSpec, HoldTurn, StartSpec, Steering,
+};
 pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET, TruthSnapshot};

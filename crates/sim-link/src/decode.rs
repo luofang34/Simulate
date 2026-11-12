@@ -1,6 +1,7 @@
 //! Reading a link: percent escapes, `key=value` pairs, then each parameter.
 
 mod camera;
+mod leg;
 mod nav;
 mod number;
 mod outage;
@@ -39,8 +40,8 @@ pub fn decode_url(url: &str) -> Result<Option<SimulationLink>, Refusal> {
 ///
 /// # Errors
 ///
-/// Refuses anything that is not a version 1 link, naming the parameter, the
-/// character and the reason.
+/// Refuses anything that is not a version 2 link, naming the parameter, the
+/// entry, the character and the reason.
 pub fn decode_fragment(fragment: &str) -> Result<SimulationLink, Refusal> {
     let length = fragment.chars().count();
     if length > MAX_LINK_CHARS {
@@ -140,15 +141,16 @@ fn version(pairs: &[(Token<'_>, Token<'_>)], end: usize) -> Result<(), Refusal> 
     let (_, value) = versions
         .next()
         .ok_or_else(|| site.refuse(end, Reason::Missing))?;
-    if value.text != "1" {
-        return Err(site.refuse(
+    match value.text {
+        "2" => Ok(()),
+        "1" => Err(site.refuse(value.offset, Reason::RetiredVersion)),
+        found => Err(site.refuse(
             value.offset,
             Reason::UnsupportedVersion {
-                found: value.text.to_owned(),
+                found: found.to_owned(),
             },
-        ));
+        )),
     }
-    Ok(())
 }
 
 /// The link's values by parameter.
@@ -173,7 +175,7 @@ fn build(fields: &Fields<'_>) -> Result<SimulationLink, Refusal> {
         .optional(Parameter::H)
         .map(|value| route::height(Site::of(Parameter::H), value))
         .transpose()?;
-    let route = route::route(fields.required(Parameter::R)?, default_height.is_some())?;
+    let route = leg::route(fields.required(Parameter::R)?)?;
     let datum = word(
         Site::of(Parameter::Hd),
         fields.required(Parameter::Hd)?,

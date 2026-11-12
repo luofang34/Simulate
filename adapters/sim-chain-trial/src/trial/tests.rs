@@ -62,6 +62,7 @@ fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
         steering: Steering::FlightController,
         calibration: CalibrationName::Calibrated,
         outages: Vec::new(),
+        hold: None,
     }
 }
 
@@ -419,4 +420,50 @@ fn the_links_waypoint_names_reach_the_display_and_the_hold() {
     assert_eq!(held.as_deref(), Some("ZA2"));
     let hold = trial.navigation().unwrap().holding_pattern.clone().unwrap();
     assert_eq!(hold.pattern.fix_ident, "ZA2");
+}
+
+/// A short route, so the plan ends within two simulated minutes and the
+/// hold the spec states starts: the turns, leg time and altitude reach
+/// Pilotage's mission as stated.
+#[test]
+fn the_stated_hold_is_the_one_pilotage_flies() {
+    let fixes = [(41.70, -1.05), (41.70, -1.02)];
+    let route: Vec<RoutePoint> = fixes
+        .iter()
+        .map(|&(lat_deg, lon_deg)| RoutePoint {
+            ident: None,
+            lat_deg,
+            lon_deg,
+            altitude_m: ellipsoidal_m(lat_deg, lon_deg),
+            speed_m_s: None,
+        })
+        .collect();
+    let mut stated = spec(None);
+    stated.request.waypoints = request_from_route(&route, None).unwrap().waypoints;
+    stated.request.sensor_sets.truncate(1);
+    let altitude_m = ellipsoidal_m(41.70, -1.02) + 100.0;
+    stated.hold = Some(crate::HoldSpec {
+        turn: crate::HoldTurn::Left,
+        leg_time_s: 90.0,
+        altitude_m: Some(altitude_m),
+    });
+    let mut trial = ChainTrial::new(&stated, &DirectoryStores).unwrap();
+    let outputs = advanced(trial.step_until(150.0).unwrap());
+    let started: Vec<_> = outputs
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            ProgressRecord::Event(e) => match &e.kind {
+                EventKind::HoldingStarted { pattern } => Some(pattern.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    let [pattern] = started.as_slice() else {
+        panic!("one hold started: {started:?}");
+    };
+    assert_eq!(pattern.turn, sim_navigate::trial::HoldingTurnName::Left);
+    assert_eq!(pattern.leg_time_s, 90.0);
+    assert_eq!(pattern.fix.altitude_m, altitude_m);
 }

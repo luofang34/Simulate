@@ -8,15 +8,15 @@ use sim_atmosphere::{AtmosphereField, GeoidStandardAtmosphere};
 use sim_core::VehicleState;
 use sim_devices::SensorSuite;
 use sim_flight_chain::{
-    C172Setup, ChainRoute, OwnshipFeed, RouteFix, SharedAir, VehicleClass, VehicleId, c172_board,
-    c172_pilotage_airframe, c172_sensor_suite_with,
+    C172Setup, ChainRoute, HoldingTurn, OwnshipFeed, RouteFix, SharedAir, TerminalHoldingPattern,
+    VehicleClass, VehicleId, c172_board, c172_pilotage_airframe, c172_sensor_suite_with,
 };
 use sim_geo::{Geodetic, UtcTime};
 use sim_navigate::trial::{TrialRequest, parse_utc};
 use sim_navigate::{GroundCalibration, InitialAlignment};
 
 use super::C172Chain;
-use crate::{ChainTrialError, ChainTrialSpec, Steering};
+use crate::{ChainTrialError, ChainTrialSpec, HoldSpec, HoldTurn, Steering};
 
 /// Sea-level standard density, kg/m³.
 const ISA_RHO0_KG_M3: f64 = 1.225;
@@ -110,8 +110,30 @@ pub(super) fn chain(
         airframe: c172_pilotage_airframe()?,
         plan_loaded_at_s: PLAN_LOADED_AT_S,
         utc: resolved.utc,
+        terminal_hold: terminal_hold(spec.hold)?,
     };
     Ok(C172Chain::new(board, &route)?)
+}
+
+/// The hold the mission flies at its last fix: the spec's, or Pilotage's
+/// standard.
+fn terminal_hold(hold: Option<HoldSpec>) -> Result<TerminalHoldingPattern, ChainTrialError> {
+    let Some(hold) = hold else {
+        return Ok(TerminalHoldingPattern::default());
+    };
+    if !(hold.leg_time_s.is_finite() && hold.leg_time_s > 0.0) {
+        return Err(ChainTrialError::Invalid {
+            detail: format!("a hold leg time of {} s", hold.leg_time_s),
+        });
+    }
+    Ok(TerminalHoldingPattern {
+        altitude_m: hold.altitude_m,
+        turn: match hold.turn {
+            HoldTurn::Left => HoldingTurn::Left,
+            HoldTurn::Right => HoldingTurn::Right,
+        },
+        leg_time_s: Some(hold.leg_time_s),
+    })
 }
 
 /// The true airspeed that reads `indicated_m_s` at `start` in the standard

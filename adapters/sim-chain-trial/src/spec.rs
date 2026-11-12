@@ -24,6 +24,35 @@ pub struct ChainTrialSpec {
     /// Times a device is out of service, for every consumer.
     #[serde(default)]
     pub outages: Vec<DeviceOutage>,
+    /// The holding pattern at the last fix the link states; absent for the
+    /// standard right-hand hold the mission flies when its plan ends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<HoldSpec>,
+}
+
+/// The holding pattern at the last fix, on the inbound course of the last
+/// leg.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HoldSpec {
+    /// The direction of the turns.
+    pub turn: HoldTurn,
+    /// The inbound leg time, seconds, more than zero.
+    pub leg_time_s: f64,
+    /// The holding altitude above the WGS84 ellipsoid, metres; absent for
+    /// the last fix's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub altitude_m: Option<f64>,
+}
+
+/// The direction of a hold's turns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldTurn {
+    /// Left turns.
+    Left,
+    /// Right turns, the standard pattern.
+    Right,
 }
 
 /// The start of the flight.

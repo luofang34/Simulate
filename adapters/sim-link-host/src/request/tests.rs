@@ -5,13 +5,11 @@ use sim_navigate::trial::{GuidanceSource, SeedSpec, SensorKind};
 use crate::{HostError, VEHICLE_CAMERA, hosted_request};
 
 /// The reference encoder's Zaragoza route with every optional parameter.
-const DAY: &str = "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,o,Z1;41.600000,-0.620000\
-&h=1981.2&hd=msl&start=41.666250,-1.141550,,75.0&t=20260615T120000Z&veh=c172&seed=1\
+const DAY: &str = "v=2&r=IF,LEZG:41.666242/-1.041553;TF,Z1:41.75/-0.8,o;TF,41.6/-0.62&h=1981.2&hd=msl&start=41.666250,-1.141550,,75.0&t=20260615T120000Z&veh=c172&seed=1\
 &nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.gnss&out=gnss:300-600,600-700,900-;cam:5-6\
 &cam=1600x1200,90,45.5,2&go=1&mb=200";
 /// A route no set of which is visual, so the trial takes it without maps.
-const PLAIN: &str = "v=1&r=41.666242,-1.041553,,,LEZG;41.750000,-0.800000,,,Z1;41.600000,-0.620000,,,Z2\
-&h=2000&hd=hae&t=20260615T120000Z&veh=c172&seed=7&nav=ins.baro;ins.baro.gnss\
+const PLAIN: &str = "v=2&r=IF,LEZG:41.666242/-1.041553;TF,Z1:41.75/-0.8;TF,Z2:41.6/-0.62&h=2000&hd=hae&t=20260615T120000Z&veh=c172&seed=7&nav=ins.baro;ins.baro.gnss\
 &out=gnss:300-600,900-&mb=200";
 
 fn link(fragment: &str) -> SimulationLink {

@@ -8,13 +8,11 @@ use sim_navigate::trial::{ProgressRecord, SensorKind};
 use super::{ASSUMED_ACCURACY, ChainFlight, PAGE_STORE, chain_spec, page_stores};
 use crate::{Clock, FlightStepper, HostError, Monitor, MonitorFeed, hosted_request, run_slice};
 
-const FIRST: &str = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3;\
-41.800000,-1.000000,,,ZA4;41.740000,-1.050000,,,ZA5&h=2000.0&hd=msl&start=41.700000,-1.070000,,90.0\
+const FIRST: &str = "v=2&r=IF,ZA1:41.7/-1.05;TF,ZA2:41.7/-0.8;TF,ZA3:41.8/-0.8;TF,ZA4:41.8/-1;TF,ZA5:41.74/-1.05&h=2000.0&hd=msl&start=41.700000,-1.070000,,90.0\
 &t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro.visual;ins.baro;ins.baro.gnss&fly=ins.baro.gnss\
 &go=1&mb=200";
 /// The same route, no visual set, no start.
-const BLIND: &str = "v=1&r=41.700000,-1.050000,,,ZA1;41.700000,-0.800000,,,ZA2;41.800000,-0.800000,,,ZA3\
-&h=2000.0&hd=msl&t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro.gnss\
+const BLIND: &str = "v=2&r=IF,ZA1:41.7/-1.05;TF,ZA2:41.7/-0.8;TF,ZA3:41.8/-0.8&h=2000.0&hd=msl&t=20260615T120400Z&veh=c172&seed=1&nav=ins.baro;ins.baro.gnss&fly=ins.baro.gnss\
 &out=gnss:30-60;baro:90-&mb=200";
 
 #[test]

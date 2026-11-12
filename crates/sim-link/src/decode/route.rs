@@ -1,68 +1,10 @@
-//! `r`, `h` and `start`: positions, heights, turns and names.
+//! `h` and `start`, and the positions and names the legs of `r` share.
 
 use super::number::{Bounds, out_of_range, ranged};
 use super::token::{Site, Token};
-use super::word;
-use crate::{MAX_WAYPOINTS, Micro, Milli, Parameter, Reason, Refusal, Start, Turn, Waypoint};
+use crate::{Micro, Milli, Parameter, Reason, Refusal, Start};
 
-const WAYPOINT_SHAPE: &str = "lat,lon[,height[,turn[,name]]]";
 const START_SHAPE: &str = "lat,lon[,height[,heading_deg]]";
-
-/// The waypoints of `r`. `has_default_height` is whether the link carries
-/// `h` for the waypoints that give no height.
-pub(super) fn route(value: Token<'_>, has_default_height: bool) -> Result<Vec<Waypoint>, Refusal> {
-    let site = Site::of(Parameter::R);
-    value.non_empty(site, "waypoints joined by ;")?;
-    let count = value.split(';').count();
-    if count > MAX_WAYPOINTS {
-        return Err(site.refuse(
-            value.offset,
-            Reason::TooManyWaypoints {
-                count,
-                limit: MAX_WAYPOINTS,
-            },
-        ));
-    }
-    if count < 2 {
-        return Err(site.refuse(value.offset, Reason::TooFewWaypoints { count }));
-    }
-    value
-        .split(';')
-        .enumerate()
-        .map(|(index, token)| waypoint(site.entry(index), token, has_default_height))
-        .collect()
-}
-
-fn waypoint(site: Site, token: Token<'_>, has_default_height: bool) -> Result<Waypoint, Refusal> {
-    let mut fields = fields(site, token, 5, WAYPOINT_SHAPE)?.into_iter();
-    let (Some(lat), Some(lon)) = (fields.next(), fields.next()) else {
-        return Err(misshapen(site, token, WAYPOINT_SHAPE));
-    };
-    let (lat, lon) = position(site, lat, lon)?;
-    let height = optional_height(site, fields.next(), token, has_default_height)?;
-    let turn = match fields.next() {
-        Some(turn) if !turn.text.is_empty() => word(
-            site,
-            turn,
-            "turn",
-            "o (fly-over), b or nothing (fly-by)",
-            &[("o", Turn::FlyOver), ("b", Turn::FlyBy)],
-        )?,
-        _ => Turn::FlyBy,
-    };
-    let name = fields
-        .next()
-        .filter(|name| !name.text.is_empty())
-        .map(|name| self::name(site, name))
-        .transpose()?;
-    Ok(Waypoint {
-        lat,
-        lon,
-        height,
-        turn,
-        name,
-    })
-}
 
 /// The start state of `start`.
 pub(super) fn start(value: Token<'_>, has_default_height: bool) -> Result<Start, Refusal> {
@@ -125,7 +67,11 @@ fn misshapen(site: Site, token: Token<'_>, shape: &'static str) -> Refusal {
     )
 }
 
-fn position(site: Site, lat: Token<'_>, lon: Token<'_>) -> Result<(Micro, Micro), Refusal> {
+pub(super) fn position(
+    site: Site,
+    lat: Token<'_>,
+    lon: Token<'_>,
+) -> Result<(Micro, Micro), Refusal> {
     let lat = ranged::<6>(
         site,
         lat.non_empty(site, "a latitude in degrees")?,
@@ -182,9 +128,9 @@ fn heading(site: Site, token: Token<'_>) -> Result<Milli, Refusal> {
     Ok(heading)
 }
 
-fn name(site: Site, token: Token<'_>) -> Result<String, Refusal> {
+pub(super) fn name(site: Site, token: Token<'_>) -> Result<String, Refusal> {
     let allowed = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-';
-    if token.text.len() > 32 || !token.text.bytes().all(allowed) {
+    if token.text.is_empty() || token.text.len() > 32 || !token.text.bytes().all(allowed) {
         return Err(site.refuse(
             token.offset,
             Reason::BadName {

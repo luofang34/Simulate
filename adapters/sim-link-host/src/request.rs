@@ -7,7 +7,7 @@ use sim_navigate::trial::{
     TerrainCameraSpec, TrialError, TrialRequest, UnavailableInterval, request_from_route,
 };
 
-use crate::HostError;
+use crate::{FlyableRoute, HostError, TerminalHold, flyable_route};
 
 #[cfg(test)]
 mod tests;
@@ -37,6 +37,11 @@ pub struct HostedRequest {
     pub trial: TrialRequest,
     /// The vehicle the link names.
     pub vehicle: Vehicle,
+    /// The route the vehicle's software flies, as the link states it.
+    pub route: FlyableRoute,
+    /// The hold at the last fix, its altitude above the WGS84 ellipsoid;
+    /// absent for the standard hold the mission flies when its plan ends.
+    pub hold: Option<HostedHold>,
     /// Where the flight begins when the link says so.
     pub start: Option<StartState>,
     /// The name, in `trial.sensor_sets`, of the set that steers the flight.
@@ -44,6 +49,16 @@ pub struct HostedRequest {
     /// The terrain camera when a set is visual: the link's, or
     /// [`VEHICLE_CAMERA`].
     pub camera: Option<CameraGeometry>,
+}
+
+/// The hold at the last fix, as the vehicle's software flies it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HostedHold {
+    /// The hold the link states.
+    pub stated: TerminalHold,
+    /// The holding altitude above the WGS84 ellipsoid, metres; absent for
+    /// the last fix's.
+    pub altitude_m: Option<f64>,
 }
 
 /// The airborne start a link gives.
@@ -94,38 +109,45 @@ pub const fn own_cruise_speed_m_s(vehicle: Vehicle) -> f64 {
     }
 }
 
+/// The height `own`, or the link's default, in the link's datum, metres.
+pub(crate) fn stated_height_m(link: &SimulationLink, own: Option<f64>) -> Option<f64> {
+    own.or_else(|| link.default_height.map(Milli::as_f64))
+}
+
+/// The ident a fix flies under: its name, or `WP` and its place among the
+/// fixes, counted from one.
+pub(crate) fn fix_ident(name: Option<&str>, index: usize) -> String {
+    name.map_or_else(|| format!("WP{}", index.saturating_add(1)), str::to_owned)
+}
+
 /// Maps `link` onto the trial request. The request is not validated here:
 /// the flight's own checks run when it starts.
 ///
 /// # Errors
 ///
-/// Returns the trial library's refusal of the route, and refuses a link
-/// value in which a waypoint or the start has no height and the link no
+/// Refuses a leg the vehicle's software does not fly yet
+/// ([`flyable_route`]), returns the trial library's refusal of the route,
+/// and refuses a fix or start that has no height when the link has no
 /// default.
 pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError> {
-    let height = |what: String, lat: Micro, lon: Micro, own: Option<Milli>| {
-        let stated = link
-            .height_or_default(own)
-            .ok_or(HostError::MissingHeight { what })?;
-        let (lat_deg, lon_deg) = (lat.as_f64(), lon.as_f64());
+    let flyable = flyable_route(link)?;
+    let height = |what: String, lat: Micro, lon: Micro, own: Option<f64>| {
+        let stated = stated_height_m(link, own).ok_or(HostError::MissingHeight { what })?;
         Ok::<f64, HostError>(ellipsoid_height_m(
             link.datum,
-            lat_deg,
-            lon_deg,
-            stated.as_f64(),
+            lat.as_f64(),
+            lon.as_f64(),
+            stated,
         ))
     };
-    let mut route: Vec<RoutePoint> = Vec::with_capacity(link.route.len());
-    for (index, waypoint) in link.route.iter().enumerate() {
-        let ident = waypoint
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("WP{}", index.saturating_add(1)));
+    let mut route: Vec<RoutePoint> = Vec::with_capacity(flyable.fixes.len());
+    for (index, fix) in flyable.fixes.iter().enumerate() {
+        let ident = fix_ident(fix.name.as_deref(), index);
         route.push(RoutePoint {
-            altitude_m: height(ident.clone(), waypoint.lat, waypoint.lon, waypoint.height)?,
+            altitude_m: height(ident.clone(), fix.lat, fix.lon, fix.height_m)?,
             ident: Some(ident),
-            lat_deg: waypoint.lat_deg(),
-            lon_deg: waypoint.lon_deg(),
+            lat_deg: fix.lat.as_f64(),
+            lon_deg: fix.lon.as_f64(),
             speed_m_s: None,
         });
     }
@@ -133,14 +155,28 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
         Some(start) => Some(StartState {
             lat_deg: start.lat_deg(),
             lon_deg: start.lon_deg(),
-            altitude_m: height("the start".to_owned(), start.lat, start.lon, start.height)?,
+            altitude_m: height(
+                "the start".to_owned(),
+                start.lat,
+                start.lon,
+                start.height.map(Milli::as_f64),
+            )?,
             heading_deg: start.heading.map(Milli::as_f64),
         }),
         None => None,
     };
+    let hold = match (flyable.hold, flyable.fixes.last()) {
+        (Some(stated), Some(last)) => Some(HostedHold {
+            stated,
+            altitude_m: stated.height_m.map(|own| {
+                ellipsoid_height_m(link.datum, last.lat.as_f64(), last.lon.as_f64(), own)
+            }),
+        }),
+        _ => None,
+    };
     let mut trial = request_from_route(&route, None)?;
-    for (spec, waypoint) in trial.waypoints.iter_mut().zip(&link.route) {
-        spec.fly_over = waypoint.turn == sim_link::Turn::FlyOver;
+    for (spec, fix) in trial.waypoints.iter_mut().zip(&flyable.fixes) {
+        spec.fly_over = fix.fly_over;
     }
     trial.epoch_utc = link.time.iso8601();
     trial.vehicle.cruise_speed_m_s = link
@@ -163,6 +199,8 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
     Ok(HostedRequest {
         trial,
         vehicle: link.vehicle,
+        route: flyable,
+        hold,
         start,
         steering_set: link
             .steering()
