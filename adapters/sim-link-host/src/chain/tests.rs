@@ -134,3 +134,22 @@ fn the_chain_flies_as_a_page_flight_and_a_switch_reaches_the_link() {
         .collect();
     assert_eq!(gnss.len(), 2, "{gnss:?}");
 }
+
+#[test]
+fn completing_the_plan_does_not_end_a_page_flight() {
+    let event = |kind: &str| {
+        sim_navigate::trial::ProgressRecord::from_json_line(&format!(
+            r#"{{"type":"event","t_s":1.0,"set":null,"kind":{kind}}}"#
+        ))
+        .unwrap()
+    };
+    let complete =
+        event(r#""waypoint_sequenced","waypoint_index":4,"ident":"ZA5","plan_complete":true"#);
+    assert!(super::completes_plan(&complete));
+    assert!(!super::ends_flight(&complete));
+    let sequenced =
+        event(r#""waypoint_sequenced","waypoint_index":1,"ident":"ZA2","plan_complete":false"#);
+    assert!(!super::completes_plan(&sequenced));
+    let terminated = event(r#""terminated","rule":"max_duration","detail":"1 s""#);
+    assert!(super::ends_flight(&terminated));
+}

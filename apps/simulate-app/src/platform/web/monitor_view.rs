@@ -14,8 +14,8 @@ mod track_map;
 use std::collections::BTreeSet;
 
 use sim_link_host::{
-    CameraWorld, MeansSwitch, Monitor, PlanLine, clock_words, event_words, sensor_words,
-    state_words, status_words, terrain_words,
+    CameraWorld, MeansSwitch, Monitor, PlanLine, TracePoint, clock_words, event_words,
+    sensor_words, state_words, status_words, terrain_words,
 };
 use sim_navigate::NavMeans;
 use sim_navigate::trial::SensorKind;
@@ -253,20 +253,22 @@ impl MonitorView {
     }
 
     fn legend_values(&self, monitor: &Monitor) {
-        for (trace, value) in monitor.traces().iter().zip(values(&self.legend)) {
-            let text =
-                trace
-                    .latest()
-                    .map_or_else(String::new, |latest| match latest.sigma_horizontal_m {
-                        Some(sigma) => format!(
-                            "{:.1} m off the truth, {sigma:.1} m one-sigma",
-                            latest.horizontal_error_m
-                        ),
-                        None => format!(
-                            "{:.1} m off the truth, no uncertainty stated",
-                            latest.horizontal_error_m
-                        ),
-                    });
+        let ends = monitor.route_end().map(|end| end.samples.as_slice());
+        for (index, (trace, value)) in monitor
+            .traces()
+            .iter()
+            .zip(values(&self.legend))
+            .enumerate()
+        {
+            let now = trace.latest().map(sample_words);
+            let at_end = ends
+                .and_then(|samples| samples.get(index).copied().flatten())
+                .map(|sample| sample_words(&sample));
+            let text = match (at_end, now) {
+                (Some(end), Some(now)) => format!("at the route's end {end}; now {now}"),
+                (Some(end), None) => format!("at the route's end {end}"),
+                (None, now) => now.unwrap_or_default(),
+            };
             value.set_text_content(Some(&text));
         }
     }
@@ -375,5 +377,19 @@ fn speed_choices(document: &Document, speeds: &Element, speed: Option<f64>) {
         if let Some(text) = append(document, &label, "span", "") {
             text.set_text_content(Some(words));
         }
+    }
+}
+
+/// One sample of a set in words: its error and the uncertainty it states.
+fn sample_words(sample: &TracePoint) -> String {
+    match sample.sigma_horizontal_m {
+        Some(sigma) => format!(
+            "{:.1} m off the truth, {sigma:.1} m one-sigma",
+            sample.horizontal_error_m
+        ),
+        None => format!(
+            "{:.1} m off the truth, no uncertainty stated",
+            sample.horizontal_error_m
+        ),
     }
 }

@@ -34,6 +34,18 @@ pub use words::{
     clock_words, event_words, pace_words, sensor_words, state_words, status_words, terrain_words,
 };
 
+/// The flight's picture when the plan completed, which a page keeps
+/// showing while the vehicle flies on in its hold.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RouteEnd {
+    /// Route time of the plan's completion, seconds.
+    pub t_s: f64,
+    /// The last waypoint, the one that completed the plan.
+    pub ident: String,
+    /// Each set's latest sample then, in the run's order of sets.
+    pub samples: Vec<Option<TracePoint>>,
+}
+
 /// Events the monitor keeps for its log; older ones drop off.
 pub const EVENTS_KEPT: usize = 12;
 
@@ -88,6 +100,7 @@ pub struct Monitor {
     planned_duration_s: Option<f64>,
     sim_time_s: f64,
     finished: bool,
+    route_end: Option<RouteEnd>,
 }
 
 impl Monitor {
@@ -146,12 +159,41 @@ impl Monitor {
             }
             ProgressRecord::Event(event) => {
                 self.sim_time_s = self.sim_time_s.max(event.t_s);
+                self.note_route_end(&event);
                 self.events.push(event);
                 let over = self.events.len().saturating_sub(EVENTS_KEPT);
                 self.events.drain(..over);
             }
             ProgressRecord::Finished(_) => self.finished = true,
         }
+    }
+
+    /// The plan's completion as `event` reports it, once.
+    fn note_route_end(&mut self, event: &EventRecord) {
+        let EventKind::WaypointSequenced {
+            ident,
+            plan_complete: true,
+            ..
+        } = &event.kind
+        else {
+            return;
+        };
+        if self.route_end.is_none() {
+            self.route_end = Some(RouteEnd {
+                t_s: event.t_s,
+                ident: ident.clone(),
+                samples: self
+                    .traces
+                    .iter()
+                    .map(|trace| trace.latest().copied())
+                    .collect(),
+            });
+        }
+    }
+
+    /// The flight's picture when the plan completed, once it has.
+    pub const fn route_end(&self) -> Option<&RouteEnd> {
+        self.route_end.as_ref()
     }
 
     /// Every set's trace, in the run's order.

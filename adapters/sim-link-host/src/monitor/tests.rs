@@ -412,3 +412,38 @@ fn a_slice_reports_what_it_stepped_and_what_it_took() {
     assert!((slice.route_s - 0.5).abs() < 1e-9, "{slice:?}");
     assert!(slice.wall_s > 0.0);
 }
+
+#[test]
+fn the_route_end_stays_as_the_plan_completed_while_the_hold_flies_on() {
+    let mut monitor = Monitor::default();
+    let complete = r#"{"type":"event","t_s":2.5,"set":null,"kind":"waypoint_sequenced","waypoint_index":1,"ident":"Z1","plan_complete":true}"#;
+    for line in [
+        STARTED.to_owned(),
+        sample(2.0, "ins+baro", 5.0),
+        sample(2.0, "ins+baro+visual", 4.0),
+        complete.to_owned(),
+        sample(3.0, "ins+baro", 9.0),
+        sample(3.0, "ins+baro+visual", 1.0),
+        complete.replace("2.5", "3.5"),
+    ] {
+        monitor.apply(record(&line));
+    }
+    let end = monitor.route_end().unwrap();
+    assert_eq!((end.t_s, end.ident.as_str()), (2.5, "Z1"));
+    let errors: Vec<Option<f64>> = end
+        .samples
+        .iter()
+        .map(|sample| sample.map(|s| s.horizontal_error_m))
+        .collect();
+    assert_eq!(errors, [Some(5.0), Some(4.0)]);
+    assert_eq!(
+        monitor.traces()[0].latest().unwrap().horizontal_error_m,
+        9.0
+    );
+    assert!(!monitor.finished());
+    let words = super::status_words(&monitor);
+    assert!(
+        words.contains("plan completed at 0:02 on reaching Z1"),
+        "{words}"
+    );
+}

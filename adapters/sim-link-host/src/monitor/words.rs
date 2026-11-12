@@ -106,8 +106,17 @@ pub fn status_words(monitor: &Monitor) -> String {
         Some(phase) => words.push_str(&format!("; phase {phase}")),
         None => words.push_str("; no mission phase reported"),
     }
-    if let Some((_, ident)) = monitor.last_waypoint() {
-        words.push_str(&format!("; last sequenced {ident}"));
+    match monitor.route_end() {
+        Some(end) => words.push_str(&format!(
+            "; plan completed at {} on reaching {}",
+            clock_words(end.t_s),
+            end.ident
+        )),
+        None => {
+            if let Some((_, ident)) = monitor.last_waypoint() {
+                words.push_str(&format!("; last sequenced {ident}"));
+            }
+        }
     }
     if monitor.finished() {
         words.push_str("; the run has ended");

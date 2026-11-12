@@ -15,7 +15,8 @@ use crate::{CameraShot, CameraWorld, Clock, FlightStepper, HostError, MonitorFee
 pub const MAX_STEP_S: f64 = 0.25;
 /// Route time the run may go on past half again its planned duration,
 /// seconds, before the page ends it: a mission that never completes still
-/// ends.
+/// ends. One that completes flies on in its hold for as long as the page
+/// is open.
 pub const OVERRUN_S: f64 = 120.0;
 
 /// The chain trial flown in a page.
@@ -85,6 +86,9 @@ impl<C: Clock> ChainFlight<C> {
             };
             if let ProgressRecord::Started(started) = record {
                 self.end_s = 1.5 * started.route.planned_duration_s + OVERRUN_S;
+            }
+            if super::completes_plan(record) {
+                self.end_s = f64::INFINITY;
             }
             self.ended |= super::ends_flight(record);
         }

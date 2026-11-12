@@ -180,20 +180,28 @@ fn feeds(outputs: Outputs, out: &mut Vec<MonitorFeed>) {
     );
 }
 
-/// Whether a record ends the flight: the plan completed, or a
-/// termination rule tripped.
+/// Whether a record ends the flight: a termination rule tripped. The plan
+/// completing does not, as the vehicle flies on in its hold.
 fn ends_flight(record: &ProgressRecord) -> bool {
     match record {
-        ProgressRecord::Event(event) => matches!(
+        ProgressRecord::Event(event) => matches!(event.kind, EventKind::Terminated { .. }),
+        ProgressRecord::Finished(_) => true,
+        _ => false,
+    }
+}
+
+/// Whether a record completes the plan.
+fn completes_plan(record: &ProgressRecord) -> bool {
+    matches!(
+        record,
+        ProgressRecord::Event(event) if matches!(
             event.kind,
             EventKind::WaypointSequenced {
                 plan_complete: true,
                 ..
-            } | EventKind::Terminated { .. }
-        ),
-        ProgressRecord::Finished(_) => true,
-        _ => false,
-    }
+            }
+        )
+    )
 }
 
 /// The record a host adds when it ends a run: the stream's last.
