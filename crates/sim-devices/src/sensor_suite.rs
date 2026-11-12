@@ -30,7 +30,9 @@ pub struct SensedTruth {
     pub vehicle: VehicleState,
     /// True specific force at the IMU, body forward-right-down axes, m/s².
     pub specific_force_body_m_s2: DVec3,
-    /// True angular rate relative to inertial space, body axes, rad/s.
+    /// True angular rate relative to inertial space, body axes, rad/s: the
+    /// rate relative to the Earth plus the Earth's own spin
+    /// ([`sim_core::VehicleState::inertial_rate_body`]).
     pub angular_rate_body_rad_s: DVec3,
     /// The air at the vehicle.
     pub air: AtmosphereSample,

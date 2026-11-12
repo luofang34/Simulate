@@ -2,6 +2,7 @@ use glam::DVec3;
 use navigate_contract::SymmetricCov3;
 use navigate_onboard::ImuBiasPrior;
 use sim_devices::{ImuErrorSpec, TriadErrorSpec, WhiteNoise};
+use sim_geo::BodyEllipsoid;
 
 use super::inertial_config;
 
@@ -13,6 +14,12 @@ const RESIDUAL_STREAM: u64 = 0x6772_6f75_6e64;
 /// modelled as a sensor: what the unit's mean rate over the rest window,
 /// less the Earth rate, tells the filter about its biases.
 ///
+/// At rest the gyroscopes sense their bias plus the Earth's spin. Taking the
+/// spin off needs the latitude, which the surveyed start gives, and the
+/// attitude: the levelling from the accelerometers and a heading of
+/// [`Self::heading_sigma_rad`], from the magnetometer at rest. The heading
+/// error turns the spin's horizontal part into the estimate.
+///
 /// A flight that starts in the air never had that window, yet a real one
 /// would have. Without it, a consumer part's turn-on bias of a fraction of
 /// a degree per second is left to the filter's stationary spread, and an
@@ -23,11 +30,28 @@ pub struct GroundCalibration {
     pub window_s: f64,
     /// Seed of the residual draw.
     pub seed: u64,
+    /// 1-sigma of the heading the calibration takes the Earth's spin off
+    /// with, radians.
+    pub heading_sigma_rad: f64,
 }
 
 impl GroundCalibration {
     /// A minute at rest, the run-up a crew waits through anyway.
     pub const WINDOW_S: f64 = 60.0;
+
+    /// A magnetometer heading at rest after a field calibration, 1-sigma, 2°:
+    /// an assumed value for the class, with declination from a field model.
+    pub const MAGNETIC_HEADING_SIGMA_RAD: f64 = 2.0 * core::f64::consts::PI / 180.0;
+
+    /// A minute at rest with a magnetic heading, the residual drawn from
+    /// `seed`.
+    pub const fn at_rest(seed: u64) -> Self {
+        Self {
+            window_s: Self::WINDOW_S,
+            seed,
+            heading_sigma_rad: Self::MAGNETIC_HEADING_SIGMA_RAD,
+        }
+    }
 
     /// The prior a unit of statistics `spec` whose gyroscopes carry
     /// `gyro_bias_rad_s` at the start gives the filter.
@@ -35,13 +59,12 @@ impl GroundCalibration {
     /// The gyroscope bias is the true one plus a seeded residual of
     /// variance, per axis,
     ///
-    /// `σ_res² = N_g²/T + 2·σ_in²·(1 − e^(−T/τ_in)) + q²·T`,
+    /// `σ_res² = N_g²/T + 2·σ_in²·(1 − e^(−T/τ_in)) + q²·T + (Ω·σ_ψ)²`,
     ///
     /// the white noise `N_g` averaged over the window `T`, the in-run
-    /// wander `σ_in`, `τ_in` between the window and the start, and the bias
-    /// random walk `q` over the same span. The Earth rate the calibration
-    /// takes off, turned by a heading error of a degree, is under a degree
-    /// an hour and is left out.
+    /// wander `σ_in`, `τ_in` between the window and the start, the bias
+    /// random walk `q` over the same span, and the Earth's spin `Ω` turned
+    /// by the heading error `σ_ψ`, taken whole on every axis.
     ///
     /// The accelerometer bias is not separable from the tilt at rest, so
     /// its prior is zero with the filter's own declared variance, as
@@ -74,6 +97,7 @@ impl GroundCalibration {
             false => 0.0,
         };
         let walk = gyro.bias_random_walk_density * gyro.bias_random_walk_density * t;
-        noise + wander + walk
+        let spin = BodyEllipsoid::WGS84.omega_rad_s * self.heading_sigma_rad;
+        noise + wander + walk + spin * spin
     }
 }

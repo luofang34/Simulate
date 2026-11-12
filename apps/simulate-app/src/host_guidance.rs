@@ -79,7 +79,13 @@ impl StandInPilotageHost {
         // On the real chain Pilotage is the host: the panel shows what the flight
         // controller executes of its demands.
         if let Some((avionics, held)) = flight.chain_avionics() {
-            return chain_avionics::guidance(&avionics, &held, self.source_epoch);
+            let navigation = flight.chain_navigation();
+            return chain_avionics::guidance(
+                &avionics,
+                &held,
+                navigation.as_ref(),
+                self.source_epoch,
+            );
         }
         let body = flight.world().body();
         let est_geo = body.fixed_to_geodetic(flight.estimated_vehicle_state().position_ecef);

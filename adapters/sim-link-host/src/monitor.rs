@@ -8,6 +8,7 @@
 //! nothing about the flight that the feed does not say.
 
 mod camera;
+mod hold;
 mod pacer;
 mod replay;
 mod thinning;
@@ -23,6 +24,7 @@ use sim_navigate::NavMeans;
 use sim_navigate::trial::{EventKind, EventRecord, ProgressRecord, SensorKind, SensorStates};
 
 pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
+pub use hold::{HoldState, entry_words, leg_words, pattern_words};
 pub use pacer::{
     Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
     StepState, run_slice,
@@ -101,6 +103,7 @@ pub struct Monitor {
     sim_time_s: f64,
     finished: bool,
     route_end: Option<RouteEnd>,
+    hold: Option<HoldState>,
 }
 
 impl Monitor {
@@ -160,6 +163,7 @@ impl Monitor {
             ProgressRecord::Event(event) => {
                 self.sim_time_s = self.sim_time_s.max(event.t_s);
                 self.note_route_end(&event);
+                self.hold = HoldState::after(self.hold.take(), &event.kind);
                 self.events.push(event);
                 let over = self.events.len().saturating_sub(EVENTS_KEPT);
                 self.events.drain(..over);
@@ -189,6 +193,11 @@ impl Monitor {
                     .collect(),
             });
         }
+    }
+
+    /// Where the vehicle is in the holding pattern it flies after its plan.
+    pub const fn hold(&self) -> Option<&HoldState> {
+        self.hold.as_ref()
     }
 
     /// The flight's picture when the plan completed, once it has.

@@ -78,3 +78,6 @@ web-sys = { workspace = true, features = [
     "Performance",
     "Window",
 ] }
+
+[dev-dependencies]
+navigate-contract = { workspace = true }

@@ -71,6 +71,14 @@ pub fn event_words(event: &EventRecord) -> String {
         EventKind::GuidanceRefused { refusal } => {
             format!("guidance refused the solution ({refusal})")
         }
+        EventKind::HoldingStarted { pattern } => super::pattern_words(pattern),
+        EventKind::HoldingEntered { entry } => {
+            format!("entered the hold: {}", super::entry_words(*entry))
+        }
+        EventKind::HoldingLegChanged { leg, circuits } => format!(
+            "hold: {}, {circuits} circuits flown",
+            super::leg_words(*leg)
+        ),
         EventKind::Terminated { rule, detail } => format!("flight ended: {rule} ({detail})"),
     };
     match &event.set {
@@ -117,6 +125,9 @@ pub fn status_words(monitor: &Monitor) -> String {
                 words.push_str(&format!("; last sequenced {ident}"));
             }
         }
+    }
+    if let Some(hold) = monitor.hold() {
+        words.push_str(&format!("; {}", hold.words()));
     }
     if monitor.finished() {
         words.push_str("; the run has ended");
