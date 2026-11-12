@@ -44,6 +44,8 @@ pub struct CockpitRig {
     page_map_px: Option<[u32; 2]>,
     /// The EFB frame the page's map last showed.
     page_map_shown: u64,
+    /// Whether a page's map is in sight, which the window's inset then gives way to.
+    page_map_in_sight: bool,
     /// The size of the PFD and HSI when drawn apart from the window view, each on its own
     /// surface; `None` docks them over it.
     panels_apart: Option<[u32; 2]>,
@@ -114,6 +116,7 @@ impl CockpitRig {
             surface,
             page_map_px: None,
             page_map_shown: 0,
+            page_map_in_sight: false,
             panels_apart: None,
         })
     }
@@ -141,11 +144,13 @@ impl CockpitRig {
     }
 
     /// The EFB's chrome over `world` this frame, when shown: on Earth with the dock up,
-    /// outside the full-window chart, on a map preset; beside a page's map, as its inset.
+    /// outside the full-window chart, on a map preset; beside a page's map, as its inset
+    /// while that map is out of sight.
     #[must_use]
     pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
         let shown = world.body() == BodyEllipsoid::WGS84
             && self.show_instruments
+            && !self.page_map_in_sight
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
         let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
         let status = self.inset_status(maps.efb_status()?);

@@ -66,8 +66,9 @@ impl EfbRig {
 
 impl MapLibreRig {
     /// Applies what the page handed over: its commands address the page's map, the
-    /// expanded view. Each view draws, at most 30 times a second, only while it can be
-    /// seen: the page's map while the page shows it, the inset while `window_shown`.
+    /// expanded view. Each view draws, at most 30 times a second, only while it is
+    /// wanted: the page's map while the page shows it, the inset while `window_shown`
+    /// and the page's map, which shows the same and more, is out of sight.
     pub fn take_page_map(
         &mut self,
         input: PageMapInput,
@@ -82,7 +83,7 @@ impl MapLibreRig {
             let zoom = PAGE_ZOOM - efb.surface.zoom();
             efb.command(super::EfbCommand::ZoomBy(zoom))?;
         }
-        let shown = [window_shown, input.visible];
+        let shown = [window_shown && !input.visible, input.visible];
         if efb.views_shown != Some(shown) {
             efb.surface.set_views_shown(shown);
             efb.views_shown = Some(shown);

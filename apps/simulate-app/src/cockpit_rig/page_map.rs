@@ -119,6 +119,8 @@ impl CockpitRig {
     /// the window is `window_shown`.
     pub fn take_page_map(&mut self, link: &PageMapLink, window_shown: bool) -> Option<[u32; 2]> {
         let input = link.take();
+        // The page's map shows all the inset would, so the window drops the inset.
+        self.page_map_in_sight = self.page_map_px.is_some() && input.visible;
         let resized = input.size_px.filter(|size| !size.contains(&0));
         if resized.is_some() && self.page_map_px.is_some() {
             self.page_map_px = resized;
