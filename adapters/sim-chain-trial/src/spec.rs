@@ -31,6 +31,58 @@ pub struct ChainTrialSpec {
     /// A spoofer of the GNSS receiver; absent for a true sky throughout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gnss_spoof: Option<GnssSpoofSpec>,
+    /// Structured adversarial GNSS spoofing windows supporting step-offset,
+    /// ramp, and velocity-pull profiles across one or more `[start_s, end_s)`
+    /// intervals. When non-empty, overrides [`Self::gnss_spoof`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spoof_windows: Vec<SpoofWindowSpec>,
+}
+
+/// Kind of adversarial GNSS spoofing active on the receiver.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpoofKind {
+    /// No spoofing active (`true` sky).
+    #[default]
+    None,
+    /// Instantaneous position step offset (`offset_enu_m`) with zero Doppler pull.
+    Offset,
+    /// Coherent position and velocity ramp (`offset_enu_m + rate_enu_mps * dt`).
+    Ramp,
+    /// Velocity pull with independent position drag and Doppler velocity bias.
+    VelocityPull,
+}
+
+/// One adversarial GNSS spoofing window `[start_s, end_s)` in local ENU axes.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpoofWindowSpec {
+    /// Route time at which this spoofing window captures the receiver, seconds.
+    pub start_s: f64,
+    /// Route time at which this spoofing window releases the receiver, seconds;
+    /// `None` if spoofing stays active through the end of the run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_s: Option<f64>,
+    /// Adversarial spoofing profile kind (`offset`, `ramp`, or `velocity_pull`).
+    pub kind: SpoofKind,
+    /// Initial step offset `[east, north, up]` applied at `start_s`, metres.
+    #[serde(default)]
+    pub offset_enu_m: [f64; 3],
+    /// Position pull rate `[east, north, up]` while active, m/s.
+    #[serde(default)]
+    pub rate_enu_mps: [f64; 3],
+    /// Optional explicit Doppler velocity bias `[east, north, up]`, m/s, for
+    /// [`SpoofKind::VelocityPull`]; defaults to `rate_enu_mps` when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub velocity_enu_mps: Option<[f64; 3]>,
+}
+
+impl SpoofWindowSpec {
+    /// Whether this window holds the receiver for a cycle starting at `t_s`.
+    #[must_use]
+    pub fn contains(&self, t_s: f64) -> bool {
+        t_s >= self.start_s && self.end_s.is_none_or(|end| t_s < end)
+    }
 }
 
 /// A spoofer that drags the GNSS receiver's fixes away from the truth, for

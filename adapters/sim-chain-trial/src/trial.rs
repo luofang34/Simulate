@@ -3,6 +3,7 @@
 mod camera;
 mod feed;
 mod holding;
+mod inspect;
 mod records;
 mod sets;
 mod setup;
@@ -14,22 +15,20 @@ use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use navigate_contract::NavigationSolution;
 use sim_core::{SimInstant, VehicleState};
-use sim_flight_chain::{
-    C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay, OnboardSolution,
-};
+use sim_flight_chain::{C172Airframe, DeviceOutages, HostChain, OnboardSolution};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, TerrainMatch,
-    replay_set_inspecting,
+    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, replay_set_inspecting,
 };
 
 use crate::nav_log::NavLog;
 use crate::{
-    ChainTrialError, ChainTrialSpec, DeviceOutage, FrameRequest, GnssSpoofSpec, Outputs, Steering,
-    StepOutcome,
+    ChainTrialError, ChainTrialSpec, DeviceOutage, FrameRequest, Outputs, Steering, StepOutcome,
 };
 use camera::HostCamera;
-use sets::{SetSlot, has_sensor};
+pub(crate) use inspect::SensorLatch;
+pub(crate) use sets::SetSlot;
+use sets::has_sensor;
 
 pub use feed::TruthSnapshot;
 pub use sets::FLIGHT_CONTROLLER_SET;
@@ -71,6 +70,7 @@ pub struct ChainTrial {
     records: records::Recorder,
     feed: Option<feed::FeedClock>,
     holding: holding::HoldingWatch,
+    latch: SensorLatch,
 }
 
 impl ChainTrial {
@@ -148,7 +148,7 @@ impl ChainTrial {
             steering,
             offered: None,
             outages: spec.outages.clone(),
-            spoofer: spoof::Spoofer::new(spec.gnss_spoof.as_ref())?,
+            spoofer: spoof::Spoofer::new(spec.gnss_spoof.as_ref(), &spec.spoof_windows)?,
             camera,
             stars,
             announced: None,
@@ -156,47 +156,8 @@ impl ChainTrial {
             pending: Outputs::default(),
             feed: None,
             holding: holding::HoldingWatch::default(),
+            latch: SensorLatch::default(),
         })
-    }
-
-    /// The control chain the trial flies: the board, its airframe and
-    /// Pilotage's host, for drawing and readouts.
-    pub fn chain(&self) -> &C172Chain {
-        &self.chain
-    }
-
-    /// The flight controller's account of its last cycle: what the
-    /// aeroplane's own displays may show.
-    pub fn avionics(&self) -> FcAvionics {
-        feed::avionics(&self.chain)
-    }
-
-    /// What the trial's log keeps: as much as its slowest reader has yet to
-    /// take, however long the flight.
-    pub fn retained(&self) -> crate::Retained {
-        self.nav.retained()
-    }
-
-    /// What Pilotage's navigation display shows of the mission now: the
-    /// plan, the leg flown and the holding pattern after it. It is the
-    /// flight-management side, apart from the flight controller's account.
-    pub fn navigation(&self) -> Option<&NavigationDisplay> {
-        self.chain.status().navigation.as_ref()
-    }
-
-    /// Each visual set's latest terrain match, by set name, for a trial built
-    /// inspecting them.
-    pub fn terrain_matches(&self) -> impl Iterator<Item = (&str, &TerrainMatch)> {
-        self.sets.iter().filter_map(|slot| {
-            slot.run
-                .last_terrain_match()
-                .map(|found| (slot.name.as_str(), found))
-        })
-    }
-
-    /// The true aeroplane now, for drawing the world outside it only.
-    pub fn truth(&self) -> TruthSnapshot {
-        feed::truth(&self.chain)
     }
 
     /// From the next cycle on, every output carries the flight
@@ -269,11 +230,6 @@ impl ChainTrial {
         at_s
     }
 
-    /// The outages so far, those the spec stated and those switched.
-    pub fn outages(&self) -> &[DeviceOutage] {
-        &self.outages
-    }
-
     /// Hands the GNSS receiver to the spoofer, or takes it back, from the
     /// next cycle on, and returns that cycle's route time, seconds. Every
     /// consumer of the receiver takes the dragged fixes; a capture drags
@@ -284,22 +240,6 @@ impl ChainTrial {
         at_s
     }
 
-    /// The spoofer as flown so far: its drag and every span it held the
-    /// receiver, those the spec stated and those switched.
-    pub const fn gnss_spoof(&self) -> &GnssSpoofSpec {
-        self.spoofer.spec()
-    }
-
-    /// The navigation Pilotage's mission steers on; `None` when it flies
-    /// on the flight controller's own estimate.
-    pub fn steered(&self) -> Option<Steered<'_>> {
-        let slot = self.sets.get(self.steering?)?;
-        Some(Steered {
-            set: &slot.name,
-            solution: self.offered.as_ref(),
-        })
-    }
-
     /// The host's grey image for exposure `index`: exactly width × height
     /// bytes, row-major, top row first.
     pub fn deliver_frame(&mut self, index: u64, luma: &[u8]) -> Result<(), ChainTrialError> {
@@ -308,6 +248,7 @@ impl ChainTrial {
             .as_mut()
             .ok_or(ChainTrialError::UnexpectedFrame { index })?;
         let frame = camera.develop(index, luma)?;
+        self.latch.on_frame_delivered(index, luma);
         self.nav.log.terrain.push(frame);
         Ok(())
     }
@@ -324,9 +265,10 @@ impl ChainTrial {
                 .iter()
                 .any(|o| o.sensor == kind && o.contains(t_s))
         };
+        let (gnss_out, baro_out) = (out(SensorKind::Gnss), out(SensorKind::Baro));
         self.chain.board_mut().set_outages(DeviceOutages {
-            gnss: out(SensorKind::Gnss),
-            air_data: out(SensorKind::Baro),
+            gnss: gnss_out,
+            air_data: baro_out,
         });
         let (fault, spoofing) = self.spoofer.cycle(t_s);
         self.chain
@@ -344,6 +286,8 @@ impl ChainTrial {
             self.pending.truth.push(feed::truth(&self.chain));
         }
         let samples = *self.chain.board().last_samples();
+        self.latch
+            .on_cycle(self.now_s(), &after, &samples, gnss_out, baro_out);
         let completed = self
             .nav
             .on_cycle((from, self.chain.now()), (&before, &after), &samples);
@@ -411,6 +355,7 @@ impl ChainTrial {
         if let Some(camera) = self.camera.as_mut()
             && let Some(request) = camera.expose(step, instant, &truth, camera_out)?
         {
+            self.latch.on_exposure(&request);
             self.announced = Some(request);
         }
         if let Some(stars) = &self.stars {

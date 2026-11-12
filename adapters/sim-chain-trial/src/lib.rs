@@ -17,13 +17,20 @@ mod first_link;
 mod nav_log;
 mod output;
 mod spec;
+mod telemetry;
 mod trial;
 
 pub use error::ChainTrialError;
 pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, Retained, StepOutcome};
 pub use spec::{
-    CalibrationName, ChainTrialSpec, DeviceOutage, GnssSpoofSpec, HoldSpec, HoldTurn, SpoofSpan,
-    StartSpec, Steering,
+    CalibrationName, ChainTrialSpec, DeviceOutage, GnssSpoofSpec, HoldSpec, HoldTurn, SpoofKind,
+    SpoofSpan, SpoofWindowSpec, StartSpec, Steering,
+};
+pub use telemetry::{
+    CameraFrameTelemetry, GuidanceRnpTelemetry, InputTelemetry, METRES_PER_NM, MetricSummary,
+    NavigatorSummary, NavigatorTelemetry, NeesConsistencySummary, SpoofingSummary,
+    TELEMETRY_SCHEMA, TelemetryConfig, TelemetryRecorder, TelemetrySample, TelemetrySummary,
+    TruthTelemetry,
 };
 pub use trial::{C172Chain, ChainTrial, FLIGHT_CONTROLLER_SET, Steered, TruthSnapshot};
