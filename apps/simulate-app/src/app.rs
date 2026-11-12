@@ -29,6 +29,8 @@ use crate::sky_rig::SkyRig;
 use crate::telemetry;
 
 mod actions;
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) mod cadence;
 mod efb_input;
 mod frame;
 mod hub;
@@ -84,6 +86,8 @@ pub struct FlightApp {
     proxy: EventLoopProxy<AppEvent>,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
+    /// The surface of a page's own map canvas, when the host has one.
+    page_map: Option<sim_render::PanelSurface>,
     cockpit_rig: Option<CockpitRig>,
     menu_overlay: Option<MenuOverlay>,
     esc_menu: EscMenu,
@@ -110,6 +114,9 @@ pub struct FlightApp {
     panels: Option<page_panels::PagePanels>,
     #[cfg(not(target_arch = "wasm32"))]
     next_occluded_tick: Option<std::time::Instant>,
+    /// A browser draws at most every 60 Hz refresh.
+    #[cfg(target_arch = "wasm32")]
+    cadence: cadence::FrameCadence,
 }
 
 impl FlightApp {
@@ -133,6 +140,7 @@ impl FlightApp {
             proxy,
             window: None,
             renderer: None,
+            page_map: None,
             cockpit_rig: None,
             menu_overlay: None,
             esc_menu,
@@ -158,6 +166,8 @@ impl FlightApp {
             panels: None,
             #[cfg(not(target_arch = "wasm32"))]
             next_occluded_tick: None,
+            #[cfg(target_arch = "wasm32")]
+            cadence: cadence::FrameCadence::default(),
         })
     }
 
@@ -203,9 +213,12 @@ impl FlightApp {
             window.request_redraw();
         }
         self.panels = self.host.page_panels(&renderer);
+        let page_map = self.host.page_map_surface(&renderer);
         match CockpitRig::from_renderer(&renderer, hud_pass, self.flight.world_surface().clone()) {
             Ok(mut rig) => {
                 rig.set_pixel_ratio(scale_factor);
+                rig.set_page_map_px(page_map.as_ref().map(sim_render::PanelSurface::size));
+                self.page_map = page_map;
                 let code = rig
                     .supervisor()
                     .effective_aerodrome(self.flight.profile())
@@ -358,7 +371,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             WindowEvent::PinchGesture { delta, .. } => self.pinch_gesture(delta),
             WindowEvent::RotationGesture { delta, .. } => self.rotation_gesture(delta),
             WindowEvent::Occluded(occluded) => self.set_occluded(occluded),
-            WindowEvent::RedrawRequested => self.redraw(event_loop),
+            WindowEvent::RedrawRequested => self.redraw_when_due(event_loop),
             _ => {}
         }
     }
@@ -403,7 +416,8 @@ impl FlightApp {
     /// offscreen-only pulse while occluded so unpaused flight and in-flight map tiles stay
     /// resident in VRAM without touching `surface.get_current_texture()`.
     fn pace_after_events(&mut self, event_loop: &ActiveEventLoop) {
-        if !self.occluded {
+        // A page's map is on screen of its own and keeps the frame loop going.
+        if !self.occluded || self.page_map.is_some() {
             event_loop.set_control_flow(ControlFlow::Wait);
             if let Some(window) = &self.window {
                 window.request_redraw();

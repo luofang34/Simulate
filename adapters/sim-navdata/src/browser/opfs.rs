@@ -9,6 +9,11 @@
 //! A writable stream left open keeps a swap file the browser does not clean
 //! up, so the store writes one file at a time and aborts the one in hand
 //! when the page goes away mid-write.
+//!
+//! The browser creates a file when its handle is asked for, before the
+//! stream commits, so a write cut off leaves an empty or short file. The
+//! store keeps a path's first write as the data contract asks, and
+//! [`RepairPort::replace`] rewrites one the cache found cut off.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -25,6 +30,7 @@ use web_sys::{
 };
 
 use super::js_text;
+use crate::RepairPort;
 
 /// The writable stream a write has open, shared with the page's `pagehide`
 /// listener that aborts it.
@@ -212,13 +218,10 @@ async fn write_and_close(
     Ok(())
 }
 
-impl WritePort for OpfsStore {
-    async fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
+impl OpfsStore {
+    /// Writes `bytes` to the file at `path`, created or truncated.
+    async fn write_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
         let failed = store_error(path);
-        // A path holds content that never changes: the first write stands.
-        if self.file(path).await?.is_some() {
-            return Ok(());
-        }
         let Some((directory, name)) = self.directory(path, true).await? else {
             return Err(DataError::Missing {
                 path: path.to_owned(),
@@ -250,6 +253,22 @@ impl WritePort for OpfsStore {
                 Err(failed(error))
             }
         }
+    }
+}
+
+impl RepairPort for OpfsStore {
+    async fn replace(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
+        self.write_file(path, bytes).await
+    }
+}
+
+impl WritePort for OpfsStore {
+    async fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), DataError> {
+        // A path holds content that never changes: the first write stands.
+        if self.file(path).await?.is_some() {
+            return Ok(());
+        }
+        self.write_file(path, bytes).await
     }
 
     async fn contains(&self, path: &str) -> Result<bool, DataError> {

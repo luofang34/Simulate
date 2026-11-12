@@ -13,12 +13,17 @@ use crate::cockpit_rig::efb_chrome::{EfbChrome, EfbHit, ZOOM_STEP};
 use crate::map_rig::EfbCommand;
 
 impl FlightApp {
-    /// The EFB's chrome while the hub is closed and the EFB is shown.
+    /// The EFB's chrome while the hub is closed and the EFB is shown, unless a page's map
+    /// takes the EFB's commands.
     pub(super) fn efb_chrome(&self) -> Option<EfbChrome> {
         if self.esc_menu.is_open() {
             return None;
         }
-        self.cockpit_rig.as_ref()?.efb_chrome(self.flight.world())
+        let rig = self
+            .cockpit_rig
+            .as_ref()
+            .filter(|rig| !rig.page_commands_efb())?;
+        rig.efb_chrome(self.flight.world())
     }
 
     /// Applies an EFB command; a failure is logged and leaves the flight running.

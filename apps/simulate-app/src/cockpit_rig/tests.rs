@@ -169,3 +169,5 @@ fn panels_drawn_apart_leave_the_window_view_to_the_world_and_hud() -> Result<(),
     gpu.check_device()?;
     Ok(())
 }
+
+mod page_map;

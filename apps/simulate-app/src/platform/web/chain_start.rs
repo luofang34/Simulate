@@ -14,7 +14,7 @@ use tracing::{info, warn};
 
 use super::PageView;
 use super::flight_run::{PageClock, fly};
-use super::monitor_view::MonitorView;
+use super::monitor_view::{MonitorView, PageMapSetup};
 use super::package_run::LinkPlan;
 use super::section::{Section, append};
 use crate::vehicles::{PageFeed, PageSnapshot};
@@ -66,7 +66,7 @@ async fn yield_to_page() {
 fn prepare(
     plan: &LinkPlan,
     sealed: Option<&SealedPackage>,
-) -> Result<(ChainTrial, Option<CameraWorld>), HostError> {
+) -> Result<(ChainTrial, Option<CameraWorld>, [f64; 2]), HostError> {
     let identity = sealed.map(|sealed| sealed.summary.identity);
     let memory = sealed.map_or_else(MemoryStore::default, |sealed| sealed.memory.clone());
     let spec = chain_spec(&plan.link, &plan.request, identity)?;
@@ -85,13 +85,18 @@ fn prepare(
         }
         _ => None,
     };
-    Ok((trial, world))
+    Ok((trial, world, [spec.start.lat_deg, spec.start.lon_deg]))
 }
 
 /// Starts the app's own world view at the top of `section`, above the
 /// monitor, drawing the flight `feed` publishes. Whatever becomes of it, the
-/// flight goes on. Returns where the page states the tab's memory.
-fn start_world_view(section: &Section, feed: PageFeed) -> Option<Element> {
+/// flight goes on; the app's map draws on `map_canvas` too. Returns where the page
+/// states the tab's memory.
+fn start_world_view(
+    section: &Section,
+    feed: PageFeed,
+    map_canvas: Option<HtmlCanvasElement>,
+) -> Option<Element> {
     let document = section.document();
     let row = append(document, section.root(), "div", "world-row")?;
     let canvas = append(document, &row, "canvas", "world-view")
@@ -115,10 +120,33 @@ fn start_world_view(section: &Section, feed: PageFeed) -> Option<Element> {
             line,
             diagnostics,
             panels,
+            map_canvas,
         },
         feed,
     );
     Some(memory)
+}
+
+/// What the page's map needs before the flight: its canvas, the link to the app's map,
+/// where the flight starts, and where the sealed package has imagery.
+fn page_map_setup(
+    canvas: Option<HtmlCanvasElement>,
+    feed: Option<&PageFeed>,
+    origin: [f64; 2],
+    world: Option<&CameraWorld>,
+) -> Option<PageMapSetup> {
+    Some(PageMapSetup {
+        canvas: canvas?,
+        link: feed?.map().clone(),
+        origin: Some(origin),
+        coverage: world.map_or_else(Vec::new, |world| {
+            world
+                .coverage_edges()
+                .into_iter()
+                .map(|edge| edge.to_vec())
+                .collect()
+        }),
+    })
 }
 
 /// The PFD's and the HSI's canvases, in a column beside the world view or a row under it,
@@ -152,7 +180,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
          decoding the camera's world.",
     );
     yield_to_page().await;
-    let (trial, world) = match prepare(plan, sealed) {
+    let (trial, world, origin) = match prepare(plan, sealed) {
         Ok(ready) => ready,
         Err(error) => {
             warn!(%error, "the flight cannot start");
@@ -177,9 +205,18 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
             None
         }
     };
+    // The page map's canvas is the world view's to draw and the monitor's to place.
+    let map_canvas = feed.as_ref().and_then(|_| {
+        section
+            .document()
+            .create_element("canvas")
+            .ok()?
+            .dyn_into::<HtmlCanvasElement>()
+            .ok()
+    });
     let mut memory = None;
     if let Some(feed) = &feed {
-        memory = start_world_view(&section, feed.clone());
+        memory = start_world_view(&section, feed.clone(), map_canvas.clone());
     }
     let Some(view) = MonitorView::inside(
         section,
@@ -188,6 +225,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         Some(CAVEAT),
         (world.clone(), world_note),
         ABOUT,
+        page_map_setup(map_canvas, feed.as_ref(), origin, world.as_ref()),
     ) else {
         return;
     };

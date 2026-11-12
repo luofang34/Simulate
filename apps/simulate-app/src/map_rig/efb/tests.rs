@@ -70,6 +70,7 @@ fn the_plate_opacity_cycle_starts_at_three_quarters() {
         diagram_shown: true,
         airport: "KEWR".to_owned(),
         plate_title: None,
+        satellite: false,
     };
     assert!((status.zoom - 10.2).abs() < 1e-9);
 }

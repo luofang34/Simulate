@@ -3,7 +3,7 @@
 //! page alone: its start, its title and its failures stay in the view, so
 //! the flight and the monitor go on whatever becomes of the renderer.
 
-use sim_render::Renderer;
+use sim_render::{PanelSurface, Renderer};
 use tracing::warn;
 use web_sys::{Element, HtmlCanvasElement};
 use winit::platform::web::WindowAttributesExtWebSys;
@@ -25,6 +25,8 @@ pub struct PageView {
     /// The canvases the PFD and the HSI are drawn on beside the view, when the page has
     /// room for them.
     pub panels: Option<[HtmlCanvasElement; 2]>,
+    /// The page's own map canvas, which shows the app's EFB map expanded.
+    pub map_canvas: Option<HtmlCanvasElement>,
 }
 
 /// Where the app is shown.
@@ -114,6 +116,20 @@ impl Host {
             }
             Self::View(view) => view.line.set_text_content(Some(title)),
         }
+    }
+
+    /// The surface of the view's page map canvas, sharing `renderer`'s device, sized to
+    /// the canvas's drawing buffer, which the page keeps to its width on screen.
+    pub fn page_map_surface(&self, renderer: &Renderer) -> Option<PanelSurface> {
+        let Self::View(view) = self else {
+            return None;
+        };
+        let canvas = view.map_canvas.clone()?;
+        let (width, height) = (canvas.width().max(1), canvas.height().max(1));
+        renderer
+            .panel_surface(wgpu::SurfaceTarget::Canvas(canvas), width, height)
+            .inspect_err(|err| warn!(error = %err, "the page map has no surface"))
+            .ok()
     }
 
     /// Window settings: a canvas winit appends to the page, or the view's.

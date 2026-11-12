@@ -42,5 +42,7 @@ maplibre = { workspace = true, features = ["thread-safe-futures"] }
 tokio = { workspace = true }
 
 [dev-dependencies]
+# Live GPU object counts, for the tests that hold drawing to no growth.
+wgpu = { workspace = true, features = ["counters"] }
 indicate-frames = { workspace = true }
 pollster = { workspace = true }

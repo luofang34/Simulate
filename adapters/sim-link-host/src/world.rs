@@ -9,6 +9,7 @@ use crate::PlanLine;
 use crate::wording::line;
 
 mod camera;
+mod coverage;
 mod overview;
 
 #[cfg(test)]

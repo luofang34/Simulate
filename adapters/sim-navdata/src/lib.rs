@@ -39,7 +39,7 @@ mod transport;
 #[cfg(test)]
 mod fixtures;
 
-pub use cache::{CachedTile, index_path, lookup, record};
+pub use cache::{CacheState, CachedTile, RepairPort, index_path, inspect, lookup, record};
 pub use error::NavdataError;
 pub use ground::{GROUND_CORRIDOR_M, GROUND_ZOOM, TerrariumGround, ground_tiles, read_ground};
 pub use plan::{

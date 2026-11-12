@@ -7,7 +7,7 @@ use navigate_data::{
     blob_path, prepare, read_all,
 };
 
-use crate::cache::lookup;
+use crate::cache::inspect;
 use crate::{NavdataError, PackagePlan, SourceSet};
 
 #[cfg(test)]
@@ -41,18 +41,24 @@ impl<S: ReadPort + WritePort> FetchPort for CacheFetch<'_, S> {
         if self.absent.contains(key) {
             return Ok(Fetched::Absent);
         }
-        let not_prefetched = || NavdataError::NotPrefetched {
-            tile: key.to_string(),
+        let not_prefetched = |cause: String| {
+            NavdataError::NotPrefetched {
+                tile: key.to_string(),
+                cause,
+            }
+            .to_string()
         };
-        let tile = lookup(self.store, key)
+        let state = inspect(self.store, key)
             .await
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| not_prefetched().to_string())?;
+            .map_err(|error| error.to_string())?;
+        let Some(tile) = state.held() else {
+            return Err(not_prefetched(state.why_not_held().unwrap_or_default()));
+        };
         read_all(self.store, &blob_path(tile.digest))
             .await
             .map_err(|error| error.to_string())?
             .map(Fetched::Tile)
-            .ok_or_else(|| not_prefetched().to_string())
+            .ok_or_else(|| not_prefetched(format!("its chunk {} went missing", tile.digest)))
     }
 }
 

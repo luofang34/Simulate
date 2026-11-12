@@ -56,6 +56,10 @@ pub enum EfbRefreshPolicy {
     /// Standalone or dedicated tablet EFB pacing: arrived tiles and animations draw immediately
     /// (`0 ms`), and ownship/traffic updates pace at `30 Hz` (`33 ms`).
     StandaloneInteractive,
+    /// A map beside other work on one page, at most `30 Hz`: arrived tiles, animations
+    /// and ownship motion all wait for the next `33 ms` frame, so streaming tiles never
+    /// draw it at the display's own rate.
+    Coalesced,
 }
 
 impl EfbRefreshPolicy {
@@ -65,6 +69,7 @@ impl EfbRefreshPolicy {
         match self {
             Self::StandaloneInteractive => true,
             Self::CockpitAdaptive => matches!(mode, EfbDisplayMode::ExpandedEfb),
+            Self::Coalesced => false,
         }
     }
 
@@ -74,7 +79,7 @@ impl EfbRefreshPolicy {
         match (self, mode) {
             (Self::CockpitAdaptive, EfbDisplayMode::CompactCorner) => Duration::from_millis(66),
             (Self::CockpitAdaptive, EfbDisplayMode::ExpandedEfb)
-            | (Self::StandaloneInteractive, _) => Duration::from_millis(33),
+            | (Self::StandaloneInteractive | Self::Coalesced, _) => Duration::from_millis(33),
         }
     }
 }
@@ -141,6 +146,26 @@ impl EfbCamera {
             center: sanitize_center(center_lat_deg, center_lon_deg),
             bearing_deg: 0.0,
         }
+    }
+
+    /// This camera, looking the same way, for `mode`'s view.
+    pub(super) fn with_mode(&self, mode: EfbDisplayMode) -> Self {
+        Self {
+            mode,
+            ..self.clone()
+        }
+    }
+
+    /// This camera with the zoom `cameras[index]` keeps for its own view.
+    pub(super) fn with_zoom_of(mut self, cameras: &[Self; 2], index: usize) -> Self {
+        let kept = cameras
+            .get(index)
+            .and_then(|camera| camera.zooms.get(index))
+            .copied();
+        if let (Some(kept), Some(zoom)) = (kept, self.zooms.get_mut(index)) {
+            *zoom = kept;
+        }
+        self
     }
 
     const fn mode_index(&self) -> usize {

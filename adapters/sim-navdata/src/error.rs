@@ -62,16 +62,37 @@ pub enum NavdataError {
         /// Tiles planned.
         total: usize,
     },
+    /// The store does not keep what was written at a path, even after the
+    /// write was made again: storage that loses or cuts off writes.
+    #[error(
+        "the tile cache holds at {path} {detail}, even after writing it again: this browser's \
+         storage does not keep what the page writes"
+    )]
+    StoreKept {
+        /// The logical path.
+        path: String,
+        /// What it holds against what was written.
+        detail: String,
+    },
     /// A planned tile is neither in the cache nor known absent: the package
     /// was sealed without prefetching it.
-    #[error("tile {tile} was not prefetched")]
+    #[error("tile {tile} was not prefetched: {cause}")]
     NotPrefetched {
         /// The tile.
         tile: String,
+        /// What the cache holds of it instead.
+        cause: String,
     },
 }
 
 impl NavdataError {
+    /// Whether the store, not the plan or the sources, failed: the same
+    /// package may still be built in another store.
+    #[must_use]
+    pub const fn store_fault(&self) -> bool {
+        matches!(self, Self::StoreKept { .. })
+    }
+
     /// Wraps a refusal of the data contract met while doing `what`.
     pub(crate) fn data(what: &'static str) -> impl Fn(DataError) -> Self {
         move |source| Self::Data { what, source }

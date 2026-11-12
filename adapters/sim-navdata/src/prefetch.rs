@@ -2,10 +2,10 @@
 //! and a stop at the storage budget.
 
 use futures_util::stream::{self, StreamExt};
-use navigate_data::{Fetched, ReadPort, TileKey, WritePort, blob_path, read_all};
+use navigate_data::{Fetched, TileKey, blob_path, read_all};
 use std::collections::BTreeSet;
 
-use crate::cache::{lookup, record};
+use crate::cache::{RepairPort, lookup, record};
 use crate::source::tile_url;
 use crate::transport::fetched;
 use crate::{NavdataError, SourceSet, TileTransport};
@@ -56,7 +56,7 @@ pub(crate) async fn obtain<T, S>(
 ) -> Result<(Fetched, bool), NavdataError>
 where
     T: TileTransport,
-    S: ReadPort + WritePort,
+    S: RepairPort,
 {
     if let Some(tile) = lookup(store, key).await? {
         let bytes = read_all(store, &blob_path(tile.digest))
@@ -113,7 +113,7 @@ pub async fn prefetch<T, S>(
 ) -> Result<PrefetchOutcome, NavdataError>
 where
     T: TileTransport,
-    S: ReadPort + WritePort,
+    S: RepairPort,
 {
     let mut count = PrefetchProgress {
         total: keys.len(),

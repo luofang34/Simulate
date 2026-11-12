@@ -66,6 +66,7 @@ struct Nodes {
     rate_body: [NodeId; 3],
     h_agl_ft: NodeId,
     terrain_elevation_asl_ft: NodeId,
+    wind_ned_fps: [NodeId; 3],
     system: SystemNodes,
     articulation: ArticulationNodes,
     mass: MassNodes,
@@ -99,6 +100,11 @@ impl Nodes {
             ],
             h_agl_ft: node("position/h-agl-ft")?,
             terrain_elevation_asl_ft: node("position/terrain-elevation-asl-ft")?,
+            wind_ned_fps: [
+                node("atmosphere/wind-north-fps")?,
+                node("atmosphere/wind-east-fps")?,
+                node("atmosphere/wind-down-fps")?,
+            ],
             system: SystemNodes::resolve(fdm)?,
             articulation: ArticulationNodes::resolve(fdm)?,
             mass: MassNodes::resolve(fdm)?,
@@ -272,6 +278,27 @@ impl JsbsimFdmBlock {
     /// Latches `controls`, limited to their ranges, from the next step on.
     pub fn set_system_controls(&mut self, controls: SystemControls) {
         self.latest.system = controls.clamped();
+    }
+
+    /// Sets the steady wind the airframe flies in from the next step on,
+    /// north-east-down m/s, the direction the air moves toward. The flight
+    /// model's aerodynamics then see the air-relative velocity.
+    ///
+    /// # Errors
+    ///
+    /// [`BlockError`] when JSBSim refuses the property write.
+    pub fn set_wind_ned_m_s(&mut self, wind_ned_m_s: DVec3) -> Result<(), BlockError> {
+        for (node, value) in self
+            .nodes
+            .wind_ned_fps
+            .into_iter()
+            .zip(wind_ned_m_s.to_array())
+        {
+            self.fdm
+                .write_node(node, value / METRES_PER_FOOT)
+                .map_err(fdm_error)?;
+        }
+        Ok(())
     }
 
     /// The engine as of the latest step.
