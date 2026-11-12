@@ -83,6 +83,8 @@ pub struct MonitorSetup<'a> {
     pub steering: Option<Steering>,
     /// The drag a spoofer switched on here applies.
     pub spoof: SpoofDrag,
+    /// The faults the link leaves in force to the end of the flight.
+    pub faults_at_start: FaultsAsked,
     /// What stands under the sets' results.
     pub caveat: Option<&'a str>,
     /// What the terrain camera sees, which the track map lies over.
@@ -123,7 +125,12 @@ impl MonitorView {
         // What the flight is flown on and the visitor's controls stand first, next to
         // the views they change.
         let steering_block = append(&document, &root, "div", "")?;
-        let sensors = SensorPanel::under(&document, &root, setup.can_switch, setup.spoof)?;
+        let sensors = SensorPanel::under(
+            &document,
+            &root,
+            setup.can_switch,
+            (setup.spoof, setup.faults_at_start),
+        )?;
         let speeds = append(&document, &root, "div", "speeds")?;
         speed_choices(&document, &speeds, setup.speed);
         let plot = Plot::under(&document, &root)?;

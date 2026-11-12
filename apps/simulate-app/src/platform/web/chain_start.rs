@@ -16,7 +16,7 @@ use tracing::{info, warn};
 
 use super::PageView;
 use super::flight_run::{PageClock, fly};
-use super::monitor_view::{MonitorSetup, MonitorView, PageMapSetup, Steering};
+use super::monitor_view::{FaultsAsked, MonitorSetup, MonitorView, PageMapSetup, Steering};
 use super::package_run::LinkPlan;
 use super::section::{Section, append, write_live};
 use crate::page_status::PAGE_STATUS_LINES;
@@ -177,6 +177,21 @@ fn steering_of(link: &SimulationLink) -> Option<Steering> {
     })
 }
 
+/// The faults `link` leaves in force to the end of the flight: its open spans. Their
+/// switches start on, so the page shows them and the visitor can end them.
+fn faults_left_on(link: &SimulationLink) -> FaultsAsked {
+    let open = |spans: &[sim_link::Span]| spans.last().is_some_and(|span| span.end.is_none());
+    FaultsAsked {
+        stopped: link
+            .outages
+            .iter()
+            .filter(|outage| open(&outage.spans))
+            .map(|outage| sim_link_host::trial_sensor(outage.sensor).name())
+            .collect(),
+        spoof_gnss: link.spoof.as_ref().is_some_and(|spoof| open(&spoof.spans)),
+    }
+}
+
 /// The drag the trial's spoofer applies when the visitor switches it on.
 fn spoof_drag(spoof: &GnssSpoofSpec) -> SpoofDrag {
     SpoofDrag {
@@ -257,6 +272,7 @@ pub async fn fly_link(section: Section, plan: &LinkPlan, sealed: Option<&SealedP
         can_switch: true,
         steering: steering_of(&plan.link),
         spoof: spoof_drag(trial.gnss_spoof()),
+        faults_at_start: faults_left_on(&plan.link),
         caveat: Some(CAVEAT),
         world: world.clone(),
         world_note,

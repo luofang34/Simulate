@@ -23,6 +23,7 @@ mod devices;
 mod epoch;
 mod error;
 mod evaluate;
+mod gnss_check;
 mod live_stars;
 mod map_store;
 mod maps;
@@ -80,6 +81,7 @@ pub use evaluate::{
     run_trial_blocking, run_trial_timed_blocking, run_trial_with_progress_blocking,
     run_trial_with_stores,
 };
+pub use gnss_check::{GnssCheck, GnssCheckSeparation, GnssCheckState, GnssReference};
 pub use live_stars::LiveStarCamera;
 use models::model_statements;
 pub use navigate_onboard::{

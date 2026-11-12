@@ -9,8 +9,8 @@
 use glam::DVec3;
 use indicate_instrument_state::{
     AltitudeDeclaration, HeadingReference, HeadingSample, IdentStr, MagneticVariation, NavData,
-    NavFacility, NavFromTo, NavScale, NavSequencing, NavSource, Selections, Stamped,
-    VariationSourceId,
+    NavFacility, NavFromTo, NavScale, NavSequencing, NavSource, PositionIntegrity, PositionSource,
+    Selections, Stamped, VariationSourceId,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
 use world_core::{DecimalYear, GeodeticPosition};
@@ -197,6 +197,9 @@ pub(super) fn runway_nav(
             scale: NavScale::Approach,
             facility: NavFacility::Localizer,
             sequencing: NavSequencing::Sequencing,
+            // A receiver is its own sensor: no position source stands behind it.
+            position_source: PositionSource::None,
+            position_integrity: PositionIntegrity::Normal,
         }),
         age_ms: Some(0.0),
     }

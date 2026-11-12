@@ -44,7 +44,8 @@ pub const ASSUMED_ACCURACY: AssumedAccuracy = AssumedAccuracy {
     vertical_m: 10.0,
 };
 
-const fn trial_sensor(sensor: Sensor) -> SensorKind {
+/// The trial's sensor of a link's.
+pub const fn trial_sensor(sensor: Sensor) -> SensorKind {
     match sensor {
         Sensor::Gnss => SensorKind::Gnss,
         Sensor::Baro => SensorKind::Baro,
@@ -226,6 +227,12 @@ fn feeds(outputs: Outputs, out: &mut Vec<MonitorFeed>) {
             event,
         }));
     }
+    out.extend(
+        outputs
+            .gnss_checks
+            .into_iter()
+            .map(|(set, check)| MonitorFeed::GnssCheck { set, check }),
+    );
     out.extend(
         outputs
             .terrain_fixes

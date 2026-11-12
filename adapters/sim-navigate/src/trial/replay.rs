@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 
 use navigate_contract::{MonotonicNanos, NavigationSolution, SourceId};
 use navigate_fusion::RejectionReason;
-use navigate_onboard::{AcceptanceRecord, Alignment, Navigator, Outcome, SensorData, SensorInput};
+use navigate_onboard::{
+    AcceptanceRecord, Alignment, GnssIntegrityConfig, Navigator, Outcome, SensorData, SensorInput,
+};
 use sim_core::SimInstant;
 
 use super::record::{LogPositions, SensorLog};
@@ -22,6 +24,7 @@ use tally::{Reading, sensor_state};
 
 use super::TrialError;
 use super::availability::{ScheduledInterval, SensorKind, SensorState, SetAvailability};
+use super::gnss_check::GnssCheck;
 use super::onboard::{
     BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, baro_altitude_data, gnss_fix_data,
 };
@@ -180,6 +183,25 @@ impl SetRun {
     pub fn sensor_state(&self, sensor: SensorKind, t_s: f64) -> SensorState {
         let has = self.selection.means.contains(sensor.means());
         sensor_state(&self.ledger, &self.selection.availability, has, sensor, t_s)
+    }
+
+    /// Starts the navigator's check of its GNSS receiver against a solution
+    /// kept free of it, with Navigate's own limits. The navigator then
+    /// cautions on and excludes a receiver that disagrees.
+    ///
+    /// # Errors
+    ///
+    /// A navigator that has no such check.
+    pub fn check_gnss(&mut self) -> Result<(), TrialError> {
+        self.navigator
+            .set_gnss_integrity(Some(GnssIntegrityConfig::default()))?;
+        Ok(())
+    }
+
+    /// What the navigator's GNSS check says now; `None` without one or
+    /// before it started.
+    pub fn gnss_check(&self) -> Option<GnssCheck> {
+        self.navigator.gnss_integrity().as_ref().map(GnssCheck::of)
     }
 
     /// Star tracker availability so far.

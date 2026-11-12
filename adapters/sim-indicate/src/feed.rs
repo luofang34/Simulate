@@ -1,7 +1,7 @@
 use glam::{DQuat, DVec3};
 use indicate_instrument_feeder::nav_display::DeviationScaleProfile;
 use indicate_instrument_feeder::nav_guidance::NavGuidanceTracker;
-use indicate_instrument_state::abi::v10::{DecodeReport, decode_state, encode_state};
+use indicate_instrument_state::abi::v11::{DecodeReport, decode_state, encode_state};
 use indicate_instrument_state::{
     AirData, AircraftState, AltitudeClass, AltitudeDeclaration, Attitude, DynSample,
     EstimateQuality, Kinematics, OriginId, SnapshotCoherence, Stamped, TurnBasis, TurnSample,
@@ -470,7 +470,7 @@ fn coherence(stamps: &[u64]) -> SnapshotCoherence {
 }
 
 /// Writes `state` as a tagged binary frame into `buffer`, returning its
-/// length. [`indicate_instrument_state::abi::v10::CAPACITY`] always suffices.
+/// length. [`indicate_instrument_state::abi::v11::CAPACITY`] always suffices.
 pub fn encode_frame(state: &AircraftState, buffer: &mut [u8]) -> Result<usize, FeedError> {
     encode_state(state, buffer).map_err(|source| FeedError::Encode {
         capacity: buffer.len(),

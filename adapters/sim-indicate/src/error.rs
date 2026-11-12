@@ -1,7 +1,7 @@
 use indicate_instrument_descriptor::InstrumentDrawError;
 use indicate_instrument_raster::RasterError;
 use indicate_instrument_scene::{LayerError, SceneError};
-use indicate_instrument_state::abi::v10::AbiError;
+use indicate_instrument_state::abi::v11::AbiError;
 use indicate_interaction::InteractionError;
 use thiserror::Error;
 

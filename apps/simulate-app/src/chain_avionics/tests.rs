@@ -2,7 +2,7 @@ use glam::DQuat;
 use sim_core::SimInstant;
 use sim_flight_chain::{FcAirData, FcTargets};
 use sim_geo::{Geodetic, geodetic_to_ecef};
-use sim_indicate::{NavFromTo, NavScale, NavSequencing};
+use sim_indicate::{NavFromTo, NavScale, NavSequencing, PositionIntegrity, PositionSource};
 
 use super::*;
 
@@ -88,10 +88,25 @@ fn fix(ident: &str, lat_deg: f64) -> sim_flight_chain::DisplayFix {
     }
 }
 
-fn display(hold: bool) -> NavigationDisplay {
+/// Pilotage's display a few seconds into the first link's flight, steered
+/// on its GNSS-aided set: the phase and the steering source are Pilotage's
+/// own, which no host can state for it.
+fn flown() -> NavigationDisplay {
+    use sim_chain_trial::{ChainTrial, first_link};
+    let mut trial = ChainTrial::new(
+        &first_link().unwrap(),
+        &sim_navigate::trial::DirectoryStores,
+    )
+    .unwrap();
+    trial.step_until(5.0).unwrap();
+    trial.navigation().unwrap().clone()
+}
+
+/// `flown` with the leg and, in the `hold`, the pattern stated here.
+fn display(flown: &NavigationDisplay, hold: bool) -> NavigationDisplay {
     use sim_flight_chain::{
         DisplayWaypoint, HoldingLeg, HoldingPattern, HoldingPatternStatus, HoldingTurn, LegDisplay,
-        NavQuality, ToFrom, WaypointProgress,
+        ToFrom, WaypointProgress,
     };
     let waypoints = ["WP1", "WP2", "WP3"]
         .iter()
@@ -114,7 +129,6 @@ fn display(hold: bool) -> NavigationDisplay {
             distance_to_go_m: 3_704.0,
             time_to_go_s: Some(61.0),
             to_from: if hold { ToFrom::From } else { ToFrom::To },
-            quality: NavQuality::Degraded,
         }),
         holding_pattern: hold.then(|| HoldingPatternStatus {
             pattern: HoldingPattern {
@@ -131,21 +145,24 @@ fn display(hold: bool) -> NavigationDisplay {
             circuits: 2,
             outbound_time_s: 60.0,
         }),
-        dead_reckoning: None,
+        ..flown.clone()
     }
 }
 
 /// The HSI's lane carries Pilotage's leg: the desired track as the course,
-/// the cross-track deviation, the distance and the two fixes; in the hold,
-/// the inbound course to the holding fix with `HOLD` for the FROM name.
+/// the cross-track deviation, the distance and the two fixes, to the scale
+/// of Pilotage's phase and naming the position Pilotage steers on; in the
+/// hold, the inbound course to the holding fix with `HOLD` for the FROM name.
 #[test]
 fn the_hsi_lane_is_pilotages_leg() {
     let at = SimInstant::from_ticks_u128(46_080_000_000 * 90);
+    let flown = flown();
+    assert!(flown.leg.is_some(), "the flight has a leg to steer");
     let HostNavGuidance::PilotageLane {
         stamp,
         guidance,
         now_ms,
-    } = navigation_lane(&display(false), at, 3)
+    } = navigation_lane(&display(&flown, false), at, 3)
     else {
         panic!("no lane");
     };
@@ -156,13 +173,20 @@ fn the_hsi_lane_is_pilotages_leg() {
     assert_eq!((guidance.leg_index, guidance.waypoint_count), (1, 3));
     assert_eq!(guidance.to_ident, ident("WP2").unwrap_or_default());
     assert_eq!(guidance.from_ident, ident("WP1").unwrap_or_default());
-    assert_eq!(guidance.solution_quality, 1);
+    // A satellite-aided set within its limits: the lane says so, and its
+    // quality code is the one Indicate presents without caution.
+    assert_eq!(
+        (guidance.position_source, guidance.position_integrity),
+        (PositionSource::Gps, PositionIntegrity::Normal)
+    );
+    assert_eq!(guidance.solution_quality, 0);
     assert_eq!(
         (guidance.scale, guidance.to_from, guidance.sequencing),
         (NavScale::Enroute, NavFromTo::To, NavSequencing::Sequencing)
     );
     assert_eq!((stamp.epoch, now_ms), (3, 90_000.0));
-    let HostNavGuidance::PilotageLane { guidance, .. } = navigation_lane(&display(true), at, 3)
+    let HostNavGuidance::PilotageLane { guidance, .. } =
+        navigation_lane(&display(&flown, true), at, 3)
     else {
         panic!("no lane in the hold");
     };
@@ -172,7 +196,7 @@ fn the_hsi_lane_is_pilotages_leg() {
         (guidance.to_from, guidance.sequencing),
         (NavFromTo::From, NavSequencing::Hold)
     );
-    let mut idle = display(false);
+    let mut idle = display(&flown, false);
     idle.leg = None;
     assert_eq!(navigation_lane(&idle, at, 3), HostNavGuidance::None);
 }

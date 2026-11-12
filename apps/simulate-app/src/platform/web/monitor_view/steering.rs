@@ -29,8 +29,9 @@ const OTHERS: &str = "The yellow crossed circle is the simulator's true position
     Aviate flies the surfaces on it, the mission does not steer on it.";
 /// What it says of the HSI's label.
 const HSI: &str = "The HSI's course, deviation and distance are Pilotage's, computed from \
-    this set. Its source label reads GPS whatever the set, the display's one label for a \
-    flight-plan course.";
+    this set. Its source reads FMS with the position Pilotage says it steers on: GPS, VIS \
+    for the terrain camera, INS, BLND for several together, or DR in amber for dead \
+    reckoning, and DGRD or EXCL beside it when Pilotage grades the position so.";
 
 /// The block at the end of `parent`, the steering set drawn in `colour`.
 pub fn steering_block(

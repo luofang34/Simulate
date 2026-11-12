@@ -15,7 +15,16 @@ fn pattern() -> HoldingPattern {
     }
 }
 
-fn display(leg: HoldingLeg, circuits: u32) -> NavigationDisplay {
+/// Pilotage's display a few seconds into a flight: its phase and steering
+/// source are its own to state.
+fn flown() -> NavigationDisplay {
+    let spec = super::super::tests::spec(None);
+    let mut trial = crate::ChainTrial::new(&spec, &sim_navigate::trial::DirectoryStores).unwrap();
+    trial.step_until(4.0).unwrap();
+    trial.navigation().unwrap().clone()
+}
+
+fn display(flown: &NavigationDisplay, leg: HoldingLeg, circuits: u32) -> NavigationDisplay {
     NavigationDisplay {
         waypoints: Vec::new(),
         active_waypoint: None,
@@ -28,7 +37,7 @@ fn display(leg: HoldingLeg, circuits: u32) -> NavigationDisplay {
             circuits,
             outbound_time_s: 60.0,
         }),
-        dead_reckoning: None,
+        ..flown.clone()
     }
 }
 
@@ -41,6 +50,7 @@ fn at(seconds: u64) -> SimInstant {
 /// of the part flown, none while it stays the same.
 #[test]
 fn the_hold_is_recorded_as_pilotage_flies_it() {
+    let flown = flown();
     let mut watch = HoldingWatch::default();
     let started = [
         (
@@ -54,7 +64,11 @@ fn the_hold_is_recorded_as_pilotage_flies_it() {
             }),
         ),
     ];
-    let records = watch.records(941.0, &started, Some(&display(HoldingLeg::ToFix, 0)));
+    let records = watch.records(
+        941.0,
+        &started,
+        Some(&display(&flown, HoldingLeg::ToFix, 0)),
+    );
     let kinds: Vec<&EventKind> = records
         .iter()
         .filter_map(|r| match r {
@@ -84,10 +98,10 @@ fn the_hold_is_recorded_as_pilotage_flies_it() {
     );
     assert!(
         watch
-            .records(942.0, &[], Some(&display(HoldingLeg::ToFix, 0)))
+            .records(942.0, &[], Some(&display(&flown, HoldingLeg::ToFix, 0)))
             .is_empty()
     );
-    let turned = watch.records(990.0, &[], Some(&display(HoldingLeg::Inbound, 1)));
+    let turned = watch.records(990.0, &[], Some(&display(&flown, HoldingLeg::Inbound, 1)));
     assert_eq!(turned.len(), 1);
     assert!(watch.records(991.0, &[], None).is_empty());
 }

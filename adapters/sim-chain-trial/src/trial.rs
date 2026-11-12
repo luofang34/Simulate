@@ -13,7 +13,7 @@ mod tests;
 use aviate_core::control::fixed_wing::FixedWingController;
 use aviate_core::mixer::fixed_wing::FixedWingMixer;
 use navigate_contract::NavigationSolution;
-use sim_core::SimInstant;
+use sim_core::{SimInstant, VehicleState};
 use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain, NavigationDisplay};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
@@ -96,7 +96,12 @@ impl ChainTrial {
             .sensor_sets
             .iter()
             .map(|set| {
-                let run = replay_set_inspecting(request, set, &nav.log, (stores, inspect))?;
+                let mut run = replay_set_inspecting(request, set, &nav.log, (stores, inspect))?;
+                // The vehicle's navigators check the receiver they are given:
+                // a spoofed one is theirs to find.
+                if has_sensor(&set.means, SensorKind::Gnss) {
+                    run.check_gnss()?;
+                }
                 Ok(SetSlot::new(set.name.clone(), run, |kind| {
                     has_sensor(&set.means, kind)
                 }))
@@ -442,22 +447,34 @@ impl ChainTrial {
             }
         }
         if step.is_multiple_of(self.progress_steps) {
-            // The flight controller's estimate is of the cycle's end, so it
-            // meets the truth of that instant.
-            let controller = self
-                .chain
-                .board()
-                .estimated_state()
-                .map(|estimate| (self.chain.true_state(), estimate));
-            let samples = records::samples(
-                (t_s, &truth),
-                &mut self.sets,
-                &self.nav.log,
-                controller.as_ref(),
-                &self.outages,
-            )?;
-            self.pending.records.extend(samples);
+            self.report(t_s, &truth)?;
         }
+        Ok(())
+    }
+
+    /// The progress stream's records of route time `t_s`: every set's sample
+    /// against `truth`, the flight controller's, and each GNSS set's check.
+    fn report(&mut self, t_s: f64, truth: &VehicleState) -> Result<(), ChainTrialError> {
+        // The flight controller's estimate is of the cycle's end, so it
+        // meets the truth of that instant.
+        let controller = self
+            .chain
+            .board()
+            .estimated_state()
+            .map(|estimate| (self.chain.true_state(), estimate));
+        let samples = records::samples(
+            (t_s, truth),
+            &mut self.sets,
+            &self.nav.log,
+            controller.as_ref(),
+            &self.outages,
+        )?;
+        self.pending.records.extend(samples);
+        self.pending.gnss_checks.extend(
+            self.sets
+                .iter()
+                .filter_map(|slot| Some((slot.name.clone(), slot.run.gnss_check()?))),
+        );
         Ok(())
     }
 }

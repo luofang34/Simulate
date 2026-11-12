@@ -25,7 +25,8 @@ use std::collections::BTreeMap;
 
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    EventKind, EventRecord, HoldingPatternRecord, ProgressRecord, SensorKind, SensorStates,
+    EventKind, EventRecord, GnssCheck, HoldingPatternRecord, ProgressRecord, SensorKind,
+    SensorStates,
 };
 
 pub use camera::{CameraLog, CameraShot, FixMark, outcome_words};
@@ -36,7 +37,9 @@ pub use pacer::{
     StepState, run_slice,
 };
 pub use replay::Replay;
-pub use sensor_controls::{SensorControl, SensorFault, SpoofDrag, sensor_controls};
+pub use sensor_controls::{
+    GnssCheckLine, SensorControl, SensorFault, SpoofDrag, gnss_check_lines, sensor_controls,
+};
 pub use status_lines::{ABSENT, RUN_LINES, run_lines, starting_lines, stopped_lines};
 pub use thinning::SAMPLES_KEPT;
 pub use trace::{Column, SetTrace, TracePoint};
@@ -91,6 +94,13 @@ pub enum MonitorFeed {
         /// The tally so far.
         fixes: BTreeMap<String, u64>,
     },
+    /// What a set's navigator says of its GNSS receiver.
+    GnssCheck {
+        /// The set.
+        set: String,
+        /// Its check.
+        check: GnssCheck,
+    },
     /// A terrain-camera frame the flight delivered.
     Frame(CameraShot),
     /// A visual set's latest terrain match.
@@ -128,6 +138,7 @@ pub struct Monitor {
     route_end: Option<RouteEnd>,
     hold: Option<HoldState>,
     gnss_spoofing: Option<Spoofing>,
+    gnss_checks: BTreeMap<String, GnssCheck>,
 }
 
 impl Monitor {
@@ -148,6 +159,9 @@ impl Monitor {
                         .tallied((&set, index), self.fixes.get(&set), &fixes);
                 }
                 self.fixes.insert(set, fixes);
+            }
+            MonitorFeed::GnssCheck { set, check } => {
+                self.gnss_checks.insert(set, check);
             }
             MonitorFeed::Frame(shot) => self.camera.deliver(shot),
             MonitorFeed::Match(shot) => self.matches.take(*shot),
@@ -308,6 +322,11 @@ impl Monitor {
     /// The spoofer holding the GNSS receiver now, if one does.
     pub const fn gnss_spoofing(&self) -> Option<&Spoofing> {
         self.gnss_spoofing.as_ref()
+    }
+
+    /// What `set`'s navigator says of its GNSS receiver, once it has.
+    pub fn gnss_check(&self, set: &str) -> Option<&GnssCheck> {
+        self.gnss_checks.get(set)
     }
 
     /// The mission phase, once the mission host has named one.

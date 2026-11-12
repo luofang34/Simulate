@@ -7,12 +7,14 @@
 
 use std::collections::BTreeSet;
 
-use sim_link_host::{Monitor, SensorControl, SensorFault, SpoofDrag, sensor_controls};
+use sim_link_host::{
+    Monitor, SensorControl, SensorFault, SpoofDrag, gnss_check_lines, sensor_controls,
+};
 use sim_navigate::trial::SensorKind;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlInputElement};
 
-use super::super::section::append;
+use super::super::section::{append, write_lines};
 use super::{inputs, values};
 
 /// What heads the controls.
@@ -33,6 +35,11 @@ pub struct FaultsAsked {
 /// The controls on the page.
 pub struct SensorPanel {
     rows: Element,
+    /// Each GNSS set's check of its receiver, as its navigator states it.
+    checks: Element,
+    checks_shown: Vec<sim_link_host::GnssCheckLine>,
+    /// The faults in force when the flight starts: the link's open spans.
+    on_at_start: FaultsAsked,
     built: Vec<SensorFault>,
     can_switch: bool,
     by_hand: SpoofDrag,
@@ -40,17 +47,23 @@ pub struct SensorPanel {
 
 impl SensorPanel {
     /// The controls at the end of `parent`; a recorded run's cannot be switched.
-    /// `by_hand` is the drag a spoofer switched on here applies.
+    /// `by_hand` is the drag a spoofer switched on here applies, and `on_at_start`
+    /// the faults the link leaves in force to the end of the flight, whose switches
+    /// start on so the visitor can end them.
     pub fn under(
         document: &Document,
         parent: &Element,
         can_switch: bool,
-        by_hand: SpoofDrag,
+        (by_hand, on_at_start): (SpoofDrag, FaultsAsked),
     ) -> Option<Self> {
         let block = append(document, parent, "div", "sensor-controls")?;
         append(document, &block, "p", "detail")?.set_text_content(Some(HEAD));
+        let rows = append(document, &block, "div", "sensor-rows")?;
         Some(Self {
-            rows: append(document, &block, "div", "sensor-rows")?,
+            rows,
+            checks: append(document, &block, "dl", "lines gnss-checks")?,
+            checks_shown: Vec::new(),
+            on_at_start,
             built: Vec::new(),
             can_switch,
             by_hand,
@@ -80,7 +93,11 @@ impl SensorPanel {
         if faults != self.built {
             self.rows.set_text_content(None);
             for control in &controls {
-                row(document, &self.rows, control, self.can_switch);
+                let on = match control.fault {
+                    SensorFault::Stop(sensor) => self.on_at_start.stopped.contains(sensor.name()),
+                    SensorFault::SpoofGnss => self.on_at_start.spoof_gnss,
+                };
+                row(document, &self.rows, control, (self.can_switch, on));
             }
             self.built = faults;
         }
@@ -98,6 +115,24 @@ impl SensorPanel {
                 value.set_attribute("title", &control.state).ok();
             }
         }
+        let checks = gnss_check_lines(monitor);
+        if checks != self.checks_shown {
+            let lines: Vec<sim_link_host::PlanLine> = checks
+                .iter()
+                .map(|check| sim_link_host::PlanLine {
+                    label: check.set.clone(),
+                    text: check.words.clone(),
+                })
+                .collect();
+            write_lines(document, &self.checks, &lines);
+            let alert = checks.iter().any(|check| check.alert);
+            self.checks.set_class_name(if alert {
+                "lines gnss-checks alert"
+            } else {
+                "lines gnss-checks"
+            });
+            self.checks_shown = checks;
+        }
     }
 }
 
@@ -109,7 +144,12 @@ const fn fault_name(fault: SensorFault) -> &'static str {
     }
 }
 
-fn row(document: &Document, rows: &Element, control: &SensorControl, can_switch: bool) {
+fn row(
+    document: &Document,
+    rows: &Element,
+    control: &SensorControl,
+    (can_switch, on): (bool, bool),
+) {
     let Some(label) = append(document, rows, "label", "fault-switch") else {
         return;
     };
@@ -125,7 +165,7 @@ fn row(document: &Document, rows: &Element, control: &SensorControl, can_switch:
                 .ok();
         }
         if let Ok(input) = input.dyn_into::<HtmlInputElement>() {
-            input.set_checked(false);
+            input.set_checked(on);
         }
     }
     if let Some(text) = append(document, &label, "span", "") {

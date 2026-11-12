@@ -58,7 +58,8 @@ pub use indicate_instrument_panels::{BackgroundMode, PfdConfig, SvsViewport, VSp
 pub use indicate_instrument_raster::{FrameId, FramebufferDims};
 pub use indicate_instrument_state::{
     AircraftState, HeadingReference, IdentStr, NavFromTo, NavScale, NavSequencing,
-    Quat as IndicateQuat, Sig, SignalStatus, VSpeedBug, VSpeedBugs,
+    PositionIntegrity, PositionSource, Quat as IndicateQuat, Sig, SignalStatus, VSpeedBug,
+    VSpeedBugs,
 };
 pub use indicate_instrument_symbology::v_speeds::{
     DialVSpeedScale, LinearVSpeedScale, draw_dial_arcs, draw_dial_bugs, draw_linear_bands,

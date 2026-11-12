@@ -8,6 +8,7 @@ use sim_navigate::trial::{
 use super::*;
 use crate::{CalibrationName, StartSpec};
 
+mod gnss_check;
 mod steered;
 
 /// The first shareable link's route, degrees north and east.

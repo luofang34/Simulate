@@ -120,3 +120,73 @@ fn the_spoofer_states_its_drag_and_what_each_consumer_reports_of_it() {
     );
     assert!(!sensor_controls(&monitor, BY_HAND)[2].active);
 }
+
+#[test]
+fn each_gnss_sets_check_reads_as_its_navigator_states_it() {
+    use sim_navigate::trial::{GnssCheck, GnssCheckSeparation, GnssCheckState, GnssReference};
+
+    use super::gnss_check_lines;
+
+    let mut monitor = Monitor::default();
+    feed(&mut monitor, STARTED);
+    assert!(gnss_check_lines(&monitor).is_empty());
+    let last = Some(GnssCheckSeparation {
+        separation_m: 31.4,
+        caution_bound_m: 12.2,
+        exclusion_bound_m: 18.0,
+    });
+    let check = |state, reference, checkable| GnssCheck {
+        state,
+        since_s: Some(92.0),
+        last,
+        reference,
+        checkable,
+    };
+    let inertial = GnssReference::InertialOnly {
+        detectable_rate_m_s: Some(0.94),
+    };
+    let mut say = |set: &str, check: GnssCheck| {
+        monitor.apply(MonitorFeed::GnssCheck {
+            set: set.to_owned(),
+            check,
+        });
+        let lines = gnss_check_lines(&monitor);
+        let line = lines.iter().find(|line| line.set == set).unwrap();
+        (line.words.clone(), line.alert)
+    };
+    assert_eq!(
+        say(
+            "ins.baro.gnss",
+            check(GnssCheckState::Excluded, GnssReference::PositionFix, true)
+        ),
+        (
+            "GNSS unreliable — excluded since 1:32, separation 31 m (caution 12 m, exclusion \
+             18 m), checked against its camera-fixed solution"
+                .to_owned(),
+            true
+        )
+    );
+    assert_eq!(
+        say(
+            "ins.baro.gnss",
+            check(GnssCheckState::Disagreeing, inertial, true)
+        ),
+        (
+            "GNSS doubted since 1:32, separation 31 m (caution 12 m, exclusion 18 m), still \
+             used, checked against inertial navigation only, which cannot check a drift below \
+             0.9 m/s"
+                .to_owned(),
+            true
+        )
+    );
+    let (words, alert) = say(
+        "ins.baro.gnss",
+        check(GnssCheckState::Consistent, inertial, true),
+    );
+    assert!(words.starts_with("GNSS consistent, separation 31 m") && !alert);
+    let (words, alert) = say(
+        "ins.baro.gnss",
+        check(GnssCheckState::Excluded, inertial, false),
+    );
+    assert!(words.starts_with("GNSS unchecked") && !alert, "{words}");
+}

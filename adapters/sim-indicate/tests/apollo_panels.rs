@@ -4,7 +4,7 @@
 use glam::{BVec3, DQuat, DVec3};
 use indicate_instrument_panels::PfdConfig;
 use indicate_instrument_raster::{FrameId, FramebufferDims};
-use indicate_instrument_state::abi::v10::CAPACITY;
+use indicate_instrument_state::abi::v11::CAPACITY;
 use sim_apollo::{
     CockpitInstrumentPanel, InertialSiteSample, LunarContactOutput, LunarModuleSources,
     RateGyroOutput, StrapdownAsaBlock, StrapdownAsaConfig, ThreeGimbalImuBlock,

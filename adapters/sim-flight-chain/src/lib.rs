@@ -27,8 +27,9 @@ pub use host_chain::{ChainRoute, HostChain, LinkCounters, OwnshipFeed, RouteFix}
 pub use hosted_board::{DeviceOutages, HostedBoard};
 pub use pilotage_host_core::{HostEvent, HostStatus, MISSION_CLOCK};
 pub use pilotage_mission::{
-    DisplayFix, DisplayWaypoint, HoldingEntry, HoldingLeg, HoldingPattern, HoldingPatternStatus,
-    HoldingTurn, LegDisplay, MissionEvent, MissionState, NavQuality, NavigationDisplay,
+    DisplayFix, DisplayWaypoint, FlightPhase, HoldingEntry, HoldingLeg, HoldingPattern,
+    HoldingPatternStatus, HoldingTurn, LegDisplay, MissionEvent, MissionState, NavQuality,
+    NavigationDisplay, PositionIntegrity, PositionKind, SteeringIntegrity, SteeringSource,
     TerminalHoldingPattern, ToFrom, WaypointProgress,
 };
 pub use pilotage_protocol::{VehicleClass, VehicleId};

@@ -27,7 +27,9 @@ const GROWTH: f64 = 0.25;
 /// pixel on a map of the whole route.
 const MIN_RING_PX: f64 = 4.0;
 
-const TRUTH: &str = "#f2f4f8";
+/// The true track and position: pale yellow, as the app's map draws them.
+const TRUTH: &str = "#ffe066";
+const LABEL: &str = "#f2f4f8";
 const ROUTE: &str = "#8f98ad";
 const FONT: &str = "12px system-ui, sans-serif";
 
@@ -219,9 +221,9 @@ fn key_words(pictured: bool) -> String {
         ""
     };
     format!(
-        "{under}White: the true track. Coloured: each set's estimate with its one-sigma ring \
-         (at least {MIN_RING_PX} px). Dots and rings: camera frames accepted and rejected. \
-         Dashed: the planned route."
+        "{under}Yellow: the simulator's true track, and its true position as a crossed circle. \
+         Coloured: each set's estimate with its one-sigma ring (at least {MIN_RING_PX} px). \
+         Dots and rings: camera frames accepted and rejected. Dashed: the planned route."
     )
 }
 
@@ -269,7 +271,7 @@ impl Painter<'_> {
             context.begin_path();
             context.arc(x, y, 3.0, 0.0, std::f64::consts::TAU).ok();
             context.fill();
-            context.set_fill_style_str(TRUTH);
+            context.set_fill_style_str(LABEL);
             context.fill_text(ident, x + 5.0, y - 3.0).ok();
         }
     }
@@ -310,7 +312,24 @@ impl Painter<'_> {
             }
         }
         if let Some((_, at)) = monitor.truth().last() {
-            self.dot(self.at(*at), 4.0, TRUTH);
+            self.truth_mark(self.at(*at));
+        }
+    }
+
+    /// The true position: a circle crossed by hairs, dark-cased, as the app's map
+    /// marks it.
+    fn truth_mark(&self, (x, y): (f64, f64)) {
+        let context = self.context;
+        for (width, colour) in [(4.0, "#000000"), (2.0, TRUTH)] {
+            context.set_stroke_style_str(colour);
+            context.set_line_width(width);
+            context.begin_path();
+            context.arc(x, y, 7.0, 0.0, std::f64::consts::TAU).ok();
+            for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                context.move_to(x + dx * 2.5, y + dy * 2.5);
+                context.line_to(x + dx * 12.0, y + dy * 12.0);
+            }
+            context.stroke();
         }
     }
 
@@ -345,13 +364,13 @@ impl Painter<'_> {
         let length = metres / metres_per_px;
         let (x, y) = (12.0, self.size.1 - 12.0);
         let context = self.context;
-        context.set_stroke_style_str(TRUTH);
+        context.set_stroke_style_str(LABEL);
         context.set_line_width(2.0);
         context.begin_path();
         context.move_to(x, y);
         context.line_to(x + length, y);
         context.stroke();
-        context.set_fill_style_str(TRUTH);
+        context.set_fill_style_str(LABEL);
         context.set_text_align("left");
         context.set_text_baseline("bottom");
         let words = if metres >= 1000.0 {

@@ -1,7 +1,7 @@
 use indicate_instrument_feeder::{CLOCK_HOST_MONOTONIC, ROLE_NAVIGATION_SOLUTION};
 use indicate_instrument_state::{
     AirframeDisplayProfile, FreshnessPolicy, NavFromTo, NavScale, NavSequencing, NavSource,
-    PanelData, UnusualAttitudeState, resolve_stateful,
+    PanelData, PositionIntegrity, PositionSource, UnusualAttitudeState, resolve_stateful,
 };
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{Geodetic, LocalFrame};
@@ -62,6 +62,8 @@ fn lane_guidance() -> Guidance {
         leg_index: 1,
         waypoint_count: 3,
         solution_quality: 0,
+        position_source: PositionSource::Visual,
+        position_integrity: PositionIntegrity::Normal,
     }
 }
 
@@ -107,7 +109,10 @@ fn panel(feed: &mut StateFeed, guidance: HostFlightGuidance) -> PanelData {
 
 fn assert_shows_lane(panel: &PanelData) {
     assert!(panel.nav.status.shows_value(), "{:?}", panel.nav.status);
-    assert_eq!(panel.nav.data.source, NavSource::Gps);
+    // The lane is flight-management guidance, naming the position it is flown on.
+    assert_eq!(panel.nav.data.source, NavSource::Fms);
+    assert_eq!(panel.nav.data.position_source, PositionSource::Visual);
+    assert_eq!(panel.nav.data.position_integrity, PositionIntegrity::Normal);
     assert_eq!(panel.nav.data.fromto, NavFromTo::To);
     assert!((panel.nav.data.cdi_dots + 2.0).abs() < 1e-4);
     assert!((panel.nav.data.vdev_dots.unwrap() - 2.0).abs() < 1e-4);

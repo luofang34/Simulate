@@ -42,7 +42,7 @@ mod tests;
 
 pub use chain::{
     ASSUMED_ACCURACY, C172_CRUISE_M_S, ChainFlight, MAX_STEP_S, OVERRUN_S, PAGE_STORE, chain_spec,
-    link_outages, link_spoof, page_stores,
+    link_outages, link_spoof, page_stores, trial_sensor,
 };
 pub use error::HostError;
 pub use flyable::{
@@ -51,12 +51,12 @@ pub use flyable::{
 };
 pub use monitor::{
     ABSENT, CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark,
-    FlightStepper, GreyImage, HoldState, MAX_FRAME_S, MatchLine, MatchShot, MeansSwitch, Monitor,
-    MonitorFeed, OfferedPosition, PaceLimit, Pacer, RUN_LINES, Replay, RouteEnd, SAMPLES_KEPT,
-    SLICE_BUDGET_S, SensorControl, SensorFault, SetTrace, Slice, SolvedFit, SpoofDrag, Spoofing,
-    StepState, TracePoint, clock_words, entry_words, event_words, leg_words, outcome_words,
-    pattern_words, run_lines, run_slice, sensor_controls, sensor_words, starting_lines,
-    state_words, stopped_lines, terrain_words,
+    FlightStepper, GnssCheckLine, GreyImage, HoldState, MAX_FRAME_S, MatchLine, MatchShot,
+    MeansSwitch, Monitor, MonitorFeed, OfferedPosition, PaceLimit, Pacer, RUN_LINES, Replay,
+    RouteEnd, SAMPLES_KEPT, SLICE_BUDGET_S, SensorControl, SensorFault, SetTrace, Slice, SolvedFit,
+    SpoofDrag, Spoofing, StepState, TracePoint, clock_words, entry_words, event_words,
+    gnss_check_lines, leg_words, outcome_words, pattern_words, run_lines, run_slice,
+    sensor_controls, sensor_words, starting_lines, state_words, stopped_lines, terrain_words,
 };
 pub use package::{
     BYTES_PER_MB, PACKAGE_LINES, PackageStage, budget_bytes, budget_refusal_lines, error_words,

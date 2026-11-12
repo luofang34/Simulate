@@ -6,7 +6,9 @@
 //! flight controller meet the same fault. What each makes of it is its own
 //! report: the page words it and judges nothing.
 
-use sim_navigate::trial::{SensorKind, SensorState, SensorStates};
+use sim_navigate::trial::{
+    GnssCheck, GnssCheckState, GnssReference, SensorKind, SensorState, SensorStates,
+};
 
 use super::{Monitor, SetTrace, clock_words, state_words};
 
@@ -159,4 +161,86 @@ pub fn sensor_controls(monitor: &Monitor, by_hand: SpoofDrag) -> Vec<SensorContr
         controls.push(spoof(monitor, by_hand));
     }
     controls
+}
+
+/// One set's GNSS check in a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GnssCheckLine {
+    /// The set.
+    pub set: String,
+    /// What its navigator says of the receiver.
+    pub words: String,
+    /// Whether the navigator doubts or excludes the receiver.
+    pub alert: bool,
+}
+
+/// The fix against the reference: how far, and the bounds it is held to.
+fn separation_words(check: &GnssCheck) -> String {
+    check.last.map_or_else(String::new, |last| {
+        format!(
+            ", separation {:.0} m (caution {:.0} m, exclusion {:.0} m)",
+            last.separation_m, last.caution_bound_m, last.exclusion_bound_m
+        )
+    })
+}
+
+/// What the receiver is checked against, and what that reference cannot
+/// find.
+fn reference_words(reference: GnssReference) -> String {
+    match reference {
+        GnssReference::PositionFix => "against its camera-fixed solution".to_owned(),
+        GnssReference::InertialOnly {
+            detectable_rate_m_s: Some(rate_m_s),
+        } => format!(
+            "against inertial navigation only, which cannot check a drift below {rate_m_s:.1} m/s"
+        ),
+        GnssReference::InertialOnly {
+            detectable_rate_m_s: None,
+        } => "against inertial navigation only".to_owned(),
+    }
+}
+
+fn check_words(check: &GnssCheck) -> (String, bool) {
+    let since = check
+        .since_s
+        .map_or_else(String::new, |t_s| format!(" since {}", clock_words(t_s)));
+    let reference = reference_words(check.reference);
+    if !check.checkable {
+        return (
+            format!("GNSS unchecked: the reference is too loose to judge it ({reference})"),
+            false,
+        );
+    }
+    let separation = separation_words(check);
+    match check.state {
+        GnssCheckState::Consistent => (
+            format!("GNSS consistent{separation}, checked {reference}"),
+            false,
+        ),
+        GnssCheckState::Disagreeing => (
+            format!("GNSS doubted{since}{separation}, still used, checked {reference}"),
+            true,
+        ),
+        GnssCheckState::Excluded => (
+            format!("GNSS unreliable — excluded{since}{separation}, checked {reference}"),
+            true,
+        ),
+    }
+}
+
+/// Each GNSS set's check as its navigator reports it, in the run's order
+/// of sets; a set whose navigator has reported none has no line.
+pub fn gnss_check_lines(monitor: &Monitor) -> Vec<GnssCheckLine> {
+    monitor
+        .traces()
+        .iter()
+        .filter_map(|trace| {
+            let (words, alert) = check_words(monitor.gnss_check(&trace.name)?);
+            Some(GnssCheckLine {
+                set: trace.name.clone(),
+                words,
+                alert,
+            })
+        })
+        .collect()
 }
