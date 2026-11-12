@@ -15,7 +15,7 @@ use super::{Autopilot, ClosedLoopOutcome, PilotInput, PilotOutput};
 use crate::trial::evaluate::{SetContext, replay_set_blocking};
 use crate::trial::onboard::trial_director;
 use crate::trial::progress::{EventKind, EventRecord, ProgressRecord, Scored};
-use crate::trial::record::{SensorLog, initial_alignment};
+use crate::trial::record::{LogWindow, SensorLog, initial_alignment};
 use crate::trial::replay::SetRun;
 use crate::trial::route::{start_state, step_seconds, step_span};
 use crate::trial::score::score_sample;
@@ -233,14 +233,14 @@ impl<'a> ClosedSet<'a> {
 
 fn empty_log(request: &TrialRequest, start: &VehicleState) -> SensorLog {
     SensorLog {
-        instants: vec![SimInstant::START],
+        instants: vec![SimInstant::START].into(),
         alignment: initial_alignment(request).measure(start),
-        imu: Vec::new(),
-        gnss: Vec::new(),
-        baro: Vec::new(),
-        stars: Vec::new(),
-        star_mid_steps: Vec::new(),
-        terrain: Vec::new(),
+        imu: LogWindow::new(),
+        gnss: LogWindow::new(),
+        baro: LogWindow::new(),
+        stars: LogWindow::new(),
+        star_mid_steps: LogWindow::new(),
+        terrain: LogWindow::new(),
     }
 }
 

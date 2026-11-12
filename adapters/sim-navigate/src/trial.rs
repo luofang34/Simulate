@@ -84,7 +84,7 @@ pub use onboard::{
     BARO_SOURCE, GNSS_SOURCE, IMU_SOURCE, STAR_SOURCE, sensor_suite, star_catalogue,
     trial_director, trial_navigator_blocking, trial_navigator_with_stores,
 };
-pub use record::{Logged, SensorLog};
+pub use record::{LogPositions, LogWindow, Logged, SensorLog, TruthAtStep};
 pub use replay::{ObservationTally, SensorTallies, SetRun, SetSelection, StarAvailability};
 pub use report::{
     ConsistencyNote, ErrorStats, InputIdentity, IntervalErrors, IntervalReport, ModelStatement,

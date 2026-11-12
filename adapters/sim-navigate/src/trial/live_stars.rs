@@ -1,13 +1,11 @@
 //! The star camera on a flight sensed as it is flown: a frame opens every
 //! period, and is rendered and delivered once its exposure has closed.
 
-use sim_core::{SimInstant, VehicleState};
 use sim_render::StarCameraConfig;
 
-use super::record::{SensorLog, star_scene};
+use super::record::{SensorLog, TruthAtStep, star_scene};
 use super::stars::{StarScene, exposure_steps, render_frame, star_camera_config};
 use super::{TrialError, TrialRequest};
-use crate::Truth;
 
 /// The request's star camera, sensing step by step into a log.
 #[derive(Debug, Clone)]
@@ -29,12 +27,18 @@ impl LiveStarCamera {
         })
     }
 
+    /// Steps from a frame's opening to its closing: how far back of the
+    /// step being sensed the camera still looks at the truth.
+    pub const fn exposure_steps(&self) -> usize {
+        self.length
+    }
+
     /// Senses `step`, the last of `truth`, into `log`: the middle of a frame
     /// that opens at it, and the frame that closes at it. A frame is taken
     /// only when `in_service` says the camera worked at its opening step.
     pub fn sense(
         &self,
-        truth: &[Truth<(SimInstant, VehicleState)>],
+        truth: &(impl TruthAtStep + ?Sized),
         step: usize,
         log: &mut SensorLog,
         in_service: impl Fn(usize) -> bool,

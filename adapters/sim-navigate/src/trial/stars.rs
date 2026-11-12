@@ -10,6 +10,7 @@ use sim_geo::{LocalFrame, UtcTime, ecef_to_geodetic};
 use sim_render::{CameraPose, StarCamera, StarCameraConfig};
 
 use super::TrialError;
+use super::record::TruthAtStep;
 use super::sky::{SkySample, sky_brightness, sun_direction_ecef};
 use crate::{Truth, camera_stars};
 
@@ -130,7 +131,7 @@ pub fn render_star_frames(
 }
 
 pub(super) fn render_frame(
-    truth: &[Truth<(SimInstant, VehicleState)>],
+    truth: &(impl TruthAtStep + ?Sized),
     scene: &StarScene,
     config: &StarCameraConfig,
     open: usize,
@@ -139,7 +140,7 @@ pub(super) fn render_frame(
     let (mid_step, end_step) = (open + length / 2, open + length);
     let state_at = |step: usize| {
         truth
-            .get(step)
+            .truth_at(step)
             .map(|s| s.get())
             .ok_or(TrialError::StarCamera {
                 what: format!("no truth at step {step}"),

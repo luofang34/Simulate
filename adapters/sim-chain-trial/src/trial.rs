@@ -14,7 +14,7 @@ use sim_core::SimInstant;
 use sim_flight_chain::{C172Airframe, DeviceOutages, FcAvionics, HostChain};
 use sim_navigate::NavMeans;
 use sim_navigate::trial::{
-    LiveStarCamera, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
+    LiveStarCamera, LogPositions, MapStores, SensorKind, TerrainExposer, replay_set_with_stores,
 };
 
 use crate::nav_log::NavLog;
@@ -270,19 +270,26 @@ impl ChainTrial {
         Ok(())
     }
 
-    /// Every set to `step`, then the pixels released of the terrain frames
-    /// all of them have taken.
+    /// Every set to `step`, then the log released up to the slowest set and
+    /// the truth up to the star camera's open exposure.
     fn advance_sets(&mut self, step: usize) -> Result<(), ChainTrialError> {
         for slot in &mut self.sets {
             slot.run.advance_to(&self.nav.log, step)?;
         }
-        let taken = self
+        let Some(positions) = self
             .sets
             .iter()
-            .map(|slot| slot.run.terrain_frames_taken())
-            .min();
+            .map(|slot| slot.run.positions())
+            .reduce(LogPositions::earliest)
+        else {
+            return Ok(());
+        };
+        let looking_back = self
+            .stars
+            .as_ref()
+            .map_or(0, LiveStarCamera::exposure_steps);
         self.nav
-            .release_terrain_before(taken.unwrap_or(self.nav.log.terrain.len()));
+            .release_before(&positions, step.saturating_sub(looking_back));
         Ok(())
     }
 

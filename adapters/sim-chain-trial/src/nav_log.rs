@@ -10,7 +10,9 @@
 use glam::DVec3;
 use sim_core::{SimInstant, TickSpan, VehicleState};
 use sim_devices::{AirDataSample, DeviceSamples, GnssReading, InertialIncrement};
-use sim_navigate::trial::{Logged, SensorLog, step_span};
+use sim_navigate::trial::{
+    LogPositions, LogWindow, Logged, SensorLog, StarFrame, TerrainFrame, step_span,
+};
 use sim_navigate::{AlignmentFix, Truth};
 
 /// The log the sets replay, grown cycle by cycle, with truth at each step.
@@ -18,13 +20,11 @@ pub(crate) struct NavLog {
     pub(crate) log: SensorLog,
     /// The true state at each logged step: scoring, drawing, and the star
     /// camera's physics only.
-    pub(crate) truth: Vec<Truth<(SimInstant, VehicleState)>>,
+    pub(crate) truth: LogWindow<Truth<(SimInstant, VehicleState)>>,
     step_ticks: u128,
     pending_imu: InertialIncrement,
     pending_gnss: Vec<Logged<GnssReading>>,
     pending_baro: Vec<Logged<AirDataSample>>,
-    /// Terrain frames whose pixels are released: every set has taken them.
-    released_terrain: usize,
 }
 
 impl NavLog {
@@ -32,47 +32,57 @@ impl NavLog {
     pub(crate) fn new(start: VehicleState, alignment: AlignmentFix) -> Self {
         Self {
             log: SensorLog {
-                instants: vec![SimInstant::START],
+                instants: vec![SimInstant::START].into(),
                 alignment,
-                imu: Vec::new(),
-                gnss: Vec::new(),
-                baro: Vec::new(),
-                stars: Vec::new(),
-                star_mid_steps: Vec::new(),
-                terrain: Vec::new(),
+                imu: LogWindow::new(),
+                gnss: LogWindow::new(),
+                baro: LogWindow::new(),
+                stars: LogWindow::new(),
+                star_mid_steps: LogWindow::new(),
+                terrain: LogWindow::new(),
             },
-            truth: vec![Truth::new((SimInstant::START, start))],
+            truth: vec![Truth::new((SimInstant::START, start))].into(),
             step_ticks: step_span().ticks_u128(),
             pending_imu: empty_increment(),
             pending_gnss: Vec::new(),
             pending_baro: Vec::new(),
-            released_terrain: 0,
         }
     }
 
-    /// Releases the pixels of every terrain frame before `taken`, the fewest
-    /// any set has taken: no set reads them again, and a frame's pixels are
-    /// most of what a long flight's log would otherwise keep.
-    pub(crate) fn release_terrain_before(&mut self, taken: usize) {
-        let from = self.released_terrain;
-        for frame in self.log.terrain.iter_mut().take(taken).skip(from) {
-            frame.pixels = Vec::new();
-        }
-        self.released_terrain = self.released_terrain.max(taken.min(self.log.terrain.len()));
+    /// Forgets what every reader has passed: the log before `positions`,
+    /// the slowest set's, and the truth before `truth_from`, the earliest
+    /// step the star camera or the records may still look at. A flight that
+    /// holds for hours then keeps a log as long as its readers' lag, not as
+    /// long as the flight.
+    pub(crate) fn release_before(&mut self, positions: &LogPositions, truth_from: usize) {
+        self.log.release_before(positions);
+        self.truth.release_before(truth_from.min(positions.step));
     }
 
-    /// What the log keeps: its steps, its terrain frames and the pixel bytes
-    /// they still hold.
+    /// What the log keeps, and roughly how many bytes that is.
     pub(crate) fn retained(&self) -> crate::Retained {
+        let log = &self.log;
+        let terrain_pixel_bytes = log.terrain.iter().map(|frame| frame.pixels.len()).sum();
+        let star_bytes: usize = log
+            .stars
+            .iter()
+            .map(|frame| size_of_val(frame.image.centroids.as_slice()))
+            .sum();
+        let entry_bytes = log.instants.kept() * size_of::<SimInstant>()
+            + log.imu.kept() * size_of::<InertialIncrement>()
+            + log.gnss.kept() * size_of::<Logged<GnssReading>>()
+            + log.baro.kept() * size_of::<Logged<AirDataSample>>()
+            + log.stars.kept() * size_of::<StarFrame>()
+            + log.star_mid_steps.kept() * size_of::<usize>()
+            + log.terrain.kept() * size_of::<TerrainFrame>()
+            + self.truth.kept() * size_of::<Truth<(SimInstant, VehicleState)>>();
         crate::Retained {
-            steps: self.log.imu.len(),
-            terrain_frames: self.log.terrain.len(),
-            terrain_pixel_bytes: self
-                .log
-                .terrain
-                .iter()
-                .map(|frame| frame.pixels.len())
-                .sum(),
+            steps: log.instants.len(),
+            steps_kept: log.instants.kept().max(self.truth.kept()),
+            readings_kept: log.gnss.kept() + log.baro.kept(),
+            frames_kept: log.stars.kept() + log.terrain.kept(),
+            terrain_pixel_bytes,
+            approximate_bytes: entry_bytes + terrain_pixel_bytes + star_bytes,
         }
     }
 
@@ -164,7 +174,7 @@ fn interpolate(before: &VehicleState, after: &VehicleState, fraction: f64) -> Ve
 }
 
 /// Moves the readings due at or before `logged` from `pending` to `log`.
-fn move_due<T>(pending: &mut Vec<Logged<T>>, log: &mut Vec<Logged<T>>, logged: usize) {
+fn move_due<T>(pending: &mut Vec<Logged<T>>, log: &mut LogWindow<Logged<T>>, logged: usize) {
     let ready = pending.iter().take_while(|r| r.step <= logged).count();
     log.extend(pending.drain(..ready));
 }
