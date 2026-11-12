@@ -77,6 +77,27 @@ fn consumers(monitor: &Monitor, sensor: SensorKind) -> Vec<(&SetTrace, SensorSta
         .collect()
 }
 
+/// What `sensor` is doing for the set of `trace`, in words. A receiver its
+/// navigator's own check excluded is said to be excluded: the filter is
+/// handed none of its fixes, which is no fault of the device's.
+fn consumer_words(
+    monitor: &Monitor,
+    sensor: SensorKind,
+    (trace, state): (&SetTrace, SensorState),
+) -> Option<String> {
+    let excluded = sensor == SensorKind::Gnss
+        && state != SensorState::ScheduledUnavailable
+        && monitor
+            .gnss_check(&trace.name)
+            .is_some_and(|check| check.checkable && check.state == GnssCheckState::Excluded);
+    let words = if excluded {
+        "excluded by its navigator"
+    } else {
+        state_words(state)?
+    };
+    Some(format!("{} {words}", trace.name))
+}
+
 fn stop(monitor: &Monitor, sensor: SensorKind) -> SensorControl {
     let consumers = consumers(monitor, sensor);
     let active = consumers
@@ -84,7 +105,7 @@ fn stop(monitor: &Monitor, sensor: SensorKind) -> SensorControl {
         .any(|(_, state)| *state == SensorState::ScheduledUnavailable);
     let each: Vec<String> = consumers
         .iter()
-        .filter_map(|(trace, state)| Some(format!("{} {}", trace.name, state_words(*state)?)))
+        .filter_map(|consumer| consumer_words(monitor, sensor, *consumer))
         .collect();
     let state = match (active, each.is_empty()) {
         (_, true) => "no consumer has reported yet".to_owned(),
@@ -101,8 +122,9 @@ fn stop(monitor: &Monitor, sensor: SensorKind) -> SensorControl {
 
 /// One GNSS consumer under the spoofer: its state, how far its estimate is
 /// from the truth, and the uncertainty it states.
-fn spoofed_words(trace: &SetTrace, state: SensorState) -> String {
-    let mut words = format!("{} {}", trace.name, state_words(state).unwrap_or("—"));
+fn spoofed_words(monitor: &Monitor, (trace, state): (&SetTrace, SensorState)) -> String {
+    let mut words = consumer_words(monitor, SensorKind::Gnss, (trace, state))
+        .unwrap_or_else(|| format!("{} —", trace.name));
     if let Some(latest) = trace.latest() {
         words.push_str(&format!(", {:.0} m off", latest.horizontal_error_m));
         if let Some(sigma_m) = latest.sigma_horizontal_m {
@@ -118,7 +140,7 @@ fn spoof(monitor: &Monitor, by_hand: SpoofDrag) -> SensorControl {
             let dragged_m = spoofing.rate_m_s * (monitor.sim_time_s() - spoofing.since_s).max(0.0);
             let each: Vec<String> = consumers(monitor, SensorKind::Gnss)
                 .into_iter()
-                .map(|(trace, state)| spoofed_words(trace, state))
+                .map(|consumer| spoofed_words(monitor, consumer))
                 .collect();
             let head = format!(
                 "SPOOFING since {}, reported position {dragged_m:.0} m from true toward {:03.0}°",

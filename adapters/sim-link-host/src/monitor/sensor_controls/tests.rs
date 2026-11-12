@@ -179,6 +179,25 @@ fn each_gnss_sets_check_reads_as_its_navigator_states_it() {
             true
         )
     );
+    // The switches' lines name the exclusion too, in place of a device state.
+    samples(&mut monitor, 100.0, "physically_unavailable", 6.0);
+    monitor.apply(MonitorFeed::GnssCheck {
+        set: "ins.baro.gnss".to_owned(),
+        check: check(GnssCheckState::Excluded, GnssReference::PositionFix, true),
+    });
+    assert_eq!(
+        sensor_controls(&monitor, BY_HAND)[0].state,
+        "delivering · ins.baro.gnss excluded by its navigator · flight-controller no reading"
+    );
+    let mut say = |set: &str, check: GnssCheck| {
+        monitor.apply(MonitorFeed::GnssCheck {
+            set: set.to_owned(),
+            check,
+        });
+        let lines = gnss_check_lines(&monitor);
+        let line = lines.iter().find(|line| line.set == set).unwrap();
+        (line.words.clone(), line.alert)
+    };
     let (words, alert) = say(
         "ins.baro.gnss",
         check(GnssCheckState::Consistent, inertial, true),
