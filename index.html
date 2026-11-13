@@ -71,7 +71,7 @@
       .fix-label.flown { color: #9aa1b2; }
       .page-map-card { position: absolute; transform: translate(-50%, 14px); min-width: 11rem; padding: 0.5rem 0.7rem; border: 1px solid #2b3245; border-radius: 6px; background: rgba(11, 14, 23, 0.94); font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; pointer-events: none; }
       .page-map-card .ident { font-weight: 600; color: #f2f4f8; }
-      .page-map-buttons { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; max-width: calc(100% - 1rem); }
+      .page-map-buttons { position: absolute; top: 0.5rem; left: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-start; max-width: calc(100% - 4.5rem); }
       .section .page-map-buttons button { margin: 0; padding: 0.3rem 0.6rem; min-width: 2.2rem; border-color: #2b3245; background: rgba(11, 14, 23, 0.85); font-size: 13px; }
       .section .page-map-buttons button:disabled { opacity: 0.4; cursor: default; }
       .track-map { display: block; width: 100%; height: auto; margin-top: 1rem; border-radius: 4px; }
@@ -109,6 +109,16 @@
       .speeds { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 1rem; color: #8f98ad; }
       .speeds label { display: flex; gap: 0.3rem; align-items: center; color: #d7dbe6; cursor: pointer; }
       .section input { accent-color: #5aa2ff; }
+      .efb-web-drawer { margin-top: 0.7rem; padding: 0.85rem; border: 1px solid #2b3245; border-radius: 6px; background: #0b0e17; }
+      .efb-web-omni, .efb-web-chips, .efb-web-actions, .efb-web-presets { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; align-items: center; }
+      .efb-web-omni { margin-top: 0; }
+      .efb-web-input { flex: 1 1 18rem; min-width: 0; padding: 0.42rem 0.65rem; border: 1px solid #2b3245; border-radius: 4px; background: #06080f; color: #f2f4f8; font: inherit; }
+      .section .efb-web-btn, .section .efb-web-chip { margin-top: 0; padding: 0.34rem 0.7rem; border-radius: 4px; font-size: 13px; }
+      .section .efb-web-btn.primary { border-color: #5aa2ff; background: #163059; }
+      .section .efb-web-btn.emerald, .section .efb-web-chip.adhoc { border-color: #34d399; background: #0e2e26; color: #a7f3d0; }
+      .section .efb-web-chip { border-color: #2b3245; background: #121826; border-radius: 999px; }
+      .section .efb-web-chip.hold { border-color: #ffb454; color: #ffd9a0; }
+      .section .efb-web-chip.selected { border-color: #5aa2ff; box-shadow: 0 0 0 1px #5aa2ff; }
       @media (prefers-reduced-motion: reduce) { .bar[data-unknown] .fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     
@@ -178,10 +188,10 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 }
 
 
-import init, * as bindings from '/Simulate/simulate-app-57f85e0858807a4e.js';
+import init, * as bindings from '/Simulate/simulate-app-6fbbb6e1ee7dffe5.js';
 import initializer from '/Simulate/b1e1f53c347e862e-boot.mjs';
 
-const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-57f85e0858807a4e_bg.wasm', 34710001, initializer(), true);
+const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-6fbbb6e1ee7dffe5_bg.wasm', 36773477, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -191,7 +201,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
     
-  <link rel="modulepreload" href="/Simulate/simulate-app-57f85e0858807a4e.js" crossorigin="anonymous" integrity="sha384-S9LxBe0aybQ4OjtprGD8/lNPwz7FtPaAnMjqmDa1cNDnVaZF5OCERzf+YlU7zxch"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-57f85e0858807a4e_bg.wasm" crossorigin="anonymous" integrity="sha384-jWQ+6aLw5tjJxzDWFYjA/xMLgkcB3efM9s4zkl7adiTeL+Xu3SRCGGjpwn5wKrAG" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/Simulate/simulate-app-6fbbb6e1ee7dffe5.js" crossorigin="anonymous" integrity="sha384-zmgsF8jIVeqX4s+nN/BTrcaYZW8C+X5WdSwggoMgN3kEus0eRK4GnAEfIWqe7oSU"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-6fbbb6e1ee7dffe5_bg.wasm" crossorigin="anonymous" integrity="sha384-aPBEY67bksjRnpVVvZ5iY3IiTA8bXbLg30yqPF29shDM8yQVnY1Pry/tA40n+7EK" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" data-state="loading" role="status" aria-live="polite">
       <div id="boot-card">
