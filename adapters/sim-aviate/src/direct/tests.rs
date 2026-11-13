@@ -198,3 +198,58 @@ fn industrial_noise_ekf_estimate_tracks_truth_without_copying_it() {
         "attitude error {attitude_err_rad}"
     );
 }
+
+#[test]
+fn direct_fixed_wing_runner_delivers_simulated_pitot_airspeed() {
+    use aviate_core::control::fixed_wing::AirspeedSource;
+    use aviate_core::types::MetersPerSecond;
+
+    let origin = Geodetic::from_degrees(39.1582, -75.5244, 300.0);
+    let period = TickSpan::from_ticks(TICKS_PER_SECOND / 250);
+    let kernel = build_direct_fixed_wing_kernel(&crate::c172_airframe()).unwrap();
+    let mut runner =
+        AviateDirectRunner::new(kernel, AviateDirectConfig::industrial(origin)).unwrap();
+
+    let cruise = VehicleState::level_flight(&origin, 0.0, 52.0);
+    let f_level = DVec3::new(0.0, 0.0, -9.806_65);
+    let mut now = SimInstant::START;
+    for _ in 0..300 {
+        let _ = runner.step_cg(now, &cruise, f_level).unwrap();
+        now = now.advanced(period);
+    }
+    assert!(runner.is_ready());
+    runner.send_command(SystemCommand::Arm);
+    let _ = runner.step_cg(now, &cruise, f_level).unwrap();
+    now = now.advanced(period);
+
+    runner.send_command(SystemCommand::FlightControl(Command {
+        mode: ControlMode::VelocityControl,
+        setpoint: Setpoint {
+            velocity: Some([
+                MetersPerSecond(52.0),
+                MetersPerSecond(0.0),
+                MetersPerSecond(0.0),
+            ]),
+            ..Setpoint::default()
+        },
+        config_mode_request: None,
+        sensor_overrides: None,
+        sequence: 1,
+        source: CommandSource::Gcs,
+    }));
+    for _ in 0..20 {
+        let _ = runner.step_cg(now, &cruise, f_level).unwrap();
+        now = now.advanced(period);
+    }
+    assert_eq!(
+        runner
+            .board()
+            .kernel()
+            .state
+            .controller
+            .targets
+            .airspeed_source,
+        AirspeedSource::Measured,
+        "fixed-wing direct runner must feed simulated pitot airspeed rather than ground-speed fallback"
+    );
+}

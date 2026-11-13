@@ -68,23 +68,67 @@ pub struct GnssReading {
     pub velocity_sigma_m_s: f64,
 }
 
-/// A spoofer that has captured the receiver and drags its fixes away: each
-/// fix time it holds the receiver, the reported position leaves the true one
-/// a little further at a constant rate, and the reported velocity carries
-/// the same rate, so position and Doppler agree with each other. The
-/// receiver declares the same spread as under the true sky.
+/// A spoofer that has captured the receiver and biases or drags its fixes
+/// away: on capture it may apply an initial step offset (`offset_ned_m`),
+/// drag reported position at `drag_ned_m_s` per fix interval, and bias
+/// reported Doppler velocity by `velocity_ned_m_s`. The receiver declares the
+/// same spread as under the true sky.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GnssSpoof {
-    /// The rate the reported position leaves the true one, north-east-down,
-    /// m/s.
+    /// Initial step offset applied on capture, north-east-down, metres.
+    pub offset_ned_m: DVec3,
+    /// Rate at which the reported position leaves truth, north-east-down, m/s.
     pub drag_ned_m_s: DVec3,
+    /// Bias added to the reported GNSS velocity, north-east-down, m/s.
+    pub velocity_ned_m_s: DVec3,
 }
 
 impl GnssSpoof {
-    /// A level drag of `rate_m_s` toward `bearing_rad` from true north.
+    /// A level coherent ramp drag of `rate_m_s` toward `bearing_rad` from true
+    /// north (`offset_ned_m = 0`, matching position and velocity rates).
     pub fn toward(rate_m_s: f64, bearing_rad: f64) -> Self {
+        let drag = DVec3::new(bearing_rad.cos(), bearing_rad.sin(), 0.0) * rate_m_s;
         Self {
-            drag_ned_m_s: DVec3::new(bearing_rad.cos(), bearing_rad.sin(), 0.0) * rate_m_s,
+            offset_ned_m: DVec3::ZERO,
+            drag_ned_m_s: drag,
+            velocity_ned_m_s: drag,
+        }
+    }
+
+    /// A step-offset spoofer jumping reported position by `offset_ned_m` with
+    /// zero Doppler velocity bias.
+    #[must_use]
+    pub const fn step_offset(offset_ned_m: DVec3) -> Self {
+        Self {
+            offset_ned_m,
+            drag_ned_m_s: DVec3::ZERO,
+            velocity_ned_m_s: DVec3::ZERO,
+        }
+    }
+
+    /// A coherent 3D ramp spoofer starting at `offset_ned_m` and pulling both
+    /// position and Doppler velocity at `rate_ned_m_s`.
+    #[must_use]
+    pub const fn ramp(offset_ned_m: DVec3, rate_ned_m_s: DVec3) -> Self {
+        Self {
+            offset_ned_m,
+            drag_ned_m_s: rate_ned_m_s,
+            velocity_ned_m_s: rate_ned_m_s,
+        }
+    }
+
+    /// A general velocity-pull spoofer with independent initial position
+    /// offset, position pull rate, and Doppler velocity pull vector.
+    #[must_use]
+    pub const fn velocity_pull(
+        offset_ned_m: DVec3,
+        drag_ned_m_s: DVec3,
+        velocity_ned_m_s: DVec3,
+    ) -> Self {
+        Self {
+            offset_ned_m,
+            drag_ned_m_s,
+            velocity_ned_m_s,
         }
     }
 }
@@ -179,10 +223,25 @@ impl GnssReceiver {
         };
     }
 
-    /// The spoofer holding the receiver and how far it has dragged the
-    /// fixes from the truth, north-east-down metres.
-    pub const fn spoof(&self) -> Option<(GnssSpoof, DVec3)> {
+    /// The spoofer holding the receiver and the total position offset it has
+    /// injected so far (`offset_ned_m + dragged_ned_m`), north-east-down
+    /// metres.
+    pub fn spoof(&self) -> Option<(GnssSpoof, DVec3)> {
         self.spoof
+            .map(|(spoof, dragged_m)| (spoof, spoof.offset_ned_m + dragged_m))
+    }
+
+    /// Total non-stochastic position offset (`displacement_ned_m` + active
+    /// spoofer offset) and active spoofer velocity bias, north-east-down.
+    #[must_use]
+    pub fn active_fault_ned(&self) -> (DVec3, DVec3) {
+        match self.spoof {
+            Some((spoof, dragged_m)) => (
+                self.displacement_ned_m + spoof.offset_ned_m + dragged_m,
+                spoof.velocity_ned_m_s,
+            ),
+            None => (self.displacement_ned_m, DVec3::ZERO),
+        }
     }
 
     /// The fix for the vehicle in `truth`, `period_s` after the last fix
@@ -202,19 +261,19 @@ impl GnssReceiver {
         // The spoofer drags on through a fix time without the sky and draws
         // no noise, so the receiver's own errors are those of the same
         // flight unspoofed.
-        let (drag_ned_m_s, dragged_ned_m) = match self.spoof.as_mut() {
+        let (velocity_bias_ned_m_s, spoof_pos_ned_m) = match self.spoof.as_mut() {
             Some((spoof, dragged_m)) => {
                 *dragged_m += spoof.drag_ned_m_s * period_s;
-                (spoof.drag_ned_m_s, *dragged_m)
+                (spoof.velocity_ned_m_s, spoof.offset_ned_m + *dragged_m)
             }
             None => (DVec3::ZERO, DVec3::ZERO),
         };
         let error_ned = correlated
             + self.noise.next_vec3(white_sigma)
             + self.displacement_ned_m
-            + dragged_ned_m;
+            + spoof_pos_ned_m;
         let velocity_error =
-            self.noise.next_vec3(DVec3::splat(spec.velocity_sigma_m_s)) + drag_ned_m_s;
+            self.noise.next_vec3(DVec3::splat(spec.velocity_sigma_m_s)) + velocity_bias_ned_m_s;
         if !self.tracking {
             return None;
         }

@@ -139,6 +139,11 @@ impl SensorSuite {
         &mut self.imu
     }
 
+    /// The GNSS receiver, to inspect its tracking and spoofing state.
+    pub const fn receiver(&self) -> &GnssReceiver {
+        &self.receiver
+    }
+
     /// The GNSS receiver, to take the sky from it or displace its fixes.
     pub const fn receiver_mut(&mut self) -> &mut GnssReceiver {
         &mut self.receiver

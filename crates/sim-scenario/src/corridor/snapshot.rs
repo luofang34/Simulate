@@ -1,7 +1,7 @@
 use sim_apollo::CockpitInstrumentPanel;
 use sim_core::{CameraSensorBlock, ControlInputs, RateAdapter, SimInstant, TwoTierVisualHarness};
 
-use super::{Autopilot, CorridorReport, CorridorRun, Source, VisualSource};
+use super::{Autopilot, CorridorReport, CorridorRun, ScenarioPitot, Source, VisualSource};
 use crate::ScenarioError;
 use crate::run::snapshot::FdmSnapshot;
 
@@ -11,6 +11,7 @@ use crate::run::snapshot::FdmSnapshot;
 pub(crate) struct CorridorState {
     source: FdmSnapshot,
     autopilot: Autopilot,
+    pitot: ScenarioPitot,
     last_controls: ControlInputs,
     camera: CameraSensorBlock,
     camera_rate: RateAdapter,
@@ -29,6 +30,7 @@ impl CorridorRun {
                 Source::Jsbsim(model) => FdmSnapshot::of_jsbsim(model),
             },
             autopilot: self.autopilot,
+            pitot: self.pitot,
             last_controls: self.last_controls,
             camera: self.camera.clone(),
             camera_rate: self.camera_rate,
@@ -46,6 +48,7 @@ impl CorridorRun {
             Source::Jsbsim(model) => state.source.restore_jsbsim(model)?,
         }
         self.autopilot = state.autopilot;
+        self.pitot = state.pitot;
         self.last_controls = state.last_controls;
         self.camera.clone_from(&state.camera);
         self.camera_rate = state.camera_rate;

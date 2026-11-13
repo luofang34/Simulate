@@ -29,6 +29,7 @@ bit for bit.
 cargo run -p simulate-app --release                      # desktop cockpit
 SIMULATE_OFFLINE_SCENERY=1 cargo run -p simulate-app --release   # no network
 cargo run --release -p ironbird -- --mode tier0-c172 --duration-s 30   # headless Aviate loop
+cargo run --release -p link-replay -- --preset zaragoza --duration-s 60   # native link flight
 (cd apps/simulate-app && trunk serve --release)          # browser
 ```
 
@@ -69,6 +70,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-navigate` | `adapters/sim-navigate` | Navigate visual navigation and fusion |
 | `sim-pilotage` | `adapters/sim-pilotage` | Pilotage vehicle and camera bridge |
 | `ironbird` | `apps/ironbird` | Headless XIL, calibration, and design-estimation runner |
+| `link-replay` | `apps/link-replay` | Native headless simulation-link runner with persistent tile cache, offscreen wgpu terrain camera, and NEES/RNP telemetry recorder |
 | `nav-trial` | `apps/nav-trial` | Headless route navigation trial: Navigate's filter scored per sensor set |
 | `simulate-app` | `apps/simulate-app` | Interactive cockpit for desktop and browser |
 

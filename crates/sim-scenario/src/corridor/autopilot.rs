@@ -1,8 +1,14 @@
 use std::f64::consts::{PI, TAU};
 
 use glam::{DVec2, DVec3};
+use sim_atmosphere::{AtmosphereField, StandardAtmosphere};
 use sim_core::{ControlInputs, VehicleState};
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_devices::{
+    AirDataSystem, AirFlow, GaussMarkov, PitotStatic, PressureErrorSpec, sensed_true_airspeed_m_s,
+};
+use sim_geo::{LocalFrame, UtcTime, ecef_to_geodetic};
+
+use crate::ScenarioError;
 
 const GRAVITY_M_S2: f64 = 9.806_65;
 /// Rate-loop gains, stick per rad/s and per rad. The proportional gain stays
@@ -82,8 +88,11 @@ pub struct FlightReading {
     pub position_enu_m: DVec3,
     /// Height above the ellipsoid, metres.
     pub height_m: f64,
-    /// Speed, m/s.
+    /// Ground/inertial speed, m/s.
     pub speed_m_s: f64,
+    /// Airspeed measured from the pitot-static sensor, m/s; when `None`, the
+    /// throttle loop falls back to [`Self::speed_m_s`].
+    pub airspeed_m_s: Option<f64>,
     /// True track, radians from north.
     pub track_rad: f64,
     /// Flight-path angle, climbing positive, radians.
@@ -110,6 +119,7 @@ impl FlightReading {
             position_enu_m: anchor.ecef_to_enu_vector(state.position_ecef - origin_ecef),
             height_m: position.height_m,
             speed_m_s,
+            airspeed_m_s: None,
             track_rad: velocity.dot(east).atan2(velocity.dot(north)),
             flight_path_rad: (velocity.dot(up) / speed_m_s.max(1.0))
                 .clamp(-1.0, 1.0)
@@ -118,6 +128,13 @@ impl FlightReading {
             pitch_rad: state.forward_ecef().dot(up).clamp(-1.0, 1.0).asin(),
             body_rate: state.angular_rate_body,
         }
+    }
+
+    /// Attaches a pitot-static airspeed reading (`m/s`) for throttle control.
+    #[must_use]
+    pub const fn with_airspeed(mut self, airspeed_m_s: f64) -> Self {
+        self.airspeed_m_s = Some(airspeed_m_s);
+        self
     }
 
     fn north_east_m(&self) -> DVec2 {
@@ -238,16 +255,69 @@ impl Autopilot {
         let p = bank_rate - turn_rate * sin_pitch;
         let q = pitch_rate * cos_bank + turn_rate * cos_pitch * sin_bank;
         let r = turn_rate * cos_pitch * cos_bank - pitch_rate * sin_bank;
+        let throttle_speed = reading.airspeed_m_s.unwrap_or(reading.speed_m_s);
         ControlInputs {
             roll: self.roll.update(p - reading.body_rate.x, dt_s),
             pitch: self.pitch.update(q - reading.body_rate.y, dt_s),
             yaw: self.yaw.update(r - reading.body_rate.z, dt_s),
-            throttle: self.throttle(guidance.speed_m_s - reading.speed_m_s, dt_s),
+            throttle: self.throttle(guidance.speed_m_s - throttle_speed, dt_s),
         }
     }
 
     fn throttle(&mut self, error_m_s: f64, dt_s: f64) -> f64 {
         self.speed_integral = (self.speed_integral + SPEED_KI * error_m_s * dt_s).clamp(-0.5, 0.5);
         (CRUISE_THROTTLE + SPEED_KP * error_m_s + self.speed_integral).clamp(0.0, 1.0)
+    }
+}
+
+/// Simulated `24 Hz` C172-class pitot-static airspeed probe for scenario autopilots.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScenarioPitot {
+    probe: PitotStatic,
+    ticks: u64,
+    held_airspeed_m_s: Option<f64>,
+}
+
+impl ScenarioPitot {
+    /// Creates a forward-axis pitot-static probe seeded deterministically from `seed`.
+    pub(crate) fn new(seed: u64) -> Result<Self, ScenarioError> {
+        let static_spec = PressureErrorSpec {
+            white_sigma_pa: 3.0,
+            bias: GaussMarkov {
+                tau_s: 600.0,
+                sigma: 20.0,
+            },
+        };
+        let pitot_spec = PressureErrorSpec {
+            white_sigma_pa: 3.0,
+            bias: GaussMarkov {
+                tau_s: 600.0,
+                sigma: 10.0,
+            },
+        };
+        Ok(Self {
+            probe: PitotStatic::with_pitot(static_spec, pitot_spec, DVec3::X, seed)?,
+            ticks: 0,
+            held_airspeed_m_s: None,
+        })
+    }
+
+    /// Samples at `24 Hz` (every 5th `120 Hz` tick) and returns the held pitot airspeed (`m/s`).
+    pub(crate) fn sense(&mut self, truth: &VehicleState, dt_s: f64) -> Result<f64, ScenarioError> {
+        const EVERY: u64 = 5;
+        if self.held_airspeed_m_s.is_none() || self.ticks.is_multiple_of(EVERY) {
+            let pos = ecef_to_geodetic(truth.position_ecef);
+            let air = StandardAtmosphere.sample(&pos, UtcTime::from_unix_seconds(0.0))?;
+            let sample = self
+                .probe
+                .sense(&AirFlow::of(&air, truth), dt_s * (EVERY as f64));
+            if let Some(tas) = sensed_true_airspeed_m_s(&sample) {
+                self.held_airspeed_m_s = Some(tas);
+            }
+        }
+        self.ticks = self.ticks.wrapping_add(1);
+        Ok(self
+            .held_airspeed_m_s
+            .unwrap_or_else(|| truth.velocity_ecef.length()))
     }
 }

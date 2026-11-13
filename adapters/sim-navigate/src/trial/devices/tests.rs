@@ -3,7 +3,7 @@ use navigate_onboard::{ErrorBudget, SensorData};
 use sim_core::VehicleState;
 use sim_geo::{Geodetic, LocalFrame, ecef_to_geodetic, geodetic_to_ecef};
 
-use super::{StaticPort, receiver};
+use super::{PitotProbe, StaticPort, receiver};
 use crate::trial::onboard::{
     GNSS_SOURCE, altimeter_budget, baro_altitude_data, gnss_fix_data, sensor_suite,
 };
@@ -244,4 +244,28 @@ fn a_fix_the_filter_could_not_weigh_is_refused() {
     let mut correlated_only = request();
     correlated_only.gnss.vertical_white_sigma_m = 0.0;
     assert!(receiver(&correlated_only).is_err());
+}
+
+#[test]
+fn pitot_probe_reports_differential_pressure_and_true_airspeed() {
+    let mut req = request();
+    req.baro.white_sigma_pa = 1e-6;
+    req.baro.bias_sigma_pa = 0.0;
+    let mut pitot = PitotProbe::new(&req).unwrap();
+    let ground = Geodetic {
+        lat_rad: LAT_RAD,
+        lon_rad: LON_RAD,
+        height_m: HEIGHT_M,
+    };
+    let flying = VehicleState::level_flight(&ground, 0.0, 52.0);
+    let sample = pitot.sense(&flying, 0.0, 1.0 / 24.0).unwrap();
+    let dp_pa = sample
+        .differential_pressure_pa
+        .expect("pitot differential pressure");
+    assert!(
+        dp_pa > 1_200.0,
+        "expected positive impact pressure, got {dp_pa} Pa"
+    );
+    let tas = sim_devices::sensed_true_airspeed_m_s(&sample).unwrap();
+    assert!((tas - 52.0).abs() < 0.05, "expected ~52 m/s TAS, got {tas}");
 }

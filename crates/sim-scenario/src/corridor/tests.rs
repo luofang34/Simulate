@@ -221,3 +221,59 @@ fn past_the_end_of_the_script_nothing_moves() {
     run.step().unwrap();
     assert_eq!((run.now(), run.vehicle()), (at, state));
 }
+
+#[test]
+fn autopilot_throttle_regulates_pitot_airspeed_rather_than_ground_speed() {
+    use sim_atmosphere::AtmosphereSample;
+    use sim_devices::{
+        AirDataSystem, AirFlow, PitotStatic, PressureErrorSpec, sensed_true_airspeed_m_s,
+    };
+
+    let anchor = anchor_position();
+    let origin_ecef = geodetic_to_ecef(&anchor);
+    let frame = LocalFrame::at(&anchor);
+    // Vehicle moving over ground at 40 m/s north into a 15 m/s headwind (from north, wn = -15):
+    // true airspeed along nose is 55 m/s, matching CRUISE_SPEED_M_S!
+    let state = VehicleState::level_flight(&anchor, 0.0, 40.0);
+    let headwind = AtmosphereSample {
+        pressure_pa: 101_325.0,
+        temperature_k: 288.15,
+        density_kg_m3: 1.225,
+        speed_of_sound_m_s: 340.294,
+        wind_ned_m_s: DVec3::new(-15.0, 0.0, 0.0),
+    };
+    let mut pitot = PitotStatic::with_pitot(
+        PressureErrorSpec::IDEAL,
+        PressureErrorSpec::IDEAL,
+        DVec3::X,
+        7,
+    )
+    .unwrap();
+    let sample = pitot.sense(&AirFlow::of(&headwind, &state), 0.04);
+    assert!(sample.differential_pressure_pa.unwrap() > 1_500.0);
+    let sensed_tas = sensed_true_airspeed_m_s(&sample).unwrap();
+    assert!((sensed_tas - 55.0).abs() < 0.05, "sensed_tas={sensed_tas}");
+
+    let guidance = Guidance {
+        steering: Steering::Track(0.0),
+        height_m: anchor.height_m,
+        speed_m_s: 55.0,
+    };
+    let without_pitot = FlightReading::of(&state, origin_ecef, &frame);
+    let with_pitot = without_pitot.with_airspeed(sensed_tas);
+
+    let mut ap_ground = Autopilot::default();
+    let mut ap_pitot = Autopilot::default();
+    let cmd_ground = ap_ground.update(&guidance, &without_pitot, 1.0 / 120.0);
+    let cmd_pitot = ap_pitot.update(&guidance, &with_pitot, 1.0 / 120.0);
+
+    // Without pitot, ground speed 40 < 55 erroneously commands huge extra throttle;
+    // with pitot airspeed 55 == 55, throttle holds trim (~0.35).
+    assert!(
+        cmd_ground.throttle > cmd_pitot.throttle + 0.5,
+        "ground={:.3}, pitot={:.3}",
+        cmd_ground.throttle,
+        cmd_pitot.throttle
+    );
+    assert!((cmd_pitot.throttle - 0.35).abs() < 0.01);
+}

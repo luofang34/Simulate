@@ -71,6 +71,7 @@ pub fn first_link() -> Result<ChainTrialSpec, ChainTrialError> {
         calibration: CalibrationName::Calibrated,
         outages: Vec::new(),
         gnss_spoof: None,
+        spoof_windows: Vec::new(),
         hold: None,
     })
 }

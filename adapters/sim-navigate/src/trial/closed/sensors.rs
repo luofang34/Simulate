@@ -11,14 +11,26 @@
 
 use glam::DVec3;
 use sim_core::{SimInstant, VehicleState};
-use sim_devices::GnssReceiver;
+use sim_devices::{AirDataSample, GnssReceiver};
 
-use crate::trial::devices::{StaticPort, receiver};
+use crate::trial::devices::{PitotProbe, StaticPort, receiver};
 use crate::trial::live_stars::LiveStarCamera;
 use crate::trial::record::{Logged, SensorLog, period_steps};
 use crate::trial::route::step_seconds;
 use crate::trial::{TrialError, TrialRequest};
 use crate::{SimulatedImu, Truth};
+
+/// Pitot-static air-data cadence (`24 Hz`, every 5th `120 Hz` step).
+const PITOT_PERIOD_STEPS: usize = 5;
+
+/// Direct sensor readings handed to the closed-loop autopilot at one step.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SensedAutopilotInputs {
+    /// Body angular rate measured by the IMU over the last increment, rad/s.
+    pub rate_body: DVec3,
+    /// Latest simulated pitot-static air-data sample (`Pa`, `K`).
+    pub air_data: Option<AirDataSample>,
+}
 
 /// Every sensor of a request, sensing a flight step by step into a log.
 pub(super) struct LiveSensors {
@@ -27,6 +39,8 @@ pub(super) struct LiveSensors {
     gnss_period: usize,
     baro: StaticPort,
     baro_period: usize,
+    pitot: PitotProbe,
+    held_air_data: Option<AirDataSample>,
     stars: Option<LiveStarCamera>,
 }
 
@@ -43,24 +57,33 @@ impl LiveSensors {
             gnss_period: period_steps("gnss", request.gnss.rate_hz)?,
             baro: StaticPort::new(request)?,
             baro_period: period_steps("baro", request.baro.rate_hz)?,
+            pitot: PitotProbe::new(request)?,
+            held_air_data: None,
             stars: live_stars,
         })
     }
 
-    /// Starts the IMU's first interval at step 0.
+    /// Starts the IMU's first interval and primes the pitot-static probe at step 0.
     pub(super) fn start(&mut self, at: SimInstant, state: &VehicleState) -> Result<(), TrialError> {
         self.imu.sense(at, state)?;
+        let period_s = step_seconds(PITOT_PERIOD_STEPS);
+        self.held_air_data = Some(self.pitot.sense(state, 0.0, period_s)?);
         Ok(())
     }
 
-    /// Senses `step`, the last of `truth`, into `log`, and returns the body
-    /// rate the IMU sensed over the step.
+    /// Latest held pitot-static reading.
+    pub(super) const fn held_air_data(&self) -> Option<AirDataSample> {
+        self.held_air_data
+    }
+
+    /// Senses `step`, the last of `truth`, into `log`, and returns the IMU body
+    /// rate and simulated pitot-static air data for the autopilot.
     pub(super) fn sense(
         &mut self,
         truth: &[Truth<(SimInstant, VehicleState)>],
         step: usize,
         log: &mut SensorLog,
-    ) -> Result<DVec3, TrialError> {
+    ) -> Result<SensedAutopilotInputs, TrialError> {
         let Some((at, state)) = truth.get(step).map(|sample| *sample.get()) else {
             return Err(TrialError::InvalidRequest {
                 field: "closed loop",
@@ -83,9 +106,16 @@ impl LiveSensors {
             let reading = self.baro.sense(&state, step_seconds(step), period_s)?;
             log.baro.push(Logged { step, reading });
         }
+        if step.is_multiple_of(PITOT_PERIOD_STEPS) {
+            let period_s = step_seconds(PITOT_PERIOD_STEPS);
+            self.held_air_data = Some(self.pitot.sense(&state, step_seconds(step), period_s)?);
+        }
         if let Some(stars) = &self.stars {
             stars.sense(truth, step, log, |_| true)?;
         }
-        Ok(rate)
+        Ok(SensedAutopilotInputs {
+            rate_body: rate,
+            air_data: self.held_air_data,
+        })
     }
 }

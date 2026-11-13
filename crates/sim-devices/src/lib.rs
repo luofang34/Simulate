@@ -22,7 +22,7 @@ mod white_noise;
 
 pub use air_data::{
     AirDataSample, AirDataSystem, AirFlow, PitotStatic, PressureErrorSpec, impact_pressure_pa,
-    speed_from_impact_pressure_m_s,
+    indicated_airspeed_m_s, sensed_true_airspeed_m_s, speed_from_impact_pressure_m_s,
 };
 pub use arinc429_bus::{ARINC429_WORD_BITS, Arinc429Bus, Arinc429Delivery, Arinc429Speed};
 pub use bmp390::{BMP390_ADDRESS, Bmp390Block, Bmp390Config, Bmp390Input, Bmp390Sample};

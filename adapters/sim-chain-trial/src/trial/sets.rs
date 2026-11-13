@@ -17,12 +17,12 @@ use crate::{ChainTrialError, DeviceOutage};
 pub const FLIGHT_CONTROLLER_SET: &str = "flight-controller";
 
 /// One set's navigator and what it last reported.
-pub(super) struct SetSlot {
-    pub(super) name: String,
-    pub(super) run: SetRun,
+pub(crate) struct SetSlot {
+    pub(crate) name: String,
+    pub(crate) run: SetRun,
     /// Which of the sensors the set has.
-    pub(super) has: [bool; 4],
-    pub(super) reported_fixes: BTreeMap<String, u64>,
+    pub(crate) has: [bool; 4],
+    pub(crate) reported_fixes: BTreeMap<String, u64>,
 }
 
 const KINDS: [SensorKind; 4] = [

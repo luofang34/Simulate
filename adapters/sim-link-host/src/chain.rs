@@ -155,6 +155,7 @@ pub fn chain_spec(
         outages,
         hold: hosted.hold.map(hold_spec),
         gnss_spoof: link.spoof.as_ref().map(spoof_spec),
+        spoof_windows: Vec::new(),
     })
 }
 

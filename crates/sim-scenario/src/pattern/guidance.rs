@@ -47,6 +47,8 @@ pub(super) struct RunwayReading {
     pub(super) agl_m: f64,
     /// Ground/inertial speed (`m/s`).
     pub(super) speed_m_s: f64,
+    /// Pitot-static sensed airspeed (`m/s`).
+    pub(super) airspeed_m_s: f64,
     /// Ground track clockwise from true north (`rad`).
     pub(super) track_rad: f64,
     /// Flight-path angle above horizon (`rad`).
@@ -69,6 +71,7 @@ impl RunwayReading {
         field_elevation_m: f64,
         runway_bearing_rad: f64,
         direction: TrafficDirection,
+        sensed_airspeed_m_s: f64,
     ) -> Self {
         let geo = ecef_to_geodetic(state.position_ecef);
         let local = LocalFrame::at(&geo);
@@ -88,6 +91,7 @@ impl RunwayReading {
             right_of_centerline_m: right_m,
             agl_m: geo.height_m - field_elevation_m,
             speed_m_s,
+            airspeed_m_s: sensed_airspeed_m_s,
             track_rad: vel.dot(east).atan2(vel.dot(north)),
             flight_path_rad: (vel.dot(up) / speed_m_s.max(1.0)).clamp(-1.0, 1.0).asin(),
             bank_rad: (-right_axis.dot(up)).atan2(-state.down_ecef().dot(up)),
@@ -273,7 +277,7 @@ impl PatternAutopilot {
             .atan()
             .clamp(-MAX_BANK_RAD, MAX_BANK_RAD);
 
-        let speed_climb_factor = ((reading.speed_m_s - 30.0) / 6.5).clamp(0.0, 1.0);
+        let speed_climb_factor = ((reading.airspeed_m_s - 30.0) / 6.5).clamp(0.0, 1.0);
         let bank_climb_factor = reading.bank_rad.cos().powi(2).clamp(0.65, 1.0);
         let max_climb = MAX_CLIMB_M_S * bank_climb_factor * speed_climb_factor;
         let climb_cmd =
@@ -291,7 +295,7 @@ impl PatternAutopilot {
         let q = pitch_rate * cos_bank + turn_rate * cos_pitch * sin_bank;
         let r = turn_rate * cos_pitch * cos_bank - pitch_rate * sin_bank;
 
-        let speed_err = cmd.target_speed_m_s - reading.speed_m_s;
+        let speed_err = cmd.target_speed_m_s - reading.airspeed_m_s;
         self.speed_integral =
             (self.speed_integral + SPEED_KI * speed_err * dt_s).clamp(-0.60, 0.35);
         let throttle = (BASE_THROTTLE

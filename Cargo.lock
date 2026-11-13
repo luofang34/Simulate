@@ -2690,6 +2690,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "link-replay"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "image",
+ "navigate-data",
+ "pollster 0.4.0",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sim-chain-trial",
+ "sim-flight-chain",
+ "sim-geo",
+ "sim-link",
+ "sim-link-host",
+ "sim-navdata",
+ "sim-navigate",
+ "sim-render",
+ "sim-scenery",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+ "wgpu",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5240,6 +5267,7 @@ dependencies = [
  "aviate-core",
  "glam 0.33.12",
  "navigate-contract",
+ "navigate-geodesy",
  "serde",
  "serde_json",
  "sha2 0.11.1",

@@ -303,6 +303,13 @@ fn closed_loop_is_deterministic_and_its_pilot_reads_no_truth() {
     let trace = &first.sets[0].trace;
     assert!(trace.len() > 1_000);
     for (input, output) in trace {
+        let air = input
+            .sensed_air_data
+            .expect("closed-loop pilot receives simulated pitot-static air data");
+        assert!(
+            air.differential_pressure_pa.is_some_and(|dp| dp > 100.0),
+            "expected positive pitot differential pressure, got {air:?}"
+        );
         assert_eq!(&pilot.step(input, 1.0 / 120.0), output);
     }
     let stars = first.sets[0].stars;
