@@ -116,14 +116,13 @@ fn an_aircraft_ahead_lands_mid_screen_inside_the_reversed_depth_range() {
     let fuselage = draws.iter().find(|d| !d.translucent).unwrap();
     let (x, y, z) = clip_origin(fuselage);
     assert!(x.abs() < 0.3 && y.abs() < 0.3, "{x} {y}");
-    // About near / distance under reversed Z.
     assert!(z > 0.25 / 60.0 && z < 0.25 / 20.0, "{z}");
     let first_translucent = draws.iter().position(|d| d.translucent).unwrap();
     assert!(draws[first_translucent..].iter().all(|d| d.translucent));
 }
 
 #[test]
-fn ownship_shows_only_its_nose_from_the_cockpit_and_nothing_from_the_belly() {
+fn ownship_shows_its_airframe_from_the_cockpit_and_nothing_from_the_belly() {
     let asset = UsdAircraftAsset::embedded_c172().unwrap();
     let target = Geodetic::from_degrees(40.69, -74.17, 300.0);
     let stamp = stamp_looking_north_at(&target);
@@ -142,7 +141,9 @@ fn ownship_shows_only_its_nose_from_the_cockpit_and_nothing_from_the_belly() {
         view.ownship_role = SlotCameraRole::External;
         pack_slot_draws(&asset, &own, None, &view)
     };
-    assert!(!cockpit.is_empty() && cockpit.len() < external.len());
+    assert!(!cockpit.is_empty() && cockpit.len() <= external.len());
+    view.ownship_role = SlotCameraRole::HudForward;
+    assert!(pack_slot_draws(&asset, &own, None, &view).is_empty());
     view.ownship_role = SlotCameraRole::BellyNadir;
     assert!(pack_slot_draws(&asset, &own, None, &view).is_empty());
 }
@@ -183,6 +184,31 @@ fn ownship_draws_the_selected_airframe_and_traffic_keeps_the_scene_asset() {
             .all(|draw| draw.asset == AssetKey::Scene)
     );
 
+    // A selected C172S / C172P ownship wears its own tail; C172 traffic keeps the generic airframe.
+    library.select_ownship(OwnshipVisualKind::C172).unwrap();
+    let tail_s = pack_slot_draws(&library, &own, None, &view);
+    assert!(!tail_s.is_empty() && tail_s.iter().all(|draw| draw.asset == AssetKey::C172Tail));
+
+    library.select_ownship(OwnshipVisualKind::C172p).unwrap();
+    let tail_p = pack_slot_draws(&library, &own, None, &view);
+    assert!(!tail_p.is_empty() && tail_p.iter().all(|draw| draw.asset == AssetKey::C172pTail));
+
+    // Selecting a custom livery overrides the ownship asset while keeping traffic on Scene.
+    let n172sp = std::sync::Arc::new(UsdAircraftAsset::embedded_c172s_n172sp().unwrap());
+    library.set_custom_ownship(n172sp);
+    let custom = pack_slot_draws(&library, &own, None, &view);
+    assert!(
+        !custom.is_empty()
+            && custom
+                .iter()
+                .all(|d| matches!(d.asset, AssetKey::CustomOwnship(_)))
+    );
+    assert!(
+        pack_slot_draws(&library, &traffic, None, &view)
+            .iter()
+            .all(|draw| draw.asset == AssetKey::Scene)
+    );
+
     library.select_ownship(OwnshipVisualKind::Hidden).unwrap();
     assert!(pack_slot_draws(&library, &own, None, &view).is_empty());
     assert_eq!(
@@ -210,7 +236,8 @@ fn a_procedural_airframe_is_built_once_across_switches() {
         .unwrap();
     let again: *const UsdAircraftAsset = library.get(AssetKey::LunarLander).unwrap();
     assert_eq!(first, again);
-    assert_eq!(library.resident().count(), 3);
+    // The scene, the lander, the C172's tail and the UAV.
+    assert_eq!(library.resident().count(), 4);
 }
 
 #[test]
@@ -227,8 +254,6 @@ fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
     let stamp = stamp_looking_north_at(&target);
     let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
     let ski_key = PolarSkiwayKey::from_runway(&rwy, stamp.render_body);
-    // On Body::EARTH (R = 6,371,008.8 m vs WGS84 polar radius c = 6,399,593.6 m), a 3,658.0 m
-    // WGS84 polar skiway spans ~3,643.28 m on the rendered sphere.
     assert!(
         (f64::from(ski_key.after_threshold_cm) * 0.01 - 3_643.28).abs() < 0.25,
         "expected spherical NZSP skiway length ~3643.28 m, got {} cm",
@@ -249,9 +274,6 @@ fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
 }
 
 fn nzsp_overhead_stamp(vp: [u32; 2]) -> ConformalFrameStamp {
-    // Overhead pitched -12 deg down along 020 deg true (reproducing the user's NZSP view),
-    // with an intentionally mismatched ownship geoid undulation (-29.8 m vs threshold's) to
-    // prove zero vertical datum leak.
     let eye = Geodetic::from_degrees(-89.9975, 139.2729, 2_835.0 - 29.8 + 260.0);
     let local = sim_geo::LocalFrame::at(&eye);
     let brg = 20.0_f64.to_radians();
@@ -325,7 +347,6 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
     let clip_from_part = glam::Mat4::from_cols_array(&cols);
 
     let deck_verts = &asset.parts()[deck_idx].vertices;
-    // Far-left and far-right corners of the final quad of `/PolarSkiway/GroomedDeck`.
     let n = deck_verts.len();
     let far_right_v = deck_verts[n - 2].position;
     let far_left_v = deck_verts[n - 1].position;
@@ -362,7 +383,6 @@ fn the_aircraft_and_studio_shaders_validate() {
     use wgpu::naga::{front::wgsl, valid};
     let encoding = super::gpu::shader_source(wgpu::TextureFormat::Rgba8UnormSrgb);
     let stored = super::gpu::shader_source(wgpu::TextureFormat::Rgba8Unorm);
-    // A target that stores what it is given must be handed encoded colour.
     assert!(encoding.starts_with("const TARGET_ENCODES: bool = true;"));
     assert!(stored.starts_with("const TARGET_ENCODES: bool = false;"));
     for (name, source) in [

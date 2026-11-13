@@ -104,15 +104,18 @@ pub fn write_syspack_with_manual_assets(
     out_dir: &Path,
 ) -> Result<(), PackError> {
     let mut manifest = package.manifest().clone();
-    let fdm_asset = manifest
-        .assets
-        .keys()
-        .find(|k| k.ends_with(".xml"))
-        .cloned()
-        .ok_or_else(|| PackError::InvalidCalibration {
-            path: manifest.id.clone(),
-            detail: "package has no JSBSim XML asset".to_owned(),
-        })?;
+    let fdm_asset = match &manifest.dynamics {
+        syspack::DynamicsSpec::JsbsimXml { entry_asset, .. } => Some(entry_asset.clone()),
+        _ => manifest
+            .assets
+            .keys()
+            .find(|k| k.ends_with(".xml"))
+            .cloned(),
+    }
+    .ok_or_else(|| PackError::InvalidCalibration {
+        path: manifest.id.clone(),
+        detail: "package has no JSBSim XML asset".to_owned(),
+    })?;
     let fdm_bytes = package
         .asset(&fdm_asset)
         .ok_or_else(|| PackError::InvalidCalibration {

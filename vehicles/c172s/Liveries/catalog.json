@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "aircraft_id": "c172s",
+  "family": "c172",
+  "family_name": "Cessna 172 Skyhawk",
+  "flightgear_set_file": "c172s-set.xml",
+  "default_livery": "n642sp",
+  "dlc_mount_point": "dlc/liveries/c172s",
+  "liveries": [
+    {
+      "id": "n642sp",
+      "name": "N642SP — Blue Sky Aviation Association (Solberg N51)",
+      "flightgear_xml": "Models/Liveries/n642sp.xml",
+      "variant": "Cessna 172S Skyhawk SP",
+      "serial_number": "172S8050",
+      "tail_code": "N642SP",
+      "tactical_number": "642SP",
+      "unit": "Blue Sky Aviation Association (Solberg-Hunterdon N51)",
+      "pilot": "Club Fleet",
+      "upper_surface_ana": "Matterhorn White",
+      "lower_surface_ana": "Matterhorn White",
+      "upper_rgb": [0.900, 0.905, 0.910],
+      "lower_rgb": [0.890, 0.895, 0.900],
+      "accent_rgb": [0.400, 0.030, 0.050],
+      "metallic": 0.08,
+      "roughness": 0.30,
+      "dlc_pack": null,
+      "usd_root_layer": "usd/n642sp.usda",
+      "usd_sublayers": [
+        "usd/n642sp_livery.usda",
+        "usd/c172s_airframe.usda",
+        "usd/c172.usdc"
+      ],
+      "livery_spec_path": "usd/n642sp_livery.json"
+    },
+    {
+      "id": "n172sp",
+      "name": "N172SP — Skyhawk SP Factory Sapphire and Silver",
+      "flightgear_xml": "Models/Liveries/n172sp.xml",
+      "variant": "Cessna 172S Skyhawk SP",
+      "serial_number": "172S8001",
+      "tail_code": "N172SP",
+      "tactical_number": "172SP",
+      "unit": "Cessna Factory Demonstrator",
+      "pilot": "Civil Part 91",
+      "upper_surface_ana": "Matterhorn White",
+      "lower_surface_ana": "Matterhorn White / Pewter Silver",
+      "upper_rgb": [0.900, 0.905, 0.910],
+      "lower_rgb": [0.560, 0.580, 0.610],
+      "accent_rgb": [0.045, 0.145, 0.420],
+      "metallic": 0.08,
+      "roughness": 0.28,
+      "dlc_pack": null,
+      "usd_root_layer": "usd/n172sp.usda",
+      "usd_sublayers": [
+        "usd/n172sp_livery.usda",
+        "usd/c172s_airframe.usda",
+        "usd/c172.usdc"
+      ],
+      "livery_spec_path": "usd/n172sp_livery.json"
+    }
+  ]
+}

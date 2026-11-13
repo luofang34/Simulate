@@ -65,7 +65,7 @@ Run an automated multi-candidate trade study on the built-in C172 reference or a
 
 ```sh
 cargo run --release -p ironbird -- --mode trade-c172
-cargo run --release -p ironbird -- --mode trade-dir --package-dir vehicles/c172 --report-out trades.md
+cargo run --release -p ironbird -- --mode trade-dir --package-dir vehicles/c172s --report-out trades.md
 ```
 
 Each `DesignTradeSpec` perturbs airframe and powerplant parameters directly inside the `LoadedSyspack` (`mbd-core` component masses and JSBSim XML `<metrics>`, `<piston_engine>`, `<propeller>`, and `<axis name="DRAG">`) and re-runs the full 6-DoF JSBSim performance & mission-profile suite:

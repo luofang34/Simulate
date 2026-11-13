@@ -1,0 +1,14 @@
+#usda 1.0
+(
+    defaultPrim = "C172"
+    doc = """N172SP (Cessna 172S Skyhawk SP factory Sapphire / Pewter Silver / Ruby demonstrator)
+composed over c172s_airframe.usda and the generic BSD-3-Clause c172.usdc airframe."""
+    metersPerUnit = 1
+    subLayers = [@n172sp_livery.usda@, @c172s_airframe.usda@, @c172.usdc@]
+    upAxis = "Z"
+)
+
+over "C172"
+{
+    string sim:tail = "N172SP"
+}

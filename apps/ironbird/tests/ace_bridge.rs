@@ -7,7 +7,7 @@ fn cli_ace_bridge_refuses_a_missing_package_and_a_twin_design() {
     use std::path::PathBuf;
 
     let c172_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vehicles/c172")
+        .join("../../vehicles/c172s")
         .display()
         .to_string();
     let ace_args = parse_args(["--mode", "ace-bridge"]).unwrap();
@@ -19,7 +19,7 @@ fn cli_ace_bridge_refuses_a_missing_package_and_a_twin_design() {
     let twin = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("ace-twin-vehicle.json");
     std::fs::write(
         &twin,
-        br#"{ "id": "c172_class_reference", "name": "twin", "parameters": {
+        br#"{ "id": "c172s", "name": "twin", "parameters": {
             "engine.count": { "value": { "value": 2, "unit": "1" } },
             "wing.area": { "value": { "value": 16.17, "unit": "m^2" } },
             "wing.span": { "value": { "value": 11.0, "unit": "m" } },

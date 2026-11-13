@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "views": [
+    {
+      "id": "chase",
+      "title": "Chase",
+      "fov_y_deg": 55.0,
+      "airframe": "external",
+      "placement": { "kind": "chase", "back_m": 22.0, "up_m": 6.5 }
+    },
+    {
+      "id": "wingman",
+      "title": "Wingman (3/4 rear, right)",
+      "fov_y_deg": 40.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-11.0, 8.5, -2.8],
+        "target_frd_m": [-1.0, 0.0, 0.0]
+      }
+    },
+    {
+      "id": "flyby_front",
+      "title": "Low Front-Quarter Flyby",
+      "fov_y_deg": 50.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "spotter",
+        "grid_step_m": 700.0,
+        "lateral_m": 35.0,
+        "height_m": 1.0,
+        "lead_time_s": 0.0,
+        "frame_span_m": 17.0
+      }
+    },
+    {
+      "id": "side_profile",
+      "title": "Side Profile (left)",
+      "fov_y_deg": 35.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-1.0, -18.0, -0.3],
+        "target_frd_m": [-1.0, 0.0, -0.3]
+      }
+    },
+    {
+      "id": "top_down",
+      "title": "Top-Down",
+      "fov_y_deg": 35.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "look_at",
+        "eye_frd_m": [-1.0, 0.0, -21.0],
+        "target_frd_m": [-1.0, 0.0, 0.0],
+        "up_frd": [1.0, 0.0, 0.0]
+      }
+    },
+    {
+      "id": "ground_spotter",
+      "title": "Ground Spotter (telephoto)",
+      "fov_y_deg": 45.0,
+      "airframe": "external",
+      "placement": {
+        "kind": "spotter",
+        "grid_step_m": 1600.0,
+        "lateral_m": -280.0,
+        "height_m": 2.0,
+        "lead_time_s": 0.0,
+        "frame_span_m": 22.0
+      }
+    },
+    {
+      "id": "cockpit_forward",
+      "title": "Cockpit: Forward",
+      "fov_y_deg": 45.0,
+      "airframe": "hidden",
+      "placement": { "kind": "cockpit_look", "yaw_deg": 0.0, "pitch_deg": -3.0 }
+    },
+    {
+      "id": "cockpit_left_strut",
+      "title": "Cockpit: Left Window, Wing Strut",
+      "fov_y_deg": 58.0,
+      "airframe": "cabin_window",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": -76.0,
+        "pitch_deg": -6.0,
+        "eye_shift_frd_m": [0.0, -0.12, 0.0]
+      }
+    },
+    {
+      "id": "cockpit_right_window",
+      "title": "Cockpit: Right Seat Window",
+      "fov_y_deg": 58.0,
+      "airframe": "cabin_window",
+      "placement": {
+        "kind": "cockpit_look",
+        "yaw_deg": 76.0,
+        "pitch_deg": -6.0,
+        "eye_shift_frd_m": [0.0, 0.64, 0.0]
+      }
+    }
+  ]
+}

@@ -19,7 +19,7 @@ use crate::supervisor_rig::SupervisorRig;
 pub(super) fn frame_input<'a>(
     supervisor: &'a SupervisorRig,
     surface_size: [u32; 2],
-    flight: &Flight,
+    flight: &'a Flight,
     (camera, sky): (&Camera, &'a SkyFrame<'a>),
     sensor_exposures: &'a [SensorExposureEvent],
 ) -> MapFrameInput<'a> {
@@ -38,6 +38,7 @@ pub(super) fn frame_input<'a>(
         otw_camera: *camera,
         sky,
         supervisor,
+        ownship_livery_override: flight.active_ownship_livery_override(),
     }
 }
 

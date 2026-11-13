@@ -275,6 +275,9 @@ impl VerifyHarness {
             layout: AvionicsLayout::FullGlass,
             scenery: SceneryMode::Online,
             auto_rotate: true,
+            hangar_liveries: Vec::new(),
+            active_livery_index: None,
+            active_livery_name: None,
             controls: ControlsStatus {
                 preset: self.controls.preset(),
                 automatic: self.controls.is_automatic(),

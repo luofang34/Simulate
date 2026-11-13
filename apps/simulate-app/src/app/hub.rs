@@ -5,7 +5,7 @@ use sim_input::Control;
 use sim_maplibre::HostGpu;
 use sim_render::{OverlayQuad, Renderer, ViewportRect};
 use sim_scenario::SimTimeScale;
-use tracing::{info, warn};
+use tracing::info;
 use winit::event_loop::ActiveEventLoop;
 
 use super::FlightApp;
@@ -22,6 +22,7 @@ use crate::map_rig::{AvionicsPreset, ScenerySource};
 use crate::vehicles::FreeFlightVehicle;
 
 mod globe;
+mod liveries;
 mod overlay_defaults;
 mod spawn;
 #[cfg(test)]
@@ -96,6 +97,7 @@ pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
     match vehicle {
         FreeFlightVehicle::AviateX500Direct => VehicleClass::Multirotor,
         FreeFlightVehicle::JsbsimC172
+        | FreeFlightVehicle::JsbsimC172p
         | FreeFlightVehicle::JsbsimP38g
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::C172Mission
@@ -166,6 +168,8 @@ impl FlightApp {
         let profile = self.flight.profile();
         let rig = self.cockpit_rig.as_ref();
         let sup = rig.map(|r| r.supervisor());
+        let (hangar_liveries, active_livery_index, active_livery_name) =
+            self.hangar_livery_status();
         MenuStatus {
             pacing: self.flight.pacing_stats(),
             history_s: self.flight.history_span_s(),
@@ -196,6 +200,9 @@ impl FlightApp {
             layout: self.hub.layout,
             scenery: self.hub.scenery,
             auto_rotate: self.hangar.as_ref().is_none_or(|h| h.auto_rotate()),
+            hangar_liveries,
+            active_livery_index,
+            active_livery_name,
             controls: controls_status(&self.controls),
         }
     }
@@ -248,45 +255,37 @@ impl FlightApp {
         let chrome = self.efb_chrome();
         let space = self.flight.space_hud_chrome();
         let hint = (self.hub.hint_s > 0.0).then_some(TAKEOVER_HINT);
-        let (Some(renderer), Some(overlay)) = (&self.renderer, self.menu_overlay.as_mut()) else {
-            return;
-        };
-        let content = match (&view, hint, &chrome, &space) {
-            (Some(view), _, _, _) => OverlayContent::Hub {
-                view,
-                highlights: self.esc_menu.highlights(),
-            },
-            (None, Some(hint), None, None) => OverlayContent::Banner(hint),
-            (None, None, None, None) => OverlayContent::Hidden,
-            (None, banner, efb, space) => OverlayContent::FlightChrome {
-                banner,
-                efb: efb.as_ref(),
-                space: space.as_ref(),
-            },
-        };
-        if let Err(err) = overlay.render(
-            renderer.device(),
-            renderer.queue(),
-            content,
-            renderer.surface_size(),
-        ) {
-            return self.fail(event_loop, "drawing the flight hub failed", &err);
-        }
-        if let Some(hangar) = self.hangar.as_mut() {
-            hangar.hide();
-            if let Some((size, model)) = hangar_model
-                && let Err(err) = hangar.render(
+        let overlay_err = {
+            let (Some(renderer), Some(overlay)) = (&self.renderer, self.menu_overlay.as_mut())
+            else {
+                return;
+            };
+            let content = match (&view, hint, &chrome, &space) {
+                (Some(view), _, _, _) => OverlayContent::Hub {
+                    view,
+                    highlights: self.esc_menu.highlights(),
+                },
+                (None, Some(hint), None, None) => OverlayContent::Banner(hint),
+                (None, None, None, None) => OverlayContent::Hidden,
+                (None, banner, efb, space) => OverlayContent::FlightChrome {
+                    banner,
+                    efb: efb.as_ref(),
+                    space: space.as_ref(),
+                },
+            };
+            overlay
+                .render(
                     renderer.device(),
                     renderer.queue(),
-                    model,
-                    size,
-                    live,
-                    elapsed_s,
+                    content,
+                    renderer.surface_size(),
                 )
-            {
-                warn!(error = %err, "hangar preview unavailable");
-            }
+                .err()
+        };
+        if let Some(err) = overlay_err {
+            return self.fail(event_loop, "drawing the flight hub failed", &err);
         }
+        self.render_hangar_preview(hangar_model, live, elapsed_s);
         self.hub_preview = view.and_then(|v| v.preview_viewport());
         if let Some(size) = globe_size {
             self.render_globe(size);
@@ -315,6 +314,8 @@ impl FlightApp {
                     h.toggle_auto_rotate();
                 }
             }
+            MenuCommand::SelectLivery(index) => self.select_hangar_livery(index),
+            MenuCommand::ImportExternalLivery => self.import_hangar_livery(),
             MenuCommand::ApplyVehicle { vehicle, mode } => {
                 return self.apply_vehicle(event_loop, vehicle, mode);
             }

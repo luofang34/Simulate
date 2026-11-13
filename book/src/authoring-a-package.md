@@ -3,7 +3,7 @@
 There are two supported ways to create a fixed-wing `syspack` for `Simulate` and `ironbird`:
 
 1. **Exporting from `ace-rs` (Conceptual / Parametric Aircraft Design)** — recommended when designing a new airframe from geometry, airfoil polars, and propulsion specs.
-2. **Authoring a Data-Only `syspack` Directory** — recommended when wrapping an existing JSBSim `<fdm_config>` XML model or wind-tunnel dataset (like `vehicles/c172`).
+2. **Authoring a Data-Only `syspack` Directory** — recommended when wrapping an existing JSBSim `<fdm_config>` XML model or wind-tunnel dataset (like `vehicles/c172s` or `vehicles/c172p`).
 
 ---
 
@@ -14,10 +14,10 @@ When an aircraft is defined in the sibling `ace-rs` repository, `ace-export` gen
 ```sh
 cargo run --manifest-path <ace-rs>/Cargo.toml -p ace-export --example export_syspack -- \
   <ace-rs>/examples/c172/vehicle.json \
-  vehicles/c172
+  vehicles/c172s
 ```
 
-`vehicles/c172` is generated this way and is not edited by hand.
+`vehicles/c172s` was seeded this way before POH/TCDS calibration.
 
 After exporting:
 
@@ -25,7 +25,7 @@ After exporting:
    ```sh
    cargo run --release -p ironbird -- \
      --mode estimate-dir \
-     --package-dir vehicles/c172 \
+     --package-dir vehicles/c172s \
      --report-out c172_design_estimate.md
    ```
 2. If you have target POH tables or flight-test recordings, add `performance/airspeed_envelope.json`, `performance/pitot_static_calibration.json`, and `performance/poh_benchmarks.json`, refresh the `assets` hashes in `syspack.json`, and run closed-loop calibration (`--mode calibrate-dir`).
@@ -34,7 +34,7 @@ After exporting:
 
 ## Workflow B: Authoring a Data-Only `syspack` Directory
 
-You can create a new aircraft package without writing a single line of Rust code (see `vehicles/c172` as the reference template).
+You can create a new aircraft package without writing a single line of Rust code (see `vehicles/c172s` and `vehicles/c172p` as reference templates).
 
 ### Step 1: Create the Folder and JSBSim FDM (`fdm/<model>.xml`)
 

@@ -1,4 +1,4 @@
-//! In-memory OpenUSD asset resolution for embedded stages.
+//! In-memory OpenUSD asset resolution for embedded and runtime-loaded stages.
 
 use std::{
     borrow::Cow,
@@ -9,8 +9,8 @@ use std::{
 
 use openusd::ar::{Asset, AssetBuffer, ResolvedPath, Resolver};
 
-/// In-memory `openusd::ar::Resolver` serving embedded `.usdc` / `.usda` buffers on both
-/// native and `wasm32` targets without filesystem access.
+/// In-memory `openusd::ar::Resolver` serving embedded or runtime-loaded `.usdc` / `.usda`
+/// buffers on both native and `wasm32` targets without filesystem access.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EmbeddedUsdResolver {
     assets: BTreeMap<String, AssetBuffer>,
@@ -23,7 +23,6 @@ impl EmbeddedUsdResolver {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn insert(&mut self, name: &str, bytes: AssetBuffer) {
         self.assets.insert(normalize_asset_key(name), bytes);
     }
@@ -72,8 +71,7 @@ impl Resolver for EmbeddedUsdResolver {
     }
 }
 
-fn normalize_asset_key(path: &str) -> String {
-    path.trim_start_matches("./")
-        .trim_start_matches('/')
-        .to_owned()
+pub(crate) fn normalize_asset_key(path: &str) -> String {
+    let trimmed = path.trim_start_matches("./").trim_start_matches('/');
+    trimmed.strip_prefix("usd/").unwrap_or(trimmed).to_owned()
 }

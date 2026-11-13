@@ -1,0 +1,84 @@
+{
+  "tail": "D-ECJB",
+  "materials": {
+    "MatLiverySignalRed": { "diffuse": [0.74, 0.055, 0.055], "metallic": 0.02, "roughness": 0.28 },
+    "MatLiveryCrimson": { "diffuse": [0.34, 0.025, 0.04], "metallic": 0.02, "roughness": 0.30 },
+    "MatLiveryBlack": { "diffuse": [0.035, 0.035, 0.04], "metallic": 0.0, "roughness": 0.32 },
+    "MatFlagBlack": { "diffuse": [0.025, 0.025, 0.03], "metallic": 0.0, "roughness": 0.30 },
+    "MatFlagRed": { "diffuse": [0.78, 0.04, 0.04], "metallic": 0.0, "roughness": 0.30 },
+    "MatFlagGold": { "diffuse": [0.92, 0.68, 0.04], "metallic": 0.02, "roughness": 0.30 }
+  },
+  "stripes": [
+    {
+      "name": "CheatlineRed",
+      "what": "1980s Reims/Cessna F172P Skyhawk II bright-red upper fuselage cheatline from nose cowl aft under registration to tailcone",
+      "material": "MatLiverySignalRed",
+      "upper_yz": [
+        [1.88, -0.04], [1.20, -0.10], [0.40, -0.18], [-0.60, -0.22],
+        [-1.80, -0.24], [-3.00, -0.25], [-4.20, -0.24]
+      ],
+      "lower_yz": [
+        [1.88, -0.08], [1.20, -0.175], [0.40, -0.26], [-0.60, -0.30],
+        [-1.80, -0.315], [-3.00, -0.32], [-4.20, -0.295]
+      ]
+    },
+    {
+      "name": "CheatlineCrimson",
+      "what": "Dark-crimson lower companion accent stripe beneath the Skyhawk II red cheatline",
+      "material": "MatLiveryCrimson",
+      "upper_yz": [
+        [1.72, -0.12], [1.10, -0.205], [0.35, -0.29], [-0.60, -0.33],
+        [-1.80, -0.345], [-3.00, -0.35], [-4.15, -0.32]
+      ],
+      "lower_yz": [
+        [1.72, -0.145], [1.10, -0.25], [0.35, -0.34], [-0.60, -0.38],
+        [-1.80, -0.39], [-3.00, -0.39], [-4.15, -0.355]
+      ]
+    },
+    {
+      "name": "FinLeadingRed",
+      "what": "Diagonal Skyhawk II red fin band sweeping up the vertical stabilizer dorsal leading edge below the Bundesflagge",
+      "material": "MatLiverySignalRed",
+      "upper_yz": [
+        [-4.45, 0.42], [-4.72, 0.56], [-4.96, 0.70]
+      ],
+      "lower_yz": [
+        [-4.55, 0.36], [-4.84, 0.50], [-5.10, 0.64]
+      ]
+    }
+  ],
+  "fin_flash": [
+    {
+      "name": "FinFlagBlack",
+      "what": "West German Bundesflagge top black band on vertical stabilizer (LuftVZO Anlage 1)",
+      "material": "MatFlagBlack",
+      "upper_yz": [[-4.98, 1.05], [-5.38, 1.05]],
+      "lower_yz": [[-4.91, 0.96], [-5.31, 0.96]]
+    },
+    {
+      "name": "FinFlagRed",
+      "what": "West German Bundesflagge middle red band on vertical stabilizer (LuftVZO Anlage 1)",
+      "material": "MatFlagRed",
+      "upper_yz": [[-4.91, 0.96], [-5.31, 0.96]],
+      "lower_yz": [[-4.84, 0.87], [-5.24, 0.87]]
+    },
+    {
+      "name": "FinFlagGold",
+      "what": "West German Bundesflagge bottom gold band on vertical stabilizer (LuftVZO Anlage 1)",
+      "material": "MatFlagGold",
+      "upper_yz": [[-4.84, 0.87], [-5.24, 0.87]],
+      "lower_yz": [[-4.77, 0.78], [-5.17, 0.78]]
+    }
+  ],
+  "registration": {
+    "text": "D-ECJB",
+    "material": "MatLiveryBlack",
+    "center_yz": [-3.15, -0.05],
+    "regulation": "ICAO Annex 7 §4.2.2 & LuftVZO Anlage 1 (Abschnitt II): fuselage registration at least 30 cm (0.30 m) high, upright Roman block capitals, width 2/3 height, stroke 1/6 height, hyphen between nationality mark D and 4-letter registration ECJB",
+    "cap_height_m": 0.30,
+    "glyph_width_h": 0.6667,
+    "stroke_h": 0.1667,
+    "gap_h": 0.20,
+    "slant": 0.0
+  }
+}

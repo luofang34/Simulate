@@ -1,0 +1,14 @@
+#usda 1.0
+(
+    defaultPrim = "C172"
+    doc = """N53295 (1982 Cessna 172P Skyhawk II factory Royal Blue / Sky Blue scheme)
+composed over c172p_airframe.usda and the generic BSD-3-Clause c172.usdc airframe."""
+    metersPerUnit = 1
+    subLayers = [@n53295_livery.usda@, @c172p_airframe.usda@, @c172.usdc@]
+    upAxis = "Z"
+)
+
+over "C172"
+{
+    string sim:tail = "N53295"
+}

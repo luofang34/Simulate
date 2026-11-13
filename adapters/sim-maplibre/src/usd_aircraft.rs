@@ -1,9 +1,9 @@
 //! Articulated OpenUSD aircraft asset composition (`openusd` + `openusd-schemas`),
-//! per-camera-role kinematic evaluation, and live `.usda` scene stage export.
+//! per-camera-role kinematic evaluation, per-tail livery composition, and `.usda` scene export.
 
 use std::sync::Arc;
 
-use glam::{DMat4, DQuat, DVec3};
+use glam::{DMat4, DVec3};
 use openusd::ar::AssetBuffer;
 use sim_core::AirframeArticulation;
 
@@ -13,6 +13,9 @@ mod controls;
 mod dials;
 mod export;
 mod finish;
+mod joints;
+mod livery_compose;
+mod livery_loader;
 mod loader;
 mod occlusion;
 mod procedural;
@@ -64,20 +67,16 @@ pub enum PartSurface {
     /// Its material alone.
     #[default]
     Material,
-    /// Painted by the asset's baked [`SkinTextures`], sampled through the
-    /// part's texture coordinates and tangents.
+    /// Painted by the asset's baked [`SkinTextures`], sampled through texture coordinates.
     Skin,
-    /// Printed from the asset's [`DisplayAtlas`]: the part's `uv` `0..1` maps
-    /// onto `uv_rect` `[u0, v0, du, dv]` of the atlas, whose alpha marks
-    /// luminous paint glowing `glow_rgb` (linear) under the cockpit's lamps.
+    /// Printed from the asset's [`DisplayAtlas`]: `uv` `0..1` maps onto `uv_rect`.
     Display {
         /// Where the part's texture sits in the atlas.
         uv_rect: [f32; 4],
         /// Linear colour of the luminous paint's glow.
         glow_rgb: [f32; 3],
     },
-    /// Painted all over in luminous paint glowing `glow_rgb` (linear) under
-    /// the cockpit's lamps, as a dial's needle is.
+    /// Painted all over in luminous paint glowing `glow_rgb` under the cockpit's lamps.
     Luminous {
         /// Linear colour of the glow.
         glow_rgb: [f32; 3],
@@ -93,12 +92,9 @@ pub struct UsdMeshVertex {
     pub normal: [f32; 3],
     /// Texture / polar coordinate `(u, v)` from `primvars:st`.
     pub uv: [f32; 2],
-    /// Baked ambient occlusion: the cosine-weighted share of the vertex's sky hemisphere
-    /// the airframe leaves open (`1.0` fully open), scaling only sky and environment light.
+    /// Baked ambient occlusion (`1.0` fully open), scaling sky and environment light.
     pub occlusion: f32,
-    /// Prim-local unit tangent along increasing `u` of the part's texture
-    /// coordinates, `w` the bitangent's handedness (`±1`); only parts with a
-    /// textured skin read it.
+    /// Prim-local unit tangent along increasing `u`, `w` bitangent handedness (`±1`).
     pub tangent: [f32; 4],
 }
 
@@ -122,8 +118,7 @@ pub struct UsdMeshPart {
     pub rest_to_aircraft: DMat4,
     /// Optional custom hinge axis (`sim:hingeAxis`, e.g. swept rudder hinge).
     pub custom_hinge_axis: Option<DVec3>,
-    /// The [`sim_core::InstrumentNeedles`] channel a [`PartRole::InstrumentNeedle`]
-    /// follows (`sim:needleChannel`).
+    /// The [`sim_core::InstrumentNeedles`] channel an instrument part follows.
     pub needle_channel: Option<usize>,
     /// The joints a [`PartRole::CockpitControl`] moves on, outermost first.
     pub control_joints: Vec<ControlJoint>,
@@ -157,8 +152,33 @@ pub struct UsdPartDraw {
 }
 
 /// Embedded BSD-3-Clause Cessna 172 Skyhawk binary OpenUSD Crate (`c172.usdc`).
-pub const EMBEDDED_C172_USDC: &[u8] = include_bytes!("../../../vehicles/c172/usd/c172.usdc");
-
+pub const EMBEDDED_C172_USDC: &[u8] = include_bytes!("../../../vehicles/c172s/usd/c172.usdc");
+/// Shared Cessna 172S Skyhawk SP equipment & bare-gear airframe layer (`c172s_airframe.usda`).
+pub const EMBEDDED_C172S_AIRFRAME_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172s/usd/c172s_airframe.usda");
+/// Default C-172S tail `N642SP` root layer (`n642sp.usda`).
+pub const EMBEDDED_N642SP_USDA: &[u8] = include_bytes!("../../../vehicles/c172s/usd/n642sp.usda");
+/// Default C-172S tail `N642SP` livery layer (`n642sp_livery.usda`).
+pub const EMBEDDED_N642SP_LIVERY_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.usda");
+/// Selectable C-172S tail `N172SP` root layer (`n172sp.usda`).
+pub const EMBEDDED_N172SP_USDA: &[u8] = include_bytes!("../../../vehicles/c172s/usd/n172sp.usda");
+/// Selectable C-172S tail `N172SP` livery layer (`n172sp_livery.usda`).
+pub const EMBEDDED_N172SP_LIVERY_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.usda");
+/// Shared Cessna 172P Skyhawk II / Reims F172P equipment & bare-gear layer (`c172p_airframe.usda`).
+pub const EMBEDDED_C172P_AIRFRAME_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172p/usd/c172p_airframe.usda");
+/// Default C-172P tail `D-ECJB` root layer (`d_ecjb.usda`).
+pub const EMBEDDED_D_ECJB_USDA: &[u8] = include_bytes!("../../../vehicles/c172p/usd/d_ecjb.usda");
+/// Default C-172P tail `D-ECJB` livery layer (`d_ecjb_livery.usda`).
+pub const EMBEDDED_D_ECJB_LIVERY_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.usda");
+/// Selectable C-172P tail `N53295` root layer (`n53295.usda`).
+pub const EMBEDDED_N53295_USDA: &[u8] = include_bytes!("../../../vehicles/c172p/usd/n53295.usda");
+/// Selectable C-172P tail `N53295` livery layer (`n53295_livery.usda`).
+pub const EMBEDDED_N53295_LIVERY_USDA: &[u8] =
+    include_bytes!("../../../vehicles/c172p/usd/n53295_livery.usda");
 /// Embedded `Raketa` single-stage test rocket OpenUSD stage (`retro_rocket_v4.usd`).
 pub const EMBEDDED_RAKETA_USD: &[u8] =
     include_bytes!("../../../vehicles/raketa/assets/retro_rocket_v4.usd");
@@ -175,9 +195,61 @@ pub struct UsdAircraftAsset {
 }
 
 impl UsdAircraftAsset {
-    /// Decodes and composes the embedded BSD-3-Clause Cessna 172 (`c172.usdc`) OpenUSD stage.
+    /// Decodes and composes the generic BSD-3-Clause Cessna 172 (`c172.usdc`) traffic stage.
     pub fn embedded_c172() -> Result<Self, MapAdapterError> {
         Self::from_usd_bytes("c172.usdc", EMBEDDED_C172_USDC)
+    }
+
+    /// Composes `N642SP`, the default Cessna 172S Skyhawk SP ownship stage.
+    pub fn embedded_n642sp() -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers(
+            "n642sp.usda",
+            [
+                ("c172.usdc", EMBEDDED_C172_USDC.into()),
+                ("c172s_airframe.usda", EMBEDDED_C172S_AIRFRAME_USDA.into()),
+                ("n642sp.usda", EMBEDDED_N642SP_USDA.into()),
+                ("n642sp_livery.usda", EMBEDDED_N642SP_LIVERY_USDA.into()),
+            ],
+        )
+    }
+
+    /// Composes `N172SP`, the selectable Cessna 172S Skyhawk SP factory demonstrator stage.
+    pub fn embedded_c172s_n172sp() -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers(
+            "n172sp.usda",
+            [
+                ("c172.usdc", EMBEDDED_C172_USDC.into()),
+                ("c172s_airframe.usda", EMBEDDED_C172S_AIRFRAME_USDA.into()),
+                ("n172sp.usda", EMBEDDED_N172SP_USDA.into()),
+                ("n172sp_livery.usda", EMBEDDED_N172SP_LIVERY_USDA.into()),
+            ],
+        )
+    }
+
+    /// Composes `D-ECJB`, Mathias Rust's 1987 Reims F172P default Cessna 172P ownship stage.
+    pub fn embedded_c172p_d_ecjb() -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers(
+            "d_ecjb.usda",
+            [
+                ("c172.usdc", EMBEDDED_C172_USDC.into()),
+                ("c172p_airframe.usda", EMBEDDED_C172P_AIRFRAME_USDA.into()),
+                ("d_ecjb.usda", EMBEDDED_D_ECJB_USDA.into()),
+                ("d_ecjb_livery.usda", EMBEDDED_D_ECJB_LIVERY_USDA.into()),
+            ],
+        )
+    }
+
+    /// Composes `N53295`, the selectable 1982 Cessna 172P Skyhawk II per-tail stage.
+    pub fn embedded_c172p_n53295() -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers(
+            "n53295.usda",
+            [
+                ("c172.usdc", EMBEDDED_C172_USDC.into()),
+                ("c172p_airframe.usda", EMBEDDED_C172P_AIRFRAME_USDA.into()),
+                ("n53295.usda", EMBEDDED_N53295_USDA.into()),
+                ("n53295_livery.usda", EMBEDDED_N53295_LIVERY_USDA.into()),
+            ],
+        )
     }
 
     /// Decodes and composes the embedded `Raketa` (`retro_rocket_v4.usd`) OpenUSD stage.
@@ -190,7 +262,30 @@ impl UsdAircraftAsset {
         identifier: &str,
         bytes: impl Into<AssetBuffer>,
     ) -> Result<Self, MapAdapterError> {
-        loader::load_aircraft_from_bytes(identifier, bytes.into())
+        loader::load_aircraft(
+            identifier,
+            EmbeddedUsdResolver::single(identifier, bytes.into()),
+        )
+    }
+
+    /// Composes the stage rooted at `root` from static-keyed in-memory layers.
+    pub fn from_usd_layers(
+        root: &str,
+        layers: impl IntoIterator<Item = (&'static str, AssetBuffer)>,
+    ) -> Result<Self, MapAdapterError> {
+        Self::from_usd_layers_owned(root, layers.into_iter().map(|(k, v)| (k.to_owned(), v)))
+    }
+
+    /// Composes the stage rooted at `root` from runtime-named in-memory layers.
+    pub fn from_usd_layers_owned(
+        root: &str,
+        layers: impl IntoIterator<Item = (String, AssetBuffer)>,
+    ) -> Result<Self, MapAdapterError> {
+        let mut resolver = EmbeddedUsdResolver::default();
+        for (name, bytes) in layers {
+            resolver.insert(&name, bytes);
+        }
+        loader::load_aircraft(&resolver::normalize_asset_key(root), resolver)
     }
 
     pub(crate) fn from_parts(parts: Vec<UsdMeshPart>) -> Self {
@@ -212,8 +307,7 @@ impl UsdAircraftAsset {
         self.skin.as_ref()
     }
 
-    /// Where the cockpit's ultraviolet flood lamp sits, aircraft frame, if
-    /// the airframe has one to light its instruments' luminous paint.
+    /// Where the cockpit's ultraviolet flood lamp sits, aircraft frame, if present.
     #[must_use]
     pub fn uv_flood_lamp_m(&self) -> Option<DVec3> {
         self.uv_flood_lamp_m
@@ -239,8 +333,7 @@ impl UsdAircraftAsset {
         Self::from_parts(parts)
     }
 
-    /// Height of the lowest rest-pose vertex (wheel bottoms on a landplane) on the aircraft
-    /// `+Z` axis, in metres; ground contact on level gear.
+    /// Height of the lowest rest-pose vertex on the aircraft `+Z` axis, in metres.
     #[must_use]
     pub fn lowest_point_z_m(&self) -> f32 {
         self.lowest_z_m
@@ -264,8 +357,7 @@ impl UsdAircraftAsset {
         self.parts.iter().map(|p| p.indices.len() / 3).sum()
     }
 
-    /// Evaluates articulated part transforms and camera-role visibility for one frame, as
-    /// seen by the eye or a display camera ([`Self::DISPLAY_SHUTTER_S`]).
+    /// Evaluates articulated part transforms and camera-role visibility for one frame.
     #[must_use]
     pub fn evaluate_draws(
         &self,
@@ -278,9 +370,7 @@ impl UsdAircraftAsset {
     /// Exposure over which a turning propeller smears for the eye or a display camera.
     pub const DISPLAY_SHUTTER_S: f64 = 1.0 / 60.0;
 
-    /// [`Self::evaluate_draws`] for a camera whose shutter stays open `shutter_s` seconds:
-    /// a short exposure leaves a turning propeller as separate blurred blades, a long one
-    /// as an even disc.
+    /// [`Self::evaluate_draws`] for a camera whose shutter stays open `shutter_s` seconds.
     #[must_use]
     pub fn evaluate_draws_exposed(
         &self,
@@ -288,7 +378,7 @@ impl UsdAircraftAsset {
         camera_role: SlotCameraRole,
         shutter_s: f64,
     ) -> Vec<UsdPartDraw> {
-        let mount_vib = mount_vibration_matrix(articulation.engine_vibration_rad);
+        let mount_vib = joints::mount_vibration_matrix(articulation.engine_vibration_rad);
         let mut draws = Vec::with_capacity(self.parts.len());
 
         for (part_index, part) in self.parts.iter().enumerate() {
@@ -326,7 +416,7 @@ impl UsdAircraftAsset {
                 continue;
             }
             let part_to_aircraft =
-                mount_vib * part.rest_to_aircraft * joint_delta_matrix(part, articulation);
+                mount_vib * part.rest_to_aircraft * joints::joint_delta_matrix(part, articulation);
             draws.push(UsdPartDraw {
                 part_index,
                 part_to_aircraft,
@@ -338,130 +428,5 @@ impl UsdAircraftAsset {
             });
         }
         draws
-    }
-}
-
-fn mount_vibration_matrix([rx, ry, rz]: [f64; 3]) -> DMat4 {
-    DMat4::from_quat(
-        DQuat::from_rotation_y(rx) * DQuat::from_rotation_x(ry) * DQuat::from_rotation_z(-rz),
-    )
-}
-
-fn joint_delta_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
-    let [comp_nose, comp_left, comp_right] = art.gear_compression_m;
-    let [spin_nose, spin_left, spin_right] = art.wheel_phase_rad;
-    let retract = (1.0 - art.gear_pos_norm.clamp(0.0, 1.0)).max(0.0);
-    match part.role {
-        PartRole::PropellerSpinner | PartRole::PropellerBlades => propeller_joint_matrix(part, art),
-        PartRole::FlapLeft | PartRole::FlapRight => {
-            let rot = DMat4::from_rotation_x(art.flap_deg.to_radians());
-            let f = (art.flap_deg / 40.0).clamp(0.0, 1.0);
-            if part.prim_path.contains("P38") {
-                DMat4::from_translation(DVec3::new(0.0, -0.22 * f, -0.045 * f)) * rot
-            } else {
-                rot
-            }
-        }
-        PartRole::AileronLeft => DMat4::from_rotation_x(art.left_aileron_rad),
-        PartRole::AileronRight => DMat4::from_rotation_x(art.right_aileron_rad),
-        PartRole::Elevator => DMat4::from_rotation_x(art.elevator_rad),
-        PartRole::RuddervatorLeft => DMat4::from_rotation_x(art.elevator_rad - art.rudder_rad),
-        PartRole::RuddervatorRight => DMat4::from_rotation_x(art.elevator_rad + art.rudder_rad),
-        PartRole::Rudder => {
-            let default_axis = DVec3::new(0.0, -0.261_309, 0.965_255);
-            let axis = part
-                .custom_hinge_axis
-                .unwrap_or(default_axis)
-                .normalize_or_zero();
-            DMat4::from_axis_angle(axis, -art.rudder_rad)
-        }
-        PartRole::GearStruts if retract > 1e-4 => {
-            DMat4::from_translation(DVec3::new(0.0, -retract * 0.45, retract * 1.15))
-        }
-        PartRole::LandingLight if retract > 1e-4 => {
-            DMat4::from_translation(DVec3::new(0.0, 0.0, retract * 0.08))
-                * DMat4::from_rotation_x(-retract * 1.35)
-        }
-        PartRole::NoseWheel => {
-            DMat4::from_translation(DVec3::new(0.0, -retract * 0.72, comp_nose + retract * 1.16))
-                * DMat4::from_rotation_x(-retract * 1.35)
-                * DMat4::from_rotation_z(-art.nosewheel_steer_rad)
-                * DMat4::from_rotation_x(-spin_nose)
-        }
-        PartRole::WheelLeft | PartRole::WheelRight => {
-            let (comp, spin) = if part.role == PartRole::WheelLeft {
-                (comp_left, spin_left)
-            } else {
-                (comp_right, spin_right)
-            };
-            let t = DVec3::new(0.0, -retract * 0.78, comp + retract * 1.22);
-            DMat4::from_translation(t) * DMat4::from_rotation_x(-retract * 1.35 - spin)
-        }
-        PartRole::InstrumentNeedle | PartRole::InstrumentDrum | PartRole::InstrumentCard => {
-            dials::moving_part_matrix(part, &art.instrument_needles)
-        }
-        PartRole::CockpitControl => controls::control_matrix(&part.control_joints, &art.cockpit),
-        // A canopy pane that opens, and the frame it carries: the hatch on its
-        // hinge, a window winding down.
-        PartRole::CabinGlass | PartRole::CabinExterior if !part.control_joints.is_empty() => {
-            controls::control_matrix(&part.control_joints, &art.cockpit)
-        }
-        _ => articulate_auxiliary_part(part, art),
-    }
-}
-
-fn propeller_joint_matrix(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
-    let r = part.prim_path.contains("PropRight");
-    let s = if r {
-        art.propeller_right.sense
-    } else {
-        art.propeller_sense
-    };
-    let ph = if r {
-        art.propeller_right.phase_rad
-    } else {
-        art.propeller_phase_rad
-    };
-    let deg = if r {
-        art.propeller_right.blade_angle_deg
-    } else {
-        art.propeller_blade_angle_deg
-    };
-    let spin = DMat4::from_rotation_y(-s * ph);
-    if part.role == PartRole::PropellerBlades
-        && part.custom_hinge_axis.is_some_and(|a| a.x.abs() > 0.9)
-    {
-        spin * DMat4::from_rotation_x((deg - 24.0).to_radians())
-    } else {
-        spin
-    }
-}
-
-fn articulate_auxiliary_part(part: &UsdMeshPart, art: &AirframeArticulation) -> DMat4 {
-    let [cl, cr] = art.coolant_flap_norm;
-    let [ol, or] = art.oil_shutter_norm;
-    let [tr, tp, ty] = art.trim_tab_rad;
-    let path = part.prim_path.as_str();
-    let sign = part.custom_hinge_axis.map_or(1.0, |a| a.z.signum());
-    if path.contains("CoolantFlap") {
-        let v = if path.contains("Left") { cl } else { cr };
-        DMat4::from_rotation_z(sign * v.clamp(0.0, 1.0) * 0.48)
-    } else if path.contains("OilShutter") {
-        let v = if path.contains("Left") { ol } else { or };
-        DMat4::from_rotation_x(-v.clamp(0.0, 1.0) * 0.45)
-    } else if path.contains("ElevatorTrimTab") {
-        DMat4::from_rotation_x(art.elevator_rad - tp)
-    } else if path.contains("AileronTrimTab") {
-        DMat4::from_rotation_x(art.left_aileron_rad - tr)
-    } else if path.contains("GearDoor") {
-        // Doors are authored closed, flush with the skin, hinged along `y`; they hang
-        // open while the gear is down. The hinge axis's length is the signed angle a
-        // door opens through.
-        let open = part.custom_hinge_axis.map_or(1.45, |a| a.y);
-        DMat4::from_rotation_y(open * art.gear_pos_norm.clamp(0.0, 1.0))
-    } else if path.contains("RudderTrimTab") {
-        DMat4::from_rotation_z(-(art.rudder_rad - ty))
-    } else {
-        DMat4::IDENTITY
     }
 }

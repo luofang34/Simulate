@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <description>Cessna 172P Skyhawk II / Reims F172P (Lycoming O-320-D2J, 160 BHP)</description>
+    <author>Simulate Reference Flight Dynamics</author>
+    <status>production</status>
+    <flight-model>jsb</flight-model>
+    <aero>fdm/c172p</aero>
+    <variant-of>c172</variant-of>
+    <model>
+      <path>usd/d_ecjb.usda</path>
+      <livery>
+        <file type="string">d-ecjb</file>
+      </livery>
+    </model>
+    <flaps>
+      <setting>0.000</setting>
+      <setting>0.333</setting>
+      <setting>0.667</setting>
+      <setting>1.000</setting>
+    </flaps>
+  </sim>
+</PropertyList>

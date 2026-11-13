@@ -45,6 +45,9 @@ pub enum AppSimError {
     /// Shared-GPU MapLibre truth or belief adapter failed.
     #[error("MapLibre scene or avionics underlay failed")]
     Map(#[from] MapAdapterError),
+    /// Vehicle syspack, variant registry, or livery bundle validation failed.
+    #[error("vehicle package or livery error")]
+    Pack(#[from] sim_pack::PackError),
     /// Window or offscreen GPU renderer failed.
     #[error("GPU renderer failed")]
     Render(#[from] RenderError),

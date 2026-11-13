@@ -1,14 +1,18 @@
 //! The flying vehicle's own camera views and chase distance.
 
-use sim_core::VirtualCameraSpec;
+use sim_core::{CameraPoseEcef, VirtualCameraSpec};
 use sim_geo::BodyEllipsoid;
 use sim_render::Camera;
+use sim_scenario::OperatorViewportMode;
 
 use super::Flight;
+use super::display;
 use super::mode::Mode;
 use crate::camera_view::{
-    DEFAULT_CHASE_BACK_UP_M, camera_from_virtual_spec_on, vehicle_camera_suite,
+    DEFAULT_CHASE_BACK_UP_M, camera_from_virtual_spec_on, pilot_eye_mount_for,
+    vehicle_camera_suite, viewport_camera_for,
 };
+use crate::error::AppSimError;
 
 /// The chase camera's distance behind and above `Raketa`'s centre of gravity,
 /// metres: far enough to hold the whole hull in view.
@@ -43,5 +47,33 @@ impl Flight {
             &self.display_vehicle_state(),
             self.model_origin_from_cg_frd_m(),
         )
+    }
+
+    /// Aboard pilot eye pose in body-fixed ECEF coordinates, the eye mounted on the drawn
+    /// airframe.
+    pub fn aboard_eye_pose(&self) -> Result<CameraPoseEcef, AppSimError> {
+        match &self.mode {
+            Mode::Free { vehicle, world, .. } => Ok(pilot_eye_mount_for(*vehicle)
+                .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m())),
+            Mode::Scenario(run) => Ok(run.eye_pose()?),
+            Mode::Space(world) => Ok(world.eye_pose()),
+        }
+    }
+
+    /// Camera positioned for `viewport_mode` on [`Self::display_vehicle_state`].
+    pub fn display_camera(
+        &self,
+        viewport_mode: OperatorViewportMode,
+    ) -> Result<Camera, AppSimError> {
+        let exact = self.vehicle_state();
+        let shown = self.display_vehicle_state();
+        let aboard = display::reanchor(self.aboard_eye_pose()?, &exact, &shown);
+        Ok(viewport_camera_for(
+            viewport_mode,
+            self.profile(),
+            self.chase_back_up_m(),
+            &shown,
+            aboard,
+        ))
     }
 }

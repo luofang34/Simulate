@@ -90,3 +90,14 @@ All three optional performance assets reside under `performance/` inside a fixed
 | `climb_points` | `Vec<ClimbBenchmark>` | Yes* | `{ "pressure_alt_ft", "gross_mass_kg", "climb_kcas", "target_kias", "lean_best_power", "target_fpm" }`. |
 | `cruise_points` | `Vec<CruiseBenchmark>` | Yes* | `{ "pressure_alt_ft", "gross_mass_kg", "target_rpm", "fixed_throttle", "target_pct_bhp", "target_ktas", "target_gph" }`. |
 | `empirical_segments` | `Vec<EmpiricalFlightSegment>` | No | Recorded flight segments replayed in closed loop (`LevelCruiseRpm`, `LevelCruiseThrottle`, `FullThrottleClimbKcas`). |
+
+---
+
+## 3. `simulate-app` External Livery & Variant Import Environment Variables
+
+`simulate-app` supports runtime external livery (`sim_pack::LiverySpec` JSON plus an optional OpenUSD ASCII overlay layer, such as `vehicles/c172p/usd/d_ecjb_livery.json` and `vehicles/c172p/usd/d_ecjb_livery.usda`) and external `syspack` variant directory imports via environment hooks or the Flight Hub Hangar tab:
+
+| Variable | Value | Description |
+|---|---|---|
+| `SIMULATE_IMPORT_LIVERY` | Path list (`:` or `;` separated) | Imports one or more declarative livery JSON bundles (or directories containing a livery JSON spec and an optional OpenUSD ASCII stage) at startup or via the Hangar `IMPORT LIVERY` button. |
+| `SIMULATE_IMPORT_VARIANT` | Path list (`:` or `;` separated) | Loads, SHA-256-verifies, and registers one or more external `syspack.json` vehicle directories into `VariantRegistry` at startup. |

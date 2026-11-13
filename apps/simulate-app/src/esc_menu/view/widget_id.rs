@@ -47,6 +47,10 @@ pub enum MenuCommand {
     ResetHangarView,
     /// Toggle the hangar turntable.
     ToggleAutoRotate,
+    /// Select livery `index` on the currently previewed hangar airframe.
+    SelectLivery(usize),
+    /// Reload/import external livery or variant pack from environment path.
+    ImportExternalLivery,
     /// Spawn at a catalog aerodrome.
     Spawn {
         /// Catalog aerodrome index.
@@ -134,6 +138,10 @@ pub enum WidgetId {
     AutoRotate,
     /// Reset the hangar preview camera.
     ResetView,
+    /// A selectable tail livery chip on the previewed hangar airframe.
+    LiveryChoice(usize),
+    /// Import external livery / variant pack chip in the hangar.
+    ImportLivery,
     /// A flight-dynamics mode chip of the selected airframe.
     VehicleMode(FreeFlightVehicle),
     /// Fly the selected vehicle.
@@ -185,6 +193,8 @@ impl WidgetId {
             Self::Scenery(mode) => MenuCommand::Scenery(mode),
             Self::AutoRotate => MenuCommand::ToggleAutoRotate,
             Self::ResetView => MenuCommand::ResetHangarView,
+            Self::LiveryChoice(index) => MenuCommand::SelectLivery(index),
+            Self::ImportLivery => MenuCommand::ImportExternalLivery,
             Self::Preset(step) => MenuCommand::Preset(step),
             Self::PresetAuto => MenuCommand::PresetAuto,
             Self::AxisRebind(control) => MenuCommand::RebindAxis(control),

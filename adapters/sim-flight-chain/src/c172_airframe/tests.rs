@@ -7,19 +7,19 @@ use sim_geo::LocalFrame;
 use super::*;
 use crate::C172_RATE_HZ;
 
-/// Flies the trimmed C172 east for `seconds` in a wind of `wind_ned_m_s` and
+/// Flies the trimmed C172 variant east for `seconds` in a wind of `wind_ned_m_s` and
 /// returns its track and heading, degrees, and its air-relative speed as
 /// its sensors see it, m/s.
-fn east_in(wind_ned_m_s: DVec3, seconds: f64) -> (f64, f64, f64) {
+fn east_in(variant: C172Variant, wind_ned_m_s: DVec3, seconds: f64) -> (f64, f64, f64) {
     let start = C172Start {
         position: Geodetic::from_degrees(41.70, -1.07, 2050.0),
         heading_rad: core::f64::consts::FRAC_PI_2,
-        speed_m_s: 60.0,
+        speed_m_s: 52.0,
         period: TickSpan::from_ticks(TICKS_PER_SECOND / C172_RATE_HZ),
         utc: UtcTime::from_unix_seconds(1_781_525_040.0),
     };
     let air = SharedAir::new(GeoidStandardAtmosphere::with_wind(wind_ned_m_s));
-    let mut airframe = C172Airframe::trimmed(&start, air).unwrap();
+    let mut airframe = C172Airframe::trimmed_variant(variant, &start, air).unwrap();
     for _ in 0..(seconds * C172_RATE_HZ as f64) as u64 {
         airframe.fly(&DirectActuatorCmd::default()).unwrap();
     }
@@ -42,20 +42,22 @@ fn east_in(wind_ned_m_s: DVec3, seconds: f64) -> (f64, f64, f64) {
 /// read is the speed it was trimmed to.
 #[test]
 fn a_crosswind_drifts_the_track_off_the_heading() {
-    let (calm_track, calm_heading, calm_speed) = east_in(DVec3::ZERO, 20.0);
-    assert!(
-        (calm_track - calm_heading).abs() < 0.5,
-        "{calm_track} {calm_heading}"
-    );
-    let (track, heading, speed) = east_in(DVec3::new(10.0, 0.0, 0.0), 20.0);
-    let drift = heading - track;
-    let expected = (10.0 / speed).atan().to_degrees();
-    assert!(
-        (drift - expected).abs() < 1.0,
-        "drift {drift} against {expected}"
-    );
-    assert!(
-        (speed - calm_speed).abs() < 1.0,
-        "{speed} against {calm_speed}"
-    );
+    for variant in [C172Variant::C172s, C172Variant::C172p] {
+        let (calm_track, calm_heading, calm_speed) = east_in(variant, DVec3::ZERO, 20.0);
+        assert!(
+            (calm_track - calm_heading).abs() < 0.5,
+            "{variant:?}: {calm_track} {calm_heading}"
+        );
+        let (track, heading, speed) = east_in(variant, DVec3::new(10.0, 0.0, 0.0), 20.0);
+        let drift = heading - track;
+        let expected = (10.0 / speed).atan().to_degrees();
+        assert!(
+            (drift - expected).abs() < 1.0,
+            "{variant:?}: drift {drift} against {expected}"
+        );
+        assert!(
+            (speed - calm_speed).abs() < 1.0,
+            "{variant:?}: {speed} against {calm_speed}"
+        );
+    }
 }

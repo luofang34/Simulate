@@ -1,0 +1,15 @@
+#usda 1.0
+(
+    defaultPrim = "C172"
+    doc = """D-ECJB (1987 Reims/Cessna F172P Skyhawk II, c/n F17202087, Aero-Club Hamburg e.V.,
+Uetersen EDHE; Mathias Rust's Helsinki-Malmi -> Moscow flight of 28 May 1987) composed
+over c172p_airframe.usda and the generic BSD-3-Clause c172.usdc airframe."""
+    metersPerUnit = 1
+    subLayers = [@d_ecjb_livery.usda@, @c172p_airframe.usda@, @c172.usdc@]
+    upAxis = "Z"
+)
+
+over "C172"
+{
+    string sim:tail = "D-ECJB"
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyList>
+  <sim>
+    <model>
+      <livery>
+        <id type="string">d-ecjb</id>
+        <name type="string">D-ECJB — Reims F172P Skyhawk II (Aero-Club Hamburg, 1987)</name>
+        <variant type="string">Reims/Cessna F172P Skyhawk II</variant>
+        <serial_number type="string">F17202087</serial_number>
+        <tail_code type="string">D-ECJB</tail_code>
+        <tactical_number type="string">ECJB</tactical_number>
+        <unit type="string">Aero-Club Hamburg e.V. (Uetersen EDHE)</unit>
+        <pilot type="string">Mathias Rust (Helsinki-Malmi to Moscow, 28 May 1987)</pilot>
+        <upper_surface_ana type="string">Vestal White</upper_surface_ana>
+        <lower_surface_ana type="string">Vestal White / Signal Red and Crimson Cheatline</lower_surface_ana>
+        <upper_rgb type="string">0.910, 0.910, 0.905</upper_rgb>
+        <lower_rgb type="string">0.900, 0.900, 0.895</lower_rgb>
+        <accent_rgb type="string">0.740, 0.055, 0.055</accent_rgb>
+        <metallic type="double">0.05</metallic>
+        <roughness type="double">0.28</roughness>
+      </livery>
+    </model>
+  </sim>
+</PropertyList>

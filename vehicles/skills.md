@@ -9,12 +9,12 @@ description: >-
   instrument packs and cockpit, closed-loop test flying against the source test
   card with a validation record, per-vehicle camera views, and photo alignment
   by camera resection for exterior and cockpit. Worked examples: vehicles/p38g,
-  vehicles/c172.
+  vehicles/c172s, vehicles/c172p.
 ---
 
 # `vehicles/` 載具工程考證與模型化流水線 (`skills.md`)
 
-本文件是新增或精修 `Simulate` 載具的標準流水線，以 [`vehicles/p38g`](p38g/Cargo.toml)（Lockheed P-38G-13-LO）為完整範例，[`vehicles/c172`](c172/syspack.json)（N642SP，172S8050）為單發輕型機範例，[`vehicles/apollo-11`](apollo-11/Cargo.toml) 為非飛機範例。每個階段都有**輸入、產出物、驗收門檻**；後一階段只能建立在前一階段已通過門檻的產出物上。
+本文件是新增或精修 `Simulate` 載具的標準流水線，以 [`vehicles/p38g`](p38g/Cargo.toml)（Lockheed P-38G-13-LO）為完整範例，[`vehicles/c172s`](c172s/syspack.json)（N642SP，172S8050）與 [`vehicles/c172p`](c172p/syspack.json)（D-ECJB，Reims F172P）為單發輕型機子型號與尾號塗裝分離範例，[`vehicles/apollo-11`](apollo-11/Cargo.toml) 為非飛機範例。每個階段都有**輸入、產出物、驗收門檻**；後一階段只能建立在前一階段已通過門檻的產出物上。
 
 | 階段 | 產出物 | 驗收門檻 |
 |---|---|---|
@@ -63,9 +63,11 @@ description: >-
 
 ## 2. 命名與包結構 (Stage 2)
 
-### 2.1 命名
-- 目錄、套件 id、crate 名一律用**小寫機型代號＋子型號**：`vehicles/p38g`、`"id": "p38g"`、`sim-p38g`、`fdm/p38g.xml`。只有子型號造成氣動或系統差異時才帶子型號。
-- **單一機身（序號、部隊、機名）是塗裝或個別機覆蓋層，不是載具**：只出現在 `Liveries/catalog.json` 或該機的 USD 覆蓋層（基礎網格不動），不寫進 crate 名稱。
+### 2.1 命名、子型號家族與外部塗裝／變體包匯入
+- 目錄、套件 id、crate 名一律用**小寫機型代號＋子型號**：`vehicles/p38g`、`"id": "p38g"`、`sim-p38g`、`fdm/p38g.xml`。只有子型號造成動力、氣動或系統差異時才帶子型號（如 `vehicles/c172s` 為 180 BHP IO-360-L2A + 76×60 槳、2,550 lb MTOW；`vehicles/c172p` 為 160 BHP O-320-D2J + 75×57 槳、2,400 lb MTOW）。
+- **機型家族（Variant Family）**：`sim_pack::VariantRegistry` 將同系子型號歸入同一 `family`（如 `family: "c172"` 下掛 `c172s` 與 `c172p`，並保留舊連結相容別名 `"c172"` → `"c172s"`）。每個子型號各自擁有 `Liveries/catalog.json`（`default_livery` 指派預設尾號：`c172s` 為 `"n642sp"`，`c172p` 為 `"d-ecjb"`）。
+- **單一機身（序號、註冊號、部隊、機名）是塗裝或個別機 OpenUSD 覆蓋層，不是載具**：共用乾淨白模基礎舞台 `usd/c172s_airframe.usda` / `usd/c172p_airframe.usda`，每架機在 `usd/<tail>_livery.usda` 與 `usd/<tail>.usda` 以 `subLayers` 覆寫底色、投影條紋網格、註冊號字元與垂尾國籍章（由 `vehicles/tools/c172_livery.py` 從 `usd/<tail>_livery.json` 重生），不複製基礎網格、不寫進 crate 名稱。
+- **外部塗裝與變體包動態匯入**：`sim_pack::LiverySpec`（宣告式 JSON：註冊號規範、底漆、條紋軌跡、垂尾色帶）與 `ExternalLiveryBundle` 支援在原生與 `wasm32` 執行期匯入外部塗裝（含可選 `.usda` 覆蓋層，或由 `sim_maplibre::usd_aircraft::compose_livery_stage` 即時射線投影到基礎機身網格），原生端亦支援透過 `VariantRegistry::import_variant_dir`、`SIMULATE_IMPORT_LIVERY` 與 `SIMULATE_IMPORT_VARIANT` 載入外部 `syspack.json` 變體目錄與塗裝。
 - 改名時同步：目錄、crate 名、workspace member 與依賴別名、`syspack.json` 的 `id`/`name`、JSBSim `fdm_config name` 與 `dynamics.JsbsimXml`、塗裝目錄的 `aircraft_id`/`dlc_mount_point`、`sim-pack/src/builtin.rs` 的 `include_bytes!` 路徑、`simulate-app`/`sim-maplibre` 的符號。最後 `grep` 舊字串歸零並 `cargo check` 下游 crate。
 
 ### 2.2 依賴規則
@@ -137,7 +139,7 @@ JSBSim piston 以「每檔一個固定壓比 × 油門」建模增壓器，`rate
 
 ### 4.5 校準原則
 1. **先加有來源的物理，再擬合**，順序：實測螺旋槳表＋槳尖馬赫 → 滑流阻力 → 發動機兩點校正（廠商全油門曲線的兩個轉速，如 Lycoming 2,300 與 2,700 rpm）→ 手冊技術（起飛「機尾略低」、在 VLOF 離地；全富油／最佳功率／EGT 貧油程序由試飛工具照手冊飛）→ 最後才擬合少數參數（CD0、誘導阻力因子、弦長比例），並聯合重擬受同一修正影響的列。
-2. **每個值標為 sourced / fitted / assumed**，寫在設計檔的 `provenance`（範例 `vehicles/c172/design/mccauley_1a170e_jha7660.json`，另有 `stand_in` 與 `not_met`）。被擬合到某列的參數不得再把該列當獨立證據。
+2. **每個值標為 sourced / fitted / assumed**，寫在設計檔的 `provenance`（範例 `vehicles/c172s/design/mccauley_1a170e_jha7660.json` 與 `vehicles/c172p/design/mccauley_1c160_dtm7557.json`，另有 `stand_in` 與 `not_met`）。被擬合到某列的參數不得再把該列當獨立證據。
 3. **不放寬容差、不加無來源的修正係數**。無法同時滿足的列寫入 `performance/validation.json`（`passing`、`failing`、`failing_checks`、`known_table_steps`）；測試逐列比對紀錄，列的結果改變而紀錄未更新即失敗。
 4. 排查偏差時逐一以量測排除假說（離地速度、摩擦係數、手冊裕度、工具本身），再動模型。
 

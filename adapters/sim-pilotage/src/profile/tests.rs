@@ -24,7 +24,7 @@ fn battery_spec() -> AircraftSpec {
     AircraftSpec {
         type_designator: "FSTR".into(),
         registration: None,
-        source: "Simulate c172_class_reference package".into(),
+        source: "Simulate c172s package".into(),
         max_takeoff_weight_kg: 1_157.0,
         cg_envelope: vec![[700.0, 2.5], [1_157.0, 2.5], [1_157.0, 3.5], [700.0, 3.5]],
         stations: vec![

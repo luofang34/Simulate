@@ -1,0 +1,60 @@
+{
+  "tail": "N53295",
+  "materials": {
+    "MatLiveryRoyalBlue": { "diffuse": [0.055, 0.175, 0.52], "metallic": 0.04, "roughness": 0.28 },
+    "MatLiverySkyBlue": { "diffuse": [0.20, 0.46, 0.78], "metallic": 0.04, "roughness": 0.28 }
+  },
+  "stripes": [
+    {
+      "name": "CheatlineRoyalBlue",
+      "what": "1982 Cessna 172P Skyhawk II factory royal-blue upper fuselage cheatline",
+      "material": "MatLiveryRoyalBlue",
+      "upper_yz": [
+        [1.86, -0.03], [1.15, -0.10], [0.35, -0.17], [-0.65, -0.21],
+        [-1.85, -0.23], [-3.05, -0.25], [-4.20, -0.24]
+      ],
+      "lower_yz": [
+        [1.86, -0.075], [1.15, -0.17], [0.35, -0.25], [-0.65, -0.29],
+        [-1.85, -0.305], [-3.05, -0.315], [-4.20, -0.295]
+      ]
+    },
+    {
+      "name": "CheatlineSkyBlue",
+      "what": "1982 Cessna 172P Skyhawk II sky-blue lower fuselage accent stripe",
+      "material": "MatLiverySkyBlue",
+      "upper_yz": [
+        [1.70, -0.115], [1.05, -0.20], [0.30, -0.28], [-0.65, -0.32],
+        [-1.85, -0.335], [-3.05, -0.345], [-4.15, -0.32]
+      ],
+      "lower_yz": [
+        [1.70, -0.145], [1.05, -0.25], [0.30, -0.335], [-0.65, -0.375],
+        [-1.85, -0.385], [-3.05, -0.39], [-4.15, -0.36]
+      ]
+    },
+    {
+      "name": "FinStripeRoyalBlue",
+      "what": "Diagonal royal-blue vertical stabilizer band",
+      "material": "MatLiveryRoyalBlue",
+      "upper_yz": [[-4.55, 0.44], [-4.88, 0.72], [-5.16, 0.98]],
+      "lower_yz": [[-4.68, 0.38], [-5.01, 0.66], [-5.29, 0.92]]
+    },
+    {
+      "name": "FinStripeSkyBlue",
+      "what": "Companion sky-blue vertical stabilizer band",
+      "material": "MatLiverySkyBlue",
+      "upper_yz": [[-4.72, 0.36], [-5.05, 0.64], [-5.33, 0.90]],
+      "lower_yz": [[-4.82, 0.31], [-5.15, 0.59], [-5.42, 0.85]]
+    }
+  ],
+  "registration": {
+    "text": "N53295",
+    "material": "MatLiveryRoyalBlue",
+    "center_yz": [-3.18, -0.05],
+    "regulation": "14 CFR 45.29: 12-inch (0.3048 m) fixed-wing registration markings",
+    "cap_height_m": 0.3048,
+    "glyph_width_h": 0.6667,
+    "stroke_h": 0.1667,
+    "gap_h": 0.19,
+    "slant": 0.25
+  }
+}

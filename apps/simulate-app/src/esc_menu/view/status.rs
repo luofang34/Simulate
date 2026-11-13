@@ -83,6 +83,12 @@ pub struct MenuStatus {
     pub scenery: SceneryMode,
     /// Hangar turntable on.
     pub auto_rotate: bool,
+    /// Selectable `(tail_code, name)` liveries of the previewed hangar airframe.
+    pub hangar_liveries: Vec<(String, String)>,
+    /// Index of the active livery on the previewed hangar airframe.
+    pub active_livery_index: Option<usize>,
+    /// Display label of the active livery on the previewed hangar airframe.
+    pub active_livery_name: Option<String>,
     /// Control scheme.
     pub controls: ControlsStatus,
 }
@@ -107,6 +113,9 @@ impl Default for MenuStatus {
             layout: AvionicsLayout::FullGlass,
             scenery: SceneryMode::Online,
             auto_rotate: true,
+            hangar_liveries: Vec::new(),
+            active_livery_index: None,
+            active_livery_name: None,
             controls: ControlsStatus::default(),
         }
     }

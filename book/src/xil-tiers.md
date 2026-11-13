@@ -24,7 +24,7 @@ Tier 0 links `aviate-xil-direct` directly into the `ironbird` process:
 cargo run --release -p ironbird -- --mode tier0-c172 --duration-s 30
 
 # Arbitrary syspack directory Tier-0 cruise
-cargo run --release -p ironbird -- --mode tier0-dir --package-dir vehicles/c172 --duration-s 30
+cargo run --release -p ironbird -- --mode tier0-dir --package-dir vehicles/c172s --duration-s 30
 ```
 
 ---

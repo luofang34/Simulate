@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "aircraft_id": "c172p",
+  "family": "c172",
+  "family_name": "Cessna 172 Skyhawk",
+  "flightgear_set_file": "c172p-set.xml",
+  "default_livery": "d-ecjb",
+  "dlc_mount_point": "dlc/liveries/c172p",
+  "liveries": [
+    {
+      "id": "d-ecjb",
+      "name": "D-ECJB — Reims F172P Skyhawk II (Aero-Club Hamburg, 1987)",
+      "flightgear_xml": "Models/Liveries/d-ecjb.xml",
+      "variant": "Reims/Cessna F172P Skyhawk II",
+      "serial_number": "F17202087",
+      "tail_code": "D-ECJB",
+      "tactical_number": "ECJB",
+      "unit": "Aero-Club Hamburg e.V. (Uetersen EDHE)",
+      "pilot": "Mathias Rust (Helsinki-Malmi to Moscow, 28 May 1987)",
+      "upper_surface_ana": "Vestal White",
+      "lower_surface_ana": "Vestal White / Signal Red and Crimson Cheatline",
+      "upper_rgb": [0.910, 0.910, 0.905],
+      "lower_rgb": [0.900, 0.900, 0.895],
+      "accent_rgb": [0.740, 0.055, 0.055],
+      "metallic": 0.05,
+      "roughness": 0.28,
+      "dlc_pack": null,
+      "usd_root_layer": "usd/d_ecjb.usda",
+      "usd_sublayers": [
+        "usd/d_ecjb_livery.usda",
+        "usd/c172p_airframe.usda",
+        "usd/c172.usdc"
+      ],
+      "livery_spec_path": "usd/d_ecjb_livery.json"
+    },
+    {
+      "id": "n53295",
+      "name": "N53295 — 1982 Skyhawk II Factory Royal and Sky Blue",
+      "flightgear_xml": "Models/Liveries/n53295.xml",
+      "variant": "Cessna 172P Skyhawk II",
+      "serial_number": "17274810",
+      "tail_code": "N53295",
+      "tactical_number": "53295",
+      "unit": "Factory 1982 Skyhawk II Scheme",
+      "pilot": "Civil Part 91",
+      "upper_surface_ana": "Vestal White",
+      "lower_surface_ana": "Vestal White / Royal and Sky Blue Cheatline",
+      "upper_rgb": [0.910, 0.910, 0.905],
+      "lower_rgb": [0.200, 0.460, 0.780],
+      "accent_rgb": [0.055, 0.175, 0.520],
+      "metallic": 0.05,
+      "roughness": 0.28,
+      "dlc_pack": null,
+      "usd_root_layer": "usd/n53295.usda",
+      "usd_sublayers": [
+        "usd/n53295_livery.usda",
+        "usd/c172p_airframe.usda",
+        "usd/c172.usdc"
+      ],
+      "livery_spec_path": "usd/n53295_livery.json"
+    }
+  ]
+}

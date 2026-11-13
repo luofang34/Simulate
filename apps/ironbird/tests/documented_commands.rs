@@ -70,7 +70,7 @@ fn concrete_args(tail: &str) -> Vec<String> {
         let concrete = if !token.contains('<') {
             token.to_owned()
         } else if args.last().is_some_and(|flag| flag == "--package-dir") {
-            "vehicles/c172".to_owned()
+            "vehicles/c172s".to_owned()
         } else {
             "placeholder.md".to_owned()
         };

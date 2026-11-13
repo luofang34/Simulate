@@ -27,7 +27,7 @@ A fixed-wing `syspack.json` declares six top-level sections:
 | Field | Type | Purpose |
 |---|---|---|
 | `schema_version` | `u32` | Always `1`. |
-| `id` | `String` | Stable machine identifier (e.g. `"c172_class_reference"`, `"p38g"`). |
+| `id` | `String` | Stable machine identifier (e.g. `"c172s"`, `"c172p"`, `"p38g"`). |
 | `name` | `String` | Human-readable aircraft title. |
 | `version` | `String` | Semantic version of the package. |
 | `kind` | `SystemKind` | `"FixedWing"`, `"RotaryWing"`, or `"Spacecraft"`. |
@@ -54,9 +54,9 @@ Each entry in `components` defines a physical station in body coordinates (`+X` 
 "dynamics": {
   "JsbsimXml": {
     "aircraft_dir": "aircraft",
-    "model_name": "c172_class_reference",
-    "entry_asset": "fdm/c172_class_reference.xml",
-    "virtual_path": "aircraft/c172_class_reference/c172_class_reference.xml",
+    "model_name": "c172s",
+    "entry_asset": "fdm/c172s.xml",
+    "virtual_path": "aircraft/c172s/c172s.xml",
     "additional_assets": []
   }
 }

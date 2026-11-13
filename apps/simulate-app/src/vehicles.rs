@@ -4,7 +4,7 @@ use sim_core::{
     JsbsimFdmSnapshot, KinematicInput, KinematicModel, SystemControls, TickSpan, VehicleState,
 };
 use sim_geo::Geodetic;
-use sim_pack::{builtin_c172_package, builtin_p38g_package};
+use sim_pack::{builtin_c172p_package, builtin_c172s_package, builtin_p38g_package};
 
 use crate::error::AppSimError;
 use crate::supervisor_rig::{DELAWARE_RUNWAY_BEARING_RAD, default_delaware_spawn};
@@ -130,9 +130,14 @@ impl FreeFlightPlant {
         field_elev_m: f64,
     ) -> Result<Self, AppSimError> {
         match vehicle {
-            FreeFlightVehicle::JsbsimC172 => {
-                let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, heading_rad, 52.0, field_elev_m)
+            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimC172p => {
+                let (pkg, speed_m_s) = if vehicle == FreeFlightVehicle::JsbsimC172p {
+                    (builtin_c172p_package(), 50.0)
+                } else {
+                    (builtin_c172s_package(), 52.0)
+                };
+                let pkg = pkg.map_err(sim_scenario::ScenarioError::from)?;
+                build_jsbsim_plant(&pkg, spawn, heading_rad, speed_m_s, field_elev_m)
             }
             FreeFlightVehicle::JsbsimP38g => {
                 let pkg = builtin_p38g_package().map_err(sim_scenario::ScenarioError::from)?;
@@ -212,8 +217,13 @@ impl FreeFlightPlant {
         };
         let ground_m = spawn.height_m;
         match vehicle {
-            FreeFlightVehicle::JsbsimC172 => {
-                let pkg = builtin_c172_package().map_err(sim_scenario::ScenarioError::from)?;
+            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimC172p => {
+                let pkg = if vehicle == FreeFlightVehicle::JsbsimC172p {
+                    builtin_c172p_package()
+                } else {
+                    builtin_c172s_package()
+                }
+                .map_err(sim_scenario::ScenarioError::from)?;
                 build_jsbsim_parked(&pkg, spawn, heading_rad, engine, C172_GEAR_HEIGHT_M, 0.0)
             }
             FreeFlightVehicle::JsbsimP38g => {

@@ -54,6 +54,7 @@ pub(super) fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
     ];
     request.terrain_camera = camera;
     ChainTrialSpec {
+        variant: crate::ChainC172Variant::C172s,
         request,
         start: StartSpec {
             lat_deg: 41.70,

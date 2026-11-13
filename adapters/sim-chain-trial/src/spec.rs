@@ -3,13 +3,45 @@
 //! devices' outages.
 
 use serde::{Deserialize, Serialize};
-use sim_flight_chain::AccelCalibration;
+use sim_flight_chain::{AccelCalibration, C172Variant};
 use sim_navigate::trial::{ImuGradeName, SensorKind, TrialRequest};
+
+/// Cessna 172 sub-variant flown by [`ChainTrialSpec`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChainC172Variant {
+    /// Cessna 172S Skyhawk SP (`c172` / `c172s`, default).
+    #[default]
+    C172s,
+    /// Cessna 172P Skyhawk II / Reims F172P (`c172p`).
+    C172p,
+}
+
+impl ChainC172Variant {
+    /// Whether this is [`Self::C172s`], allowing legacy specs to omit `"variant"`.
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::C172s)
+    }
+
+    /// Maps onto [`C172Variant`] in `sim-flight-chain`.
+    #[must_use]
+    pub const fn flight_variant(self) -> C172Variant {
+        match self {
+            Self::C172s => C172Variant::C172s,
+            Self::C172p => C172Variant::C172p,
+        }
+    }
+}
 
 /// One chain trial, as a link describes it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChainTrialSpec {
+    /// Which Cessna 172 sub-variant flies the trial; omitted on default `C172s`
+    /// specs so existing trial digests remain unchanged.
+    #[serde(default, skip_serializing_if = "ChainC172Variant::is_default")]
+    pub variant: ChainC172Variant,
     /// The route (heights above the ellipsoid), the sets compared, the
     /// seeds, the epoch, the outputs, the terrain camera and the maps.
     pub request: TrialRequest,

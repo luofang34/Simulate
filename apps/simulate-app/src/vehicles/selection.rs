@@ -1,16 +1,18 @@
 /// Selectable interactive free-flight vehicle and flight-control plant.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum FreeFlightVehicle {
-    /// SHA-256-verified JSBSim Cessna 172 Skyhawk (`vehicles/c172`) with `SystemControls`.
+    /// SHA-256-verified JSBSim Cessna 172S Skyhawk SP (`vehicles/c172s`) with `SystemControls`.
     #[default]
     JsbsimC172,
+    /// SHA-256-verified JSBSim Cessna 172P Skyhawk II / Reims F172P (`vehicles/c172p`).
+    JsbsimC172p,
     /// SHA-256-verified JSBSim Lockheed P-38G Lightning (`vehicles/p38g`) twin-boom fighter.
     JsbsimP38g,
     /// Tier-0 `AviateDirectRunner` (`Ekf` + `MultirotorController` + `QuadXMixerX500`) on 6-DoF X500.
     AviateX500Direct,
-    /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving the JSBSim C172.
+    /// Tier-0 `AviateDirectRunner` (`Ekf` + `FixedWingController`) driving the JSBSim C172S.
     AviateFixedWingDirect,
-    /// The C172 on the vehicle's own control chain: Pilotage's host core flies the first
+    /// The C172S on the vehicle's own control chain: Pilotage's host core flies the first
     /// shareable link's route through the Aviate flight controller, Navigate's sets
     /// navigating on the same devices.
     C172Mission,
@@ -26,12 +28,25 @@ impl FreeFlightVehicle {
         matches!(self, Self::JsbsimP38g)
     }
 
+    /// Package aircraft identifier in [`crate::livery_session::LiverySession`], when this
+    /// vehicle flies a packaged airframe with selectable liveries.
+    #[must_use]
+    pub const fn aircraft_id(self) -> Option<&'static str> {
+        match self {
+            Self::JsbsimC172 | Self::AviateFixedWingDirect | Self::C172Mission => Some("c172s"),
+            Self::JsbsimC172p => Some("c172p"),
+            Self::JsbsimP38g => Some("p38g"),
+            Self::AviateX500Direct | Self::Kinematic => None,
+        }
+    }
+
     /// Cycles to the previous free-flight vehicle.
     #[must_use]
     pub const fn prev(self) -> Self {
         match self {
             Self::JsbsimC172 => Self::Kinematic,
-            Self::JsbsimP38g => Self::JsbsimC172,
+            Self::JsbsimC172p => Self::JsbsimC172,
+            Self::JsbsimP38g => Self::JsbsimC172p,
             Self::AviateX500Direct => Self::JsbsimP38g,
             Self::AviateFixedWingDirect => Self::AviateX500Direct,
             Self::C172Mission => Self::AviateFixedWingDirect,
@@ -43,7 +58,8 @@ impl FreeFlightVehicle {
     #[must_use]
     pub const fn next(self) -> Self {
         match self {
-            Self::JsbsimC172 => Self::JsbsimP38g,
+            Self::JsbsimC172 => Self::JsbsimC172p,
+            Self::JsbsimC172p => Self::JsbsimP38g,
             Self::JsbsimP38g => Self::AviateX500Direct,
             Self::AviateX500Direct => Self::AviateFixedWingDirect,
             Self::AviateFixedWingDirect => Self::C172Mission,
@@ -62,7 +78,8 @@ impl FreeFlightVehicle {
     #[must_use]
     pub const fn title(self) -> &'static str {
         match self {
-            Self::JsbsimC172 => "C172 Skyhawk (JSBSim)",
+            Self::JsbsimC172 => "C172S Skyhawk SP (JSBSim)",
+            Self::JsbsimC172p => "C172P Skyhawk II (JSBSim)",
             Self::JsbsimP38g => "Lockheed P-38G Lightning (JSBSim)",
             Self::AviateX500Direct => "X500 Quadrotor (Aviate Direct)",
             Self::AviateFixedWingDirect => "Fixed-Wing FBW (Aviate + JSBSim)",

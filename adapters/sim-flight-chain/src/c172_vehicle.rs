@@ -16,7 +16,7 @@ use sim_devices::{
 };
 use sim_geo::{Geodetic, UtcTime};
 
-use crate::{C172Airframe, C172Start, ChainError, HostedBoard, SharedAir};
+use crate::{C172Airframe, C172Start, C172Variant, ChainError, HostedBoard, SharedAir};
 
 /// Cycle rate of the C172's flight controller, hertz: the one rate Aviate's
 /// fixed-wing law has flown at.
@@ -113,9 +113,20 @@ pub fn c172_sensor_suite_with(
     }
 }
 
-/// The C172 of `setup` in `air` with the devices of `suite`, trimmed and
+/// The C172S of `setup` in `air` with the devices of `suite`, trimmed and
 /// flying, its flight controller booting.
 pub fn c172_board(
+    setup: &C172Setup,
+    suite: &SensorSuiteSpec,
+    air: SharedAir,
+) -> Result<C172Board, ChainError> {
+    c172_board_variant(C172Variant::C172s, setup, suite, air)
+}
+
+/// The selected C-172 `variant` of `setup` in `air` with the devices of
+/// `suite`, trimmed and flying, its flight controller booting.
+pub fn c172_board_variant(
+    variant: C172Variant,
     setup: &C172Setup,
     suite: &SensorSuiteSpec,
     air: SharedAir,
@@ -127,7 +138,7 @@ pub fn c172_board(
         period: TickSpan::from_ticks(TICKS_PER_SECOND / C172_RATE_HZ),
         utc: setup.utc,
     };
-    let airframe = C172Airframe::trimmed(&start, air)?;
+    let airframe = C172Airframe::trimmed_variant(variant, &start, air)?;
     let kernel = build_direct_fixed_wing_kernel(&c172_airframe()).ok_or(ChainError::KernelBuild)?;
     HostedBoard::new(airframe, suite, kernel, setup.origin, setup.decimal_year)
 }

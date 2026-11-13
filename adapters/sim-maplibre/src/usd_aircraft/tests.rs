@@ -4,6 +4,8 @@ use sim_geo::{BodyEllipsoid, Geodetic};
 
 use super::*;
 
+mod livery;
+
 #[test]
 fn embedded_c172_composes_articulation_and_usda_export_roundtrips() {
     let asset = UsdAircraftAsset::embedded_c172();
@@ -40,9 +42,14 @@ fn embedded_c172_composes_articulation_and_usda_export_roundtrips() {
     let hud_draws = asset.evaluate_draws(&art, SlotCameraRole::HudForward);
     let cockpit_draws = asset.evaluate_draws(&art, SlotCameraRole::CockpitInterior);
     let nadir_draws = asset.evaluate_draws(&art, SlotCameraRole::BellyNadir);
-    assert!(ext_draws.len() > cockpit_draws.len());
+    assert!(ext_draws.len() >= cockpit_draws.len());
     assert!(hud_draws.is_empty());
-    assert!(!cockpit_draws.is_empty());
+    let seen = |role: PartRole| {
+        cockpit_draws
+            .iter()
+            .any(|d| asset.parts()[d.part_index].role == role)
+    };
+    assert!(seen(PartRole::NoseCowling) && seen(PartRole::WingStructure));
     assert!(nadir_draws.is_empty());
 
     let usda = export_scene_usda(&kewr_scene(origin, state, art));
@@ -108,7 +115,6 @@ fn kewr_scene(
 fn exported_ownship_axes_point_right_forward_and_up_in_the_stage_frame() {
     let origin = Geodetic::from_degrees(40.69, -74.17, 10.0);
     let frame = sim_geo::LocalFrame::at(&origin);
-    // Level, heading east: forward is East, right is South, up is Up.
     let state = VehicleState::level_flight(&origin, std::f64::consts::FRAC_PI_2, 50.0);
     let q = export::aircraft_usd_to_enu_quat(&frame, state.attitude);
     let close = |a: DVec3, b: DVec3| (a - b).length() < 1e-6;
@@ -163,7 +169,6 @@ fn every_propeller_disc_spans_the_unit_disc_in_texture_coordinates() {
             let (least, most) = radii.iter().fold((f32::INFINITY, 0.0_f32), |(lo, hi), r| {
                 (lo.min(*r), hi.max(*r))
             });
-            // A disc may be an annulus that starts at its spinner.
             assert!(least < 0.2, "{name} {}: hub at {least}", disc.prim_path);
             assert!(
                 (0.95..=1.001).contains(&most),
@@ -203,4 +208,194 @@ fn a_shorter_shutter_smears_the_propeller_over_a_smaller_angle() {
     let default = asset.evaluate_draws(&art, SlotCameraRole::External);
     let disc = default.iter().find(|d| d.is_prop_disc).unwrap();
     assert_eq!(disc.shutter_blur_rad, eye);
+}
+
+#[test]
+fn an_override_layer_deactivates_parts_and_rebinds_materials() {
+    let layer = r#"#usda 1.0
+(
+    defaultPrim = "C172"
+    subLayers = [@c172.usdc@]
+)
+over "C172"
+{
+    over "Airframe"
+    {
+        over "BeaconLight" (active = false) {}
+        over "HighWingTrim"
+        {
+            rel material:binding = </C172/Materials/MatWhitePaint>
+        }
+    }
+}
+"#;
+    let base = UsdAircraftAsset::embedded_c172().unwrap();
+    let tail = UsdAircraftAsset::from_usd_layers(
+        "tail.usda",
+        [
+            ("c172.usdc", EMBEDDED_C172_USDC.into()),
+            ("tail.usda", layer.as_bytes().to_vec().into()),
+        ],
+    )
+    .unwrap();
+    assert_eq!(tail.parts().len() + 1, base.parts().len());
+    let wing = |a: &UsdAircraftAsset| {
+        a.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with("/HighWingTrim"))
+            .map(|p| p.material)
+    };
+    assert_ne!(wing(&tail), wing(&base));
+    assert_eq!(wing(&tail).map(|m| m.metallic), Some(0.08));
+}
+
+/// Lowest rest-pose point of the part at `suffix`, and its rest origin, in metres.
+pub(super) fn rest_extremes(asset: &UsdAircraftAsset, suffix: &str) -> (f64, DVec3) {
+    let part = asset.parts().iter().find(|p| p.prim_path.ends_with(suffix));
+    let part = part.unwrap_or_else(|| panic!("no part {suffix}"));
+    let lowest = part
+        .vertices
+        .iter()
+        .map(|v| {
+            part.rest_to_aircraft
+                .transform_point3(glam::Vec3::from(v.position).as_dvec3())
+                .z
+        })
+        .fold(f64::INFINITY, f64::min);
+    (lowest, part.rest_to_aircraft.transform_point3(DVec3::ZERO))
+}
+
+#[test]
+fn n642sp_flies_bare_gear_on_the_poh_wheel_base_without_moving_the_contact_plane() {
+    let base = UsdAircraftAsset::embedded_c172().unwrap();
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    assert!(
+        tail.parts()
+            .iter()
+            .all(|p| !p.prim_path.contains("Fairing"))
+    );
+    assert!(
+        base.parts()
+            .iter()
+            .any(|p| p.prim_path.ends_with("/WheelFairingLeft"))
+    );
+    for wheel in ["/NoseWheel/Tire", "/WheelLeft/Tire", "/WheelRight/Tire"] {
+        let (generic, _) = rest_extremes(&base, wheel);
+        let (n642sp, _) = rest_extremes(&tail, wheel);
+        assert!(
+            (generic - n642sp).abs() < 2e-3,
+            "{wheel}: {generic} vs {n642sp}"
+        );
+    }
+    let (_, nose) = rest_extremes(&tail, "/NoseWheel/Tire");
+    let (main_bottom, main) = rest_extremes(&tail, "/WheelLeft/Tire");
+    let wheel_base_in = (nose.y - main.y) / 0.0254;
+    assert!(
+        (wheel_base_in - 65.0).abs() < 0.1,
+        "wheel base {wheel_base_in} in"
+    );
+    let main_radius_in = (main.z - main_bottom) / 0.0254;
+    assert!(
+        (main_radius_in - 8.75).abs() < 0.2,
+        "main tyre radius {main_radius_in} in"
+    );
+    assert!(
+        tail.parts()
+            .iter()
+            .any(|p| p.prim_path.ends_with("/WheelLeft/BrakeDisc"))
+    );
+}
+
+#[test]
+fn n642sp_carries_its_antennas_lights_and_flight_control_details() {
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    let role_of = |suffix: &str| {
+        tail.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with(suffix))
+            .map(|p| p.role)
+    };
+    for antenna in [
+        "/Com1Whip",
+        "/Com2Whip",
+        "/GpsAntenna",
+        "/VorElementLeft",
+        "/VorElementRight",
+        "/EltAntennaBlade",
+        "/TransponderAntenna",
+        "/AdfAntenna",
+        "/MarkerBeaconAntenna",
+        "/AdsbAntenna",
+        "/PitotTube",
+        "/StallWarningInlet",
+    ] {
+        assert_eq!(role_of(antenna), Some(PartRole::CabinExterior), "{antenna}");
+    }
+    assert_eq!(role_of("/RoofAntennaLeft"), None);
+    assert_eq!(role_of("/LandingLight"), Some(PartRole::LandingLight));
+    assert_eq!(role_of("/StrobeLeft"), Some(PartRole::BeaconLight));
+    assert_eq!(role_of("/Rudder/TailLight"), Some(PartRole::Rudder));
+    assert_eq!(role_of("/Elevator/TrimTab"), Some(PartRole::Elevator));
+    assert_eq!(
+        role_of("/AileronLeft/StaticWickOuter"),
+        Some(PartRole::AileronLeft)
+    );
+    let red = tail
+        .parts()
+        .iter()
+        .find(|p| p.prim_path.ends_with("/NavLightLeft"))
+        .map(|p| p.material.emissive_rgb);
+    assert_eq!(red, Some([1.0, 0.06, 0.04]));
+}
+
+#[test]
+fn n642sp_wears_its_swoosh_and_12_inch_registration_on_both_sides() {
+    let tail = UsdAircraftAsset::embedded_n642sp().unwrap();
+    let part = |suffix: &str| {
+        tail.parts()
+            .iter()
+            .find(|p| p.prim_path.ends_with(suffix))
+            .unwrap_or_else(|| panic!("no part {suffix}"))
+    };
+    for (suffix, side) in [
+        ("/LiveryRegistrationPort", -1.0_f32),
+        ("/LiveryRegistrationStarboard", 1.0),
+    ] {
+        let reg = part(suffix);
+        assert!(
+            reg.vertices
+                .iter()
+                .all(|v| (0.04..0.6).contains(&(v.position[0] * side)))
+        );
+        let (lo, hi) = reg
+            .vertices
+            .iter()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v.position[2]), hi.max(v.position[2]))
+            });
+        assert!(((hi - lo) - 0.3048).abs() < 0.01, "{suffix}: {}", hi - lo);
+        assert_eq!(reg.material, part("/LiveryRegistrationPort").material);
+    }
+    for stripe in ["/LiverySwooshRedPort", "/LiverySwooshNavyStarboard"] {
+        assert!(part(stripe).indices.len() >= 3 * 50, "{stripe}");
+    }
+    let white = part("/CabinWhite").material;
+    assert_eq!(part("/CabinStripe").material, white);
+    assert_eq!(part("/NoseCowlingStripe").material, white);
+}
+
+#[test]
+fn the_c172_lift_struts_stay_in_the_cabin_window_view() {
+    let asset = UsdAircraftAsset::embedded_c172().unwrap();
+    let art = AirframeArticulation::default();
+    let window = asset.evaluate_draws(&art, SlotCameraRole::LeftCabinWindow);
+    for side in ["/LiftStrutLeft", "/LiftStrutRight"] {
+        let index = asset
+            .parts()
+            .iter()
+            .position(|p| p.prim_path.ends_with(side))
+            .unwrap_or_else(|| panic!("no {side}"));
+        assert_eq!(asset.parts()[index].role, PartRole::WingStrut);
+        assert!(window.iter().any(|d| d.part_index == index), "{side}");
+    }
 }

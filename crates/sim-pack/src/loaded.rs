@@ -6,9 +6,9 @@ use syspack::{InstrumentPackDocument, MountedDeviceSpec, PackageSource, Verified
 use crate::instruments::{pitot_static_device, resolve_pinned_pack};
 use crate::{
     AIRSPEED_ENVELOPE_ASSET, AirspeedEnvelope, CALIBRATION_SUITE_ASSET, CAMERA_VIEWS_ASSET,
-    CalibrationSuite, CameraViewSet, LIVERY_CATALOG_ASSET, LiveryCatalog,
+    CalibrationSuite, CameraViewSet, ExternalLiveryBundle, LIVERY_CATALOG_ASSET, LiveryCatalog,
     PITOT_STATIC_CALIBRATION_ASSET, PackError, PitotStaticCalibration, ResolvedAirspeedEnvelope,
-    STRUCTURAL_LANDMARKS_ASSET, StructuralLandmarks, jsbsim_wingspan_m,
+    STRUCTURAL_LANDMARKS_ASSET, StructuralLandmarks, VehicleLivery, jsbsim_wingspan_m,
 };
 
 mod devices;
@@ -109,10 +109,30 @@ impl LoadedSyspack {
     }
 
     /// Multi-livery and FlightGear `<PropertyList>` catalog when this package declares
-    /// [`LIVERY_CATALOG_ASSET`].
+    /// [`LIVERY_CATALOG_ASSET`] or has had external liveries registered at runtime.
     #[must_use]
     pub const fn livery_catalog(&self) -> Option<&LiveryCatalog> {
         self.livery_catalog.as_ref()
+    }
+
+    /// Validates aircraft/family compatibility and registers `bundle` into this package's
+    /// live [`LiveryCatalog`], synthesizing a catalog if the package did not ship one.
+    pub fn register_external_livery(
+        &mut self,
+        bundle: &ExternalLiveryBundle,
+    ) -> Result<VehicleLivery, PackError> {
+        let id = self.manifest().id.clone();
+        let catalog = self.livery_catalog.get_or_insert_with(|| LiveryCatalog {
+            schema_version: 1,
+            aircraft_id: id.clone(),
+            family: None,
+            family_name: None,
+            flightgear_set_file: format!("{id}-set.xml"),
+            default_livery: bundle.id.clone(),
+            dlc_mount_point: "Liveries/DLC".to_owned(),
+            liveries: Vec::new(),
+        });
+        catalog.register_external(bundle)
     }
 
     /// Sourced structural landmarks when this package declares

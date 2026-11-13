@@ -88,6 +88,14 @@ fn vehicle_and_datum_are_words_of_the_format() {
         decode_fragment(&with("veh", "x500")).unwrap().vehicle,
         Vehicle::X500
     );
+    assert_eq!(
+        decode_fragment(&with("veh", "c172s")).unwrap().vehicle,
+        Vehicle::C172s
+    );
+    assert_eq!(
+        decode_fragment(&with("veh", "c172p")).unwrap().vehicle,
+        Vehicle::C172p
+    );
     assert_refusals(
         "veh",
         Parameter::Veh,

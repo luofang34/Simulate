@@ -4,8 +4,8 @@
 
 use navigate_data::{MemoryStore, Sha256Digest};
 use sim_chain_trial::{
-    CalibrationName, ChainTrialSpec, DeviceOutage, FrameRequest, GnssSpoofSpec, HoldSpec, HoldTurn,
-    Outputs, SpoofSpan, StartSpec, Steering,
+    CalibrationName, ChainC172Variant, ChainTrialSpec, DeviceOutage, FrameRequest, GnssSpoofSpec,
+    HoldSpec, HoldTurn, Outputs, SpoofSpan, StartSpec, Steering,
 };
 use sim_geo::SensorIntrinsics;
 use sim_link::{Sensor, SimulationLink, TurnDirection, Vehicle};
@@ -83,7 +83,7 @@ pub fn chain_spec(
     hosted: &HostedRequest,
     package: Option<Sha256Digest>,
 ) -> Result<ChainTrialSpec, HostError> {
-    flies_on_the_c172(hosted)?;
+    let variant = flies_on_the_c172(hosted)?;
     let mut request = hosted.trial.clone();
     request.availability.clear();
     for set in &mut request.sensor_sets {
@@ -147,6 +147,7 @@ pub fn chain_spec(
         })
         .collect();
     Ok(ChainTrialSpec {
+        variant,
         request,
         start,
         steering: Steering::Set(hosted.steering_set.clone()),
@@ -173,21 +174,25 @@ fn spoof_spec(spoof: &sim_link::Spoof) -> GnssSpoofSpec {
     }
 }
 
-/// Refuses a vehicle other than the C172, and a cruise speed it does not
-/// fly.
-fn flies_on_the_c172(hosted: &HostedRequest) -> Result<(), HostError> {
-    if hosted.vehicle != Vehicle::C172 {
-        return Err(HostError::ChainVehicle {
-            detail: format!("the link asks for the {}", hosted.vehicle.key()),
-        });
-    }
+/// Refuses a vehicle outside the Cessna 172 family (`c172`, `c172s`, `c172p`),
+/// and a cruise speed it does not fly.
+fn flies_on_the_c172(hosted: &HostedRequest) -> Result<ChainC172Variant, HostError> {
+    let variant = match hosted.vehicle {
+        Vehicle::C172 | Vehicle::C172s => ChainC172Variant::C172s,
+        Vehicle::C172p => ChainC172Variant::C172p,
+        Vehicle::X500 => {
+            return Err(HostError::ChainVehicle {
+                detail: format!("the link asks for the {}", hosted.vehicle.key()),
+            });
+        }
+    };
     let cruise_m_s = hosted.trial.vehicle.cruise_speed_m_s;
     if !C172_CRUISE_M_S.contains(&cruise_m_s) {
         return Err(HostError::ChainVehicle {
             detail: format!("a cruise speed of {cruise_m_s} m/s; the C172 flies 30 to 120 m/s"),
         });
     }
-    Ok(())
+    Ok(variant)
 }
 
 /// The chain trial's hold of the link's hold at the last fix.

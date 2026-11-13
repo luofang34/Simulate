@@ -106,7 +106,8 @@ impl From<Camera> for CameraGeometry {
 /// The cruise speed a vehicle flies when the link gives none, m/s.
 pub const fn own_cruise_speed_m_s(vehicle: Vehicle) -> f64 {
     match vehicle {
-        Vehicle::C172 => 55.0,
+        Vehicle::C172 | Vehicle::C172s => 55.0,
+        Vehicle::C172p => 52.0,
         Vehicle::X500 => 10.0,
     }
 }

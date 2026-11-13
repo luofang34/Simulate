@@ -3,8 +3,8 @@ use sim_geo::{LocalFrame, ecef_to_geodetic};
 
 use super::*;
 
-const C172_XML: &str = include_str!("../../../../../vehicles/c172/fdm/c172_class_reference.xml");
-const C172_MODEL: &str = "c172_class_reference";
+const C172_XML: &str = include_str!("../../../../../vehicles/c172s/fdm/c172s.xml");
+const C172_MODEL: &str = "c172s";
 
 /// Newark's runway on the WGS84 ellipsoid, where the geoid is about 33 m
 /// below it.
@@ -16,10 +16,7 @@ const PARKED_CG_AGL_M: f64 = 1.324;
 
 fn c172_resolver() -> MemoryResolver {
     let mut files = MemoryResolver::new();
-    files.insert(
-        "aircraft/c172_class_reference/c172_class_reference.xml",
-        C172_XML,
-    );
+    files.insert("aircraft/c172s/c172s.xml", C172_XML);
     files
 }
 

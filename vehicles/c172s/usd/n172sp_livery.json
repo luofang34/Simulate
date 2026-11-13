@@ -1,0 +1,80 @@
+{
+  "tail": "N172SP",
+  "materials": {
+    "MatLiverySapphire": { "diffuse": [0.045, 0.145, 0.42], "metallic": 0.12, "roughness": 0.28 },
+    "MatLiverySilver": { "diffuse": [0.56, 0.58, 0.61], "metallic": 0.65, "roughness": 0.30 },
+    "MatLiveryRuby": { "diffuse": [0.48, 0.05, 0.09], "metallic": 0.05, "roughness": 0.28 }
+  },
+  "stripes": [
+    {
+      "name": "SwooshSapphire",
+      "what": "Cessna 172S Skyhawk SP factory sapphire swoosh from nose cowl arching aft to tailcone",
+      "material": "MatLiverySapphire",
+      "upper_yz": [
+        [1.72, 0.03], [1.20, -0.09], [0.60, -0.17], [0.00, -0.14],
+        [-0.70, -0.07], [-1.45, -0.04], [-2.35, -0.09]
+      ],
+      "lower_yz": [
+        [1.72, 0.03], [1.20, -0.16], [0.60, -0.26], [0.00, -0.23],
+        [-0.70, -0.15], [-1.45, -0.11], [-2.35, -0.14]
+      ]
+    },
+    {
+      "name": "SwooshSilver",
+      "what": "Metallic pewter-silver accent wave beneath the primary sapphire swoosh",
+      "material": "MatLiverySilver",
+      "upper_yz": [
+        [1.50, -0.15], [0.95, -0.25], [0.30, -0.30], [-0.45, -0.25],
+        [-1.30, -0.20], [-2.35, -0.22]
+      ],
+      "lower_yz": [
+        [1.50, -0.15], [0.95, -0.32], [0.30, -0.38], [-0.45, -0.32],
+        [-1.30, -0.26], [-2.35, -0.27]
+      ]
+    },
+    {
+      "name": "AccentRuby",
+      "what": "Thin ruby-crimson pinstripe trailing aft below the cabin windows",
+      "material": "MatLiveryRuby",
+      "upper_yz": [
+        [0.40, -0.06], [-0.40, -0.01], [-1.30, 0.01], [-2.32, -0.03]
+      ],
+      "lower_yz": [
+        [0.40, -0.085], [-0.40, -0.035], [-1.30, -0.015], [-2.32, -0.055]
+      ]
+    },
+    {
+      "name": "FinSwooshSapphire",
+      "what": "Sapphire crescent swoosh across the vertical stabilizer",
+      "material": "MatLiverySapphire",
+      "upper_yz": [
+        [-4.68, 0.46], [-4.95, 0.54], [-5.22, 0.62], [-5.44, 0.70]
+      ],
+      "lower_yz": [
+        [-4.68, 0.42], [-4.95, 0.47], [-5.22, 0.54], [-5.44, 0.65]
+      ]
+    },
+    {
+      "name": "FinSwooshSilver",
+      "what": "Metallic silver accent arc under the vertical stabilizer sapphire swoosh",
+      "material": "MatLiverySilver",
+      "upper_yz": [
+        [-4.72, 0.39], [-5.00, 0.44], [-5.28, 0.51]
+      ],
+      "lower_yz": [
+        [-4.72, 0.36], [-5.00, 0.39], [-5.28, 0.47]
+      ]
+    }
+  ],
+  "registration": {
+    "text": "N172SP",
+    "material": "MatLiverySapphire",
+    "center_yz": [-3.20, -0.17],
+    "regulation": "14 CFR 45.29: fixed-wing marks 12 in (0.3048 m) high; width 2/3 of height; stroke 1/6 of height; spacing >= 1/4 of character width",
+    "cap_height_m": 0.3048,
+    "glyph_width_h": 0.6667,
+    "stroke_h": 0.1667,
+    "gap_h": 0.19,
+    "slant": 0.57
+  }
+}

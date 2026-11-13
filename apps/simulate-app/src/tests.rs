@@ -21,6 +21,7 @@ use crate::supervisor_rig::SupervisorRig;
 use crate::telemetry;
 use crate::vehicles::FreeFlightVehicle;
 
+mod liveries;
 mod polar_nzsp;
 mod sensor_aperture;
 
@@ -42,7 +43,7 @@ fn free_flight_vehicles_cycle_step_and_accept_system_controls() -> Result<(), Ap
         throttle: 0.72,
         ..ControlInputs::default()
     };
-    for _ in 0..6 {
+    for _ in 0..7 {
         flight.advance_by(0.05, cruise, SimTimeScale::RealTime)?;
         let next = flight.cycle_vehicle()?;
         if next == FreeFlightVehicle::AviateX500Direct

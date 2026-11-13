@@ -54,7 +54,7 @@ cargo run --release -p ironbird -- \
 
 ## Stage 2: Promoting a Package to a Built-In Vehicle
 
-When a vehicle package is ready to ship inside the native and `wasm32` binaries (like `vehicles/c172` and `vehicles/p38g`):
+When a vehicle package is ready to ship inside the native and `wasm32` binaries (like `vehicles/c172s`, `vehicles/c172p`, and `vehicles/p38g`):
 
 ### 1. Embed the Package in `crates/sim-pack/src/builtin.rs`
 

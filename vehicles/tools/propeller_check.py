@@ -128,19 +128,23 @@ def check_tr684_compressibility(bem):
 
 def check_regeneration():
     failures = []
-    steps = []
-    c172 = os.path.join(ROOT, "vehicles", "c172")
-    xml = open(os.path.join(c172, "fdm", "c172_class_reference.xml")).read()
-    spec = os.path.join(c172, "design", "mccauley_1a170e_jha7660.json")
-    for what, name in (("ct1", "C_THRUST"), ("cp1", "C_POWER")):
-        table = normalised(tool_output("propeller_measured.py", spec, what))
-        if table != normalised(table_body(xml, name, 0)):
-            failures.append(f"c172 {name} does not regenerate from {spec}")
-        steps += [f"c172 {name} {step}" for step in check_monotone(table)]
-    record = json.load(open(os.path.join(c172, "performance", "validation.json")))
-    known = sorted(record.get("known_table_steps", []))
-    if sorted(steps) != known:
-        failures.append(f"c172 table steps {sorted(steps)} differ from the recorded {known}")
+    for pkg, xml_rel, spec_rel in (
+        ("c172s", os.path.join("fdm", "c172s.xml"), os.path.join("design", "mccauley_1a170e_jha7660.json")),
+        ("c172p", os.path.join("fdm", "c172p.xml"), os.path.join("design", "mccauley_1c160_dtm7557.json")),
+    ):
+        steps = []
+        vdir = os.path.join(ROOT, "vehicles", pkg)
+        xml = open(os.path.join(vdir, xml_rel)).read()
+        spec = os.path.join(vdir, spec_rel)
+        for what, name in (("ct1", "C_THRUST"), ("cp1", "C_POWER")):
+            table = normalised(tool_output("propeller_measured.py", spec, what))
+            if table != normalised(table_body(xml, name, 0)):
+                failures.append(f"{pkg} {name} does not regenerate from {spec}")
+            steps += [f"{pkg} {name} {step}" for step in check_monotone(table)]
+        record = json.load(open(os.path.join(vdir, "performance", "validation.json")))
+        known = sorted(record.get("known_table_steps", []))
+        if sorted(steps) != known:
+            failures.append(f"{pkg} table steps {sorted(steps)} differ from the recorded {known}")
     p38g = os.path.join(ROOT, "vehicles", "p38g")
     xml = open(os.path.join(p38g, "fdm", "p38g.xml")).read()
     spec = os.path.join(p38g, "design", "curtiss_electric_3b.json")

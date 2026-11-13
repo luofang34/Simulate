@@ -150,15 +150,18 @@ pub fn apply_design_trade(
     trade: &DesignTradeSpec,
 ) -> Result<LoadedSyspack, PackError> {
     let mut manifest = package.manifest().clone();
-    let fdm_asset = manifest
-        .assets
-        .keys()
-        .find(|k| k.ends_with(".xml"))
-        .cloned()
-        .ok_or_else(|| PackError::InvalidCalibration {
-            path: manifest.id.clone(),
-            detail: "package has no JSBSim XML asset".to_owned(),
-        })?;
+    let fdm_asset = match &manifest.dynamics {
+        syspack::DynamicsSpec::JsbsimXml { entry_asset, .. } => Some(entry_asset.clone()),
+        _ => manifest
+            .assets
+            .keys()
+            .find(|k| k.ends_with(".xml"))
+            .cloned(),
+    }
+    .ok_or_else(|| PackError::InvalidCalibration {
+        path: manifest.id.clone(),
+        detail: "package has no JSBSim XML asset".to_owned(),
+    })?;
     let raw_bytes = package
         .asset(&fdm_asset)
         .ok_or_else(|| PackError::InvalidCalibration {

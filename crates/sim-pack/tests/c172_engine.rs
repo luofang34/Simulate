@@ -233,8 +233,8 @@ fn a_snapshot_taken_mid_start_replays_every_bit_with_its_switches() {
 /// balances it.
 #[cfg(test)]
 fn fdm_loaded_by_flat_cp(cp: f64) -> jsbsim::Fdm {
-    const FDM_XML: &str = include_str!("../../../vehicles/c172/fdm/c172_class_reference.xml");
-    const VIRTUAL_PATH: &str = "aircraft/c172_class_reference/c172_class_reference.xml";
+    const FDM_XML: &str = include_str!("../../../vehicles/c172s/fdm/c172s.xml");
+    const VIRTUAL_PATH: &str = "aircraft/c172s/c172s.xml";
     let table = FDM_XML.find(r#"<table name="C_POWER""#).unwrap();
     let open = table + FDM_XML[table..].find("<tableData>").unwrap() + "<tableData>".len();
     let close = open + FDM_XML[open..].find("</tableData>").unwrap();

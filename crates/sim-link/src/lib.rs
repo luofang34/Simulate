@@ -17,7 +17,7 @@
 //! | `hd` | height datum of every height in metres or feet: `msl` or `hae` |
 //! | `start` | `lat,lon[,height[,heading_deg]]`; without it the flight begins over the first fix heading for the second |
 //! | `t` | start time, UTC, `YYYYMMDDTHHMMSSZ` |
-//! | `veh` | `c172` or `x500` |
+//! | `veh` | `c172`, `c172s`, `c172p`, or `x500` |
 //! | `spd` | cruise speed, m/s; absent for the vehicle's own |
 //! | `seed` | master seed of every simulated sensor, 0 to 2^64-1 |
 //! | `nav` | navigation sets joined by `;`, each a `.`-joined list of `ins`, `baro`, `gnss`, `stars`, `visual`; `ins` in every set, no means twice in a set, no two sets with the same means |

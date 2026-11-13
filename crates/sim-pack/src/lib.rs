@@ -16,10 +16,12 @@ mod livery;
 mod loaded;
 mod pec;
 mod typefaces;
+mod variants;
 mod views;
 
 pub use builtin::{
-    builtin_c172_package, builtin_c172_source, builtin_p38g_package, builtin_p38g_source,
+    builtin_c172_package, builtin_c172_source, builtin_c172p_package, builtin_c172p_source,
+    builtin_c172s_package, builtin_c172s_source, builtin_p38g_package, builtin_p38g_source,
 };
 pub use calibration::{
     AceBridgeError, AceFeedbackReport, AceFeedbackRow, AceVehicleInputs, CALIBRATION_SUITE_ASSET,
@@ -41,7 +43,11 @@ pub use landmarks::{
     HeightReference, MeshFeature, STRUCTURAL_LANDMARKS_ASSET, StructuralLandmark,
     StructuralLandmarks,
 };
-pub use livery::{LIVERY_CATALOG_ASSET, LiveryCatalog, VehicleLivery};
+pub use livery::{
+    ExternalLiveryBundle, LIVERY_CATALOG_ASSET, LiveryCatalog, LiveryGlyphSpec, LiveryMaterialSpec,
+    LiveryPhotoAnchor, LiveryPhotoSpec, LiveryRegistrationSpec, LiverySpec, LiveryStripeSpec,
+    VehicleLivery,
+};
 pub use loaded::{CotsDevice, LoadedSyspack, MountedCotsDevice, PackageCamera};
 pub use pec::{
     AirspeedCalibrationPoint, PITOT_STATIC_CALIBRATION_ASSET, PitotStaticCalibration,
@@ -55,6 +61,9 @@ pub use syspack::{
     PackageSource, SCHEMA_VERSION, SyspackError, SyspackManifest, SystemKind, VerifiedSyspack,
 };
 pub use typefaces::{BUILTIN_TYPEFACES, builtin_typeface_source, resolve_typefaces};
+pub use variants::{
+    VariantDescriptor, VariantFamilySummary, VariantRegistry, resolve_variant_alias,
+};
 pub use views::{
     CAMERA_VIEWS_ASSET, CameraView, CameraViewSet, ViewAirframe, ViewPlacement, jsbsim_wingspan_m,
 };

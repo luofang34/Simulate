@@ -9,7 +9,7 @@ use sim_core::VehicleState;
 use sim_devices::SensorSuite;
 use sim_flight_chain::{
     C172Setup, ChainRoute, HoldingTurn, OwnshipFeed, RouteFix, SharedAir, TerminalHoldingPattern,
-    VehicleClass, VehicleId, c172_board, c172_pilotage_airframe, c172_sensor_suite_with,
+    VehicleClass, VehicleId, c172_board_variant, c172_pilotage_airframe, c172_sensor_suite_with,
 };
 use sim_geo::{Geodetic, UtcTime};
 use sim_navigate::trial::{TrialRequest, parse_utc};
@@ -85,7 +85,7 @@ pub(super) fn chain(
     // the air the navigation trial's devices sense and its navigators read
     // their altimeters in.
     let air = SharedAir::new(GeoidStandardAtmosphere::new());
-    let board = c172_board(&setup, &suite, air)?;
+    let board = c172_board_variant(spec.variant.flight_variant(), &setup, &suite, air)?;
     let route = ChainRoute {
         fixes: resolved
             .request

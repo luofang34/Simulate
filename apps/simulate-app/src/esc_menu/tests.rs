@@ -271,7 +271,8 @@ fn hangar_selects_previews_and_flies_registry_vehicles() {
 fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
     let catalog = catalog();
     let models: Vec<HangarModel> = catalog.vehicles.iter().map(|v| v.model).collect();
-    assert_eq!(catalog.vehicles.len(), 6);
+    assert_eq!(catalog.vehicles.len(), 7);
+    assert!(models.contains(&HangarModel::C172p));
     assert!(models.contains(&HangarModel::P38g));
     assert!(models.contains(&HangarModel::Raketa));
     for (i, model) in models.iter().enumerate() {
@@ -279,6 +280,7 @@ fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
     }
     for plant in [
         FreeFlightVehicle::JsbsimC172,
+        FreeFlightVehicle::JsbsimC172p,
         FreeFlightVehicle::JsbsimP38g,
         FreeFlightVehicle::AviateFixedWingDirect,
         FreeFlightVehicle::Kinematic,
@@ -341,6 +343,21 @@ fn hangar_lists_distinct_airframes_and_keeps_every_plant_reachable() {
             mode: Some(FreeFlightVehicle::JsbsimC172),
         })
     );
+}
+
+#[test]
+fn hangar_livery_chips_select_tail_and_trigger_external_import() {
+    let mut hub = Hub::opened();
+    hub.input(MenuInput::Tab(HubTab::Hangar));
+    hub.status.hangar_liveries = [("N642SP", "SP"), ("N172SP", "Gold")]
+        .into_iter()
+        .map(|(t, n)| (t.to_owned(), n.to_owned()))
+        .collect();
+    hub.status.active_livery_index = Some(0);
+    let sel = MenuOutcome::Command(MenuCommand::SelectLivery(1));
+    assert_eq!(hub.click(WidgetId::LiveryChoice(1)), sel);
+    let imp = MenuOutcome::Command(MenuCommand::ImportExternalLivery);
+    assert_eq!(hub.click(WidgetId::ImportLivery), imp);
 }
 
 #[test]

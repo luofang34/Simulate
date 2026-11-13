@@ -6,7 +6,8 @@ use std::sync::OnceLock;
 
 use sim_core::VirtualCameraSpec;
 use sim_pack::{
-    CameraViewSet, LoadedSyspack, PackError, builtin_c172_package, builtin_p38g_package,
+    CameraViewSet, LoadedSyspack, PackError, builtin_c172p_package, builtin_c172s_package,
+    builtin_p38g_package,
 };
 use tracing::warn;
 
@@ -29,6 +30,7 @@ pub struct VehicleCameraSuite {
 }
 
 static C172_SUITE: OnceLock<VehicleCameraSuite> = OnceLock::new();
+static C172P_SUITE: OnceLock<VehicleCameraSuite> = OnceLock::new();
 static P38_SUITE: OnceLock<VehicleCameraSuite> = OnceLock::new();
 static X500_SUITE: OnceLock<VehicleCameraSuite> = OnceLock::new();
 
@@ -38,9 +40,10 @@ pub fn vehicle_camera_suite(vehicle: FreeFlightVehicle) -> &'static VehicleCamer
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::C172Mission
-        | FreeFlightVehicle::Kinematic => {
-            C172_SUITE.get_or_init(|| suite(vehicle, package_views("c172", builtin_c172_package())))
-        }
+        | FreeFlightVehicle::Kinematic => C172_SUITE
+            .get_or_init(|| suite(vehicle, package_views("c172s", builtin_c172s_package()))),
+        FreeFlightVehicle::JsbsimC172p => C172P_SUITE
+            .get_or_init(|| suite(vehicle, package_views("c172p", builtin_c172p_package()))),
         FreeFlightVehicle::JsbsimP38g => {
             P38_SUITE.get_or_init(|| suite(vehicle, package_views("p38g", builtin_p38g_package())))
         }

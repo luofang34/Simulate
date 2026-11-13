@@ -4,13 +4,19 @@
 
 use std::io::Write as _;
 
-use sim_pack::{builtin_c172_package, builtin_p38g_package, evaluate_package};
+use sim_pack::{
+    builtin_c172p_package, builtin_c172s_package, builtin_p38g_package, evaluate_package,
+};
 
 #[test]
 #[ignore = "diagnostic probe, prints every test-card row"]
 fn print_card_reports() -> Result<(), Box<dyn std::error::Error>> {
     let mut out = std::io::stdout().lock();
-    for package in [builtin_c172_package()?, builtin_p38g_package()?] {
+    for package in [
+        builtin_c172s_package()?,
+        builtin_c172p_package()?,
+        builtin_p38g_package()?,
+    ] {
         let report = evaluate_package(&package)?;
         writeln!(out, "{}", report.to_markdown())?;
     }
