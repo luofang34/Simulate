@@ -17,6 +17,7 @@ use sim_navigate::trial::{
 use crate::{HostError, HostedHold, HostedRequest, MonitorFeed, SpoofRun};
 
 mod flight;
+mod legs;
 
 #[cfg(test)]
 mod tests;
@@ -89,27 +90,7 @@ pub fn chain_spec(
     for set in &mut request.sensor_sets {
         set.availability.clear();
     }
-    request.maps = match (hosted.camera, package) {
-        (None, _) => None,
-        (Some(_), Some(identity)) => Some(MapsSpec {
-            onboard: OnboardMapSpec {
-                store: PAGE_STORE.to_owned(),
-                package: identity.to_string(),
-                assumed_accuracy: Some(ASSUMED_ACCURACY),
-                max_match_pixels: None,
-            },
-            world: PackageRef {
-                store: PAGE_STORE.to_owned(),
-                package: identity.to_string(),
-            },
-            geoid: Some(GeoidChoice::World),
-        }),
-        (Some(_), None) => {
-            return Err(HostError::Render {
-                detail: "a visual set needs the sealed map package".to_owned(),
-            });
-        }
-    };
+    request.maps = maps_spec(hosted.camera, package)?;
     let waypoints = &request.waypoints;
     let (Some(first), Some(second)) = (waypoints.first(), waypoints.get(1)) else {
         return Err(HostError::Render {
@@ -146,6 +127,7 @@ pub fn chain_spec(
             })
         })
         .collect();
+    let planned_legs = legs::planned_legs(link, &hosted.route, &request.waypoints)?;
     Ok(ChainTrialSpec {
         variant,
         request,
@@ -156,10 +138,36 @@ pub fn chain_spec(
         hold: hosted.hold.map(hold_spec),
         gnss_spoof: link.spoof.as_ref().map(spoof_spec),
         spoof_windows: Vec::new(),
+        planned_legs,
     })
 }
 
 /// The chain trial's spoofer of the link's.
+fn maps_spec(
+    camera: Option<crate::CameraGeometry>,
+    package: Option<Sha256Digest>,
+) -> Result<Option<MapsSpec>, HostError> {
+    match (camera, package) {
+        (None, _) => Ok(None),
+        (Some(_), Some(identity)) => Ok(Some(MapsSpec {
+            onboard: OnboardMapSpec {
+                store: PAGE_STORE.to_owned(),
+                package: identity.to_string(),
+                assumed_accuracy: Some(ASSUMED_ACCURACY),
+                max_match_pixels: None,
+            },
+            world: PackageRef {
+                store: PAGE_STORE.to_owned(),
+                package: identity.to_string(),
+            },
+            geoid: Some(GeoidChoice::World),
+        })),
+        (Some(_), None) => Err(HostError::Render {
+            detail: "a visual set needs the sealed map package".to_owned(),
+        }),
+    }
+}
+
 fn spoof_spec(spoof: &sim_link::Spoof) -> GnssSpoofSpec {
     GnssSpoofSpec {
         rate_m_s: spoof.rate.as_f64(),

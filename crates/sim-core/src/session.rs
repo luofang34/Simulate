@@ -53,11 +53,12 @@ pub fn interpolate_vehicle_state(
     curr: &VehicleState,
     phase: f64,
 ) -> VehicleState {
-    let phase = if phase.is_finite() {
-        phase.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    if !phase.is_finite() || phase <= 0.0 {
+        return *prev;
+    }
+    if phase >= 1.0 {
+        return *curr;
+    }
     VehicleState {
         position_ecef: prev.position_ecef.lerp(curr.position_ecef, phase),
         velocity_ecef: prev.velocity_ecef.lerp(curr.velocity_ecef, phase),

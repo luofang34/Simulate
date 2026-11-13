@@ -17,8 +17,9 @@ use pilotage_adapter_aviate::{AviateAirframe, EmbeddedIncarnations};
 use pilotage_host_core::{HostCore, HostCoreConfig, HostEvent, HostStatus, MISSION_CLOCK};
 use pilotage_mavlink::link::LinkConfig;
 use pilotage_mission::{
-    MissionConfig, MissionLimits, OnboardSolution, OwnshipSource, PlannedWaypoint,
-    TerminalHoldingPattern, WaypointPlan, WaypointPlanRecord,
+    LegRole, MissionConfig, MissionLimits, OnboardSolution, OwnshipSource, PlannedAltitude,
+    PlannedPath, PlannedWaypoint, TerminalHoldingPattern, WaypointPlan, WaypointPlanRecord,
+    WaypointTurn, WaypointTurnDirection,
 };
 use pilotage_protocol::VehicleClass;
 use sim_core::{SimInstant, VehicleState};
@@ -53,8 +54,41 @@ pub struct RouteFix {
     pub lat_deg: f64,
     /// Longitude, degrees east.
     pub lon_deg: f64,
-    /// Height above the WGS84 ellipsoid the vehicle holds at the fix, metres.
+    /// Height above the WGS84 ellipsoid the vehicle holds at the fix when
+    /// `altitude` is absent, metres.
     pub altitude_m: f64,
+    /// Optional explicit altitude constraint (`At`, `AtOrAbove`, `AtOrBelow`,
+    /// `Window`, or `Unconstrained`) above the WGS84 ellipsoid.
+    pub altitude: Option<PlannedAltitude>,
+    /// Cross the fix before turning (`true`) rather than anticipating (`false`).
+    pub fly_over: bool,
+    /// Optional mandatory turn direction (`Left` or `Right`) onto this leg.
+    pub turn_direction: Option<WaypointTurnDirection>,
+    /// Optional ARINC 424 path terminator of the leg ending here.
+    pub path: Option<PlannedPath>,
+    /// Optional operational flight-phase role of this leg.
+    pub role: Option<LegRole>,
+    /// Optional procedure-published RNP on this leg, nautical miles (`> 0`).
+    pub rnp_nm: Option<f64>,
+}
+
+impl RouteFix {
+    /// A fly-by fix crossed at `altitude_m` on a default track leg.
+    #[must_use]
+    pub const fn new(ident: Option<String>, lat_deg: f64, lon_deg: f64, altitude_m: f64) -> Self {
+        Self {
+            ident,
+            lat_deg,
+            lon_deg,
+            altitude_m,
+            altitude: None,
+            fly_over: false,
+            turn_direction: None,
+            path: None,
+            role: None,
+            rnp_nm: None,
+        }
+    }
 }
 
 /// A route and how the host's mission flies it.
@@ -299,10 +333,12 @@ where
     let anchor = GeodeticPosition::new(origin.lat_rad, origin.lon_rad, origin.height_m);
     let mut mission = MissionConfig::new(String::new(), anchor, MISSION_CLOCK);
     // A vehicle that starts at the first fix's height climbs nowhere.
-    mission.cruise_height_m = route
-        .fixes
-        .first()
-        .map_or(0.0, |fix| (fix.altitude_m - origin.height_m).max(0.0));
+    mission.cruise_height_m = route.fixes.first().map_or(0.0, |fix| {
+        let target_m = fix
+            .altitude
+            .map_or(fix.altitude_m, |altitude| altitude.reference_m());
+        (target_m - origin.height_m).max(0.0)
+    });
     mission.cruise_mps = route.cruise_mps;
     mission.climb_rate_mps = route.climb_rate_mps;
     mission.route_bank_deg = route.route_bank_deg;
@@ -343,8 +379,21 @@ fn waypoint_plan(route: &ChainRoute) -> WaypointPlan {
             .fixes
             .iter()
             .map(|fix| PlannedWaypoint {
+                latitude_deg: fix.lat_deg,
+                longitude_deg: fix.lon_deg,
+                altitude: fix.altitude.unwrap_or(PlannedAltitude::At(fix.altitude_m)),
+                turn: if fix.fly_over {
+                    WaypointTurn::FlyOver
+                } else {
+                    WaypointTurn::FlyBy
+                },
+                turn_direction: fix.turn_direction,
                 name: fix.ident.clone(),
-                ..PlannedWaypoint::new(fix.lat_deg, fix.lon_deg, fix.altitude_m)
+                path: fix.path,
+                max_speed_mps: None,
+                gradient: None,
+                role: fix.role,
+                rnp_nm: fix.rnp_nm,
             })
             .collect(),
     )

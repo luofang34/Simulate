@@ -200,3 +200,22 @@ fn the_hsi_lane_is_pilotages_leg() {
     idle.leg = None;
     assert_eq!(navigation_lane(&idle, at, 3), HostNavGuidance::None);
 }
+
+#[test]
+fn terminal_approach_and_missed_phases_switch_hsi_scale() {
+    let at = SimInstant::from_ticks_u128(46_080_000_000 * 90);
+    let base = display(&flown(), false);
+    for (phase, expected) in [
+        (sim_flight_chain::FlightPhase::Enroute, NavScale::Enroute),
+        (sim_flight_chain::FlightPhase::Terminal, NavScale::Terminal),
+        (sim_flight_chain::FlightPhase::Approach, NavScale::Approach),
+        (sim_flight_chain::FlightPhase::Missed, NavScale::Terminal),
+    ] {
+        let mut sample = base.clone();
+        sample.phase = phase;
+        let HostNavGuidance::PilotageLane { guidance, .. } = navigation_lane(&sample, at, 5) else {
+            panic!("expected lane for {phase:?}");
+        };
+        assert_eq!(guidance.scale, expected, "{phase:?}");
+    }
+}

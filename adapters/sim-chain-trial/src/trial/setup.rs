@@ -86,18 +86,24 @@ pub(super) fn chain(
     // their altimeters in.
     let air = SharedAir::new(GeoidStandardAtmosphere::new());
     let board = c172_board_variant(spec.variant.flight_variant(), &setup, &suite, air)?;
-    let route = ChainRoute {
-        fixes: resolved
+    let fixes = if spec.planned_legs.is_empty() {
+        resolved
             .request
             .waypoints
             .iter()
             .map(|w| RouteFix {
-                ident: Some(w.ident.clone()),
-                lat_deg: w.lat_deg,
-                lon_deg: w.lon_deg,
-                altitude_m: w.altitude_m,
+                fly_over: w.fly_over,
+                ..RouteFix::new(Some(w.ident.clone()), w.lat_deg, w.lon_deg, w.altitude_m)
             })
-            .collect(),
+            .collect()
+    } else {
+        spec.planned_legs
+            .iter()
+            .map(crate::ChainLegSpec::to_route_fix)
+            .collect()
+    };
+    let route = ChainRoute {
+        fixes,
         cruise_mps: spec.start.indicated_m_s,
         route_bank_deg: sim_flight_chain::C172_PLANNING_BANK_DEG,
         climb_rate_mps: CLIMB_RATE_M_S,

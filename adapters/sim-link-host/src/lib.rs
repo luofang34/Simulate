@@ -46,8 +46,9 @@ pub use chain::{
 };
 pub use error::HostError;
 pub use flyable::{
-    FlyableFix, FlyableRoute, HOLD_COURSE_TOLERANCE_DEG, TerminalHold, final_course_deg,
-    flyable_route, path_words,
+    FlyableAltitude, FlyableFix, FlyableHold, FlyableHoldLength, FlyableLegRole, FlyablePath,
+    FlyableRoute, HOLD_COURSE_TOLERANCE_DEG, TerminalHold, final_course_deg, flyable_route,
+    path_words,
 };
 pub use monitor::{
     ABSENT, CameraLog, CameraShot, Clock, Column, EVENTS_KEPT, FLIGHT_SHARE, FixMark,

@@ -357,3 +357,81 @@ fn the_hud_draws_over_a_wide_frame_and_refuses_one_it_cannot_lay_out() {
         })
     ));
 }
+
+#[test]
+fn hud_and_hsi_render_visual_source_and_second_line_dgrd_excl_annunciations() {
+    use indicate_instrument_hud::{HudProfile, HudProjection, Runway, WorldSource};
+    use indicate_instrument_state::{
+        NavFromTo, NavScale, NavSequencing, NavSource, PositionIntegrity, PositionSource, Quat,
+        Sig, SignalStatus,
+    };
+
+    let context = HudContext {
+        profile: HudProfile::Screen,
+        projection: Sig::valid(HudProjection {
+            vertical_fov_rad: 1.0,
+            body_from_view: Quat::IDENTITY,
+            source: WorldSource::Synthetic,
+        }),
+        approach: Some(Runway {
+            threshold_m: [3_000.0, 0.0, 150.0],
+            far_down_offset_m: 0.0,
+            pre_threshold_m: 0.0,
+            reciprocal_displaced_m: 0.0,
+            unpaved: false,
+            course_rad: 0.0,
+            length_m: 1_500.0,
+            width_m: 30.0,
+            glide_path_rad: 3.0_f32.to_radians(),
+            status: SignalStatus::Valid,
+        }),
+        ..HudContext::default()
+    };
+    let render_case = |source: PositionSource, integrity: PositionIntegrity| {
+        let mut data = panel(0.02, 0.4);
+        data.nav.status = SignalStatus::Valid;
+        data.nav.course_rose_rad = Sig::valid(0.5);
+        data.nav.data.source = NavSource::Fms;
+        data.nav.data.scale = NavScale::Approach;
+        data.nav.data.fromto = NavFromTo::To;
+        data.nav.data.cdi_dots = 0.0;
+        data.nav.data.sequencing = NavSequencing::Sequencing;
+        data.nav.data.position_source = source;
+        data.nav.data.position_integrity = integrity;
+        let (width, height) = (1280_u32, 720_u32);
+        let mut hud_scene = vec![0; PANEL_SCENE_BYTES];
+        let mut hud_px = vec![0; (width * height * 4) as usize];
+        let hud = render_hud(
+            &data,
+            &context,
+            None,
+            FrameId::default(),
+            &mut PanelBuffers {
+                scene: &mut hud_scene,
+                pixels: &mut hud_px,
+                dims: FramebufferDims::tight(width, height),
+            },
+        )
+        .unwrap();
+        let mut hsi_target = Target::new();
+        let hsi = render_hsi(&data, None, FrameId::default(), &mut hsi_target.buffers()).unwrap();
+        (hud.scene_bytes, hud_px, hsi.scene_bytes, hsi_target.pixels)
+    };
+
+    let vis_normal = render_case(PositionSource::Visual, PositionIntegrity::Normal);
+    let gps_normal = render_case(PositionSource::Gps, PositionIntegrity::Normal);
+    let vis_dgrd = render_case(PositionSource::Visual, PositionIntegrity::Degraded);
+    let vis_excl = render_case(PositionSource::Visual, PositionIntegrity::SensorExcluded);
+
+    assert_ne!(vis_normal.3, gps_normal.3, "HSI draws VIS vs GPS");
+    assert_ne!(vis_normal.1, gps_normal.1, "HUD draws LNAV VIS vs LNAV GPS");
+    assert!(
+        vis_dgrd.0 > vis_normal.0 && vis_excl.0 > vis_normal.0,
+        "HUD emits second-line DGRD/EXCL glyphs ({} / {} vs {})",
+        vis_dgrd.0,
+        vis_excl.0,
+        vis_normal.0
+    );
+    assert_ne!(vis_dgrd.1, vis_excl.1, "HUD DGRD vs EXCL pixels differ");
+    assert_ne!(vis_dgrd.3, vis_excl.3, "HSI DGRD vs EXCL pixels differ");
+}

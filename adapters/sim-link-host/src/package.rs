@@ -57,7 +57,15 @@ pub fn package_route_msl(link: &SimulationLink) -> Result<Vec<[f64; 3]>, HostErr
     }
     for fix in &route.fixes {
         let what = format!("the fix of leg {}", fix.leg);
-        points.push(point(what, fix.lat, fix.lon, fix.height_m)?);
+        let next = point(what, fix.lat, fix.lon, fix.height_m)?;
+        if let Some(prev) = points.last_mut()
+            && (prev[0] - next[0]).abs() < 1e-7
+            && (prev[1] - next[1]).abs() < 1e-7
+        {
+            prev[2] = prev[2].min(next[2]);
+            continue;
+        }
+        points.push(next);
     }
     Ok(points)
 }

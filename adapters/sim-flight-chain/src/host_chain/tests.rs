@@ -53,11 +53,8 @@ fn route(plan_loaded_at_s: f64) -> ChainRoute {
     ChainRoute {
         fixes: FIXES
             .iter()
-            .map(|&(lat_deg, lon_deg)| RouteFix {
-                ident: None,
-                lat_deg,
-                lon_deg,
-                altitude_m: ellipsoidal_m(lat_deg, lon_deg),
+            .map(|&(lat_deg, lon_deg)| {
+                RouteFix::new(None, lat_deg, lon_deg, ellipsoidal_m(lat_deg, lon_deg))
             })
             .collect(),
         cruise_mps: INDICATED_M_S,

@@ -143,17 +143,7 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
             stated,
         ))
     };
-    let mut route: Vec<RoutePoint> = Vec::with_capacity(flyable.fixes.len());
-    for (index, fix) in flyable.fixes.iter().enumerate() {
-        let ident = fix_ident(fix.name.as_deref(), index);
-        route.push(RoutePoint {
-            altitude_m: height(ident.clone(), fix.lat, fix.lon, fix.height_m)?,
-            ident: Some(ident),
-            lat_deg: fix.lat.as_f64(),
-            lon_deg: fix.lon.as_f64(),
-            speed_m_s: None,
-        });
-    }
+    let (route, route_fly_over) = corridor_points(link, &flyable)?;
     let start = match link.start {
         Some(start) => Some(StartState {
             lat_deg: start.lat_deg(),
@@ -178,8 +168,8 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
         _ => None,
     };
     let mut trial = request_from_route(&route, None)?;
-    for (spec, fix) in trial.waypoints.iter_mut().zip(&flyable.fixes) {
-        spec.fly_over = fix.fly_over;
+    for (spec, fly_over) in trial.waypoints.iter_mut().zip(route_fly_over) {
+        spec.fly_over = fly_over;
     }
     trial.epoch_utc = link.time.iso8601();
     trial.vehicle.cruise_speed_m_s = link
@@ -213,6 +203,40 @@ pub fn hosted_request(link: &SimulationLink) -> Result<HostedRequest, HostError>
     })
 }
 
+fn corridor_points(
+    link: &SimulationLink,
+    flyable: &FlyableRoute,
+) -> Result<(Vec<RoutePoint>, Vec<bool>), HostError> {
+    let mut route: Vec<RoutePoint> = Vec::with_capacity(flyable.fixes.len());
+    let mut route_fly_over: Vec<bool> = Vec::with_capacity(flyable.fixes.len());
+    let mut last_coords: Option<(Micro, Micro)> = None;
+    for (index, fix) in flyable.fixes.iter().enumerate() {
+        let ident = fix_ident(fix.name.as_deref(), index);
+        let stated =
+            stated_height_m(link, fix.height_m).ok_or_else(|| HostError::MissingHeight {
+                what: ident.clone(),
+            })?;
+        let alt_m = ellipsoid_height_m(link.datum, fix.lat.as_f64(), fix.lon.as_f64(), stated);
+        let coords = (fix.lat, fix.lon);
+        if last_coords == Some(coords) {
+            if let Some(prev) = route.last_mut() {
+                prev.altitude_m = alt_m;
+            }
+            continue;
+        }
+        last_coords = Some(coords);
+        route.push(RoutePoint {
+            altitude_m: alt_m,
+            ident: Some(ident),
+            lat_deg: fix.lat.as_f64(),
+            lon_deg: fix.lon.as_f64(),
+            speed_m_s: None,
+        });
+        route_fly_over.push(fix.fly_over);
+    }
+    Ok((route, route_fly_over))
+}
+
 /// The trial's terrain camera of `camera`: its size, field of view, view
 /// below the horizon from the nose and frame period; band, exposure,
 /// radiometry and the lowest Sun take the defaults the trial documents.
@@ -234,7 +258,12 @@ fn terrain_camera_spec(camera: CameraGeometry) -> Result<TerrainCameraSpec, Host
 
 /// A height in `datum` as a height above the WGS84 ellipsoid, metres. Mean
 /// sea level is the world's geoid, EGM96 as `sim_geo` grids it.
-fn ellipsoid_height_m(datum: HeightDatum, lat_deg: f64, lon_deg: f64, height_m: f64) -> f64 {
+pub(crate) fn ellipsoid_height_m(
+    datum: HeightDatum,
+    lat_deg: f64,
+    lon_deg: f64,
+    height_m: f64,
+) -> f64 {
     match datum {
         HeightDatum::Ellipsoid => height_m,
         HeightDatum::MeanSeaLevel => {

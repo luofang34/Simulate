@@ -20,6 +20,8 @@ sim-navdata = { workspace = true }
 sim-navigate = { workspace = true }
 sim-scenery = { workspace = true }
 thiserror = { workspace = true }
+world-core = { workspace = true }
+world-geomag = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }

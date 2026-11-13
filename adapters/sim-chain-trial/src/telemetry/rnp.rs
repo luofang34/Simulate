@@ -26,14 +26,21 @@ pub(super) struct RnpContext<'a> {
 /// Evaluates active guidance modes and the RNP (`NSE` / `FTE` / `TSE`) triad.
 pub(super) fn evaluate_rnp(ctx: &RnpContext<'_>) -> GuidanceRnpTelemetry {
     let (flight_phase, default_rnp_nm) = match ctx.display.map(|d| d.phase) {
-        Some(FlightPhase::Enroute) => ("enroute", 1.0),
+        Some(FlightPhase::Enroute) => ("enroute", 2.0),
         Some(FlightPhase::Terminal) => ("terminal", 1.0),
         Some(FlightPhase::Approach) => ("approach", 0.3),
         Some(FlightPhase::Missed) => ("missed", 1.0),
         Some(_) => ("other", 1.0),
-        None => ("unloaded", 1.0),
+        None => ("unloaded", 2.0),
     };
-    let rnp_limit_nm = ctx.configured_rnp_nm.unwrap_or(default_rnp_nm);
+    let display_rnp_nm = ctx
+        .display
+        .map(|d| d.rnp_m / METRES_PER_NM)
+        .filter(|value| value.is_finite() && *value > 0.0);
+    let rnp_limit_nm = ctx
+        .configured_rnp_nm
+        .or(display_rnp_nm)
+        .unwrap_or(default_rnp_nm);
     let rnp_limit_m = rnp_limit_nm * METRES_PER_NM;
 
     let Some(display) = ctx.display else {

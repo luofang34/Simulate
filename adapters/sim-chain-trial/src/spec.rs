@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 use sim_flight_chain::{AccelCalibration, C172Variant};
 use sim_navigate::trial::{ImuGradeName, SensorKind, TrialRequest};
 
+mod legs;
+
+pub use legs::{
+    ChainAltitudeSpec, ChainHoldLengthSpec, ChainHoldSpec, ChainLegRole, ChainLegSpec,
+    ChainPathSpec,
+};
+
 /// Cessna 172 sub-variant flown by [`ChainTrialSpec`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -68,6 +75,11 @@ pub struct ChainTrialSpec {
     /// intervals. When non-empty, overrides [`Self::gnss_spoof`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spoof_windows: Vec<SpoofWindowSpec>,
+    /// Optional per-leg CIFP procedure metadata (`CF`, `CA`, `DF`, `HA`/`HF`/`HM`,
+    /// altitude windows, mandatory turn directions, flight-phase roles, and RNP).
+    /// Omitted on plain `IF`/`TF` routes so existing trial digests stay unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planned_legs: Vec<ChainLegSpec>,
 }
 
 /// Kind of adversarial GNSS spoofing active on the receiver.

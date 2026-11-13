@@ -23,9 +23,11 @@ mod trial;
 pub use error::ChainTrialError;
 pub use first_link::first_link;
 pub use output::{FrameRequest, MissionUpdate, Outputs, Retained, StepOutcome};
+pub use sim_flight_chain::FlightPhase;
 pub use spec::{
-    CalibrationName, ChainC172Variant, ChainTrialSpec, DeviceOutage, GnssSpoofSpec, HoldSpec,
-    HoldTurn, SpoofKind, SpoofSpan, SpoofWindowSpec, StartSpec, Steering,
+    CalibrationName, ChainAltitudeSpec, ChainC172Variant, ChainHoldLengthSpec, ChainHoldSpec,
+    ChainLegRole, ChainLegSpec, ChainPathSpec, ChainTrialSpec, DeviceOutage, GnssSpoofSpec,
+    HoldSpec, HoldTurn, SpoofKind, SpoofSpan, SpoofWindowSpec, StartSpec, Steering,
 };
 pub use telemetry::{
     CameraFrameTelemetry, GuidanceRnpTelemetry, InputTelemetry, METRES_PER_NM, MetricSummary,

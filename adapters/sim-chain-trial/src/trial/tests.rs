@@ -69,6 +69,7 @@ pub(super) fn spec(camera: Option<TerrainCameraSpec>) -> ChainTrialSpec {
         hold: None,
         gnss_spoof: None,
         spoof_windows: Vec::new(),
+        planned_legs: Vec::new(),
     }
 }
 
