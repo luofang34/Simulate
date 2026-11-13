@@ -120,7 +120,9 @@ pub(super) fn listen(
             let input = match kind {
                 "pointerdown" => {
                     canvas.set_pointer_capture(id).ok();
-                    PointerInput::Down { id, at }
+                    // The right button, or any with Shift, tilts and turns.
+                    let tilts = event.button() == 2 || event.shift_key();
+                    PointerInput::Down { id, at, tilts }
                 }
                 "pointermove" => PointerInput::Move { id, at },
                 "pointerup" => PointerInput::Up { id, at },
@@ -145,7 +147,12 @@ pub(super) fn listen(
             1 => wheel.delta_y() * 40.0,
             _ => wheel.delta_y() * 400.0,
         };
-        apply(&link, &gestures, &target, PointerInput::Wheel { delta_y });
+        let input = if wheel.ctrl_key() {
+            PointerInput::TrackpadPinch { delta_y }
+        } else {
+            PointerInput::Wheel { delta_y }
+        };
+        apply(&link, &gestures, &target, input);
     });
     let options = AddEventListenerOptions::new();
     options.set_passive(false);
@@ -157,6 +164,10 @@ pub(super) fn listen(
         )
         .ok();
     listeners.push(wheel);
+    // The right button tilts the map, so it opens no menu over it.
+    listeners.push(on(canvas.as_ref(), "contextmenu", |event| {
+        event.prevent_default()
+    }));
     listeners
 }
 

@@ -154,9 +154,18 @@ fn tracks_and_marks_carry_their_colours_and_outlines_are_lines() {
 
 /// An EFB map over the sample catalog.
 pub(super) fn sample_efb() -> Option<EfbMapSurface> {
+    sample_efb_on(|_| {}, 0)
+}
+
+/// An EFB map over the sample catalog as `extend` leaves it, its DEM served to `dem_maxzoom`.
+pub(super) fn sample_efb_on(
+    extend: impl FnOnce(&mut sim_scenery::CatalogScenery),
+    dem_maxzoom: u8,
+) -> Option<EfbMapSurface> {
     let gpu = try_host_gpu()?;
-    let (scenery, _, catalog_runtime) = sample_scenery_and_runtime(gpu.clone());
+    let (mut scenery, _, catalog_runtime) = sample_scenery_and_runtime(gpu.clone());
     drop(catalog_runtime);
+    extend(&mut scenery);
     let charts = ChartAssetStore::new();
     let loader =
         HybridTileLoader::new(Some(Arc::new(scenery)), None).with_chart_store(charts.clone());
@@ -170,7 +179,7 @@ pub(super) fn sample_efb() -> Option<EfbMapSurface> {
     let efb = EfbMapSurface::new(
         &runtime,
         charts,
-        &SceneryEndpoints::catalog(0, 0),
+        &SceneryEndpoints::catalog(dem_maxzoom, 0),
         serde_json::json!({ "type": "FeatureCollection", "features": [] }),
         EfbMapConfig {
             compact_size: [320, 240],

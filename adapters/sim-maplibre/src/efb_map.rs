@@ -23,6 +23,7 @@ use crate::{
 
 mod camera;
 mod hold;
+mod hud;
 mod pacing;
 mod plan;
 mod plan_style;
@@ -36,10 +37,11 @@ mod views;
 
 pub(crate) use camera::effective_globe_zoom;
 pub use camera::{
-    DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_ZOOM_RANGE, EfbDisplayMode, EfbFollowMode,
-    EfbLayerFlags, EfbRefreshPolicy,
+    DEFAULT_COMPACT_ZOOM, DEFAULT_EXPANDED_ZOOM, EFB_MAX_PITCH_DEG, EFB_ZOOM_RANGE, EfbDisplayMode,
+    EfbFollowMode, EfbLayerFlags, EfbRefreshPolicy,
 };
 pub use hold::HoldPattern;
+pub use hud::HudButton;
 pub use pacing::EfbPacer;
 pub use plan::{EfbBasemap, FixPick};
 pub use plan_style::{ACTIVE_MAGENTA, FLOWN_GREY, FUTURE_WHITE, OUTLINE_GREEN};
@@ -98,6 +100,7 @@ pub struct EfbMapSurface {
     plate_opacity: f32,
     pixel_ratio: Option<f64>,
     frames: u64,
+    navigation: maplibre::navigation::NavigationState,
     plan: plan::PlanState,
 }
 
@@ -141,6 +144,7 @@ impl EfbMapSurface {
             })
         };
         let slots = [register(compact), register(expanded)];
+        let navigation = hud::init_navigation_hud(&mut map, slots)?;
         let [lat, lon] = config.initial_center;
         let camera = EfbCamera::new(lat, lon);
         Ok(Self {
@@ -161,6 +165,7 @@ impl EfbMapSurface {
             plate_opacity: style::DEFAULT_PLATE_OPACITY,
             pixel_ratio: None,
             frames: 0,
+            navigation,
             plan: plan::PlanState::default(),
         })
     }
@@ -243,6 +248,11 @@ impl EfbMapSurface {
     /// Changes the shown view's zoom by `delta`, within [`EFB_ZOOM_RANGE`].
     pub fn zoom_by(&mut self, delta: f64) {
         self.camera_mut().zoom_by(delta);
+    }
+
+    /// Tilts the shown view by `delta_deg` toward the horizon, over the terrain's relief.
+    pub fn pitch_by(&mut self, delta_deg: f64) {
+        self.camera_mut().pitch_by(delta_deg);
     }
 
     /// Rotates the shown view by `delta_deg` (`> 0` rotates map features counter-clockwise),

@@ -10,13 +10,11 @@ use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::host_guidance::StandInPilotageHost;
 use crate::map_rig::{
-    AIRPORT_SURFACE_MAP, AvionicsPreset, EfbAirport, EfbCommand, MFD_CHART_MAP, MapLibreRig,
-    PFD_SVS_MAP, ScenerySource,
+    AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, MapLibreRig, PFD_SVS_MAP, ScenerySource,
 };
 use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
 use crate::world_surface::WorldSurfaceHandle;
-use efb_chrome::EfbChrome;
 
 pub mod efb_chrome;
 mod layout;
@@ -52,16 +50,14 @@ pub struct CockpitRig {
 }
 
 impl CockpitRig {
-    /// Builds the composite cockpit sharing `renderer`'s GPU device, queue, adapter, and
-    /// instance, streaming terrain into the flight's `surface`.
-    ///
-    /// Enables the `maplibre-rs` scene and instrument maps (real-world tiles) on `Metal`,
-    /// `Vulkan`, `Dx12`, and `BrowserWebGpu`, falling back cleanly to `GlobeScene` + 2D
-    /// `Indicate` panels on `WebGL2` (`wgpu::Backend::Gl`).
-    pub fn from_renderer(
+    /// Builds the composite cockpit for either the full windowed cockpit (`page_view = false`)
+    /// or a link's page view (`page_view = true`), which omits unused chart maps and auxiliary
+    /// sensor view slots.
+    pub fn from_renderer_for(
         renderer: &Renderer,
         hud_pass: VectorScenePass,
         surface: WorldSurfaceHandle,
+        page_view: bool,
     ) -> Result<Self, AppSimError> {
         let enable_maps = renderer.backend() != wgpu::Backend::Gl;
         let host_gpu = HostGpu {
@@ -70,18 +66,20 @@ impl CockpitRig {
             device: renderer.device().clone(),
             queue: renderer.queue().clone(),
         };
-        Self::new_with_gpu(
+        Self::new_with_gpu_and_role(
             host_gpu,
             renderer.surface_size(),
             enable_maps.then(ScenerySource::from_environment),
             hud_pass,
             surface,
+            page_view,
         )
     }
 
     /// Builds a composite cockpit directly from `host_gpu` (used by both the windowed app and
     /// headless GPU integration tests); `scenery` of `None` runs without maps, and the HUD
     /// draws through `hud_pass`. The map rig configures and feeds `surface`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_with_gpu(
         host_gpu: HostGpu,
         initial_size: [u32; 2],
@@ -89,15 +87,32 @@ impl CockpitRig {
         hud_pass: VectorScenePass,
         surface: WorldSurfaceHandle,
     ) -> Result<Self, AppSimError> {
+        Self::new_with_gpu_and_role(host_gpu, initial_size, scenery, hud_pass, surface, false)
+    }
+
+    fn new_with_gpu_and_role(
+        host_gpu: HostGpu,
+        initial_size: [u32; 2],
+        scenery: Option<ScenerySource>,
+        hud_pass: VectorScenePass,
+        surface: WorldSurfaceHandle,
+        page_view: bool,
+    ) -> Result<Self, AppSimError> {
         let avionics = AvionicsRig::new(&host_gpu.device, hud_pass)?;
         let device = host_gpu.device.clone();
+        let preset = if page_view {
+            AvionicsPreset::SyntheticVisionOnly
+        } else {
+            AvionicsPreset::default()
+        };
         let maps = scenery.as_ref().and_then(|source| {
             layout::try_build_maps(
                 host_gpu,
                 initial_size,
                 source,
-                AvionicsPreset::default(),
+                preset,
                 surface.clone(),
+                page_view,
             )
         });
         let mut supervisor = SupervisorRig::new();
@@ -143,35 +158,6 @@ impl CockpitRig {
         self.maps.as_mut()
     }
 
-    /// The EFB's chrome over `world` this frame, when shown: on Earth with the dock up,
-    /// outside the full-window chart, on a map preset; beside a page's map, as its inset
-    /// while that map is out of sight.
-    #[must_use]
-    pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
-        let shown = world.body() == BodyEllipsoid::WGS84
-            && self.show_instruments
-            && !self.page_map_in_sight
-            && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
-        let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
-        let status = self.inset_status(maps.efb_status()?);
-        Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
-    }
-
-    /// Applies an operator command to the EFB.
-    pub fn efb_command(&mut self, command: EfbCommand) -> Result<(), AppSimError> {
-        match self.maps.as_mut() {
-            Some(maps) => maps.efb_command(command),
-            None => Ok(()),
-        }
-    }
-
-    /// Shows `airport` on the EFB (`None` follows the supervisor's aerodrome).
-    pub fn set_efb_airport(&mut self, airport: Option<EfbAirport>) {
-        if let Some(maps) = self.maps.as_mut() {
-            maps.set_efb_airport(airport);
-        }
-    }
-
     /// Borrows [`AvionicsRig`].
     #[cfg(test)]
     #[must_use]
@@ -209,6 +195,7 @@ impl CockpitRig {
             .map_or_else(AvionicsPreset::default, MapLibreRig::preset);
         let efb_airport = self.maps.as_ref().and_then(MapLibreRig::efb_airport);
         self.maps = None;
+        let page_view = self.panels_apart.is_some();
         self.maps = source.and_then(|source| {
             layout::try_build_maps(
                 host_gpu,
@@ -216,6 +203,7 @@ impl CockpitRig {
                 source,
                 preset,
                 self.surface.clone(),
+                page_view,
             )
         });
         // Without a rig nothing streams live tiles, so the ground falls back offline.

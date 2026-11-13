@@ -149,7 +149,7 @@ fn headless_composite_cockpit_renders_all_viewports_and_apollo_fallback() -> Res
         }
         assert!(
             maps.truth()
-                .virtual_camera_size(maps.aux_virtual_camera_slot())
+                .virtual_camera_size(maps.aux_virtual_camera_slot().expect("aux sensor slot"))
                 .is_some()
         );
         verify_avionics_presets(&gpu, &mut rig, &flight, size)?;

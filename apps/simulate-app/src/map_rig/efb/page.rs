@@ -15,6 +15,9 @@ use crate::page_map::{FixLabel, PageMapInput, PageMapView, PickedFix};
 /// tablet's own starts closer in.
 const PAGE_ZOOM: f64 = 9.5;
 
+/// The page map's first tilt, degrees: the relief stands up, the route still reads.
+const PAGE_PITCH_DEG: f64 = 45.0;
+
 /// How near a fix a tap picks it, CSS pixels: a fingertip's reach.
 #[cfg(any(target_arch = "wasm32", test))]
 const PICK_RADIUS_CSS_PX: f32 = 16.0;
@@ -41,9 +44,18 @@ impl EfbRig {
         });
     }
 
-    /// Picks the fix nearest `at_px` on the shown view, or none.
+    /// Picks the fix nearest `at_px` on the shown view, or activates a MapLibre
+    /// navigation HUD control when `at_px` lands inside the floating capsule.
     #[cfg(any(target_arch = "wasm32", test))]
     pub(super) fn pick(&mut self, at_px: [f32; 2]) {
+        if self
+            .surface
+            .activate_navigation_hud(self.mode(), at_px)
+            .is_some()
+        {
+            self.dirty = true;
+            return;
+        }
         let radius = PICK_RADIUS_CSS_PX * self.surface.pixel_ratio() as f32;
         self.picked = self.surface.pick_fix(self.mode(), at_px, radius);
     }
@@ -105,6 +117,7 @@ impl MapLibreRig {
             efb.command(super::EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb))?;
             let zoom = PAGE_ZOOM - efb.surface.zoom();
             efb.command(super::EfbCommand::ZoomBy(zoom))?;
+            efb.surface.pitch_by(PAGE_PITCH_DEG);
         }
         let shown = [window_shown && !input.visible, input.visible];
         if efb.views_shown != Some(shown) {
@@ -148,5 +161,21 @@ impl MapLibreRig {
             .as_ref()
             .filter(|_| self.efb_shown())
             .and_then(|efb| efb.surface.view_of(mode))
+    }
+
+    /// Activates a MapLibre navigation HUD button at `physical_px` inside the focused EFB
+    /// view (`ExpandedEfb` only), returning `true` when the click hit the HUD capsule.
+    pub fn activate_efb_hud(&mut self, physical_px: [f32; 2]) -> bool {
+        let Some(efb) = self.efb.as_mut() else {
+            return false;
+        };
+        let hit = efb
+            .surface
+            .activate_navigation_hud(efb.mode(), physical_px)
+            .is_some();
+        if hit {
+            efb.dirty = true;
+        }
+        hit
     }
 }

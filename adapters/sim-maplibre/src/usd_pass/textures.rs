@@ -21,8 +21,20 @@ pub(crate) struct AssetTexturesGpu {
     pub(crate) layout: wgpu::BindGroupLayout,
     skin_sampler: wgpu::Sampler,
     display_sampler: wgpu::Sampler,
-    blank_maps: [wgpu::Texture; 4],
     pub(crate) blank: wgpu::BindGroup,
+    blank_maps: [wgpu::Texture; 4],
+    uploaded: Vec<wgpu::Texture>,
+}
+
+impl Drop for AssetTexturesGpu {
+    fn drop(&mut self) {
+        for texture in &self.uploaded {
+            texture.destroy();
+        }
+        for texture in &self.blank_maps {
+            texture.destroy();
+        }
+    }
 }
 
 impl AssetTexturesGpu {
@@ -60,8 +72,9 @@ impl AssetTexturesGpu {
             layout,
             skin_sampler,
             display_sampler,
-            blank_maps,
             blank,
+            blank_maps,
+            uploaded: Vec::new(),
         }
     }
 
@@ -69,7 +82,7 @@ impl AssetTexturesGpu {
     /// them, with a blank where the asset has none; a skin map wider than the
     /// device allows starts at the first mip that fits.
     pub(crate) fn upload(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &impl TextureUpload,
         skin: Option<&SkinTextures>,
@@ -98,12 +111,19 @@ impl AssetTexturesGpu {
             .map_or([blank_albedo, blank_normal, blank_orm], |[a, n, o]| {
                 [a, n, o]
             });
-        bind(
+        let group = bind(
             device,
             &self.layout,
             [&self.skin_sampler, &self.display_sampler],
             [albedo, normal, orm, atlas.as_ref().unwrap_or(blank_atlas)],
-        )
+        );
+        if let Some(maps) = skin {
+            self.uploaded.extend(maps);
+        }
+        if let Some(map) = atlas {
+            self.uploaded.push(map);
+        }
+        group
     }
 }
 

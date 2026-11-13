@@ -141,6 +141,13 @@ impl PageMapLink {
         !self.lock().hidden
     }
 
+    /// App: whether operator map commands or resizes are waiting to be drawn immediately.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn has_pending_commands(&self) -> bool {
+        let shared = self.lock();
+        !shared.commands.is_empty() || shared.size_px.is_some()
+    }
+
     /// App: everything handed over since the last call, oldest command first.
     pub(crate) fn take(&self) -> PageMapInput {
         let mut shared = self.lock();

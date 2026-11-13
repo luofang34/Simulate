@@ -69,11 +69,16 @@ pub struct PageFeed {
     map: PageMapLink,
 }
 
+/// Minimum speed multiplier at which [`PageFeed::display_route_s`] follows the newest
+/// published route instant directly instead of smoothing across 60 Hz display frames.
+const HIGH_WARP_JUMP_SPEED: f64 = 8.0;
+
 /// The instants published and the display clock following them.
 #[derive(Debug)]
 struct Published {
     ring: SnapshotRing,
     clock: DisplayClock,
+    pace: Option<f64>,
 }
 
 impl PageFeed {
@@ -85,6 +90,7 @@ impl PageFeed {
             shared: Arc::new(Mutex::new(Published {
                 ring: SnapshotRing::new(first),
                 clock: DisplayClock::default(),
+                pace: Some(4.0),
             })),
             epoch_utc_s,
             map: PageMapLink::default(),
@@ -93,6 +99,19 @@ impl PageFeed {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Published> {
         self.shared.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Records the speed multiplier (`None` = unthrottled) requested by the page operator.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn set_pace(&self, pace: Option<f64>) {
+        self.lock().pace = pace;
+    }
+
+    /// Speed multiplier (`None` = unthrottled) currently requested by the page operator.
+    #[cfg(any(target_arch = "wasm32", test))]
+    #[must_use]
+    pub fn pace(&self) -> Option<f64> {
+        self.lock().pace
     }
 
     /// Adds the newest snapshot.
@@ -108,11 +127,18 @@ impl PageFeed {
     }
 
     /// The route time to draw at after `wall_dt_s` wall seconds, seconds: smooth at the
-    /// flight's pace, a little behind the newest instant.
+    /// flight's pace below `8×`, or locked to the newest published instant at high warp.
     pub fn display_route_s(&self, wall_dt_s: f64) -> f64 {
         let mut shared = self.lock();
         let (oldest_s, newest_s) = shared.ring.span_s();
-        shared.clock.advance(wall_dt_s, newest_s, oldest_s)
+        if shared
+            .pace
+            .is_none_or(|speed| speed >= HIGH_WARP_JUMP_SPEED)
+        {
+            shared.clock.jump_to(newest_s)
+        } else {
+            shared.clock.advance(wall_dt_s, newest_s, oldest_s)
+        }
     }
 
     /// The chain at `route_s`: the true aeroplane interpolated between the published

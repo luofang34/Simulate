@@ -186,7 +186,7 @@ fn south_pole_nzsp_rwy_02t_feather_crosses_90s_cleanly_and_culls_far_side_traffi
 fn the_true_position_is_a_cased_crossed_circle_about_its_projected_point() {
     let chart = (&camera(40.6, -74.2, 0.0), [480, 360], 1.0);
     let mut mesh = OverlayMesh::default();
-    marks::append_truth_mark(&mut mesh, chart, [40.6, -74.2]);
+    marks::append_truth_mark(&mut mesh, chart, None, [40.6, -74.2]);
     assert!(!mesh.vertices.is_empty() && mesh.indices.len() % 3 == 0);
     let [r, g, b] = crate::TRUTH_MARK.map(|v| f32::from(v) / 255.0);
     let (mark, casing) = (
@@ -205,7 +205,7 @@ fn the_true_position_is_a_cased_crossed_circle_about_its_projected_point() {
     );
     // A true position off the view, or behind the globe, draws nothing.
     let mut away = OverlayMesh::default();
-    marks::append_truth_mark(&mut away, chart, [41.6, -74.2]);
-    marks::append_truth_mark(&mut away, chart, [-40.6, 105.8]);
+    marks::append_truth_mark(&mut away, chart, None, [41.6, -74.2]);
+    marks::append_truth_mark(&mut away, chart, None, [-40.6, 105.8]);
     assert!(away.vertices.is_empty());
 }

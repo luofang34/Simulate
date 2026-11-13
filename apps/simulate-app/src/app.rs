@@ -123,7 +123,25 @@ impl FlightApp {
     /// Initialises the flight simulation and input bindings before the GPU surface is created;
     /// `host` is where the app is shown.
     pub fn new(proxy: EventLoopProxy<AppEvent>, host: platform::Host) -> Result<Self, AppSimError> {
-        let flight = Flight::new()?;
+        Self::with_flight(proxy, host, Flight::new()?)
+    }
+
+    /// Initialises the world view of a link's page directly on `feed` without allocating a
+    /// throwaway offline regional catalog or free-flight JSBSim plant.
+    #[cfg(target_arch = "wasm32")]
+    pub fn new_page_mission(
+        proxy: EventLoopProxy<AppEvent>,
+        host: platform::Host,
+        feed: crate::vehicles::PageFeed,
+    ) -> Result<Self, AppSimError> {
+        Self::with_flight(proxy, host, Flight::new_page_mission(feed)?)
+    }
+
+    fn with_flight(
+        proxy: EventLoopProxy<AppEvent>,
+        host: platform::Host,
+        flight: Flight,
+    ) -> Result<Self, AppSimError> {
         let mut mapper = InputMapper::new(ProfileLibrary::default());
         let vehicle = flight.preferred_vehicle();
         mapper.set(Control::Throttle, trim_throttle(vehicle, false));
@@ -171,15 +189,6 @@ impl FlightApp {
         })
     }
 
-    /// Draws the C172 a link's page flies, from what the page publishes on `feed`.
-    #[cfg(target_arch = "wasm32")]
-    pub fn show_page_mission(
-        &mut self,
-        feed: crate::vehicles::PageFeed,
-    ) -> Result<(), AppSimError> {
-        self.flight.show_page_mission(feed)
-    }
-
     /// Whether the app stopped because of an error.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
@@ -214,7 +223,13 @@ impl FlightApp {
         }
         self.panels = self.host.page_panels(&renderer);
         let page_map = self.host.page_map_surface(&renderer);
-        match CockpitRig::from_renderer(&renderer, hud_pass, self.flight.world_surface().clone()) {
+        let page_view = self.flight.shows_page();
+        match CockpitRig::from_renderer_for(
+            &renderer,
+            hud_pass,
+            self.flight.world_surface().clone(),
+            page_view,
+        ) {
             Ok(mut rig) => {
                 rig.set_pixel_ratio(scale_factor);
                 rig.set_page_map_px(page_map.as_ref().map(sim_render::PanelSurface::size));
@@ -226,9 +241,15 @@ impl FlightApp {
                 if let Some(index) = self.catalog.aerodromes.iter().position(|a| a.code == code) {
                     self.esc_menu.select_aerodrome(index);
                 }
-                self.hangar = HangarRig::new(renderer.device())
-                    .inspect_err(|err| tracing::warn!(error = %err, "hangar preview unavailable"))
-                    .ok();
+                self.hangar = (!page_view)
+                    .then(|| {
+                        HangarRig::new(renderer.device())
+                            .inspect_err(
+                                |err| tracing::warn!(error = %err, "hangar preview unavailable"),
+                            )
+                            .ok()
+                    })
+                    .flatten();
                 info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
                 self.host.startup_done();
                 if let Some(maps) = rig.maps() {

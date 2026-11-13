@@ -3,14 +3,17 @@
 //! compact view stays the world view's inset.
 
 use sim_core::SensorExposureEvent;
+use sim_geo::BodyEllipsoid;
 use sim_maplibre::EfbDisplayMode;
 use sim_render::{Camera, FrameOutcome, OverlayQuad, PanelSurface, RenderError, Renderer};
+use sim_scenario::{OperatorViewportMode, ScenarioWorld};
 use tracing::warn;
 
 use super::CockpitRig;
 use super::efb_chrome::{EfbChrome, efb_map_rect, rect_px};
+use crate::error::AppSimError;
 use crate::flight::Flight;
-use crate::map_rig::{EfbStatus, MapFrameInput, MapLibreRig};
+use crate::map_rig::{EfbAirport, EfbCommand, EfbStatus, MapFrameInput, MapLibreRig};
 use crate::page_map::PageMapLink;
 use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
@@ -43,6 +46,42 @@ pub(super) fn frame_input<'a>(
 }
 
 impl CockpitRig {
+    /// The EFB's chrome over `world` this frame, when shown: on Earth with the dock up,
+    /// outside the full-window chart, on a map preset; beside a page's map, as its inset
+    /// while that map is out of sight.
+    #[must_use]
+    pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
+        let shown = world.body() == BodyEllipsoid::WGS84
+            && self.show_instruments
+            && !self.page_map_in_sight
+            && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
+        let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
+        let status = self.inset_status(maps.efb_status()?);
+        Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
+    }
+
+    /// Applies an operator command to the EFB.
+    pub fn efb_command(&mut self, command: EfbCommand) -> Result<(), AppSimError> {
+        match self.maps.as_mut() {
+            Some(maps) => maps.efb_command(command),
+            None => Ok(()),
+        }
+    }
+
+    /// Activates a MapLibre navigation HUD button at `physical_px` inside the expanded EFB.
+    pub fn activate_efb_hud(&mut self, physical_px: [f32; 2]) -> bool {
+        self.maps
+            .as_mut()
+            .is_some_and(|maps| maps.activate_efb_hud(physical_px))
+    }
+
+    /// Shows `airport` on the EFB (`None` follows the supervisor's aerodrome).
+    pub fn set_efb_airport(&mut self, airport: Option<EfbAirport>) {
+        if let Some(maps) = self.maps.as_mut() {
+            maps.set_efb_airport(airport);
+        }
+    }
+
     /// Sizes the expanded EFB view to a page's map canvas of `size_px`, or to the
     /// window's tablet again with `None`.
     pub fn set_page_map_px(&mut self, size_px: Option<[u32; 2]>) {

@@ -134,3 +134,43 @@ fn after_a_300_ms_gap_the_display_catches_up_at_a_bounded_rate() {
     }
     assert!(frames < 120, "the lag closes within two seconds");
 }
+
+#[test]
+fn sixty_four_x_page_feed_jumps_full_multi_second_slices_without_half_second_catch_up_clamp() {
+    use sim_core::ControlInputs;
+    use sim_scenario::SimTimeScale;
+
+    use super::PageFeed;
+    use crate::flight::Flight;
+
+    let base = first();
+    let x0 = base.truth.state.position_ecef.x;
+    let feed = PageFeed::new(1_700_000_000.0, snapshot(&base, 0.0, 0.0, (0.0, 0.0)));
+    feed.set_pace(Some(64.0));
+
+    let mut flight = Flight::new_page_mission(feed.clone()).expect("lean page mission");
+    assert_eq!(flight.page_pace(), Some(Some(64.0)));
+
+    // Simulate one 10 Hz presentation tick (100 ms wall) during a 64x run -> +6.4 s route jump,
+    // over 12x larger than RealTimeClock's 0.5 s MAX_CATCH_UP ceiling.
+    feed.publish(snapshot(&base, 3.2, 160.0, (3.2, 158.0)));
+    feed.publish(snapshot(&base, 6.4, 320.0, (6.4, 318.0)));
+    let display_s = feed.display_route_s(0.100);
+    assert!(
+        (display_s - 6.4).abs() < 1e-9,
+        "64x display clock jumps straight to newest_s (got {display_s})"
+    );
+
+    flight
+        .advance_to_now(ControlInputs::default(), SimTimeScale::RealTime)
+        .expect("advance 6.4 s jump");
+    let now_s = flight.now().duration_since(SimInstant::START).as_seconds();
+    assert!(
+        (now_s - 6.4).abs() < 1e-6,
+        "page flight caught up full 6.4 s in one presentation tick (got {now_s})"
+    );
+    assert!(
+        (flight.display_vehicle_state().position_ecef.x - (x0 + 320.0)).abs() < 1.0,
+        "display state interpolated cleanly at final 120 Hz cycles"
+    );
+}

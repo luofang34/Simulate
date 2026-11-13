@@ -15,7 +15,7 @@ const THRESHOLD_AMBER: [f32; 4] = [0.98, 0.80, 0.08, 0.96];
 
 pub(super) fn append_approach_feather(
     mesh: &mut OverlayMesh,
-    projection: &ChartProjection,
+    projection: &ChartProjection<'_>,
     runway: &LandingRunwayGeometry,
 ) {
     let [thr_lon, thr_lat] = [runway.threshold.lon_deg(), runway.threshold.lat_deg()];
@@ -53,7 +53,7 @@ pub(super) fn append_approach_feather(
 
 fn append_runway_strip(
     mesh: &mut OverlayMesh,
-    projection: &ChartProjection,
+    projection: &ChartProjection<'_>,
     runway: &LandingRunwayGeometry,
     thr: [f64; 2],
     course: f64,
@@ -119,7 +119,7 @@ fn append_runway_strip(
 
 fn append_feather_tick(
     mesh: &mut OverlayMesh,
-    projection: &ChartProjection,
+    projection: &ChartProjection<'_>,
     thr: [f64; 2],
     outbound: f64,
     nm: u32,

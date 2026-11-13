@@ -285,3 +285,38 @@ fn eviction_keeps_drawn_tiles_under_the_ownship_and_lets_evicted_tiles_return() 
     bridge.drain_into(&mut surface);
     assert!(surface.has_live_tile(under));
 }
+
+#[test]
+fn undrained_pending_queue_stays_bounded_and_forgets_dropped_tiles() {
+    let bridge = LiveDemBridge::new();
+    let png = terrarium_png(20.0, 0.0);
+    let total = (MAX_PENDING_TILES + 40) as u32;
+    for x in 0..total {
+        let id = TileId {
+            zoom: 12,
+            x,
+            y: 1500,
+        };
+        assert!(bridge.ingest_terrarium_png_if_new(id, &png).unwrap());
+    }
+    assert_eq!(bridge.pending_len_may_be_stale(), MAX_PENDING_TILES);
+    let oldest = TileId {
+        zoom: 12,
+        x: 0,
+        y: 1500,
+    };
+    let newest = TileId {
+        zoom: 12,
+        x: total - 1,
+        y: 1500,
+    };
+    assert!(
+        !bridge.ingest_terrarium_png_if_new(newest, &png).unwrap(),
+        "resident pending tile stays deduplicated"
+    );
+    assert!(
+        bridge.ingest_terrarium_png_if_new(oldest, &png).unwrap(),
+        "dropped oldest pending tile can be queued again"
+    );
+    assert_eq!(bridge.pending_len_may_be_stale(), MAX_PENDING_TILES);
+}

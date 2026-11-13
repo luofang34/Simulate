@@ -183,7 +183,13 @@ impl FlightApp {
             let now_s = web_sys::window()
                 .and_then(|window| window.performance())
                 .map_or(0.0, |performance| performance.now() / 1000.0);
-            if !self.cadence.due(now_s) {
+            let interactive = self
+                .flight
+                .page_map()
+                .is_some_and(crate::page_map::PageMapLink::has_pending_commands);
+            let interval_s =
+                super::cadence::presentation_interval_s(self.flight.page_pace(), interactive);
+            if !self.cadence.due_with_interval(now_s, interval_s) {
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }

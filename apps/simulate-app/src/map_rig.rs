@@ -55,7 +55,7 @@ pub struct MapLibreRig {
     avionics: AvionicsMapSet,
     preset: AvionicsPreset,
     window_px: [u32; 2],
-    aux_virtual_camera_slot: ViewSlotId,
+    aux_virtual_camera_slot: Option<ViewSlotId>,
     last_ownship_tile: Option<TileId>,
     truth_shown: bool,
     pixel_ratio: f64,
@@ -80,6 +80,29 @@ impl MapLibreRig {
         source: &ScenerySource,
         preset: AvionicsPreset,
         surface: WorldSurfaceHandle,
+    ) -> Result<Self, AppSimError> {
+        Self::new_with_aux_sensor(gpu, initial_size, source, preset, surface, true)
+    }
+
+    /// Lean constructor for a link's page view: skips the secondary `800×600` depth-readout
+    /// virtual camera slot (the page renders its navigation camera on `CameraWorld`).
+    pub fn new_for_page(
+        gpu: HostGpu,
+        initial_size: [u32; 2],
+        source: &ScenerySource,
+        preset: AvionicsPreset,
+        surface: WorldSurfaceHandle,
+    ) -> Result<Self, AppSimError> {
+        Self::new_with_aux_sensor(gpu, initial_size, source, preset, surface, false)
+    }
+
+    fn new_with_aux_sensor(
+        gpu: HostGpu,
+        initial_size: [u32; 2],
+        source: &ScenerySource,
+        preset: AvionicsPreset,
+        surface: WorldSurfaceHandle,
+        register_aux_sensor: bool,
     ) -> Result<Self, AppSimError> {
         let aerodrome_geojson = OsmAerodromeDiagram::builtin_all_merged_geojson()
             .map_err(sim_scenario::ScenarioError::from)?;
@@ -112,8 +135,9 @@ impl MapLibreRig {
             },
             asset,
         )?;
-        let aux_virtual_camera_slot =
-            truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true)?;
+        let aux_virtual_camera_slot = register_aux_sensor
+            .then(|| truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true))
+            .transpose()?;
         if let Some(scenery) = &catalog {
             let _supplied = truth.supply_dem_synchronously(scenery)?;
             let _supplied_ortho = truth.supply_ortho_synchronously(scenery)?;
@@ -245,7 +269,7 @@ impl MapLibreRig {
     /// Secondary registered virtual camera slot, ready for multi-camera sensor feeds.
     #[cfg(test)]
     #[must_use]
-    pub const fn aux_virtual_camera_slot(&self) -> ViewSlotId {
+    pub const fn aux_virtual_camera_slot(&self) -> Option<ViewSlotId> {
         self.aux_virtual_camera_slot
     }
 

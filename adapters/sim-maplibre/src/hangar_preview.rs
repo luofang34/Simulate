@@ -84,7 +84,8 @@ impl HangarPreviewPass {
         {
             return Ok(());
         }
-        let uploaded = scene::SceneAsset::upload(device, queue, asset, &self.pipelines.textures);
+        let uploaded =
+            scene::SceneAsset::upload(device, queue, asset, &mut self.pipelines.textures);
         if uploaded.meshes.iter().all(Option::is_none) {
             return Err(MapAdapterError::AircraftPass {
                 detail: format!(

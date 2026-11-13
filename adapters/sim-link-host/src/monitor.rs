@@ -34,7 +34,7 @@ pub use hold::{HoldState, entry_words, leg_words, pattern_words};
 pub use matching::{GreyImage, MatchLine, MatchLog, MatchShot, OfferedPosition, SolvedFit};
 pub use pacer::{
     Clock, FLIGHT_SHARE, FlightStepper, MAX_FRAME_S, PaceLimit, Pacer, SLICE_BUDGET_S, Slice,
-    StepState, run_slice,
+    StepState, high_warp_flight_share, run_slice, slice_budget_for_speed,
 };
 pub use replay::Replay;
 pub use sensor_controls::{

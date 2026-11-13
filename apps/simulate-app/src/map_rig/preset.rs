@@ -25,6 +25,10 @@ const CHART_MIN_INTERVAL: Duration = Duration::from_millis(66);
 pub enum AvionicsPreset {
     /// Attitude and HSI panels with no map at all.
     NoMapGauges,
+    /// Conformal synthetic-vision PFD and the shared EFB map only, with no docked MFD
+    /// moving-map or full-window airport-surface chart (used when panels stand apart on a
+    /// link's page).
+    SyntheticVisionOnly,
     /// One moving map beside the panels.
     SingleMovingMap,
     /// Synthetic-vision PFD, MFD moving map, and a full-window airport-surface chart.
@@ -38,7 +42,7 @@ impl AvionicsPreset {
     pub const fn next(self) -> Self {
         match self {
             Self::NoMapGauges => Self::SingleMovingMap,
-            Self::SingleMovingMap => Self::GlassCockpit,
+            Self::SyntheticVisionOnly | Self::SingleMovingMap => Self::GlassCockpit,
             Self::GlassCockpit => Self::NoMapGauges,
         }
     }
@@ -48,6 +52,7 @@ impl AvionicsPreset {
     pub const fn title(self) -> &'static str {
         match self {
             Self::NoMapGauges => "Gauges (no maps)",
+            Self::SyntheticVisionOnly => "Synthetic vision PFD",
             Self::SingleMovingMap => "Single moving map",
             Self::GlassCockpit => "Glass cockpit",
         }
@@ -61,6 +66,16 @@ impl AvionicsPreset {
         window_px: [u32; 2],
     ) -> Result<Vec<InstrumentMapSpec>, AppSimError> {
         let panel = [PANEL_WIDTH_PX, PANEL_HEIGHT_PX];
+        let svs = || -> Result<InstrumentMapSpec, AppSimError> {
+            Ok(InstrumentMapSpec {
+                id: PFD_SVS_MAP.to_owned(),
+                style: belief_real_svs_style(endpoints)?,
+                mode: InstrumentMapMode::Conformal3d {
+                    initial_reference_altitude_m: Some(450.0),
+                },
+                size: panel,
+            })
+        };
         let chart = |id: &str, size| -> Result<InstrumentMapSpec, AppSimError> {
             Ok(InstrumentMapSpec {
                 id: id.to_owned(),
@@ -73,16 +88,10 @@ impl AvionicsPreset {
         };
         Ok(match self {
             Self::NoMapGauges => Vec::new(),
+            Self::SyntheticVisionOnly => vec![svs()?],
             Self::SingleMovingMap => vec![chart(MFD_CHART_MAP, panel)?],
             Self::GlassCockpit => vec![
-                InstrumentMapSpec {
-                    id: PFD_SVS_MAP.to_owned(),
-                    style: belief_real_svs_style(endpoints)?,
-                    mode: InstrumentMapMode::Conformal3d {
-                        initial_reference_altitude_m: Some(450.0),
-                    },
-                    size: panel,
-                },
+                svs()?,
                 chart(MFD_CHART_MAP, panel)?,
                 chart(AIRPORT_SURFACE_MAP, window_px)?,
             ],

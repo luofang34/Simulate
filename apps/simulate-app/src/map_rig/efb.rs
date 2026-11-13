@@ -55,6 +55,10 @@ pub enum EfbCommand {
     Pick([f32; 2]),
     /// Draw the plan over this basemap.
     SetBasemap(EfbBasemap),
+    /// Tilt the shown view toward the horizon by this many degrees (`> 0`), over the
+    /// terrain's relief. Only a host whose gestures tilt, the page, tilts.
+    #[cfg(any(target_arch = "wasm32", test))]
+    PitchBy(f64),
 }
 
 /// What the EFB shows, for its bezel and buttons.
@@ -274,6 +278,8 @@ impl EfbRig {
             #[cfg(any(target_arch = "wasm32", test))]
             EfbCommand::Pick(at_px) => self.pick(at_px),
             EfbCommand::SetBasemap(basemap) => self.surface.set_basemap(basemap)?,
+            #[cfg(any(target_arch = "wasm32", test))]
+            EfbCommand::PitchBy(delta_deg) => self.surface.pitch_by(delta_deg),
         }
         Ok(())
     }

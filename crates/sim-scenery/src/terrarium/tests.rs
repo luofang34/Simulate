@@ -73,3 +73,26 @@ fn bilinear_holds_the_edge_beyond_the_outer_centres() {
     assert_eq!(tile.sample_bilinear(0.0, 0.0), Some(0.0));
     assert_eq!(tile.sample_bilinear(1.0, 1.0), Some(30.0));
 }
+
+#[test]
+fn f32_raster_storage_preserves_every_terrarium_step_bit_exact() {
+    let samples = [
+        [0, 0, 0],
+        [0, 0, 1],
+        [117, 72, 128],
+        [127, 255, 255],
+        [128, 0, 0],
+        [128, 0, 1],
+        [162, 144, 220],
+        [255, 255, 254],
+        [255, 255, 255],
+    ];
+    let mut rgb = Vec::with_capacity(samples.len() * 3);
+    for px in samples {
+        rgb.extend_from_slice(&px);
+    }
+    let tile = TerrariumTile::from_rgb(samples.len() as u32, 1, &rgb).unwrap();
+    for (idx, px) in samples.iter().enumerate() {
+        assert_eq!(tile.texel(idx as u32, 0), Some(decode_terrarium(*px)));
+    }
+}

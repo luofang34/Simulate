@@ -56,6 +56,21 @@ impl WorldSurfaceHandle {
         }
     }
 
+    /// Bare Earth with charted runways and no offline regional catalog, for hosts that
+    /// stream real-world tiles from the start (such as a link's page).
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn new_bare_earth() -> Self {
+        let runway_datum = RunwayDatum::builtin();
+        let surface = with_runways(
+            AuthoritativeWorldSurface::earth(CatalogVerticalDatum::OrthometricMslEgm96),
+            &runway_datum,
+        );
+        Self {
+            shared: Arc::new(RwLock::new(surface)),
+            runway_datum,
+        }
+    }
+
     /// The runway datum this surface and the maps drawing it share.
     pub fn runway_datum(&self) -> &RunwayDatum {
         &self.runway_datum

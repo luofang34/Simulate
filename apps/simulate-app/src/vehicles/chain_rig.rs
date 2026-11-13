@@ -43,6 +43,8 @@ enum Source {
         feed: PageFeed,
         /// Controller cycles stepped since the flight's start.
         cycles: u64,
+        /// First cycle in the current advance that needs a snapshot sample from `feed`.
+        target_cycle: u64,
     },
 }
 
@@ -76,7 +78,11 @@ pub(super) fn page_chain_rig(feed: PageFeed) -> ChainRig {
         held_estimate: seen.avionics.estimate.unwrap_or(seen.truth.state),
         seen,
         epoch_utc_s: feed.epoch_utc_s(),
-        source: Source::Page { feed, cycles: 0 },
+        source: Source::Page {
+            feed,
+            cycles: 0,
+            target_cycle: 0,
+        },
         standings: BTreeMap::new(),
     }
 }
@@ -169,6 +175,14 @@ impl ChainRig {
         &self.standings
     }
 
+    /// Skips intermediate [`PageFeed::at`] lookups prior to `cycle` during multi-second
+    /// high-warp advances while preserving the final two steps for display interpolation.
+    pub(super) fn set_page_target_cycle(&mut self, cycle: u64) {
+        if let Source::Page { target_cycle, .. } = &mut self.source {
+            *target_cycle = cycle;
+        }
+    }
+
     /// One flight-controller cycle of the app's own trial, and its reports; for a page's
     /// flight, the page's latest snapshot.
     pub(super) fn step(&mut self) -> Result<(), AppSimError> {
@@ -179,10 +193,17 @@ impl ChainRig {
                 self.seen = seen;
                 self.standings.extend(standings);
             }
-            Source::Page { feed, cycles } => {
+            Source::Page {
+                feed,
+                cycles,
+                target_cycle,
+            } => {
                 // The app's clock runs one flight-controller cycle per step, a little
                 // behind the page's newest instant: draw the flight at this step's time.
                 *cycles = cycles.wrapping_add(1);
+                if *cycles < *target_cycle {
+                    return Ok(());
+                }
                 self.seen = feed.at(*cycles as f64 / C172_RATE_HZ as f64);
             }
         }

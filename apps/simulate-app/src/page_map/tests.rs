@@ -22,6 +22,7 @@ fn a_drag_pans_the_map_by_buffer_pixels_from_where_it_began() {
             PointerInput::Down {
                 id: 1,
                 at: [100.0, 100.0],
+                tilts: false,
             },
             PointerInput::Move {
                 id: 1,
@@ -61,6 +62,7 @@ fn a_tap_picks_at_its_buffer_pixel() {
             PointerInput::Down {
                 id: 7,
                 at: [50.0, 40.0],
+                tilts: false,
             },
             PointerInput::Move {
                 id: 7,
@@ -85,10 +87,12 @@ fn spreading_two_fingers_zooms_in_and_turning_them_rotates() {
             PointerInput::Down {
                 id: 1,
                 at: [100.0, 100.0],
+                tilts: false,
             },
             PointerInput::Down {
                 id: 2,
                 at: [200.0, 100.0],
+                tilts: false,
             },
             PointerInput::Move {
                 id: 2,
@@ -140,6 +144,7 @@ fn a_cancelled_pointer_never_picks() {
             PointerInput::Down {
                 id: 3,
                 at: [10.0, 10.0],
+                tilts: false,
             },
             PointerInput::Cancel { id: 3 },
             PointerInput::Up {
@@ -167,6 +172,19 @@ fn the_wheel_zooms_out_scrolling_down_and_at_most_a_level_a_notch() {
         gestures
             .handle(PointerInput::Wheel { delta_y: f64::NAN }, 2.0)
             .is_empty()
+    );
+}
+
+#[test]
+fn trackpad_ctrl_pinch_zooms_six_times_finer_per_pixel_than_scroll_wheel() {
+    let mut gestures = Gestures::default();
+    assert_eq!(
+        gestures.handle(PointerInput::TrackpadPinch { delta_y: -25.0 }, 2.0),
+        [EfbCommand::ZoomBy(0.5)]
+    );
+    assert_eq!(
+        gestures.handle(PointerInput::TrackpadPinch { delta_y: 25.0 }, 2.0),
+        [EfbCommand::ZoomBy(-0.5)]
     );
 }
 
@@ -218,4 +236,99 @@ fn the_colour_of_ownships_set_stays_with_the_link_once_the_page_said() {
     // The app takes its input every frame; the colour is the page's standing word.
     assert_eq!(link.take().ownship_colour, Some([0x39, 0x87, 0xe5]));
     assert_eq!(link.take().ownship_colour, Some([0x39, 0x87, 0xe5]));
+}
+
+#[test]
+fn a_tilting_drag_tilts_with_up_and_down_and_turns_with_sideways() {
+    let mut gestures = Gestures::default();
+    let commands = all(
+        &mut gestures,
+        &[
+            PointerInput::Down {
+                id: 1,
+                at: [100.0, 100.0],
+                tilts: true,
+            },
+            PointerInput::Move {
+                id: 1,
+                at: [100.0, 80.0],
+            },
+            PointerInput::Move {
+                id: 1,
+                at: [110.0, 80.0],
+            },
+            PointerInput::Up {
+                id: 1,
+                at: [110.0, 80.0],
+            },
+        ],
+        2.0,
+    );
+    assert_eq!(
+        commands,
+        [EfbCommand::PitchBy(8.0), EfbCommand::RotateBy(-3.0)],
+        "the drag leaves the tap's reach in one move: up 20 px tilts 8°, then 10 px right turns"
+    );
+}
+
+#[test]
+fn two_fingers_moved_up_together_tilt_and_spread_apart_zoom() {
+    let mut gestures = Gestures::default();
+    let together = all(
+        &mut gestures,
+        &[
+            PointerInput::Down {
+                id: 1,
+                at: [100.0, 200.0],
+                tilts: false,
+            },
+            PointerInput::Down {
+                id: 2,
+                at: [200.0, 200.0],
+                tilts: false,
+            },
+            PointerInput::Move {
+                id: 1,
+                at: [100.0, 190.0],
+            },
+            PointerInput::Move {
+                id: 2,
+                at: [200.0, 190.0],
+            },
+            PointerInput::Move {
+                id: 1,
+                at: [100.0, 170.0],
+            },
+        ],
+        1.0,
+    );
+    assert!(
+        together
+            .iter()
+            .all(|c| matches!(c, EfbCommand::PitchBy(d) if *d > 0.0))
+            && !together.is_empty(),
+        "{together:?}"
+    );
+    let mut gestures = Gestures::default();
+    let spread = all(
+        &mut gestures,
+        &[
+            PointerInput::Down {
+                id: 1,
+                at: [100.0, 200.0],
+                tilts: false,
+            },
+            PointerInput::Down {
+                id: 2,
+                at: [200.0, 200.0],
+                tilts: false,
+            },
+            PointerInput::Move {
+                id: 2,
+                at: [300.0, 200.0],
+            },
+        ],
+        1.0,
+    );
+    assert_eq!(spread, [EfbCommand::ZoomBy(1.0)]);
 }
