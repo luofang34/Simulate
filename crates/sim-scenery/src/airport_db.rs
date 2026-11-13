@@ -32,7 +32,8 @@ pub use compile::{AirportRenewalSource, RenewalScope};
 pub use faa_nasr::{FaaNasrCsv, parse_faa_nasr};
 pub use model::{
     AerodromeTier, AirportFrequency, AirportIds, AirportIdx, AirportRecord, CompactCode,
-    FrequencyRole, RunwayEndRecord, RunwayRecord, RunwaySurfaceKind, magnetic_heading_deg,
+    FrequencyRole, RunwayEndRecord, RunwayRecord, RunwaySurfaceKind, facility_code_of,
+    magnetic_heading_deg,
 };
 pub use our_airports::{
     ICONIC_AIRPORTS, OurAirportsCsv, OurAirportsName, our_airports_us_names, parse_our_airports,
@@ -174,6 +175,34 @@ impl AirportDatabase {
     /// Handles of every record, in index order.
     pub fn indices(&self) -> impl Iterator<Item = AirportIdx> + '_ {
         (0..self.records.len()).filter_map(|i| u32::try_from(i).ok().map(AirportIdx))
+    }
+
+    /// Inserts `record`, or replaces an existing record sharing its primary code in place,
+    /// rebuilding the spatial, code, and free-text search indexes.
+    pub fn upsert(&mut self, mut record: AirportRecord) -> Option<AirportIdx> {
+        record.classify();
+        let pos = if let Some(existing) = self
+            .records
+            .iter()
+            .position(|r| r.ids.primary == record.ids.primary)
+        {
+            if let Some(slot) = self.records.get_mut(existing) {
+                *slot = record;
+            }
+            existing
+        } else {
+            let idx = self.records.len();
+            self.records.push(record);
+            idx
+        };
+        self.grid = GlobeGrid::build(&self.records);
+        self.codes = CodeIndex::build(&self.records);
+        self.search_keys = OnceLock::new();
+        self.featured = FEATURED_CODES
+            .iter()
+            .filter_map(|code| self.by_code(code).map(|(idx, _)| idx))
+            .collect();
+        u32::try_from(pos).ok().map(AirportIdx)
     }
 
     /// Orders two records by prominence: tier, then longest runway, then

@@ -158,3 +158,37 @@ pub const fn ownship_visual(
         (None, Some(FreeFlightVehicle::AviateX500Direct)) => OwnshipVisualKind::QuadrotorX500,
     }
 }
+
+impl super::MapLibreRig {
+    /// Shows the ownship airframe and per-tail livery that match what is flying.
+    pub(super) fn sync_ownship_visual(
+        &mut self,
+        input: &super::MapFrameInput<'_>,
+    ) -> Result<(), crate::error::AppSimError> {
+        let kind = ownship_visual(input.profile, input.active_vehicle);
+        if kind != self.ownship_visual {
+            self.truth.set_ownship_visual(kind)?;
+            self.ownship_visual = kind;
+            self.custom_livery_key = None;
+        }
+        match input.ownship_livery_override {
+            Some(((aircraft_id, livery_id, generation), asset)) => {
+                let matches_cached = self.custom_livery_key.as_ref().is_some_and(|(a, l, g)| {
+                    a == aircraft_id && l == livery_id && *g == generation
+                });
+                if !matches_cached {
+                    self.truth
+                        .set_ownship_livery_asset(std::sync::Arc::clone(asset))?;
+                    self.custom_livery_key =
+                        Some((aircraft_id.to_owned(), livery_id.to_owned(), generation));
+                }
+            }
+            None => {
+                if self.custom_livery_key.take().is_some() {
+                    self.truth.set_ownship_visual(kind)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}

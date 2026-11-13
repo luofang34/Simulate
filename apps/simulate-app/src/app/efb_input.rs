@@ -1,6 +1,9 @@
 //! The cockpit EFB under the pointer and the keyboard while the hub is closed: chrome
-//! buttons, click-to-expand on the corner map, drag to pan the tablet, wheel to zoom, and
-//! `Esc` to minimize the tablet before it opens the hub.
+//! buttons, Mission Planner omni-search typing, click-to-expand on the corner map, drag to
+//! pan the tablet, click to pick/insert waypoints or ad-hoc thresholds, wheel/pinch/rotate,
+//! and `Esc` to cancel pickers / unfocus search / minimize the tablet before opening the hub.
+
+mod effects;
 
 use sim_maplibre::EfbDisplayMode;
 use tracing::warn;
@@ -10,7 +13,12 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use super::FlightApp;
 use super::pointer::PointerDrag;
 use crate::cockpit_rig::efb_chrome::{EfbChrome, EfbHit, ZOOM_STEP};
+use crate::efb_plan::{AdHocPickMode, EfbTab};
 use crate::map_rig::EfbCommand;
+
+/// Maximum cursor motion between press and release that counts as a map click rather than a
+/// pan drag, physical pixels.
+const MAP_CLICK_SLOP_PX: f64 = 6.0;
 
 impl FlightApp {
     /// The EFB's chrome while the hub is closed and the EFB is shown, unless a page's map
@@ -23,11 +31,24 @@ impl FlightApp {
             .cockpit_rig
             .as_ref()
             .filter(|rig| !rig.page_commands_efb())?;
-        rig.efb_chrome(self.flight.world())
+        let mut chrome = rig.efb_chrome(self.flight.world())?;
+        let (own_deg, gs_kt) = self.ownship_deg_and_gs_kt();
+        chrome.attach_workspace(
+            &self.efb_workspace,
+            own_deg,
+            gs_kt,
+            &self.catalog,
+            self.flight.world_surface(),
+        );
+        Some(chrome)
     }
 
     /// Applies an EFB command; a failure is logged and leaves the flight running.
     pub(super) fn efb_command(&mut self, command: EfbCommand) {
+        if let EfbCommand::Plan(action) = command {
+            self.apply_efb_plan_action(action);
+            return;
+        }
         if let Some(rig) = self.cockpit_rig.as_mut()
             && let Err(err) = rig.efb_command(command)
         {
@@ -35,25 +56,75 @@ impl FlightApp {
         }
     }
 
-    /// `Esc` with the EFB tablet up minimizes it instead of opening the hub; returns
-    /// whether it did.
+    /// `Esc` cancels an active ad-hoc runway picker, unfocuses the omni-search box, or
+    /// minimizes the Expanded EFB tablet before opening the hub; returns whether it did.
     pub(super) fn efb_escape(&mut self, event: &KeyEvent) -> bool {
         let escape = event.state == ElementState::Pressed
             && !event.repeat
             && event.physical_key == PhysicalKey::Code(KeyCode::Escape);
-        if !escape
+        if !escape {
+            return false;
+        }
+        if self.efb_workspace.ad_hoc.pick_mode != AdHocPickMode::None {
+            let was_world = self.efb_workspace.ad_hoc.pick_mode.is_world_3d();
+            self.efb_workspace.ad_hoc.cancel_pick();
+            self.efb_workspace.status_banner = "CANCELLED RUNWAY THRESHOLD PICK".to_owned();
+            if was_world {
+                self.efb_workspace.tab = EfbTab::AdHocRwy;
+                self.efb_command(EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb));
+            }
+            return true;
+        }
+        let expanded = self
+            .efb_chrome()
+            .is_some_and(|c| c.mode == EfbDisplayMode::ExpandedEfb);
+        if !expanded {
+            return false;
+        }
+        if self.efb_workspace.omni_focused {
+            self.efb_workspace.omni_focused = false;
+            return true;
+        }
+        self.efb_command(EfbCommand::SetMode(EfbDisplayMode::CompactCorner));
+        true
+    }
+
+    /// Captures typing into the EFB Mission Planner omni-search box when focused on the
+    /// Expanded EFB, preventing flight control hotkeys (`W`/`A`/`S`/`D`) from firing.
+    pub(super) fn efb_key_input(&mut self, event: &KeyEvent) -> bool {
+        if !self.efb_workspace.omni_focused
             || self
                 .efb_chrome()
                 .is_none_or(|c| c.mode != EfbDisplayMode::ExpandedEfb)
         {
             return false;
         }
-        self.efb_command(EfbCommand::SetMode(EfbDisplayMode::CompactCorner));
+        if event.state != ElementState::Pressed {
+            return true;
+        }
+        match event.physical_key {
+            PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) => {
+                if self.efb_workspace.submit_omni_tokens(&self.catalog) > 0 {
+                    self.sync_efb_route_to_rig();
+                }
+                return true;
+            }
+            PhysicalKey::Code(KeyCode::Backspace) => {
+                let _ = self.efb_workspace.backspace_omni();
+                return true;
+            }
+            _ => {}
+        }
+        if let Some(text) = event.text.as_deref() {
+            for ch in text.chars() {
+                self.efb_workspace.push_omni_char(ch);
+            }
+        }
         true
     }
 
     /// A left press over the EFB: a button acts, the corner map expands, the tablet's map
-    /// starts a pan. Returns whether the EFB took the press.
+    /// starts a pan (or click on release). Returns whether the EFB took the press.
     pub(super) fn efb_pressed(&mut self) -> bool {
         let Some(chrome) = self.efb_chrome() else {
             return false;
@@ -64,35 +135,64 @@ impl FlightApp {
                 self.efb_command(EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb));
             }
             Some(EfbHit::Map) => {
-                let rect = chrome.map_viewport();
-                let [sw, sh] = self.surface_size();
-                let [cx, cy] = self.cursor_px;
-                let local_px = [
-                    cx as f32 - rect.x * (sw as f32),
-                    cy as f32 - rect.y * (sh as f32),
-                ];
-                let hud_hit = self
-                    .cockpit_rig
-                    .as_mut()
-                    .is_some_and(|rig| rig.activate_efb_hud(local_px));
+                self.efb_workspace.omni_focused = false;
+                let hud_hit = chrome
+                    .map_local_px(self.cursor_px, self.surface_size())
+                    .and_then(|local_px| {
+                        self.cockpit_rig
+                            .as_mut()
+                            .map(|rig| rig.activate_efb_hud(local_px))
+                    })
+                    .unwrap_or(false);
                 if !hud_hit {
                     self.hub.drag = Some(PointerDrag::Efb {
                         last: self.cursor_px,
+                        origin: self.cursor_px,
                     });
                 }
             }
-            Some(EfbHit::Bezel) => {}
+            Some(EfbHit::Bezel) => {
+                self.efb_workspace.omni_focused = false;
+            }
             None => return false,
         }
         true
+    }
+
+    /// Handles a mouse release on the Expanded EFB map: when the cursor moved by at most
+    /// [`MAP_CLICK_SLOP_PX`], treats it as a click to pick an ad-hoc threshold, select a
+    /// route fix, or insert a `MapPin` waypoint.
+    pub(super) fn release_efb_map(&mut self, origin: [f64; 2], at: [f64; 2]) {
+        let dx = at.first().copied().unwrap_or(0.0) - origin.first().copied().unwrap_or(0.0);
+        let dy = at.get(1).copied().unwrap_or(0.0) - origin.get(1).copied().unwrap_or(0.0);
+        if dx.hypot(dy) > MAP_CLICK_SLOP_PX {
+            return;
+        }
+        let Some(local_px) = self
+            .efb_chrome()
+            .and_then(|c| c.map_local_px(at, self.surface_size()))
+        else {
+            return;
+        };
+        let (picked_fix, geo_deg) = match self.cockpit_rig.as_ref() {
+            Some(rig) => (
+                rig.efb_pick_fix(local_px, 18.0).map(|f| f.id),
+                rig.efb_screen_to_geodetic(local_px),
+            ),
+            None => (None, None),
+        };
+        if self.efb_workspace.handle_efb_map_click(picked_fix, geo_deg) {
+            self.sync_efb_route_to_rig();
+        }
     }
 
     /// Pans the tablet's map so the ground under the cursor follows it from `last` to
     /// `position` (physical pixels, which are the tablet texture's pixels).
     pub(super) fn pan_efb(&mut self, last: [f64; 2], position: [f64; 2]) {
         let delta = [
-            (last[0] - position[0]) as f32,
-            (last[1] - position[1]) as f32,
+            (last.first().copied().unwrap_or(0.0) - position.first().copied().unwrap_or(0.0))
+                as f32,
+            (last.get(1).copied().unwrap_or(0.0) - position.get(1).copied().unwrap_or(0.0)) as f32,
         ];
         if delta != [0.0, 0.0] {
             self.efb_command(EfbCommand::PanPixels(delta));

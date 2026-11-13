@@ -63,7 +63,7 @@ impl FlightApp {
         };
         // The EFB shows the chosen runway end's plate, whatever the supervisor's default.
         let efb_airport = match entry.kind {
-            AerodromeKind::Osm(_) | AerodromeKind::Database(_) => Some((
+            AerodromeKind::Osm(_) | AerodromeKind::Database(_) | AerodromeKind::AdHoc(_) => Some((
                 entry.code.clone(),
                 entry
                     .runways
@@ -72,46 +72,15 @@ impl FlightApp {
             )),
             AerodromeKind::DelawareCorridor | AerodromeKind::Tranquility => None,
         };
-        let result = match entry.kind {
-            AerodromeKind::Osm(id) => {
-                let Some(rig) = self.cockpit_rig.as_mut() else {
-                    return false;
-                };
-                rig.supervisor_mut().set_free_aerodrome(id);
-                if let Some(idx) = entry.airport_idx
-                    && let Some(record) = AirportDatabase::builtin().get(idx)
-                {
-                    let designator = entry.runways.get(runway).map(|r| r.designator.as_str());
-                    let end = record_runway_end_index(
-                        record,
-                        rig.supervisor().vertical_datum(),
-                        designator,
-                    );
-                    rig.supervisor_mut().set_free_airport(idx, end);
-                }
-                let Some(diagram) = rig.supervisor().diagram(id).cloned() else {
-                    return false;
-                };
-                self.flight.spawn_at_aerodrome(&diagram, runway, mode)
-            }
-            AerodromeKind::Database(idx) => {
-                let designator = entry.runways.get(runway).map(|r| r.designator.clone());
-                let code = entry.code.clone();
-                let Some(result) =
-                    self.spawn_database_airport(idx, &code, designator.as_deref(), mode)
-                else {
-                    return false;
-                };
-                result
-            }
-            AerodromeKind::DelawareCorridor => self.flight.spawn_delaware(),
-            AerodromeKind::Tranquility => {
-                self.select(
-                    event_loop,
-                    Some(sim_scenario::ScenarioProfile::Apollo11LunarLanding),
-                );
-                return true;
-            }
+        if matches!(entry.kind, AerodromeKind::Tranquility) {
+            self.select(
+                event_loop,
+                Some(sim_scenario::ScenarioProfile::Apollo11LunarLanding),
+            );
+            return true;
+        }
+        let Some(result) = self.dispatch_spawn(index, runway, mode) else {
+            return false;
         };
         match result {
             Ok(()) => {
@@ -127,6 +96,53 @@ impl FlightApp {
                 false
             }
         }
+    }
+
+    fn dispatch_spawn(
+        &mut self,
+        index: usize,
+        runway: usize,
+        mode: SpawnMode,
+    ) -> Option<Result<(), crate::error::AppSimError>> {
+        let entry = self.catalog.aerodromes.get(index)?;
+        let kind = entry.kind;
+        let airport_idx = entry.airport_idx;
+        let code = entry.code.clone();
+        let designator = entry.runways.get(runway).map(|r| r.designator.clone());
+        match kind {
+            AerodromeKind::Osm(id) => {
+                self.spawn_osm_aerodrome(id, airport_idx, designator.as_deref(), runway, mode)
+            }
+            AerodromeKind::Database(idx) => {
+                self.spawn_database_airport(idx, &code, designator.as_deref(), mode)
+            }
+            AerodromeKind::AdHoc(ad_hoc_idx) => {
+                self.spawn_ad_hoc_airport(ad_hoc_idx, designator.as_deref(), mode)
+            }
+            AerodromeKind::DelawareCorridor => Some(self.flight.spawn_delaware()),
+            AerodromeKind::Tranquility => None,
+        }
+    }
+
+    fn spawn_osm_aerodrome(
+        &mut self,
+        id: sim_scenery::AerodromeId,
+        airport_idx: Option<sim_scenery::AirportIdx>,
+        designator: Option<&str>,
+        runway: usize,
+        mode: SpawnMode,
+    ) -> Option<Result<(), crate::error::AppSimError>> {
+        let rig = self.cockpit_rig.as_mut()?;
+        rig.supervisor_mut().set_free_aerodrome(id);
+        if let Some(idx) = airport_idx
+            && let Some(record) = AirportDatabase::builtin().get(idx)
+        {
+            let end =
+                record_runway_end_index(record, rig.supervisor().vertical_datum(), designator);
+            rig.supervisor_mut().set_free_airport(idx, end);
+        }
+        let diagram = rig.supervisor().diagram(id).cloned()?;
+        Some(self.flight.spawn_at_aerodrome(&diagram, runway, mode))
     }
 
     fn spawn_database_airport(
@@ -150,6 +166,48 @@ impl FlightApp {
         }
         info!(airport = code, runway = ?designator, "spawning at database airport");
         Some(self.flight.spawn_at_airport_record(record, end, mode))
+    }
+
+    pub(in crate::app) fn spawn_ad_hoc_airport(
+        &mut self,
+        ad_hoc_idx: usize,
+        designator: Option<&str>,
+        mode: SpawnMode,
+    ) -> Option<Result<(), crate::error::AppSimError>> {
+        let aerodrome = self.catalog.ad_hoc.get(ad_hoc_idx)?.clone();
+        let datum = self.cockpit_rig.as_ref().map_or_else(
+            || match self.hub.scenery {
+                SceneryMode::Online => CatalogVerticalDatum::OrthometricMslEgm96,
+                SceneryMode::Offline => CatalogVerticalDatum::EllipsoidWgs84,
+            },
+            |rig| rig.supervisor().vertical_datum(),
+        );
+        let end = record_runway_end_index(&aerodrome.airport, datum, designator);
+        if let Some(rig) = self.cockpit_rig.as_mut() {
+            rig.register_extra_airport(aerodrome.airport.clone(), &aerodrome.diagram_geojson);
+            rig.supervisor_mut()
+                .set_custom_airport(aerodrome.airport.clone(), end);
+        }
+        info!(
+            airport = aerodrome.airport.ids.primary.as_str(),
+            runway = ?designator,
+            "spawning at ad-hoc aerodrome"
+        );
+        Some(
+            self.flight
+                .spawn_at_airport_record(&aerodrome.airport, end, mode),
+        )
+    }
+
+    /// Registers every catalog ad-hoc aerodrome's surface diagram and plate source into
+    /// `cockpit_rig`.
+    pub(in crate::app) fn sync_ad_hoc_to_rig(&mut self) {
+        let Some(rig) = self.cockpit_rig.as_mut() else {
+            return;
+        };
+        for aerodrome in &self.catalog.ad_hoc {
+            rig.register_extra_airport(aerodrome.airport.clone(), &aerodrome.diagram_geojson);
+        }
     }
 }
 

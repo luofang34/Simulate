@@ -7,7 +7,11 @@ use super::plan_style::{OUTLINES_SOURCE, ROUTE_SOURCE, SATELLITE_LAYER, TRACKS_S
 use super::{
     EfbDisplayMode, EfbFrameMarks, EfbMapSurface, EfbTracks, FixId, FlightPlan, RouteProgress,
 };
-use crate::{MapAdapterError, chart_symbology::screen_positions, runtime::sample_point_msl};
+use crate::{
+    MapAdapterError,
+    chart_symbology::{screen_positions, unproject_screen_position},
+    runtime::sample_point_msl,
+};
 
 /// What lies under the plan.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -160,6 +164,20 @@ impl EfbMapSurface {
         .into_iter()
         .next()
         .flatten()
+    }
+
+    /// Centres the focused view on `(lat_deg, lon_deg)` in [`super::EfbFollowMode::FreePan`],
+    /// optionally setting its zoom within [`super::EFB_ZOOM_RANGE`].
+    pub fn jump_to(&mut self, lat_deg: f64, lon_deg: f64, zoom: Option<f64>) {
+        self.camera_mut().jump_to(lat_deg, lon_deg, zoom);
+    }
+
+    /// Sea-level `[lat_deg, lon_deg]` under physical pixel `at_px` on `mode`'s view;
+    /// `None` beyond the globe limb or for non-finite coordinates.
+    #[must_use]
+    pub fn screen_to_geodetic(&self, mode: EfbDisplayMode, at_px: [f32; 2]) -> Option<[f64; 2]> {
+        let spec = self.camera_spec(mode)?;
+        unproject_screen_position((&spec, self.size_of(mode), self.pixel_ratio()), at_px)
     }
 
     /// The fix nearest `at_px` (physical pixels on `mode`'s view) within `radius_px`.

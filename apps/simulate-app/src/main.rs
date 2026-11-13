@@ -9,6 +9,7 @@ mod camera_view;
 mod chain_avionics;
 mod cockpit_rig;
 mod controls;
+mod efb_plan;
 mod environment;
 mod error;
 mod esc_menu;

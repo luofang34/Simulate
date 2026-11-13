@@ -223,6 +223,22 @@ impl EfbCamera {
         self.set_follow(self.resume_follow);
     }
 
+    /// Centres on `(lat_deg, lon_deg)` in [`EfbFollowMode::FreePan`], optionally setting zoom
+    /// clamped to [`EFB_ZOOM_RANGE`].
+    pub(super) fn jump_to(&mut self, lat_deg: f64, lon_deg: f64, zoom: Option<f64>) {
+        if !lat_deg.is_finite() || !lon_deg.is_finite() {
+            return;
+        }
+        self.center = sanitize_center(lat_deg, lon_deg);
+        if let Some(target_zoom) = zoom.filter(|z| z.is_finite()) {
+            let index = self.mode_index();
+            if let Some(slot_zoom) = self.zooms.get_mut(index) {
+                *slot_zoom = target_zoom.clamp(EFB_ZOOM_RANGE.0, EFB_ZOOM_RANGE.1);
+            }
+        }
+        self.set_follow(EfbFollowMode::FreePan);
+    }
+
     pub(super) const fn has_custom_bearing(&self) -> bool {
         matches!(self.follow, EfbFollowMode::FollowBearing)
             || (matches!(self.follow, EfbFollowMode::FreePan)

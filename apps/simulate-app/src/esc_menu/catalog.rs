@@ -6,7 +6,7 @@ pub mod scenarios;
 mod selectors;
 mod vehicles;
 
-use sim_scenery::{AerodromeId, AirportIdx, OsmAerodromeDiagram};
+use sim_scenery::{AdHocAerodrome, AerodromeId, AirportIdx, OsmAerodromeDiagram};
 
 pub use crate::flight::SpawnMode;
 use crate::vehicles::FreeFlightVehicle;
@@ -22,6 +22,8 @@ pub enum AerodromeKind {
     /// A surveyed airport of [`sim_scenery::AirportDatabase::builtin`], flown from its
     /// runway records.
     Database(AirportIdx),
+    /// A runtime-delineated or historical ad-hoc aerodrome stored in [`HubCatalog::ad_hoc`].
+    AdHoc(usize),
     /// The Delaware visual-navigation corridor.
     DelawareCorridor,
     /// Tranquility Base on the Moon (flown as the Apollo landing).
@@ -171,11 +173,13 @@ impl AerodromeEntry {
     #[must_use]
     pub fn spawn_modes(&self) -> Vec<SpawnMode> {
         match self.kind {
-            AerodromeKind::Osm(_) | AerodromeKind::Database(_) => SpawnMode::ALL
-                .into_iter()
-                .filter(|m| *m != SpawnMode::Ramp || !self.stands.is_empty())
-                .filter(|m| *m == SpawnMode::Overhead || !self.runways.is_empty())
-                .collect(),
+            AerodromeKind::Osm(_) | AerodromeKind::Database(_) | AerodromeKind::AdHoc(_) => {
+                SpawnMode::ALL
+                    .into_iter()
+                    .filter(|m| *m != SpawnMode::Ramp || !self.stands.is_empty())
+                    .filter(|m| *m == SpawnMode::Overhead || !self.runways.is_empty())
+                    .collect()
+            }
             AerodromeKind::DelawareCorridor | AerodromeKind::Tranquility => {
                 vec![SpawnMode::Overhead]
             }
@@ -199,10 +203,11 @@ pub struct HubCatalog {
     pub vehicles: Vec<VehicleDescriptor>,
     /// Spawnable places.
     pub aerodromes: Vec<AerodromeEntry>,
+    /// Runtime-delineated and preset ad-hoc aerodromes (`ZMRS`, `EFHF`, `ZZ01`, ...).
+    pub ad_hoc: Vec<AdHocAerodrome>,
     /// Launchable scenarios.
     pub scenarios: Vec<ScenarioEntry>,
-    /// Whether [`Self::aerodromes`] lists the whole airport database, in its record
-    /// order, so searches rank through the database's own index.
+    /// Whether [`Self::aerodromes`] lists the built-in airport database in record order.
     pub global_airports: bool,
 }
 
@@ -219,6 +224,7 @@ impl HubCatalog {
         Self {
             vehicles: VehicleDescriptor::builtins(),
             aerodromes,
+            ad_hoc: Vec::new(),
             scenarios: ScenarioEntry::all(),
             global_airports: false,
         }

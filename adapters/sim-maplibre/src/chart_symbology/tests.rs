@@ -209,3 +209,19 @@ fn the_true_position_is_a_cased_crossed_circle_about_its_projected_point() {
     marks::append_truth_mark(&mut away, chart, None, [-40.6, 105.8]);
     assert!(away.vertices.is_empty());
 }
+
+#[test]
+fn unproject_screen_position_round_trips_project_across_retina_and_rotation() {
+    let cam = camera_at_zoom(55.7510, 37.6240, 14.2, 33.0);
+    let chart = (&cam, [1024, 768], 2.0);
+    let projection = ChartProjection::new(&cam, [1024, 768], 2.0).unwrap();
+    for (lat, lon) in [(55.7510, 37.6240), (55.7532, 37.6227), (55.7485, 37.6253)] {
+        let px = projection.project(lat, lon).unwrap();
+        let [un_lat, un_lon] = marks::unproject_screen_position(chart, px).unwrap();
+        assert!(
+            (un_lat - lat).abs() < 1e-4 && (un_lon - lon).abs() < 1e-4,
+            "expected ({lat}, {lon}), got ({un_lat}, {un_lon})"
+        );
+    }
+    assert!(marks::unproject_screen_position(chart, [f32::NAN, 100.0]).is_none());
+}

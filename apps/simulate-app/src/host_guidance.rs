@@ -28,9 +28,14 @@ pub struct StandInPilotageHost {
     source_epoch: u32,
     sequence: u32,
     seen_discontinuity: Option<u32>,
+    efb_phase: crate::efb_plan::EfbAutopilotPhase,
 }
 
 impl StandInPilotageHost {
+    /// Updates the EFB autopilot phase reported on the PFD/HUD FMA scoreboard in free flight.
+    pub fn set_efb_phase(&mut self, phase: crate::efb_plan::EfbAutopilotPhase) {
+        self.efb_phase = phase;
+    }
     /// A host that has published nothing yet.
     #[must_use]
     pub fn new() -> Self {
@@ -102,7 +107,7 @@ impl StandInPilotageHost {
             nav: runway.map_or(HostNavGuidance::None, |rwy| {
                 HostNavGuidance::RunwayReceiver(runway_nav(rwy))
             }),
-            autopilot: autopilot_summary(flight),
+            autopilot: autopilot_summary(flight, self.efb_phase),
             source_epoch: self.source_epoch,
         }
     }
@@ -166,9 +171,25 @@ fn runway_nav(runway: &LandingRunwayGeometry) -> RunwayNavGuidance {
     }
 }
 
-/// The modes flying the aircraft: a scripted scenario's autopilot leg, the Aviate
-/// fly-by-wire mode, or nothing engaged in manual free flight.
-fn autopilot_summary(flight: &Flight) -> AutopilotModeSummary {
+/// The modes flying the aircraft: a scripted scenario's autopilot leg, the EFB route/autoland
+/// flight director, the Aviate fly-by-wire mode, or nothing engaged in manual free flight.
+fn autopilot_summary(
+    flight: &Flight,
+    efb_phase: crate::efb_plan::EfbAutopilotPhase,
+) -> AutopilotModeSummary {
+    if flight.profile().is_none() && efb_phase != crate::efb_plan::EfbAutopilotPhase::Off {
+        return AutopilotModeSummary {
+            lateral: efb_phase.lateral_fma().and_then(ident),
+            vertical: efb_phase.vertical_fma().and_then(ident),
+            armed_approach: matches!(
+                efb_phase,
+                crate::efb_plan::EfbAutopilotPhase::Approach
+                    | crate::efb_plan::EfbAutopilotPhase::Flare
+                    | crate::efb_plan::EfbAutopilotPhase::Rollout
+            ),
+            engaged: true,
+        };
+    }
     if let Some(leg) = flight.pattern_leg() {
         return AutopilotModeSummary {
             lateral: ident(pattern_leg_label(leg)),

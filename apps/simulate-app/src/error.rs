@@ -89,6 +89,14 @@ pub enum AppSimError {
         /// Requested rewind span, seconds.
         requested_s: f64,
     },
+    /// A requested runway designator does not exist on the target airport record.
+    #[error("runway {designator} does not exist at {airport}")]
+    SpawnRunwayMissing {
+        /// Primary facility identifier.
+        airport: String,
+        /// Requested runway designator.
+        designator: String,
+    },
     /// Writing or reading a screenshot image on desktop failed.
     #[cfg(not(target_arch = "wasm32"))]
     #[error("screenshot export failed: {detail}")]

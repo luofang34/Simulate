@@ -254,7 +254,12 @@ impl FlightApp {
         let live = self.controls.live();
         let chrome = self.efb_chrome();
         let space = self.flight.space_hud_chrome();
-        let hint = (self.hub.hint_s > 0.0).then_some(TAKEOVER_HINT);
+        let hint = self
+            .efb_workspace
+            .ad_hoc
+            .pick_mode
+            .banner_prompt()
+            .or_else(|| (self.hub.hint_s > 0.0).then_some(TAKEOVER_HINT));
         let overlay_err = {
             let (Some(renderer), Some(overlay)) = (&self.renderer, self.menu_overlay.as_mut())
             else {
@@ -420,6 +425,11 @@ impl FlightApp {
         };
         let enable = renderer.backend() != wgpu::Backend::Gl;
         rig.rebuild_maps(host_gpu(renderer), enable.then_some(&source));
+        self.flight
+            .world_surface()
+            .set_ad_hoc_strips(self.catalog.ad_hoc_strips());
+        self.sync_ad_hoc_to_rig();
+        self.sync_efb_route_to_rig();
         self.hub.scenery = mode;
         info!(scenery = mode.label(), "switched scenery source");
     }

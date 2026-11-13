@@ -1,10 +1,14 @@
 //! Where the EFB sits and the vector chrome around it: the compact `4:3` moving map in
-//! the top-right corner (clear of the HUD and the PFD/HSI dock) with a zoom pill and three
-//! corner buttons, or the expanded EFB tablet with its header and toolbar.
+//! the top-right corner (clear of the HUD and the PFD/HSI dock) with a zoom pill, corner
+//! buttons, and optional active-leg glance pill, or the expanded EFB tablet with its
+//! header, map toolbar, and modern `Pilotage`-inspired Mission Planner & Ad-Hoc Runway dock.
 //!
 //! The chrome is laid out once per frame in window fractions; drawing and mouse hit
 //! testing read the same rectangles, so a click acts on exactly what is drawn.
 
+pub mod workspace;
+
+use indicate_instrument_scene::Rgba8;
 use sim_maplibre::{EfbBasemap, EfbDisplayMode};
 use sim_render::ViewportRect;
 
@@ -33,6 +37,46 @@ pub const CHROME_DESIGN_HEIGHT: f32 = 720.0;
 const MIN_CHIP_W: f32 = 80.0;
 /// Zoom step of the `-` and `+` buttons and of one mouse-wheel row.
 pub const ZOOM_STEP: f64 = 0.5;
+
+/// Visual colour accent of an [`EfbButton`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EfbButtonTone {
+    /// Standard cockpit button (`Palette::BUTTON` / `Palette::ACTIVE`).
+    #[default]
+    Standard,
+    /// Emerald primary / ad-hoc runway action (`Palette::PRIMARY`).
+    Emerald,
+    /// Warm amber active leg / hold / caution action (`Palette::ATTENTION`).
+    Amber,
+    /// Text-entry omni-search field (`Palette::STUDIO` with focus border).
+    Field,
+}
+
+/// Passive background panel drawn behind Mission Dock sections.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EfbPanel {
+    /// Rectangle `[x, y, w, h]` in design units.
+    pub rect: [f32; 4],
+    /// Fill colour.
+    pub fill: Rgba8,
+    /// Optional border stroke colour.
+    pub edge: Option<Rgba8>,
+}
+
+/// Passive text readout drawn inside the Mission Dock or glance pill.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EfbLabel {
+    /// Anchor position `[x, y]` in design units (left-middle).
+    pub at: [f32; 2],
+    /// Font size in design units.
+    pub size: f32,
+    /// Fill colour.
+    pub color: Rgba8,
+    /// Glyph-safe uppercase string.
+    pub text: String,
+    /// Maximum characters before clipping.
+    pub max_chars: usize,
+}
 
 /// Where the EFB map of `mode` sits in a `surface` window.
 #[must_use]
@@ -84,6 +128,27 @@ pub struct EfbButton {
     pub label: String,
     /// Whether it shows an engaged state.
     pub active: bool,
+    /// Colour tone.
+    pub tone: EfbButtonTone,
+}
+
+impl EfbButton {
+    /// Standard button constructor.
+    #[must_use]
+    pub fn std_btn(
+        command: EfbCommand,
+        rect: [f32; 4],
+        label: impl Into<String>,
+        active: bool,
+    ) -> Self {
+        Self {
+            command,
+            rect,
+            label: label.into(),
+            active,
+            tone: EfbButtonTone::Standard,
+        }
+    }
 }
 
 /// What a click on the EFB lands on.
@@ -93,7 +158,7 @@ pub enum EfbHit {
     Button(EfbCommand),
     /// The map itself.
     Map,
-    /// The expanded tablet's bezel around the map.
+    /// The expanded tablet's bezel or Mission Dock panel around/over the map.
     Bezel,
 }
 
@@ -113,6 +178,10 @@ pub struct EfbChrome {
     pub title: (String, [f32; 2]),
     /// Clickable buttons.
     pub buttons: Vec<EfbButton>,
+    /// Passive Mission Dock background panels (drawn over the map before buttons/labels).
+    pub panels: Vec<EfbPanel>,
+    /// Passive Mission Dock text readouts.
+    pub labels: Vec<EfbLabel>,
 }
 
 impl EfbChrome {
@@ -143,17 +212,44 @@ impl EfbChrome {
         }
     }
 
+    /// Converts window physical pixel `cursor_px` into local `[x_px, y_px]` inside the EFB
+    /// map's rendered texture (`[0..map_w_px, 0..map_h_px]`), when `cursor_px` lies inside
+    /// `self.map`.
+    #[must_use]
+    pub fn map_local_px(&self, cursor_px: [f64; 2], surface: [u32; 2]) -> Option<[f32; 2]> {
+        let vp = self.map_viewport();
+        let [sw, sh] = surface.map(|v| f64::from(v.max(1)));
+        let [cx, cy] = cursor_px;
+        let nx = cx / sw;
+        let ny = cy / sh;
+        let (vx, vy, vw, vh) = (
+            f64::from(vp.x),
+            f64::from(vp.y),
+            f64::from(vp.width),
+            f64::from(vp.height),
+        );
+        if nx < vx || nx >= vx + vw || ny < vy || ny >= vy + vh {
+            return None;
+        }
+        let [mw_px, mh_px] = rect_px(vp, surface);
+        Some([
+            (((nx - vx) / vw.max(1e-6)) * f64::from(mw_px)) as f32,
+            (((ny - vy) / vh.max(1e-6)) * f64::from(mh_px)) as f32,
+        ])
+    }
+
     /// What `cursor_px` in a `surface` window lands on.
     #[must_use]
     pub fn hit(&self, cursor_px: [f64; 2], surface: [u32; 2]) -> Option<EfbHit> {
         let [dw, dh] = self.design;
         let [sw, sh] = surface.map(|v| f64::from(v.max(1)));
-        let at = [
-            (cursor_px[0] / sw) as f32 * dw,
-            (cursor_px[1] / sh) as f32 * dh,
-        ];
+        let [cx, cy] = cursor_px;
+        let at = [(cx / sw) as f32 * dw, (cy / sh) as f32 * dh];
         if let Some(button) = self.buttons.iter().find(|b| inside(b.rect, at)) {
             return Some(EfbHit::Button(button.command));
+        }
+        if self.panels.iter().any(|p| inside(p.rect, at)) {
+            return Some(EfbHit::Bezel);
         }
         if inside(self.map, at) {
             return Some(EfbHit::Map);
@@ -177,12 +273,14 @@ fn compact(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
             map: [0.0; 4],
             bezel: [0.0; 4],
             title: (String::new(), [0.0, 0.0]),
-            buttons: vec![EfbButton {
-                command: EfbCommand::SetCollapsed(false),
-                rect: fold_rect,
-                label: "MAP".to_owned(),
-                active: false,
-            }],
+            buttons: vec![EfbButton::std_btn(
+                EfbCommand::SetCollapsed(false),
+                fold_rect,
+                "MAP",
+                false,
+            )],
+            panels: Vec::new(),
+            labels: Vec::new(),
         };
     }
     let button_y = my + mh - 6.0 - 18.0;
@@ -198,21 +296,21 @@ fn compact(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
         (EfbCommand::ZoomBy(-ZOOM_STEP), "-", 22.0),
     ] {
         right -= width;
-        buttons.push(EfbButton {
+        buttons.push(EfbButton::std_btn(
             command,
-            rect: [right, button_y, width, 18.0],
-            label: label.to_owned(),
-            active: false,
-        });
+            [right, button_y, width, 18.0],
+            label,
+            false,
+        ));
         right -= 4.0;
     }
     buttons.reverse();
-    buttons.push(EfbButton {
-        command: EfbCommand::SetCollapsed(true),
-        rect: fold_rect,
-        label: "HIDE".to_owned(),
-        active: false,
-    });
+    buttons.push(EfbButton::std_btn(
+        EfbCommand::SetCollapsed(true),
+        fold_rect,
+        "HIDE",
+        false,
+    ));
     EfbChrome {
         design,
         mode: EfbDisplayMode::CompactCorner,
@@ -220,6 +318,8 @@ fn compact(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
         bezel: map,
         title: (String::new(), [mx, my]),
         buttons,
+        panels: Vec::new(),
+        labels: Vec::new(),
     }
 }
 
@@ -271,7 +371,6 @@ fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
     let [mx, my, mw, mh] = map;
     let toolbar_y = my - 26.0;
     let chips = tablet_chips(status);
-    // A narrow (portrait) tablet wraps the toolbar into two rows, the second under the map.
     let gap = 4.0;
     let width_of = |per_row: usize| (mw - gap * (per_row as f32 - 1.0)) / per_row as f32;
     let per_row = if width_of(chips.len()) >= MIN_CHIP_W {
@@ -290,12 +389,12 @@ fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
             } else {
                 my + mh + 5.0
             };
-            EfbButton {
+            EfbButton::std_btn(
                 command,
-                rect: [mx + column * (chip_w + gap), y, chip_w, 21.0],
+                [mx + column * (chip_w + gap), y, chip_w, 21.0],
                 label,
                 active,
-            }
+            )
         })
         .collect();
     let below = if per_row < 8 { 26.0 } else { 0.0 };
@@ -310,6 +409,8 @@ fn expanded(design: [f32; 2], map: [f32; 4], status: &EfbStatus) -> EfbChrome {
             [mx, my - 39.0],
         ),
         buttons,
+        panels: Vec::new(),
+        labels: Vec::new(),
     }
 }
 

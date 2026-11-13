@@ -139,6 +139,18 @@ impl LiveDem {
         self.tiles.contains_key(&id)
     }
 
+    /// Stamps `datum` into every resident tile it touches, returning how many tiles changed.
+    pub(super) fn restamp(&mut self, datum: &crate::RunwayDatum) -> usize {
+        let mut changed = 0_usize;
+        for (&id, tile) in &mut self.tiles {
+            if datum.touches_tile(id) && datum.stamp_terrarium(id, Arc::make_mut(&mut tile.raster))
+            {
+                changed = changed.wrapping_add(1);
+            }
+        }
+        changed
+    }
+
     /// The overlay height at `position`, in the overlay's own datum, from
     /// the finest resident zoom covering it, with that zoom.
     pub(super) fn raw_height_and_zoom(&self, position: &Geodetic) -> Option<(f64, u8)> {
@@ -225,6 +237,21 @@ impl AuthoritativeWorldSurface {
         match &self.body {
             Body::Earth(earth) => earth.live.contains(id),
             Body::Moon(_) => false,
+        }
+    }
+
+    /// Re-stamps `datum` into any already-resident live Terrarium tiles it touches and bumps
+    /// the world version if any pixel changed. Returns how many resident tiles changed.
+    pub fn restamp_live_tiles(&mut self, datum: &crate::RunwayDatum) -> usize {
+        match &mut self.body {
+            Body::Earth(earth) => {
+                let changed = earth.live.restamp(datum);
+                if changed > 0 {
+                    self.bump();
+                }
+                changed
+            }
+            Body::Moon(_) => 0,
         }
     }
 }

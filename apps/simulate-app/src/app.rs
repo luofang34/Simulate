@@ -104,6 +104,7 @@ pub struct FlightApp {
     failed: bool,
     controls: ControlScheme,
     catalog: HubCatalog,
+    efb_workspace: crate::efb_plan::EfbWorkspace,
     hangar: Option<HangarRig>,
     hub_preview: Option<sim_render::ViewportRect>,
     hub: HubSettings,
@@ -147,7 +148,8 @@ impl FlightApp {
         mapper.set(Control::Throttle, trim_throttle(vehicle, false));
         let mut controls = ControlScheme::new(vehicle_class(vehicle));
         controls.sync_live(mapper.controls());
-        let catalog = HubCatalog::with_global_airports();
+        let mut catalog = HubCatalog::with_global_airports();
+        catalog.seed_ad_hoc_presets(flight.world_surface());
         let mut esc_menu = EscMenu::default();
         if let Some((kdov, _)) = sim_scenery::AirportDatabase::builtin().by_code("KDOV")
             && let Some(idx) = catalog.index_of_airport(kdov)
@@ -175,6 +177,7 @@ impl FlightApp {
             failed: false,
             controls,
             catalog,
+            efb_workspace: crate::efb_plan::EfbWorkspace::default(),
             hangar: None,
             hub_preview: None,
             hub: HubSettings::new(&ScenerySource::from_environment()),
@@ -258,6 +261,8 @@ impl FlightApp {
                         .diagnostics(&maps.tier().line(), &maps.tier().words());
                 }
                 self.cockpit_rig = Some(rig);
+                self.sync_ad_hoc_to_rig();
+                self.sync_efb_route_to_rig();
                 self.apply_vehicle_overlays();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
                 self.renderer = Some(renderer);
@@ -288,6 +293,9 @@ impl FlightApp {
             return;
         }
         if !open && self.efb_escape(event) {
+            return;
+        }
+        if !open && self.efb_key_input(event) {
             return;
         }
         if let Some(input) = menu_input_for_key(event, open, self.hub.shift) {

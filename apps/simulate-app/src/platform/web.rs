@@ -19,6 +19,7 @@ mod link_start;
 mod monitor_view;
 mod package_run;
 mod progress_surface;
+mod route_editor;
 mod section;
 
 pub use host::{Host, PageView};

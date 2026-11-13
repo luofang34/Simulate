@@ -32,7 +32,9 @@ mod marks;
 mod ownship;
 mod runway;
 
-pub(crate) use marks::{append_sigma_rings, append_truth_mark, screen_positions};
+pub(crate) use marks::{
+    append_sigma_rings, append_truth_mark, screen_positions, unproject_screen_position,
+};
 
 const TILE_PX: f64 = 512.0;
 /// `HeadlessMap`'s default vertical field of view (`2 * atan(1/3)` radians).
@@ -101,7 +103,6 @@ pub(super) struct ChartProjection<'g> {
 }
 
 impl<'g> ChartProjection<'g> {
-    #[cfg(test)]
     fn new(camera: &ChartCameraSpec, viewport_px: [u32; 2], pixel_ratio: f64) -> Option<Self> {
         Self::on(camera, viewport_px, pixel_ratio, None)
     }
@@ -181,6 +182,21 @@ impl<'g> ChartProjection<'g> {
         let [sx, sy] = self.logical_to_phys;
         let (x, y) = ((p.x * sx) as f32, (p.y * sy) as f32);
         (x.is_finite() && y.is_finite()).then_some([x, y])
+    }
+
+    pub(super) fn unproject(&self, at_px: [f32; 2]) -> Option<[f64; 2]> {
+        let [px, py] = at_px;
+        let [sx, sy] = self.logical_to_phys;
+        if !px.is_finite() || !py.is_finite() || sx <= 0.0 || sy <= 0.0 {
+            return None;
+        }
+        let logical = Point2::new(f64::from(px) / sx, f64::from(py) / sy);
+        if !self.globe.is_point_on_map_surface(logical) {
+            return None;
+        }
+        let loc = self.globe.screen_point_to_location(logical)?;
+        (loc.latitude.is_finite() && loc.longitude.is_finite())
+            .then(|| [loc.latitude.clamp(-90.0, 90.0), wrap_lon_deg(loc.longitude)])
     }
 
     /// Screen angle (radians, clockwise from screen-up) of `true_azimuth_deg` at `(lat_deg, lon_deg)`.

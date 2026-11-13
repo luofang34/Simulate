@@ -26,11 +26,15 @@ pub fn show_link(surface: ProgressSurface) -> Result<(), ProgressSurface> {
                 );
                 let lines = plan_lines(&plan.link, &plan.request, &plan.summary);
                 surface.lines("plan", "Flight plan from the link", &lines);
+                let frag = href.split_once('#').map_or("", |(_, f)| f);
+                super::route_editor::mount_route_editor(&surface, frag, Some(&plan.link));
                 wasm_bindgen_futures::spawn_local(continue_with(surface, plan));
             }
             Err(error) => {
                 warn!(%error, "the link decodes but cannot be planned");
                 surface.fail("This link cannot be flown", &error.to_string());
+                let frag = href.split_once('#').map_or("", |(_, f)| f);
+                super::route_editor::mount_route_editor(&surface, frag, None);
             }
         },
         Err(refusal) => {
@@ -41,6 +45,7 @@ pub fn show_link(surface: ProgressSurface) -> Result<(), ProgressSurface> {
                 "This link is refused",
                 &refusal_lines(fragment, &refusal),
             );
+            super::route_editor::mount_route_editor(&surface, fragment, None);
         }
     }
     Ok(())
