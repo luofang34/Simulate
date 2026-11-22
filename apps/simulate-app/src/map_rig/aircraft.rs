@@ -56,7 +56,75 @@ pub fn ownship_aircraft(
         articulation,
         ownship: true,
         ground_height_m: ground_m.map(|h| h - undulation_m),
+        model_id: None,
     }
+}
+
+/// Collects all traffic, registered NPC models, and ownship aircraft instances for `TruthSceneMap`.
+pub(super) fn scene_aircraft(
+    input: &super::MapFrameInput<'_>,
+    truth_entities: &[DynamicEntity3D],
+    truth: &mut sim_maplibre::TruthSceneMap,
+    npc_models: &mut std::collections::HashMap<(String, String), sim_maplibre::TrafficModelId>,
+    elapsed_s: f64,
+    undulation_m: f64,
+) -> Result<Vec<AircraftInstance>, crate::error::AppSimError> {
+    let mut aircraft = traffic_aircraft_filtered(truth_entities, input.supervisor, elapsed_s);
+    append_npc_instances(&mut aircraft, truth, npc_models, input)?;
+    aircraft.push(ownship_of(input, undulation_m));
+    Ok(aircraft)
+}
+
+/// Fixed-wing truth traffic drawn as cruising C172s with spinning propellers, skipping any
+/// track already represented by [`crate::npc_fleet::NpcFleet`] with its own airframe mesh.
+pub fn traffic_aircraft_filtered(
+    entities: &[DynamicEntity3D],
+    supervisor: &crate::supervisor_rig::SupervisorRig,
+    elapsed_s: f64,
+) -> Vec<AircraftInstance> {
+    let filtered: Vec<DynamicEntity3D> = entities
+        .iter()
+        .filter(|entity| !supervisor.is_npc_track(entity.id))
+        .copied()
+        .collect();
+    traffic_aircraft(&filtered, elapsed_s)
+}
+
+/// Appends evaluated [`crate::npc_fleet::NpcFleet`] instances, registering any new
+/// `(aircraft_id, livery_id)` OpenUSD asset onto `truth`.
+pub(super) fn append_npc_instances(
+    out: &mut Vec<AircraftInstance>,
+    truth: &mut sim_maplibre::TruthSceneMap,
+    npc_models: &mut std::collections::HashMap<(String, String), sim_maplibre::TrafficModelId>,
+    input: &super::MapFrameInput<'_>,
+) -> Result<(), crate::error::AppSimError> {
+    for npc in &input.npcs {
+        let model_id = if let Some(&id) = npc_models.get(&npc.model_key) {
+            id
+        } else {
+            let id = truth.register_traffic_model(std::sync::Arc::clone(&npc.asset))?;
+            npc_models.insert(npc.model_key.clone(), id);
+            id
+        };
+        let mut placement = npc.placement;
+        let mut ground_height_m = npc.ground_height_msl_m;
+        if input.supervisor.vertical_datum() == sim_scenery::CatalogVerticalDatum::EllipsoidWgs84 {
+            let undul_m = sim_geo::egm96_undulation_m(
+                placement.position.latitude.to_radians(),
+                placement.position.longitude.to_radians(),
+            );
+            placement.altitude_meters += undul_m;
+            ground_height_m = ground_height_m.map(|h| h + undul_m);
+        }
+        out.push(AircraftInstance {
+            placement,
+            articulation: npc.articulation,
+            ownship: false,
+            ground_height_m,
+            model_id: Some(model_id),
+        });
+    }
+    Ok(())
 }
 
 /// Fixed-wing truth traffic drawn as cruising C172s with spinning propellers.
@@ -81,6 +149,7 @@ pub fn traffic_aircraft(entities: &[DynamicEntity3D], elapsed_s: f64) -> Vec<Air
             },
             ownship: false,
             ground_height_m: None,
+            model_id: None,
         })
         .collect()
 }
@@ -156,6 +225,7 @@ pub const fn ownship_visual(
         (None, Some(FreeFlightVehicle::JsbsimP38g)) => OwnshipVisualKind::P38g,
         (None, Some(FreeFlightVehicle::Kinematic)) => OwnshipVisualKind::FixedWingUav,
         (None, Some(FreeFlightVehicle::AviateX500Direct)) => OwnshipVisualKind::QuadrotorX500,
+        (None, Some(FreeFlightVehicle::External(slot))) => OwnshipVisualKind::External(slot),
     }
 }
 

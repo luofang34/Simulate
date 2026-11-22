@@ -295,15 +295,12 @@ impl CockpitRig {
         sky: &SkyFrame<'_>,
         sensor_exposures: &[SensorExposureEvent],
     ) -> Result<bool, AppSimError> {
-        let now = flight.now();
         let truth_vehicle = flight.display_vehicle_state();
         let sensed = flight.onboard_sensors();
         let estimated = sensed.estimated_vehicle;
         let profile = flight.profile();
         self.surface_size = surface_size;
-        let start_utc = flight.sim_epoch().start_utc()?;
-        self.supervisor
-            .sync(truth_vehicle.position_ecef, now, start_utc, profile);
+        self.sync_supervisor(flight, &truth_vehicle, profile)?;
 
         let body = flight.world().body();
         let earth = body == BodyEllipsoid::WGS84;
@@ -365,6 +362,22 @@ impl CockpitRig {
         )?;
         let full_map_covered = map_sphere_active && self.full_window_map_view().is_some();
         Ok(!full_map_covered)
+    }
+
+    fn sync_supervisor(
+        &mut self,
+        flight: &Flight,
+        truth_vehicle: &sim_core::VehicleState,
+        profile: Option<sim_scenario::ScenarioProfile>,
+    ) -> Result<(), AppSimError> {
+        let now = flight.now();
+        let start_utc = flight.sim_epoch().start_utc()?;
+        let npc_transponders = flight.evaluate_npcs(self.supervisor.active_anchor_msl(profile));
+        self.supervisor
+            .ingest_npc_transponders(&npc_transponders, now);
+        self.supervisor
+            .sync(truth_vehicle.position_ecef, now, start_utc, profile);
+        Ok(())
     }
 
     fn step_earth_maps(

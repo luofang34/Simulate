@@ -40,7 +40,7 @@ mod textures;
 pub(crate) mod vertex;
 
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
-pub use library::{OwnshipVisualKind, StructuralDatum};
+pub use library::{OwnshipVisualKind, StructuralDatum, TrafficModelId};
 pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
 pub(crate) use sky::SkyLight;
@@ -79,6 +79,8 @@ pub struct AircraftInstance {
     /// `placement.altitude_meters`; ownship's sun shadow falls on it, and `None` (unknown
     /// ground) leaves the shadow on the airframe only.
     pub ground_height_m: Option<f64>,
+    /// Optional registered non-ownship airframe handle for mixed-type traffic or ground NPCs.
+    pub model_id: Option<TrafficModelId>,
 }
 
 /// One packed draw of one part in one slot.
@@ -185,7 +187,9 @@ pub(crate) fn pack_slot_draws(
         {
             continue;
         }
-        let Some((asset_key, asset)) = library.asset_for(instance.ownship) else {
+        let Some((asset_key, asset)) =
+            library.asset_for_instance(instance.ownship, instance.model_id)
+        else {
             continue;
         };
         let Some(enu_from_aircraft) = enu_from_aircraft(view.stamp, &instance.placement) else {

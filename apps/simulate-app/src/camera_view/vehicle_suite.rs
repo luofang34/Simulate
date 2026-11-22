@@ -21,7 +21,7 @@ pub const DEFAULT_CHASE_BACK_UP_M: (f64, f64) = (22.0, 6.5);
 const X500_SPAN_M: f64 = 0.70;
 
 /// One vehicle's chase distance and its cyclable views.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VehicleCameraSuite {
     /// The chase camera's distance behind and above the origin, metres.
     pub chase_back_up_m: (f64, f64),
@@ -50,6 +50,8 @@ pub fn vehicle_camera_suite(vehicle: FreeFlightVehicle) -> &'static VehicleCamer
         FreeFlightVehicle::AviateX500Direct => {
             X500_SUITE.get_or_init(|| suite(vehicle, CameraViewSet::derived(X500_SPAN_M)))
         }
+        FreeFlightVehicle::External(_) => C172_SUITE
+            .get_or_init(|| suite(vehicle, package_views("c172s", builtin_c172s_package()))),
     }
 }
 

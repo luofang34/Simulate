@@ -18,6 +18,8 @@ pub enum FreeFlightVehicle {
     C172Mission,
     /// Fast kinematic 6-DoF free-flight model.
     Kinematic,
+    /// Runtime-imported external `syspack.json` JSBSim vehicle plugin slot.
+    External(u16),
 }
 
 impl FreeFlightVehicle {
@@ -28,15 +30,24 @@ impl FreeFlightVehicle {
         matches!(self, Self::JsbsimP38g)
     }
 
+    /// Slot index when flying a runtime-imported external plugin vehicle.
+    #[must_use]
+    pub const fn external_slot(self) -> Option<u16> {
+        match self {
+            Self::External(slot) => Some(slot),
+            _ => None,
+        }
+    }
+
     /// Package aircraft identifier in [`crate::livery_session::LiverySession`], when this
-    /// vehicle flies a packaged airframe with selectable liveries.
+    /// vehicle flies a built-in packaged airframe with selectable liveries.
     #[must_use]
     pub const fn aircraft_id(self) -> Option<&'static str> {
         match self {
             Self::JsbsimC172 | Self::AviateFixedWingDirect | Self::C172Mission => Some("c172s"),
             Self::JsbsimC172p => Some("c172p"),
             Self::JsbsimP38g => Some("p38g"),
-            Self::AviateX500Direct | Self::Kinematic => None,
+            Self::AviateX500Direct | Self::Kinematic | Self::External(_) => None,
         }
     }
 
@@ -50,11 +61,11 @@ impl FreeFlightVehicle {
             Self::AviateX500Direct => Self::JsbsimP38g,
             Self::AviateFixedWingDirect => Self::AviateX500Direct,
             Self::C172Mission => Self::AviateFixedWingDirect,
-            Self::Kinematic => Self::C172Mission,
+            Self::Kinematic | Self::External(_) => Self::C172Mission,
         }
     }
 
-    /// Cycles to the next free-flight vehicle.
+    /// Cycles to the next free-flight vehicle among the built-in suite.
     #[must_use]
     pub const fn next(self) -> Self {
         match self {
@@ -64,7 +75,25 @@ impl FreeFlightVehicle {
             Self::AviateX500Direct => Self::AviateFixedWingDirect,
             Self::AviateFixedWingDirect => Self::C172Mission,
             Self::C172Mission => Self::Kinematic,
-            Self::Kinematic => Self::JsbsimC172,
+            Self::Kinematic | Self::External(_) => Self::JsbsimC172,
+        }
+    }
+
+    /// Cycles to the next free-flight vehicle, including `external_count` external plugin slots.
+    #[cfg(test)]
+    #[must_use]
+    pub fn next_with_externals(self, external_count: u16) -> Self {
+        match self {
+            Self::Kinematic if external_count > 0 => Self::External(0),
+            Self::External(slot) => {
+                let next_slot = slot.wrapping_add(1);
+                if next_slot < external_count {
+                    Self::External(next_slot)
+                } else {
+                    Self::JsbsimC172
+                }
+            }
+            other => other.next(),
         }
     }
 
@@ -85,6 +114,7 @@ impl FreeFlightVehicle {
             Self::AviateFixedWingDirect => "Fixed-Wing FBW (Aviate + JSBSim)",
             Self::C172Mission => "C172 Mission (Pilotage -> Aviate)",
             Self::Kinematic => "Kinematic Free Flight",
+            Self::External(_) => "Hangar Plugin Aircraft (JSBSim)",
         }
     }
 }

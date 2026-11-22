@@ -198,3 +198,35 @@ fn timeline_scrubs_both_ways_and_only_live_is_highlighted() {
         "at the oldest"
     );
 }
+
+#[test]
+fn hangar_npc_and_livery_controls_never_overlap_or_clip() {
+    let mut hub = Hub::opened();
+    hub.status = populated_status();
+    hub.status.hangar_liveries = vec![
+        ("RF-94121".to_owned(), "RED 21".to_owned()),
+        ("RF-94102".to_owned(), "RED 02".to_owned()),
+    ];
+    hub.status.active_livery_index = Some(0);
+    hub.status.active_livery_name = Some("RF-94121".to_owned());
+    hub.status.npc_count = 3;
+    hub.input(MenuInput::Tab(HubTab::Hangar));
+    let view = hub.view();
+    assert!(view.find(WidgetId::SpawnGroundNpc).is_some());
+    assert!(view.find(WidgetId::ClearNpcs).is_some());
+    let boxes = text_boxes(&view);
+    for (i, (a, ta)) in boxes.iter().enumerate() {
+        for (b, tb) in boxes.iter().skip(i + 1) {
+            assert!(!intersects(*a, *b), "{ta:?} {a:?} overlaps {tb:?} {b:?}");
+        }
+    }
+    for widget in view.widgets() {
+        if !widget.label.is_empty() && widget.style != WidgetStyle::Row {
+            assert!(
+                !widget.clipped,
+                "{:?} ({:?}) clipped",
+                widget.id, widget.label
+            );
+        }
+    }
+}

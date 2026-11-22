@@ -1,16 +1,19 @@
 //! Per-session aircraft variant registry, selectable tail liveries, and runtime import of
 //! external livery bundles and external `syspack.json` variant directories.
 
+mod external_meta;
+#[cfg(not(target_arch = "wasm32"))]
+mod hangar_scan;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+pub use external_meta::ExternalVehicleMeta;
 use sim_maplibre::UsdAircraftAsset;
 use sim_pack::{
     ExternalLiveryBundle, PackError, VariantDescriptor, VariantRegistry, VehicleLivery,
     resolve_variant_alias,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use tracing::{info, warn};
 
 use crate::error::AppSimError;
 
@@ -21,6 +24,10 @@ pub const ENV_IMPORT_LIVERY: &str = "SIMULATE_IMPORT_LIVERY";
 /// Environment variable pointing to an external `syspack.json` aircraft variant directory.
 #[cfg(not(target_arch = "wasm32"))]
 pub const ENV_IMPORT_VARIANT: &str = "SIMULATE_IMPORT_VARIANT";
+
+/// Environment variable pointing to one or more hangar directories of external aircraft packages.
+#[cfg(not(target_arch = "wasm32"))]
+pub const ENV_HANGAR_DIR: &str = "SIMULATE_HANGAR_DIR";
 
 /// Lightweight summary of one selectable livery for Hangar UI chips.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,12 +50,13 @@ pub struct LiverySession {
     registry: VariantRegistry,
     selected: BTreeMap<String, String>,
     assets: HashMap<(String, String), Arc<UsdAircraftAsset>>,
+    externals: Vec<ExternalVehicleMeta>,
     revision: u32,
 }
 
 impl LiverySession {
     /// Loads the built-in aircraft family/variant registry (`c172s`, `c172p`, `p38g`) and
-    /// applies any desktop startup imports from environment variables.
+    /// applies any desktop startup imports from environment variables and `$HOME/hangar`.
     pub fn new() -> Result<Self, AppSimError> {
         let registry = VariantRegistry::builtin()?;
         let mut selected = BTreeMap::new();
@@ -62,11 +70,73 @@ impl LiverySession {
             registry,
             selected,
             assets: HashMap::new(),
+            externals: Vec::new(),
             revision: 0,
         };
         #[cfg(not(target_arch = "wasm32"))]
         session.apply_environment_imports();
         Ok(session)
+    }
+
+    /// Imported external aircraft metadata in slot registration order.
+    #[must_use]
+    pub fn externals(&self) -> &[ExternalVehicleMeta] {
+        &self.externals
+    }
+
+    /// External aircraft metadata for free-flight slot `slot`, if loaded.
+    #[must_use]
+    pub fn external_meta(&self, slot: u16) -> Option<&ExternalVehicleMeta> {
+        self.externals.get(usize::from(slot))
+    }
+
+    /// Slot index assigned to external variant `aircraft_id`, if any.
+    #[must_use]
+    pub fn external_slot_by_id(&self, aircraft_id: &str) -> Option<u16> {
+        self.externals
+            .iter()
+            .find(|m| m.aircraft_id == aircraft_id)
+            .map(|m| m.slot)
+    }
+
+    /// Borrows a registered variant descriptor by id or alias.
+    #[must_use]
+    pub fn variant(&self, aircraft_id: &str) -> Option<&VariantDescriptor> {
+        self.registry.variant(aircraft_id)
+    }
+
+    /// Composes (and caches) an OpenUSD asset for `(aircraft_id, livery_id)` for previews or NPCs.
+    pub fn usd_asset_for(
+        &mut self,
+        aircraft_id: &str,
+        livery_id: Option<&str>,
+    ) -> Result<Option<Arc<UsdAircraftAsset>>, AppSimError> {
+        let Some(variant) = self.registry.variant(aircraft_id) else {
+            return Ok(None);
+        };
+        let resolved_id = variant.id.clone();
+        let lid = livery_id
+            .or_else(|| self.selected.get(&resolved_id).map(String::as_str))
+            .or_else(|| variant.default_livery_id())
+            .unwrap_or_default()
+            .to_owned();
+        if lid.is_empty() {
+            return Ok(None);
+        }
+        let key = (resolved_id.clone(), lid.clone());
+        if let Some(cached) = self.assets.get(&key) {
+            return Ok(Some(Arc::clone(cached)));
+        }
+        let Some(entry) = variant.livery_catalog().and_then(|c| c.livery(&lid)) else {
+            return Ok(None);
+        };
+        if !uses_usd_livery(variant, entry) {
+            return Ok(None);
+        }
+        let composed = Arc::new(compose_variant_asset(variant, &entry.id)?);
+        self.assets
+            .insert((resolved_id, entry.id.clone()), Arc::clone(&composed));
+        Ok(Some(composed))
     }
 
     /// Monotonic generation bumped on every livery selection or import.
@@ -251,55 +321,68 @@ impl LiverySession {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn import_variant_dir(&mut self, path: &std::path::Path) -> Result<String, AppSimError> {
         let aircraft_id = self.registry.import_variant_dir(path)?;
-        if let Some(variant) = self.registry.variant(&aircraft_id)
-            && let Some(default_id) = variant.default_livery_id().map(str::to_owned)
+        let default_id = self
+            .registry
+            .variant(&aircraft_id)
+            .and_then(|v| v.default_livery_id().map(str::to_owned));
+        if let Some(default_id) = default_id.as_deref()
+            && let Some(variant) = self.registry.variant(&aircraft_id)
         {
             if let Some(default_entry) = variant
                 .livery_catalog()
-                .and_then(|cat| cat.livery(&default_id))
+                .and_then(|cat| cat.livery(default_id))
                 && uses_usd_livery(variant, default_entry)
             {
-                let composed = compose_variant_asset(variant, &default_id)?;
+                let composed = compose_variant_asset(variant, default_id)?;
                 self.assets.insert(
-                    (aircraft_id.clone(), default_id.clone()),
+                    (aircraft_id.clone(), default_id.to_owned()),
                     Arc::new(composed),
                 );
             }
-            self.selected.insert(aircraft_id.clone(), default_id);
+            self.selected
+                .insert(aircraft_id.clone(), default_id.to_owned());
         }
+        self.register_external_meta(&aircraft_id, default_id.as_deref());
         self.revision = self.revision.wrapping_add(1);
         Ok(aircraft_id)
     }
 
-    /// Applies optional `SIMULATE_IMPORT_VARIANT` and `SIMULATE_IMPORT_LIVERY` paths from the
-    /// process environment.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn register_external_meta(&mut self, aircraft_id: &str, default_id: Option<&str>) {
+        if matches!(aircraft_id, "c172s" | "c172p" | "p38g") {
+            return;
+        }
+        let Some(variant) = self.registry.variant(aircraft_id) else {
+            return;
+        };
+        let slot = self
+            .external_slot_by_id(aircraft_id)
+            .unwrap_or(self.externals.len() as u16);
+        let default_asset = default_id
+            .and_then(|lid| self.assets.get(&(aircraft_id.to_owned(), lid.to_owned())))
+            .map(Arc::as_ref);
+        let family_title = (!variant.family_name.is_empty() && variant.family_name != variant.name)
+            .then(|| variant.family_name.clone());
+        let meta = ExternalVehicleMeta::from_package(
+            slot,
+            aircraft_id,
+            &variant.name,
+            family_title,
+            &variant.package,
+            default_asset,
+        );
+        if let Some(existing) = self.externals.get_mut(usize::from(slot)) {
+            *existing = meta;
+        } else {
+            self.externals.push(meta);
+        }
+    }
+
+    /// Applies optional `SIMULATE_HANGAR_DIR`, `$HOME/hangar`, `SIMULATE_IMPORT_VARIANT`, and
+    /// `SIMULATE_IMPORT_LIVERY` paths from the process environment.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn apply_environment_imports(&mut self) {
-        if let Some(var_dir) = std::env::var_os(ENV_IMPORT_VARIANT) {
-            let path = std::path::PathBuf::from(var_dir);
-            match self.import_variant_dir(&path) {
-                Ok(id) => {
-                    info!(aircraft_id = %id, path = %path.display(), "imported external variant pack");
-                }
-                Err(err) => {
-                    warn!(error = %err, path = %path.display(), "external variant import failed");
-                }
-            }
-        }
-        if let Some(liv_path) = std::env::var_os(ENV_IMPORT_LIVERY) {
-            let path = std::path::PathBuf::from(liv_path);
-            match self.import_livery_path(&path, None) {
-                Ok((id, liv)) => info!(
-                    aircraft_id = %id,
-                    tail = %liv.tail_code,
-                    path = %path.display(),
-                    "imported external aircraft livery"
-                ),
-                Err(err) => {
-                    warn!(error = %err, path = %path.display(), "external livery import failed");
-                }
-            }
-        }
+        self.import_environment_paths();
     }
 
     fn finish_bundle_import(

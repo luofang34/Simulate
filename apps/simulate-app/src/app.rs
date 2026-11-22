@@ -150,6 +150,7 @@ impl FlightApp {
         controls.sync_live(mapper.controls());
         let mut catalog = HubCatalog::with_global_airports();
         catalog.seed_ad_hoc_presets(flight.world_surface());
+        catalog.sync_external_vehicles(flight.liveries().externals());
         let mut esc_menu = EscMenu::default();
         if let Some((kdov, _)) = sim_scenery::AirportDatabase::builtin().by_code("KDOV")
             && let Some(idx) = catalog.index_of_airport(kdov)

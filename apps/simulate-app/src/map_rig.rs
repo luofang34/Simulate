@@ -64,6 +64,7 @@ pub struct MapLibreRig {
     surface: WorldSurfaceHandle,
     ownship_visual: OwnshipVisualKind,
     custom_livery_key: Option<(String, String, u32)>,
+    npc_models: std::collections::HashMap<(String, String), sim_maplibre::TrafficModelId>,
     charts: ChartAssetStore,
     efb: Option<efb::EfbRig>,
     efb_airport: Option<EfbAirport>,
@@ -161,6 +162,7 @@ impl MapLibreRig {
             surface,
             ownship_visual: OwnshipVisualKind::default(),
             custom_livery_key: None,
+            npc_models: std::collections::HashMap::new(),
             charts,
             efb: None,
             efb_airport: None,
@@ -371,8 +373,14 @@ impl MapLibreRig {
             .map(|exp| stamps::sensor_exposure_stamp(cam_body, &cam_spec, exp, undulation_m))
             .transpose()?;
         let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
-        let mut aircraft = aircraft::traffic_aircraft(&truth_entities, sim_dur.as_secs_f64());
-        aircraft.push(aircraft::ownship_of(input, undulation_m));
+        let aircraft = aircraft::scene_aircraft(
+            input,
+            &truth_entities,
+            &mut self.truth,
+            &mut self.npc_models,
+            sim_dur.as_secs_f64(),
+            undulation_m,
+        )?;
         let sensor_role = aircraft::virtual_camera_role(&cam_spec);
         let window_role = if mode == OperatorViewportMode::SensorAperture {
             sensor_role

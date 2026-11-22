@@ -76,7 +76,7 @@ impl Flight {
                 | FreeFlightVehicle::Kinematic => Some(cached_c172_specs()),
                 FreeFlightVehicle::JsbsimC172p => Some(cached_c172p_specs()),
                 FreeFlightVehicle::JsbsimP38g => Some(cached_p38_specs()),
-                FreeFlightVehicle::AviateX500Direct => None,
+                FreeFlightVehicle::AviateX500Direct | FreeFlightVehicle::External(_) => None,
             },
             Mode::Space(_) => None,
             Mode::Scenario(run) => match run.profile() {
@@ -96,13 +96,19 @@ impl Flight {
     /// Flap-indexed pitot-static position error (`PEC`) calibration when the active
     /// aircraft package ships `performance/pitot_static_calibration.json`.
     #[must_use]
-    pub fn pitot_static_calibration(&self) -> Option<&'static PitotStaticCalibration> {
+    pub fn pitot_static_calibration(&self) -> Option<&PitotStaticCalibration> {
+        if let Some(slot) = self.free_vehicle().and_then(|v| v.external_slot()) {
+            return self.liveries.external_meta(slot)?.pec.as_ref();
+        }
         self.active_aero_specs()?.pec.as_ref()
     }
 
     /// The instrument pack the active aircraft package pins.
     #[must_use]
-    pub fn instrument_pack(&self) -> Option<&'static InstrumentPackDocument> {
+    pub fn instrument_pack(&self) -> Option<&InstrumentPackDocument> {
+        if let Some(slot) = self.free_vehicle().and_then(|v| v.external_slot()) {
+            return self.liveries.external_meta(slot)?.instruments.as_ref();
+        }
         self.active_aero_specs()?.instruments.as_ref()
     }
 
@@ -110,7 +116,12 @@ impl Flight {
     /// when flying a certificated/packaged aeroplane (`None` on rotary-wing or spacecraft).
     #[must_use]
     pub fn resolved_airspeed_envelope(&self) -> Option<ResolvedAirspeedEnvelope> {
-        let (env, default_mass_kg) = self.active_aero_specs()?.envelope.as_ref()?;
+        let (env, default_mass_kg) =
+            if let Some(slot) = self.free_vehicle().and_then(|v| v.external_slot()) {
+                self.liveries.external_meta(slot)?.envelope.as_ref()?
+            } else {
+                self.active_aero_specs()?.envelope.as_ref()?
+            };
         let live_mass = self.articulation().gross_mass_kg;
         let mass_kg = if live_mass > 1.0 {
             live_mass
@@ -199,13 +210,19 @@ impl Flight {
         let Mode::Free { vehicle, world, .. } = &self.mode else {
             return DVec3::ZERO;
         };
-        let visual = crate::map_rig::aircraft::ownship_visual(None, Some(*vehicle));
-        let (Some(origin), Some(cg)) = (
-            self.model_origins.origin_in(visual),
-            world
-                .session()
-                .and_then(|session| session.block().plant().cg_structural_in()),
-        ) else {
+        let origin_opt = if let Some(slot) = vehicle.external_slot() {
+            self.liveries
+                .external_meta(slot)
+                .and_then(|m| m.structural_datum.as_ref())
+                .map(sim_maplibre::StructuralDatum::origin_in)
+        } else {
+            let visual = crate::map_rig::aircraft::ownship_visual(None, Some(*vehicle));
+            self.model_origins.origin_in(visual)
+        };
+        let cg_opt = world
+            .session()
+            .and_then(|session| session.block().plant().cg_structural_in());
+        let (Some(origin), Some(cg)) = (origin_opt, cg_opt) else {
             return DVec3::ZERO;
         };
         let aft_right_up = origin - cg;

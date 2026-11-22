@@ -51,6 +51,10 @@ pub enum MenuCommand {
     SelectLivery(usize),
     /// Reload/import external livery or variant pack from environment path.
     ImportExternalLivery,
+    /// Spawn the currently previewed aircraft on an airport apron stand as a ground NPC.
+    SpawnGroundNpc,
+    /// Clear all spawned non-player aircraft.
+    ClearNpcs,
     /// Spawn at a catalog aerodrome.
     Spawn {
         /// Catalog aerodrome index.
@@ -142,6 +146,10 @@ pub enum WidgetId {
     LiveryChoice(usize),
     /// Import external livery / variant pack chip in the hangar.
     ImportLivery,
+    /// Spawn the previewed aircraft onto a ground apron stand as an NPC.
+    SpawnGroundNpc,
+    /// Clear all active non-player aircraft.
+    ClearNpcs,
     /// A flight-dynamics mode chip of the selected airframe.
     VehicleMode(FreeFlightVehicle),
     /// Fly the selected vehicle.
@@ -195,6 +203,8 @@ impl WidgetId {
             Self::ResetView => MenuCommand::ResetHangarView,
             Self::LiveryChoice(index) => MenuCommand::SelectLivery(index),
             Self::ImportLivery => MenuCommand::ImportExternalLivery,
+            Self::SpawnGroundNpc => MenuCommand::SpawnGroundNpc,
+            Self::ClearNpcs => MenuCommand::ClearNpcs,
             Self::Preset(step) => MenuCommand::Preset(step),
             Self::PresetAuto => MenuCommand::PresetAuto,
             Self::AxisRebind(control) => MenuCommand::RebindAxis(control),

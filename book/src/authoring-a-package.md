@@ -78,3 +78,10 @@ cargo run --release -p ironbird -- \
 ```
 
 If `LoadedSyspack::load` succeeds, `ironbird` prints the full Markdown report containing the aircraft's stall speeds, $V_X$, $V_Y$, $V_G$, $(L/D)_{\max}$, service ceiling, cruise specific range, and payload–range table.
+
+### Step 4: Installing External Hangar Plugins Outside the Repo (`$HOME/hangar`)
+
+External aircraft packs (together with optional `views/cameras.json`, `geometry/landmarks.json`, and multi-livery `Liveries` bundles) do not need to live inside the repository:
+
+1. Place each verified package folder under `<hangar>/<aircraft_id>/` (by default `$HOME/hangar`, or any directory listed in `SIMULATE_HANGAR_DIR`).
+2. `simulate-app` auto-discovers subdirectories containing `<hangar>/<aircraft_id>/syspack.json`, exposes them in the Flight Hub `AIRCRAFT HANGAR` list and free-flight selection, and allows spawning any built-in or plugin airframe onto airport apron stands via `Spawn Apron` or declarative `$HOME/hangar/<npc_fleet>.json` (`SIMULATE_NPC_SCRIPT`) scripts.

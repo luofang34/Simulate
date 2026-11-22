@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::TruthSceneMap;
-use crate::{MapAdapterError, OwnshipVisualKind, UsdAircraftAsset};
+use crate::{MapAdapterError, OwnshipVisualKind, TrafficModelId, UsdAircraftAsset};
 
 impl TruthSceneMap {
     /// Selects the 3D airframe drawn for ownship; traffic keeps the scene's asset.
@@ -36,6 +36,20 @@ impl TruthSceneMap {
                 })?;
         library.set_custom_ownship(asset);
         Ok(())
+    }
+
+    /// Registers a non-ownship OpenUSD airframe for traffic or ground NPCs, returning its handle.
+    pub fn register_traffic_model(
+        &mut self,
+        asset: Arc<UsdAircraftAsset>,
+    ) -> Result<TrafficModelId, MapAdapterError> {
+        let mut library =
+            self.aircraft_library
+                .try_borrow_mut()
+                .map_err(|_| MapAdapterError::OpenUsd {
+                    detail: "ownship airframe library is in use by a frame".to_owned(),
+                })?;
+        Ok(library.register_traffic_model(asset))
     }
 
     /// Active ownship [`UsdAircraftAsset`] currently rendered in external and cabin views.

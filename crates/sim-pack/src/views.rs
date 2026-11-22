@@ -19,8 +19,11 @@ use sim_core::{
 use crate::PackError;
 
 mod derived;
+mod jsbsim_meta;
 #[cfg(test)]
 mod tests;
+
+pub use jsbsim_meta::{jsbsim_eyepoint_structural_in, jsbsim_parked_gear_height_m};
 
 /// Canonical asset path for a package's camera views.
 pub const CAMERA_VIEWS_ASSET: &str = "views/cameras.json";
