@@ -137,6 +137,7 @@ impl Flight {
             &self.time_scales,
             &self.solar,
             self.page.as_ref(),
+            Some(&self.liveries),
         )
     }
 

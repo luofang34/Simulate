@@ -52,6 +52,7 @@ impl Flight {
             &time_scales,
             &solar,
             Some(&feed),
+            None,
         )?;
         let epoch = mode.sim_epoch();
         let prev_vehicle = mode.vehicle();
@@ -79,6 +80,7 @@ impl Flight {
             epoch,
             model_origins: crate::vehicles::ModelOrigins::default(),
             liveries: crate::livery_session::LiverySession::new()?,
+            npc_fleet: crate::npc_fleet::NpcFleet::default(),
             page: Some(feed),
         };
         flight.begin_flight()?;

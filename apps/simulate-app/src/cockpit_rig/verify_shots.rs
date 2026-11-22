@@ -278,6 +278,7 @@ impl VerifyHarness {
             hangar_liveries: Vec::new(),
             active_livery_index: None,
             active_livery_name: None,
+            npc_count: 0,
             controls: ControlsStatus {
                 preset: self.controls.preset(),
                 automatic: self.controls.is_automatic(),

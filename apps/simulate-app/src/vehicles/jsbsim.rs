@@ -137,3 +137,44 @@ pub(super) fn step_jsbsim_with_force(
     *specific_force_frd_m_s2 = DMat3::from_quat(next.attitude.inverse()) * (accel_ecef - g_ecef);
     Ok(())
 }
+
+/// Static height of the Lockheed P-38G Lightning's JSBSim reference point (its CG) above
+/// level ground on its tricycle gear, metres.
+pub fn p38g_gear_height_m() -> f64 {
+    use super::{P38G_LOADED_CG_ABOVE_FRL_IN, P38G_LOADED_CG_FS_IN, P38G_STATIC_PITCH_RAD};
+    use sim_p38g::drawing as d;
+    let below_main = f64::from(d::MAIN_AXLE_BELOW_FRL_STATIC_IN + d::MAIN_ROLLING_RADIUS_IN);
+    let ahead_of_main = f64::from(d::MAIN_AXLE_FS_IN) - P38G_LOADED_CG_FS_IN;
+    let above_ground_line =
+        P38G_LOADED_CG_ABOVE_FRL_IN + below_main + ahead_of_main * P38G_STATIC_PITCH_RAD.tan();
+    above_ground_line * P38G_STATIC_PITCH_RAD.cos() * 0.0254
+}
+
+impl FreeFlightPlant {
+    /// Instantiates a runtime-imported external `syspack` fixed-wing plant in flight.
+    pub fn new_external_at(
+        pkg: &LoadedSyspack,
+        cruise_mps: f64,
+        spawn: Geodetic,
+        heading_rad: f64,
+        field_elev_m: f64,
+    ) -> Result<Self, AppSimError> {
+        build_jsbsim_plant(pkg, spawn, heading_rad, cruise_mps, field_elev_m)
+    }
+
+    /// Instantiates a runtime-imported external `syspack` plant parked on its landing gear.
+    pub fn new_external_on_ground(
+        pkg: &LoadedSyspack,
+        gear_height_m: f64,
+        ground: Geodetic,
+        heading_rad: f64,
+        cold: bool,
+    ) -> Result<Self, AppSimError> {
+        let engine = if cold {
+            EngineStartMode::ColdAndDark
+        } else {
+            EngineStartMode::Running
+        };
+        build_jsbsim_parked(pkg, ground, heading_rad, engine, gear_height_m, 0.0)
+    }
+}

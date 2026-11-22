@@ -22,6 +22,7 @@ mod host_guidance;
 mod keyboard;
 mod livery_session;
 mod map_rig;
+mod npc_fleet;
 mod page_map;
 mod page_status;
 mod platform;

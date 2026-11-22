@@ -104,6 +104,12 @@ pub enum AppSimError {
         /// Diagnostic description.
         detail: String,
     },
+    /// Parsing or reading a declarative NPC fleet script failed.
+    #[error("NPC fleet script error: {detail}")]
+    NpcScript {
+        /// Diagnostic description.
+        detail: String,
+    },
 }
 
 impl From<SessionError> for AppSimError {

@@ -10,7 +10,7 @@ use crate::vehicles::FreeFlightVehicle;
 
 const LIST_W: f32 = 380.0;
 const ROW_H: f32 = 52.0;
-const PREVIEW_H: f32 = 330.0;
+const PREVIEW_H: f32 = 304.0;
 const APPLY_W: f32 = 240.0;
 const CHIP_H: f32 = 34.0;
 /// Live control bar offset right of its title (clear of `THROTTLE`).
@@ -29,17 +29,17 @@ pub(super) fn build(
     let card = [px, y, pw, PREVIEW_H];
     view.panel(card, Palette::STUDIO, Some(Palette::EDGE));
     view.set_preview([px + 2.0, y + 2.0, pw - 4.0, PREVIEW_H - 4.0]);
-    let controls_y = y + PREVIEW_H + 10.0;
+    let controls_y = y + PREVIEW_H + 8.0;
     view.widget(
         WidgetId::AutoRotate,
-        [px, controls_y, 150.0, 32.0],
+        [px, controls_y, 128.0, 30.0],
         "Auto-Rotate",
         WidgetStyle::Chip,
         status.auto_rotate,
     );
     view.widget(
         WidgetId::ResetView,
-        [px + 160.0, controls_y, 150.0, 32.0],
+        [px + 136.0, controls_y, 118.0, 30.0],
         "Reset View",
         WidgetStyle::Chip,
         false,
@@ -47,14 +47,14 @@ pub(super) fn build(
     if !status.hangar_liveries.is_empty() {
         view.widget(
             WidgetId::ImportLivery,
-            [px + 320.0, controls_y, 140.0, 32.0],
+            [px + 262.0, controls_y, 140.0, 30.0],
             "Import Livery",
             WidgetStyle::Chip,
             false,
         );
     }
     view.text(
-        [px + pw, controls_y + 16.0],
+        [px + pw, controls_y + 15.0],
         10.0,
         HAlign::Right,
         Palette::HINT,
@@ -64,19 +64,24 @@ pub(super) fn build(
     let mode =
         vehicle.and_then(|v| v.mode_or_default(menu.vehicle_mode().or(status.active_vehicle)));
     if let Some(vehicle) = vehicle {
-        details(view, vehicle, mode, status, [px, controls_y + 48.0, pw]);
+        details(view, vehicle, mode, status, [px, controls_y + 36.0, pw]);
         let has_modes = vehicle.modes().len() > 1;
+        let ly = y + h - 88.0;
         if !status.hangar_liveries.is_empty() {
-            let ly = if has_modes {
-                y + h - 86.0
-            } else {
-                y + h - CHIP_H
-            };
-            livery_chips(view, status, [px, ly, pw - APPLY_W - 16.0]);
+            let max_w = pw - 270.0 - 16.0;
+            livery_chips(view, status, [px, ly, max_w]);
         }
         if has_modes {
             mode_chips(view, vehicle, mode, [px, y + h - CHIP_H]);
         }
+        view.widget(
+            WidgetId::SpawnGroundNpc,
+            [px + pw - 270.0, ly, 130.0, 32.0],
+            "Spawn Apron",
+            WidgetStyle::Chip,
+            false,
+        );
+        clear_npc_chip(view, status.npc_count, [px + pw - 132.0, ly]);
     }
     let apply = [px + pw - APPLY_W, y + h - 48.0, APPLY_W, 48.0];
     view.widget(
@@ -86,6 +91,19 @@ pub(super) fn build(
         WidgetStyle::Primary,
         false,
     );
+}
+
+fn clear_npc_chip(view: &mut HubView, npc_count: usize, [x, y]: [f32; 2]) {
+    if npc_count > 0 {
+        let label = format!("Clear NPC {npc_count}");
+        view.widget(
+            WidgetId::ClearNpcs,
+            [x, y, 132.0, 32.0],
+            &label,
+            WidgetStyle::Chip,
+            false,
+        );
+    }
 }
 
 /// Selectable per-tail livery chips for the previewed airframe.
@@ -203,7 +221,7 @@ fn details(
     } else {
         "LUNAR DESCENT".to_owned()
     };
-    let role_or_family = vehicle.family_title.unwrap_or(vehicle.role);
+    let role_or_family = vehicle.family_title.as_deref().unwrap_or(&vehicle.role);
     let livery_line = status.active_livery_name.as_deref().map_or_else(
         || "MOVE STICK OR KEYS TO TEST CONTROL SURFACES".to_owned(),
         |liv| format!("ACTIVE LIVERY {liv}"),
@@ -229,7 +247,7 @@ fn details(
         } else {
             Palette::LABEL
         };
-        view.text_fit([x, y + i as f32 * 18.0], 11.0, ink, w, line);
+        view.text_fit([x, y + i as f32 * 16.0], 11.0, ink, w, line);
     }
     let live = status.controls.live;
     let bar_w = (w - 340.0).max(120.0) / 2.0;
@@ -237,7 +255,7 @@ fn details(
         let col = (i % 2) as f32;
         let row = (i / 2) as f32;
         let bx = x + col * (bar_w + BAR_DX + 20.0);
-        let by = y + 58.0 + row * 20.0;
+        let by = y + 52.0 + row * 19.0;
         view.text(
             [bx, by],
             10.0,

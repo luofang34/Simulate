@@ -3,7 +3,7 @@
 
 use glam::DVec3;
 use sim_core::SimInstant;
-use sim_geo::{UtcTime, egm96_undulation_m};
+use sim_geo::{Geodetic, UtcTime, egm96_undulation_m};
 use sim_maplibre::{
     AltitudeReference, DynamicEntity3D, ViewSlotMask, entities_from_surveillance_belief,
 };
@@ -70,6 +70,82 @@ impl SupervisorRig {
             self.datum,
             visibility,
         )
+    }
+
+    /// Active airport reference point in orthometric metres above EGM96 mean sea level.
+    #[must_use]
+    pub fn active_anchor_msl(&self, profile: Option<ScenarioProfile>) -> Geodetic {
+        let anchor = self.traffic_anchor(profile);
+        let msl_m = match self.datum {
+            CatalogVerticalDatum::OrthometricMslEgm96 => {
+                anchor.ellipsoidal_height_m
+                    - egm96_undulation_m(
+                        anchor.latitude_deg.to_radians(),
+                        anchor.longitude_deg.to_radians(),
+                    )
+            }
+            CatalogVerticalDatum::EllipsoidWgs84 => anchor.ellipsoidal_height_m,
+        };
+        Geodetic::from_degrees(anchor.latitude_deg, anchor.longitude_deg, msl_m)
+    }
+
+    /// Publishes active `transponder == true` NPCs into `truth_world().surveillance`.
+    pub fn ingest_npc_transponders(
+        &mut self,
+        npcs: &[crate::npc_fleet::EvaluatedNpc],
+        now: SimInstant,
+    ) {
+        let t_s = now.duration_since(SimInstant::START).as_seconds().max(0.0);
+        let now_us = (t_s * 1_000_000.0) as u64;
+        for (idx, npc) in npcs.iter().enumerate() {
+            if !npc.transponder {
+                continue;
+            }
+            let lat = npc.placement.position.latitude;
+            let lon = npc.placement.position.longitude;
+            let undul_m = match self.datum {
+                CatalogVerticalDatum::OrthometricMslEgm96 => {
+                    egm96_undulation_m(lat.to_radians(), lon.to_radians())
+                }
+                CatalogVerticalDatum::EllipsoidWgs84 => 0.0,
+            };
+            let key = TrackKey {
+                namespace: AddressNamespace::Icao24,
+                address: 0x00FE_0000_u64.wrapping_add(idx as u64),
+            };
+            let obs = TrackObservation {
+                key,
+                source: ObservationSource::Adsb1090,
+                delivery: DeliveryPath::Simulator,
+                observed_at_us: now_us,
+                position: GeodeticPosition::wgs84(
+                    lat,
+                    lon,
+                    npc.placement.altitude_meters + undul_m,
+                ),
+                velocity_ned_m_s: Ned {
+                    north_m: npc.velocity_ned_mps[0],
+                    east_m: npc.velocity_ned_mps[1],
+                    down_m: npc.velocity_ned_mps[2],
+                },
+                heading_rad: Some(npc.heading_rad),
+                callsign: Callsign::parse(&npc.callsign),
+                category: EmitterCategory::Heavy,
+                on_ground: npc.ground_height_msl_m.is_some(),
+                quality: IntegrityQuality::default(),
+            };
+            let store = &mut self.supervisor.truth_world_mut().surveillance;
+            let _outcome = store.ingest(obs, now_us);
+            if let Some(track) = store.tracks().iter().find(|t| t.key == key) {
+                self.npc_track_ids.insert(track.id.0);
+            }
+        }
+    }
+
+    /// Whether surveillance track `id` originates from a simulated [`crate::npc_fleet::NpcFleet`] entry.
+    #[must_use]
+    pub fn is_npc_track(&self, id: u64) -> bool {
+        self.npc_track_ids.contains(&id)
     }
 
     fn ingest_truth_traffic(&mut self, anchor: GeodeticPosition, t_s: f64, now_us: u64) {

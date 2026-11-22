@@ -44,6 +44,7 @@ pub(super) fn frame_input<'a>(
         sky,
         supervisor,
         ownship_livery_override: flight.active_ownship_livery_override(),
+        npcs: flight.evaluate_npcs(supervisor.active_anchor_msl(flight.profile())),
     }
 }
 

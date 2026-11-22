@@ -208,6 +208,7 @@ impl Mode {
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
         page: Option<&PageFeed>,
+        liveries: Option<&crate::livery_session::LiverySession>,
     ) -> Result<Self, AppSimError> {
         Self::free_at(
             vehicle,
@@ -216,10 +217,12 @@ impl Mode {
             scales,
             solar,
             page,
+            liveries,
             wall_clock_utc_s().floor(),
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn free_at(
         vehicle: FreeFlightVehicle,
         spawn: FreeSpawn,
@@ -227,29 +230,34 @@ impl Mode {
         scales: &Arc<TimeScaleCatalog>,
         solar: &SolarSystem,
         page: Option<&PageFeed>,
+        liveries: Option<&crate::livery_session::LiverySession>,
         utc_s: f64,
     ) -> Result<Self, AppSimError> {
-        let plant = match (spawn, page) {
-            (_, Some(feed)) if vehicle == FreeFlightVehicle::C172Mission => {
-                FreeFlightPlant::page_mission(feed.clone())
+        let plant = if let FreeFlightVehicle::External(slot) = vehicle {
+            build_external_plant(slot, spawn, liveries)?
+        } else {
+            match (spawn, page) {
+                (_, Some(feed)) if vehicle == FreeFlightVehicle::C172Mission => {
+                    FreeFlightPlant::page_mission(feed.clone())
+                }
+                (FreeSpawn::Delaware, _) => FreeFlightPlant::new(vehicle)?,
+                (
+                    FreeSpawn::At {
+                        spawn,
+                        heading_rad,
+                        field_elev_m,
+                    },
+                    _,
+                ) => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?,
+                (
+                    FreeSpawn::Ground {
+                        spawn,
+                        heading_rad,
+                        cold,
+                    },
+                    _,
+                ) => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold)?,
             }
-            (FreeSpawn::Delaware, _) => FreeFlightPlant::new(vehicle)?,
-            (
-                FreeSpawn::At {
-                    spawn,
-                    heading_rad,
-                    field_elev_m,
-                },
-                _,
-            ) => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?,
-            (
-                FreeSpawn::Ground {
-                    spawn,
-                    heading_rad,
-                    cold,
-                },
-                _,
-            ) => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold)?,
         };
         let mut panel = Box::new(CockpitInstrumentPanel::new(SimInstant::START));
         observe(&mut panel, &plant, SimInstant::START);
@@ -357,4 +365,49 @@ pub(super) fn observe(
         vehicle,
         height_m: ecef_to_geodetic(vehicle.position_ecef).height_m,
     });
+}
+
+fn build_external_plant(
+    slot: u16,
+    spawn: FreeSpawn,
+    liveries: Option<&crate::livery_session::LiverySession>,
+) -> Result<FreeFlightPlant, AppSimError> {
+    let meta = liveries.and_then(|l| l.external_meta(slot)).ok_or(
+        sim_scenario::ScenarioError::Unsupported {
+            detail: "unknown external hangar plugin slot",
+        },
+    )?;
+    let pkg = &liveries
+        .and_then(|l| l.variant(&meta.aircraft_id))
+        .ok_or(sim_scenario::ScenarioError::Unsupported {
+            detail: "external plugin package missing from registry",
+        })?
+        .package;
+    match spawn {
+        FreeSpawn::Delaware => FreeFlightPlant::new_external_at(
+            pkg,
+            meta.cruise_mps,
+            crate::supervisor_rig::default_delaware_spawn(),
+            crate::supervisor_rig::DELAWARE_RUNWAY_BEARING_RAD,
+            8.5,
+        ),
+        FreeSpawn::At {
+            spawn,
+            heading_rad,
+            field_elev_m,
+        } => {
+            FreeFlightPlant::new_external_at(pkg, meta.cruise_mps, spawn, heading_rad, field_elev_m)
+        }
+        FreeSpawn::Ground {
+            spawn,
+            heading_rad,
+            cold,
+        } => FreeFlightPlant::new_external_on_ground(
+            pkg,
+            meta.parked_gear_height_m,
+            spawn,
+            heading_rad,
+            cold,
+        ),
+    }
 }

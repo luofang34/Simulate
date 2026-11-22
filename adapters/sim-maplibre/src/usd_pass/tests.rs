@@ -51,6 +51,7 @@ pub(super) fn aircraft_at(target: &Geodetic, ownship: bool) -> AircraftInstance 
         articulation: AirframeArticulation::default(),
         ownship,
         ground_height_m: None,
+        model_id: None,
     }
 }
 
@@ -214,6 +215,47 @@ fn ownship_draws_the_selected_airframe_and_traffic_keeps_the_scene_asset() {
     assert_eq!(
         pack_slot_draws(&library, &traffic, None, &view).len(),
         c172.len()
+    );
+}
+
+#[test]
+fn traffic_models_and_external_ownship_pack_distinct_assets() {
+    let target = Geodetic::from_degrees(40.69, -74.17, 300.0);
+    let stamp = stamp_looking_north_at(&target);
+    let view = AircraftSlotView {
+        stamp: &stamp,
+        sun_enu: DVec3::Z,
+        daylight: 1.0,
+        ownship_role: SlotCameraRole::External,
+        slot: slot(0),
+        shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+    };
+    let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
+    let own = [aircraft_at(&target, true)];
+
+    let tid =
+        library.register_traffic_model(std::sync::Arc::new(UsdAircraftAsset::p38g().unwrap()));
+    let mut mixed_npc = aircraft_at(&target, false);
+    mixed_npc.model_id = Some(tid);
+    let mixed_draws = pack_slot_draws(&library, &[mixed_npc], None, &view);
+    assert!(!mixed_draws.is_empty());
+    assert!(
+        mixed_draws
+            .iter()
+            .all(|d| d.asset == AssetKey::TrafficModel(tid))
+    );
+
+    library
+        .select_ownship(OwnshipVisualKind::External(0))
+        .unwrap();
+    library.set_custom_ownship(std::sync::Arc::new(
+        UsdAircraftAsset::fixed_wing_uav().unwrap(),
+    ));
+    let ext_draws = pack_slot_draws(&library, &own, None, &view);
+    assert!(
+        ext_draws
+            .iter()
+            .all(|d| matches!(d.asset, AssetKey::CustomOwnship(_)))
     );
 }
 

@@ -44,20 +44,7 @@ pub const P38G_LOADED_CG_FS_IN: f64 = 150.73;
 /// line, `5 deg 33' 46"` under the fuselage reference line, radians.
 pub const P38G_STATIC_PITCH_RAD: f64 =
     sim_p38g::drawing::STATIC_GROUND_ANGLE_DEG as f64 * std::f64::consts::PI / 180.0;
-/// Static height of the Lockheed P-38G Lightning's JSBSim reference point (its CG) above
-/// level ground on its tricycle gear, metres. AN 01-75F-2 puts the main-tyre contact
-/// `54.575 + 15.300 in` below the fuselage reference line with the oleos static and the
-/// ground rising aft at [`P38G_STATIC_PITCH_RAD`]; the CG sits
-/// [`P38G_LOADED_CG_ABOVE_FRL_IN`] above that line at [`P38G_LOADED_CG_FS_IN`], ahead of
-/// the main axle.
-pub fn p38g_gear_height_m() -> f64 {
-    use sim_p38g::drawing as d;
-    let below_main = f64::from(d::MAIN_AXLE_BELOW_FRL_STATIC_IN + d::MAIN_ROLLING_RADIUS_IN);
-    let ahead_of_main = f64::from(d::MAIN_AXLE_FS_IN) - P38G_LOADED_CG_FS_IN;
-    let above_ground_line =
-        P38G_LOADED_CG_ABOVE_FRL_IN + below_main + ahead_of_main * P38G_STATIC_PITCH_RAD.tan();
-    above_ground_line * P38G_STATIC_PITCH_RAD.cos() * 0.0254
-}
+pub use jsbsim::p38g_gear_height_m;
 /// Height a parked kinematic vehicle sits above the ground, metres: the C172's, so the
 /// pilot eye is at a cockpit's height over the runway.
 pub const KINEMATIC_PARKED_HEIGHT_M: f64 = C172_GEAR_HEIGHT_M;
@@ -160,6 +147,10 @@ impl FreeFlightPlant {
             FreeFlightVehicle::Kinematic => Ok(Self::Kinematic(KinematicModel::new(
                 VehicleState::level_flight(&spawn, heading_rad, 55.0),
             ))),
+            FreeFlightVehicle::External(_) => Err(sim_scenario::ScenarioError::Unsupported {
+                detail: "external plugin vehicle requires LiverySession context",
+            }
+            .into()),
         }
     }
 
@@ -266,6 +257,10 @@ impl FreeFlightPlant {
                     0.0,
                 ),
             ))),
+            FreeFlightVehicle::External(_) => Err(sim_scenario::ScenarioError::Unsupported {
+                detail: "external plugin vehicle requires LiverySession context",
+            }
+            .into()),
         }
     }
 

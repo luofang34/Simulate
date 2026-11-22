@@ -167,3 +167,36 @@ fn malformed_view_sets_are_refused() {
         );
     }
 }
+
+#[test]
+fn jsbsim_meta_extracts_gear_height_and_eyepoint_across_units() {
+    let c172 = crate::builtin_c172_package().unwrap();
+    let gear_m = c172.jsbsim_parked_gear_height_m().unwrap();
+    assert!((gear_m - 1.30).abs() < 0.02, "c172 gear height {gear_m}");
+    let eye_in = c172.jsbsim_eyepoint_structural_in().unwrap();
+    assert!((eye_in[0] - 118.31).abs() < 0.05);
+    assert!((eye_in[1] + 10.24).abs() < 0.05);
+    assert!((eye_in[2] - 18.70).abs() < 0.05);
+
+    let p38 = crate::builtin_p38g_package().unwrap();
+    let p38_gear_m = p38.jsbsim_parked_gear_height_m().unwrap();
+    assert!(
+        (p38_gear_m - 2.25).abs() < 0.05,
+        "p38 gear height {p38_gear_m}"
+    );
+
+    let ft_xml = r#"<fdm_config>
+      <metrics><location name="EYEPOINT" unit="FT"><x>10.0</x><y>-2.0</y><z>1.5</z></location></metrics>
+      <mass_balance><location name="CG" unit="M"><x>0</x><y>0</y><z>0.2</z></location></mass_balance>
+      <ground_reactions>
+        <contact type="STRUCTURE" name="BELLY"><location unit="M"><x>0</x><y>0</y><z>-9.0</z></location></contact>
+        <contact type="BOGEY" name="NOSE"><location unit="M"><x>-5</x><y>0</y><z>-3.1</z></location></contact>
+      </ground_reactions>
+    </fdm_config>"#;
+    let gh = jsbsim_parked_gear_height_m(ft_xml).unwrap();
+    assert!((gh - 3.3).abs() < 1e-6);
+    let ep = jsbsim_eyepoint_structural_in(ft_xml).unwrap();
+    assert!((ep[0] - 120.0).abs() < 1e-6);
+    assert!((ep[1] + 24.0).abs() < 1e-6);
+    assert!((ep[2] - 18.0).abs() < 1e-6);
+}
