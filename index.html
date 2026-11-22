@@ -3,9 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>Simulate</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #02020a; overflow: hidden; overscroll-behavior: none; }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #02020a; overflow: hidden; overscroll-behavior: none; touch-action: none; }
       canvas { display: block; width: 100vw; height: 100vh; width: 100dvw; height: 100dvh; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
       /* The progress surface: boot.mjs drives it while the simulator downloads,
          then the app drives the same elements until it has something to draw. */
@@ -120,7 +123,9 @@
       .section .efb-web-chip.hold { border-color: #ffb454; color: #ffd9a0; }
       .section .efb-web-chip.selected { border-color: #5aa2ff; box-shadow: 0 0 0 1px #5aa2ff; }
       @media (pointer: coarse) {
-        :where(.tc-btn, .page-map-buttons button, .section button) { min-block-size: 44px; min-inline-size: 44px; }
+        :where(.tc-btn, .tc-dial-btn, .tc-more-btn, .tc-rotate-close, .page-map-buttons button, .section button) {
+          min-block-size: 44px; min-inline-size: 44px;
+        }
       }
       #touch-cockpit {
         position: fixed; inset: 0; z-index: 5; pointer-events: none;
@@ -133,16 +138,100 @@
           max(0.5rem, env(safe-area-inset-left, 0px));
         font: 600 12px/1 system-ui, -apple-system, sans-serif; color: #eef3ff;
       }
-      .tc-top { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; justify-content: flex-end; }
+      .tc-top-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+      .tc-top {
+        display: flex; flex-wrap: nowrap; gap: 0.4rem; align-items: center; justify-content: flex-end;
+        max-width: 100%;
+      }
       .tc-btn {
-        pointer-events: auto; touch-action: none; min-width: 44px; min-height: 44px;
-        padding: 0 0.65rem; border: 1px solid rgba(155, 185, 235, 0.38); border-radius: 10px;
-        background: rgba(9, 14, 26, 0.62); color: #eef3ff; font: inherit;
+        pointer-events: auto; touch-action: none; min-width: 44px; min-height: 44px; flex-shrink: 0;
+        padding: 0 0.7rem; border: 1px solid rgba(155, 185, 235, 0.38); border-radius: 10px;
+        background: rgba(9, 14, 26, 0.62); color: #eef3ff; font: inherit; white-space: nowrap;
         backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
       }
-      .tc-btn[data-active="true"] { border-color: #5aa2ff; background: rgba(24, 62, 118, 0.78); color: #ffffff; }
+      .tc-btn[data-active="true"], .tc-dial-btn[data-active="true"], .tc-more-btn[data-active="true"] {
+        border-color: #5aa2ff; background: rgba(24, 62, 118, 0.82); color: #ffffff;
+      }
+      .tc-collapsed-only { display: none; }
+      #touch-cockpit[data-collapsed="true"] .tc-collapsed-only {
+        display: inline-flex; align-items: center; justify-content: center;
+      }
       .tc-brake[data-active="true"] { border-color: #ffb454; background: rgba(92, 56, 12, 0.82); color: #ffd9a0; }
-      .tc-deck { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem; }
+      #tc-rotate-banner {
+        display: none; pointer-events: auto; align-items: center; justify-content: space-between; gap: 0.5rem;
+        width: 100%; max-width: min(26rem, 100%); padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+        border: 1px solid rgba(90, 162, 255, 0.45); border-radius: 10px;
+        background: rgba(9, 14, 26, 0.84); color: #d8e6ff; font: 500 12px/1.25 system-ui, -apple-system, sans-serif;
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      }
+      .tc-rotate-close {
+        border: 0; border-radius: 8px; background: transparent; color: #eef3ff;
+        font: 600 16px/1 system-ui, sans-serif; padding: 0 0.4rem; cursor: pointer;
+      }
+      .tc-popover {
+        pointer-events: auto; touch-action: manipulation;
+        width: min(21rem, calc(100vw - 1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+        max-height: calc(100dvh - 4.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        overflow-y: auto; overscroll-behavior: contain; padding: 0.65rem;
+        border: 1px solid rgba(155, 185, 235, 0.42); border-radius: 12px;
+        background: rgba(9, 14, 26, 0.90); color: #eef3ff;
+        font: 600 12px/1.2 system-ui, -apple-system, sans-serif;
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      }
+      .tc-popover::backdrop { background: rgba(2, 4, 10, 0.28); }
+      @supports (position-area: block-end) {
+        .tc-anchor-dial { anchor-name: --tc-dial; }
+        .tc-anchor-more { anchor-name: --tc-more; }
+        .tc-popover { position: fixed; inset: auto; margin: 0; }
+        #tc-dial-popover {
+          position-anchor: --tc-dial; position-area: block-end span-inline-start;
+          position-try-fallbacks: flip-inline, flip-block; margin-block-start: 0.4rem;
+        }
+        #tc-more-popover {
+          position-anchor: --tc-more; position-area: block-end span-inline-start;
+          position-try-fallbacks: flip-inline, flip-block; margin-block-start: 0.4rem;
+        }
+      }
+      @supports not (position-area: block-end) {
+        .tc-popover {
+          position: fixed; inset: auto; margin: 0;
+          top: calc(max(0.5rem, env(safe-area-inset-top, 0px)) + 52px);
+          right: max(0.5rem, env(safe-area-inset-right, 0px));
+        }
+      }
+      .tc-dial-summary {
+        margin-bottom: 0.35rem; padding-bottom: 0.25rem; border-bottom: 1px solid rgba(155, 185, 235, 0.2);
+        font: 600 12px/1.3 ui-monospace, Menlo, monospace; color: #a9c7ff; font-variant-numeric: tabular-nums;
+      }
+      .tc-dial-group + .tc-dial-group { margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid rgba(155, 185, 235, 0.14); }
+      .tc-dial-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; color: #9db2d8; }
+      .tc-dial-val { color: #eef3ff; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, monospace; }
+      .tc-dial-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.3rem; }
+      .tc-dial-row.baro { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .tc-dial-btn, .tc-more-btn {
+        min-height: 44px; padding: 0 0.4rem; border: 1px solid rgba(155, 185, 235, 0.34);
+        border-radius: 8px; background: rgba(16, 26, 48, 0.78); color: #eef3ff; font: inherit; cursor: pointer;
+      }
+      .tc-scrub {
+        margin-top: 0.35rem; height: 44px; border-radius: 8px; touch-action: none;
+        border: 1px dashed rgba(143, 192, 255, 0.42);
+        background: repeating-linear-gradient(90deg, rgba(90, 162, 255, 0.16) 0 2px, transparent 2px 14px), rgba(9, 14, 26, 0.7);
+        display: grid; place-items: center; color: #9db2d8; font-size: 11px; letter-spacing: 0.05em;
+      }
+      .tc-more-section + .tc-more-section { margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid rgba(155, 185, 235, 0.16); }
+      .tc-more-label { margin-bottom: 0.35rem; color: #8fa4ca; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+      .tc-more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
+      .tc-more-grid.views { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .tc-deck {
+        display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem;
+        transition: opacity 260ms ease;
+      }
+      @media (orientation: landscape) {
+        #touch-cockpit[data-has-rail="true"] .tc-deck {
+          padding-left: max(0px, calc(var(--tc-efis-left, 0) * 100vw + 6px - max(0.5rem, env(safe-area-inset-left, 0px))));
+        }
+      }
+      #touch-cockpit[data-deck-idle="true"] .tc-deck { opacity: 0.22; }
       .tc-left, .tc-right { display: flex; flex-direction: column; gap: 0.5rem; }
       .tc-left { align-items: flex-start; }
       .tc-right { align-items: flex-end; }
@@ -192,10 +281,20 @@
         border: 2px solid #8fc0ff; background: rgba(90, 162, 255, 0.42);
         transform: translate(-50%, -50%); pointer-events: none;
       }
+      @media (orientation: portrait) {
+        #touch-cockpit:not([data-rotate-dismissed="true"]):not([data-hub-open="true"]) #tc-rotate-banner {
+          display: flex;
+        }
+        .tc-stick { width: 112px; height: 112px; }
+        .tc-rudder { width: 104px; }
+        .tc-throttle { height: 120px; }
+      }
       #touch-cockpit[data-hub-open="true"] .tc-deck,
       #touch-cockpit[data-hub-open="true"] .tc-flight-only,
       #touch-cockpit[data-collapsed="true"] .tc-deck,
       #touch-cockpit[data-collapsed="true"] .tc-flight-only { display: none; }
+      #touch-cockpit[data-hub-open="true"] .tc-popover,
+      #touch-cockpit[data-collapsed="true"] .tc-popover { display: none; }
       @media (prefers-reduced-motion: reduce) { .bar[data-unknown] .fill { animation: none; width: 100%; opacity: 0.4; } }
     </style>
     
@@ -265,10 +364,10 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 }
 
 
-import init, * as bindings from '/Simulate/simulate-app-67174bf9ac8137b9.js';
+import init, * as bindings from '/Simulate/simulate-app-18f6a2c8e2389e69.js';
 import initializer from '/Simulate/b1e1f53c347e862e-boot.mjs';
 
-const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-67174bf9ac8137b9_bg.wasm', 35380770, initializer(), true);
+const wasm = await __trunkInitializer(init, '/Simulate/simulate-app-18f6a2c8e2389e69_bg.wasm', 35454440, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -278,7 +377,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
     
-  <link rel="modulepreload" href="/Simulate/simulate-app-67174bf9ac8137b9.js" crossorigin="anonymous" integrity="sha384-eyUtweq7u97h6BXjd+uA1tvsFWW3j6Av0a/n3HD2BqYPJwlDd6QIboOaEvoo/MNS"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-67174bf9ac8137b9_bg.wasm" crossorigin="anonymous" integrity="sha384-LfKPVsxMgDEOG150nhJjgpWMnNMgOCpbDcV4RRWJ81QPgv04t3bFT5iK7SPzVrPE" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/Simulate/simulate-app-18f6a2c8e2389e69.js" crossorigin="anonymous" integrity="sha384-DGU2CrKVKzAqbiqdo3jyqhMUeZx2ilI9SLjbY2UpWmPGyuEGRtrRgV/eEBSjHhrB"><link rel="modulepreload" href="/Simulate/b1e1f53c347e862e-boot.mjs" crossorigin="anonymous" integrity="sha384-irp9z51MEJkAc3MtHZSUoUkOx7l+vc8/MVp/hf1Q5MirY1Fj0qXnEXCRvINis9EG"><link rel="preload" href="/Simulate/simulate-app-18f6a2c8e2389e69_bg.wasm" crossorigin="anonymous" integrity="sha384-i9z+UUbdupwOdq68hbPtw5tkVtVP9nQygB9IsC2kcd9N3WuXeb+5Yr+imf4Gnl6q" as="fetch" type="application/wasm"></head>
   <body>
     <div id="boot" data-state="loading" role="status" aria-live="polite">
       <div id="boot-card">
