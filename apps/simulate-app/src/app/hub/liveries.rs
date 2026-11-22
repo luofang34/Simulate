@@ -50,19 +50,30 @@ impl FlightApp {
         let custom = aircraft_id
             .and_then(|id| self.flight.liveries().active_usd_override(id))
             .map(|((_, liv_id, generation), asset)| ((liv_id, generation), asset));
-        if let Some(hangar) = self.hangar.as_mut() {
+        if hangar_model.is_none() {
+            if self.handheld {
+                self.hangar = None;
+            } else if let Some(hangar) = self.hangar.as_mut() {
+                hangar.hide();
+            }
+            return;
+        }
+        if self.hangar.is_none() {
+            self.hangar = crate::hangar::HangarRig::new(renderer.device())
+                .inspect_err(|err| warn!(error = %err, "hangar preview unavailable"))
+                .ok();
+        }
+        if let (Some(hangar), Some((size, model))) = (self.hangar.as_mut(), hangar_model) {
             hangar.hide();
-            if let Some((size, model)) = hangar_model
-                && let Err(err) = hangar.render_with_livery(
-                    renderer.device(),
-                    renderer.queue(),
-                    model,
-                    custom,
-                    size,
-                    live,
-                    elapsed_s,
-                )
-            {
+            if let Err(err) = hangar.render_with_livery(
+                renderer.device(),
+                renderer.queue(),
+                model,
+                custom,
+                size,
+                live,
+                elapsed_s,
+            ) {
                 warn!(error = %err, "hangar preview unavailable");
             }
         }

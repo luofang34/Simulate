@@ -11,6 +11,6 @@ mod surface_ids;
 mod web;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{Host, run, spawn_renderer};
+pub use native::{Host, is_handheld_browser, run, spawn_renderer};
 #[cfg(target_arch = "wasm32")]
-pub use web::{Host, run, spawn_renderer};
+pub use web::{Host, TouchCockpit, is_handheld_browser, run, spawn_renderer};

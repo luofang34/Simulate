@@ -9,6 +9,12 @@ use winit::window::{Window, WindowAttributes};
 use crate::app::{AppEvent, FlightApp, GpuReady};
 use crate::gallery;
 
+/// Whether the host browser should use handheld budgets and controls (always `false` natively).
+#[must_use]
+pub const fn is_handheld_browser() -> bool {
+    false
+}
+
 /// Runs the app until its window closes (or renders a headless gallery when `--render-gallery <dir>` is passed).
 pub fn run() -> ExitCode {
     tracing_subscriber::fmt()

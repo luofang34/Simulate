@@ -2,17 +2,16 @@
 //! the zero or more instrument maps of the selected avionics preset, all on one
 //! [`SharedMapRuntime`].
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
 use sim_core::SimInstant;
 use sim_geo::{BodyEllipsoid, ecef_to_geodetic};
 use sim_maplibre::{
-    AvionicsMapSet, ChartAssetStore, ConformalFrameStamp, ConformalMapFrame, HostGpu,
-    InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
-    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
-    UsdAircraftAsset, ViewSlotId, ViewSlotMask, tile_id_to_world_coords, truth_real_world_style,
+    AvionicsMapSet, ChartAssetStore, CockpitDeviceTier, ConformalFrameStamp, ConformalMapFrame,
+    HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
+    TerrainPatchSnapshot, TruthSceneFrame, TruthSceneMap, TruthSlotMask, ViewSlotId, ViewSlotMask,
+    tile_id_to_world_coords,
 };
 use sim_scenario::OperatorViewportMode;
 use sim_scenery::{CatalogScenery, LandingRunwayGeometry, OsmAerodromeDiagram, TileId};
@@ -23,7 +22,7 @@ use crate::world_surface::WorldSurfaceHandle;
 
 pub(crate) mod aircraft;
 mod charts;
-mod device_tier;
+pub(crate) mod device_tier;
 mod efb;
 mod frame_input;
 mod globe;
@@ -41,8 +40,8 @@ pub use globe::GlobeSelection;
 pub use preset::{AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, PFD_SVS_MAP};
 pub use scenery::ScenerySource;
 
-const SENSOR_WIDTH_PX: u32 = 800;
-const SENSOR_HEIGHT_PX: u32 = 600;
+pub(super) const SENSOR_WIDTH_PX: u32 = 800;
+pub(super) const SENSOR_HEIGHT_PX: u32 = 600;
 
 /// The physical scene and the selected preset's instrument maps on one shared runtime.
 pub struct MapLibreRig {
@@ -122,27 +121,13 @@ impl MapLibreRig {
             Some(loader),
         )?;
         let window_px = clamp_window(initial_size);
-        // Traffic draws the generic C172; ownship selects its tail once the rig exists.
-        let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
-        let mut truth = TruthSceneMap::new(
+        let (truth, aux_virtual_camera_slot) = scenery::build_truth_scene(
             &runtime,
-            truth_real_world_style(&endpoints)?,
-            TruthSceneConfig {
-                otw_size: window_px,
-                stereo_otw: false,
-                otw_depth_readout: false,
-                sensor_size: [SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX],
-                request_overscan: 1.22,
-            },
-            asset,
+            &endpoints,
+            catalog.as_ref(),
+            window_px,
+            register_aux_sensor,
         )?;
-        let aux_virtual_camera_slot = register_aux_sensor
-            .then(|| truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true))
-            .transpose()?;
-        if let Some(scenery) = &catalog {
-            let _supplied = truth.supply_dem_synchronously(scenery)?;
-            let _supplied_ortho = truth.supply_ortho_synchronously(scenery)?;
-        }
         let mut rig = Self {
             avionics: AvionicsMapSet::default(),
             runtime,
@@ -174,6 +159,9 @@ impl MapLibreRig {
         rig.surface
             .configure(source)
             .map_err(sim_scenario::ScenarioError::from)?;
+        if let Some(cap) = rig.tier.tier.live_dem_capacity() {
+            rig.surface.set_live_dem_capacity(cap);
+        }
         Ok(rig)
     }
 
@@ -209,6 +197,12 @@ impl MapLibreRig {
     #[must_use]
     pub const fn preset(&self) -> AvionicsPreset {
         self.preset
+    }
+
+    /// The tier the maps run at, and why.
+    #[must_use]
+    pub const fn tier(&self) -> &TierChoice {
+        &self.tier
     }
 
     /// The simulator's physical scene.
@@ -347,7 +341,7 @@ impl MapLibreRig {
         let exposure = input.sensor_exposures.last();
         let mask = TruthSlotMask {
             otw: mode != OperatorViewportMode::ChartMap,
-            sensor: exposure.is_some(),
+            sensor: exposure.is_some() && self.tier.tier != CockpitDeviceTier::Handheld,
         };
         self.truth_shown = mask.otw;
         if !mask.otw && !mask.sensor {
@@ -370,6 +364,7 @@ impl MapLibreRig {
             })
             .transpose()?;
         let sensor_stamp = exposure
+            .filter(|_| mask.sensor)
             .map(|exp| stamps::sensor_exposure_stamp(cam_body, &cam_spec, exp, undulation_m))
             .transpose()?;
         let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
@@ -481,12 +476,4 @@ impl MapLibreRig {
 
 fn clamp_window([w, h]: [u32; 2]) -> [u32; 2] {
     [w.max(16), h.max(16)]
-}
-
-impl MapLibreRig {
-    /// The tier the maps run at, and why.
-    #[must_use]
-    pub const fn tier(&self) -> &TierChoice {
-        &self.tier
-    }
 }

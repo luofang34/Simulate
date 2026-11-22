@@ -6,7 +6,7 @@
 
 use std::num::NonZeroU64;
 
-use super::{SHADOW_BYTES, SHADOW_MAP_SIZE};
+use super::SHADOW_BYTES;
 use crate::usd_pass::{sky::SKY_BYTES, vertex};
 
 const MAP_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -59,12 +59,14 @@ impl ShadowGpu {
         draw_layout: &wgpu::BindGroupLayout,
         module: &wgpu::ShaderModule,
         attachments: Attachments,
+        shadow_map_size: u32,
     ) -> Self {
+        let edge = shadow_map_size.max(1);
         let map_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("usd aircraft shadow map"),
             size: wgpu::Extent3d {
-                width: SHADOW_MAP_SIZE,
-                height: SHADOW_MAP_SIZE,
+                width: edge,
+                height: edge,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,

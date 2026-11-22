@@ -123,6 +123,7 @@ fn preset_row(view: &mut HubView, status: &MenuStatus, [x, y, w]: [f32; 3]) {
     let source = match c.source {
         InputSource::Keyboard => "ACTIVE INPUT KEYBOARD",
         InputSource::Gamepad => "ACTIVE INPUT GAMEPAD",
+        InputSource::Touch => "ACTIVE INPUT TOUCH",
     };
     view.text_fit(
         [x + DEVICE_X, y + 26.0],

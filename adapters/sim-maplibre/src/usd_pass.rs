@@ -109,8 +109,23 @@ pub(crate) type SlotDraws = Rc<RefCell<BTreeMap<ViewSlotId, SlotScene>>>;
 
 /// Registers the aircraft pass and its prepare system on a truth-scene map.
 pub(crate) struct UsdScene3dPlugin {
-    pub(crate) library: SharedAircraftLibrary,
-    pub(crate) draws: SlotDraws,
+    library: SharedAircraftLibrary,
+    draws: SlotDraws,
+    shadow_map_size: u32,
+}
+
+impl UsdScene3dPlugin {
+    pub(crate) fn new(
+        library: &SharedAircraftLibrary,
+        draws: &SlotDraws,
+        shadow_map_size: u32,
+    ) -> Self {
+        Self {
+            library: Rc::clone(library),
+            draws: Rc::clone(draws),
+            shadow_map_size: shadow_map_size.max(1),
+        }
+    }
 }
 
 impl Plugin<HeadlessEnvironment> for UsdScene3dPlugin {
@@ -124,8 +139,9 @@ impl Plugin<HeadlessEnvironment> for UsdScene3dPlugin {
         world.resources.insert(gpu::UsdPassState::default());
         let library = Rc::clone(&self.library);
         let draws = Rc::clone(&self.draws);
+        let shadow_map_size = self.shadow_map_size;
         schedule.add_system_to_stage(RenderStageLabel::Prepare, move |ctx: &mut _| {
-            gpu::prepare(ctx, &library, &draws);
+            gpu::prepare(ctx, &library, &draws, shadow_map_size);
             Ok(())
         })?;
         let draw_graph = &mut renderer.render_graph;

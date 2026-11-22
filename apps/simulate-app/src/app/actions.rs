@@ -176,7 +176,7 @@ impl FlightApp {
     }
 
     /// Mirrors the cockpit's instrument fit into the hub after a hotkey changed it.
-    fn sync_hub_layout(&mut self) {
+    pub(super) fn sync_hub_layout(&mut self) {
         if let Some(rig) = self.cockpit_rig.as_ref() {
             self.hub.layout = shown_layout(
                 rig.shows_instruments(),
@@ -194,6 +194,7 @@ impl FlightApp {
             CockpitAction::CycleViewport => {
                 let mode = rig.supervisor_mut().cycle_viewport_mode();
                 self.look.reset();
+                self.touch.clear_manual_look();
                 rig.invalidate_chart();
                 info!(?mode, "switched operator viewport mode");
             }
@@ -202,6 +203,7 @@ impl FlightApp {
                 supervisor.set_vehicle_cameras(self.flight.vehicle_cameras());
                 let spec = supervisor.cycle_virtual_camera(self.flight.profile());
                 self.look.reset();
+                self.touch.clear_manual_look();
                 info!(camera = %spec.title, id = %spec.id, "selected virtual camera");
             }
             CockpitAction::ToggleInstruments => {
@@ -246,6 +248,11 @@ impl FlightApp {
             MenuOutcome::Opened => {
                 self.keyboard
                     .release_all(&mut self.mapper, &mut self.flight);
+                self.touch.cancel_active();
+                #[cfg(target_arch = "wasm32")]
+                if let Some(cockpit) = &self.touch_cockpit {
+                    cockpit.release_all(&mut self.mapper, &mut self.flight);
+                }
                 self.flight.note_wall_break();
                 if let Some(index) = self.flying_vehicle_index() {
                     self.esc_menu.select_vehicle(index);
@@ -301,6 +308,7 @@ impl FlightApp {
             },
             MenuCommand::Restart => match self.flight.restart() {
                 Ok(()) => {
+                    self.has_drawn_world = false;
                     self.after_spawn();
                     self.invalidate_chart();
                     info!("restarted flight");
@@ -308,17 +316,20 @@ impl FlightApp {
                 Err(err) => self.fail(event_loop, "restarting the flight failed", &err),
             },
             MenuCommand::TakeManualControl => {
+                self.has_drawn_world = false;
                 self.take_manual_control(event_loop);
                 if self.flight.profile().is_none() {
                     self.close_menu(event_loop);
                 }
             }
             MenuCommand::Sky(step) => {
+                self.has_drawn_world = false;
                 let mode = self.sky.cycle(step);
                 info!(mode = mode.label(), "selected sky ephemeris time");
             }
             MenuCommand::Quit => event_loop.exit(),
             other => {
+                self.has_drawn_world = false;
                 if self.apply_hub_command(event_loop, other) && !self.failed {
                     self.close_menu(event_loop);
                 }

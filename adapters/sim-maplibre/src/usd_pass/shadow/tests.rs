@@ -79,11 +79,13 @@ fn night_unknown_ground_and_disabled_blocks_turn_lookups_off() {
     let read = |bytes: &[u8; SHADOW_BYTES], i: usize| {
         f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap())
     };
-    let off = ShadowFrame::block(None);
+    let off = ShadowFrame::block(None, 2048);
     assert_eq!(read(&off, 43), 0.0, "enabled flag");
-    let on = ShadowFrame::block(Some(&airframe_only));
+    let on = ShadowFrame::block(Some(&airframe_only), 2048);
     assert_eq!(read(&on, 43), 1.0);
     assert_eq!(read(&on, 35), 0.0, "no ground receiver strength");
+    let small = ShadowFrame::block(Some(&airframe_only), 512);
+    assert!((read(&small, 44) - (1.0 / 512.0)).abs() < 1e-6);
     let column = |i: usize| {
         Vec4::new(
             read(&on, i),

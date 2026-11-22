@@ -100,12 +100,16 @@ impl CockpitRig {
     ) -> Result<Self, AppSimError> {
         let avionics = AvionicsRig::new(&host_gpu.device, hud_pass)?;
         let device = host_gpu.device.clone();
+        let handheld = crate::map_rig::device_tier::choose_for(&host_gpu.adapter).tier
+            == sim_maplibre::CockpitDeviceTier::Handheld;
         let preset = if page_view {
             AvionicsPreset::SyntheticVisionOnly
+        } else if handheld {
+            AvionicsPreset::NoMapGauges
         } else {
             AvionicsPreset::default()
         };
-        let maps = scenery.as_ref().and_then(|source| {
+        let mut maps = scenery.as_ref().and_then(|source| {
             layout::try_build_maps(
                 host_gpu,
                 initial_size,
@@ -115,6 +119,13 @@ impl CockpitRig {
                 page_view,
             )
         });
+        if handheld
+            && !page_view
+            && let Some(rig) = maps.as_mut()
+            && let Err(err) = rig.efb_command(crate::map_rig::EfbCommand::SetCollapsed(true))
+        {
+            warn!(%err, "collapsing EFB on handheld failed");
+        }
         let mut supervisor = SupervisorRig::new();
         supervisor.set_vertical_datum(surface.vertical_datum());
         Ok(Self {

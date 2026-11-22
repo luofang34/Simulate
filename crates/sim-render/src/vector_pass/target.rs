@@ -9,9 +9,16 @@ pub const VECTOR_COLOUR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8
 /// Samples per pixel of the multisampled vector attachments.
 pub const VECTOR_SAMPLE_COUNT: u32 = 4;
 
+pub(super) const fn normalized_sample_count(sample_count: u32) -> u32 {
+    if sample_count <= 1 {
+        1
+    } else {
+        VECTOR_SAMPLE_COUNT
+    }
+}
+
 struct Attachments {
-    msaa: wgpu::Texture,
-    msaa_view: wgpu::TextureView,
+    msaa: Option<(wgpu::Texture, wgpu::TextureView)>,
     depth: wgpu::Texture,
     depth_view: wgpu::TextureView,
     resolve: wgpu::Texture,
@@ -22,23 +29,26 @@ impl Attachments {
     /// Frees the textures now. On WebGPU dropping a texture frees nothing until the
     /// page's garbage collector runs, so a resize would otherwise hold both sizes.
     fn destroy(&self) {
-        self.msaa.destroy();
+        if let Some((msaa, _)) = &self.msaa {
+            msaa.destroy();
+        }
         self.depth.destroy();
         self.resolve.destroy();
     }
 }
 
-/// Multisampled attachments, per-target GPU buffers, and the single-sample
-/// resolve texture a [`VectorScenePass`](crate::VectorScenePass) draws into.
+/// Single-sample or multisampled attachments, per-target GPU buffers, and the
+/// single-sample output texture a [`VectorScenePass`](crate::VectorScenePass) draws into.
 ///
 /// Each target owns its own viewport uniform and vertex buffer so multiple
 /// targets (such as a cockpit's PFD, HSI, and HUD, or independent standalone
 /// displays) can record into one `wgpu::CommandEncoder` and submit together.
 ///
-/// The resolve view holds premultiplied colour and is meant for
+/// The output view holds premultiplied colour and is meant for
 /// [`OverlayQuad::vector_overlay`](crate::OverlayQuad::vector_overlay).
 pub struct VectorTarget {
     label: &'static str,
+    sample_count: u32,
     attachments: Attachments,
     viewport: wgpu::Buffer,
     bind_group: Option<wgpu::BindGroup>,
@@ -48,14 +58,26 @@ pub struct VectorTarget {
 }
 
 impl VectorTarget {
-    /// Allocates `width × height` attachments on `device`.
+    /// Allocates `width × height` `4×` MSAA attachments on `device`.
     pub fn new(
         device: &wgpu::Device,
         label: &'static str,
         width: u32,
         height: u32,
     ) -> Result<Self, RenderError> {
-        let att = allocate_attachments(device, label, width, height)?;
+        Self::with_sample_count(device, label, width, height, VECTOR_SAMPLE_COUNT)
+    }
+
+    /// Allocates `width × height` attachments on `device` with `1` (direct) or `4` (MSAA) samples.
+    pub fn with_sample_count(
+        device: &wgpu::Device,
+        label: &'static str,
+        width: u32,
+        height: u32,
+        sample_count: u32,
+    ) -> Result<Self, RenderError> {
+        let sample_count = normalized_sample_count(sample_count);
+        let att = allocate_attachments(device, label, width, height, sample_count)?;
         let viewport = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: std::mem::size_of::<[f32; 4]>() as u64,
@@ -64,6 +86,7 @@ impl VectorTarget {
         });
         Ok(Self {
             label,
+            sample_count,
             attachments: att,
             viewport,
             bind_group: None,
@@ -84,10 +107,16 @@ impl VectorTarget {
         if self.size == [width, height] {
             return Ok(());
         }
-        let att = allocate_attachments(device, self.label, width, height)?;
+        let att = allocate_attachments(device, self.label, width, height, self.sample_count)?;
         std::mem::replace(&mut self.attachments, att).destroy();
         self.size = [width, height];
         Ok(())
+    }
+
+    /// Configured raster sample count (`1` or `4`).
+    #[must_use]
+    pub const fn sample_count(&self) -> u32 {
+        self.sample_count
     }
 
     /// Resolved single-sample premultiplied colour view.
@@ -108,8 +137,8 @@ impl VectorTarget {
         self.size
     }
 
-    pub(super) const fn msaa_view(&self) -> &wgpu::TextureView {
-        &self.attachments.msaa_view
+    pub(super) fn msaa_view(&self) -> Option<&wgpu::TextureView> {
+        self.attachments.msaa.as_ref().map(|(_, view)| view)
     }
 
     pub(super) const fn depth_view(&self) -> &wgpu::TextureView {
@@ -185,6 +214,7 @@ fn allocate_attachments(
     label: &'static str,
     width: u32,
     height: u32,
+    sample_count: u32,
 ) -> Result<Attachments, RenderError> {
     check_size(device, label, width, height)?;
     let extent = wgpu::Extent3d {
@@ -192,19 +222,24 @@ fn allocate_attachments(
         height,
         depth_or_array_layers: 1,
     };
-    let msaa = texture(
-        device,
-        label,
-        extent,
-        VECTOR_SAMPLE_COUNT,
-        VECTOR_COLOUR_FORMAT,
-        wgpu::TextureUsages::RENDER_ATTACHMENT,
-    );
+    let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
+    let msaa = (sample_count > 1).then(|| {
+        let tex = texture(
+            device,
+            label,
+            extent,
+            sample_count,
+            VECTOR_COLOUR_FORMAT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let tex_view = view(&tex);
+        (tex, tex_view)
+    });
     let depth = texture(
         device,
         label,
         extent,
-        VECTOR_SAMPLE_COUNT,
+        sample_count,
         DEPTH_FORMAT,
         wgpu::TextureUsages::RENDER_ATTACHMENT,
     );
@@ -218,12 +253,10 @@ fn allocate_attachments(
             | wgpu::TextureUsages::TEXTURE_BINDING
             | wgpu::TextureUsages::COPY_SRC,
     );
-    let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
     Ok(Attachments {
-        msaa_view: view(&msaa),
+        msaa,
         depth_view: view(&depth),
         resolve_view: view(&resolve),
-        msaa,
         depth,
         resolve,
     })

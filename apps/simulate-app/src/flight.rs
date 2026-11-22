@@ -105,7 +105,18 @@ impl Flight {
     /// Starts in interactive free flight on [`FreeFlightVehicle::default`] over a world
     /// surface of its own.
     pub fn new() -> Result<Self, AppSimError> {
-        Self::with_surface(WorldSurfaceHandle::new())
+        #[cfg(target_arch = "wasm32")]
+        let surface = if matches!(
+            crate::map_rig::ScenerySource::from_environment(),
+            crate::map_rig::ScenerySource::RealWorld {}
+        ) {
+            WorldSurfaceHandle::new_bare_earth()
+        } else {
+            WorldSurfaceHandle::new()
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let surface = WorldSurfaceHandle::new();
+        Self::with_surface(surface)
     }
 
     /// Starts in interactive free flight on [`FreeFlightVehicle::default`], with ground

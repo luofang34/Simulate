@@ -205,3 +205,32 @@ fn a_resized_target_draws_on_its_new_attachments_after_freeing_the_old() {
     assert_eq!(alpha(&pixels, 4, 4), 255);
     assert_eq!(alpha(&pixels, 24, 24), 0);
 }
+
+#[test]
+fn single_sample_vector_pass_and_target_draw_and_clear() {
+    let Ok(gpu) = pollster::block_on(HeadlessGpu::new()) else {
+        return;
+    };
+    let pass = pollster::block_on(VectorScenePass::with_sample_count(&gpu.device, 1)).unwrap();
+    let mut target =
+        VectorTarget::with_sample_count(&gpu.device, "vector 1x", SIZE, SIZE, 1).unwrap();
+    assert_eq!(pass.sample_count(), 1);
+    assert_eq!(target.sample_count(), 1);
+    let mut v = Vec::new();
+    quad(
+        &mut v,
+        [2.0, 2.0, 14.0, 14.0],
+        [1.0, 1.0, 1.0, 1.0],
+        FULL_CLIP,
+        0.2,
+    );
+    draw(&gpu, &pass, &mut target, &v);
+    let px = read_back(&gpu, &target);
+    gpu.check_device().unwrap();
+    assert_eq!(alpha(&px, 6, 6), 255);
+    assert_eq!(alpha(&px, 24, 24), 0);
+
+    draw(&gpu, &pass, &mut target, &[]);
+    let cleared = read_back(&gpu, &target);
+    assert!(cleared.iter().all(|&b| b == 0), "empty draw must clear");
+}

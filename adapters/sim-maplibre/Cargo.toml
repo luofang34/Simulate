@@ -38,7 +38,7 @@ wgpu = { workspace = true }
 world = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-maplibre = { workspace = true, features = ["thread-safe-futures"] }
+maplibre = { workspace = true, features = ["native-io", "thread-safe-futures"] }
 tokio = { workspace = true }
 
 [dev-dependencies]

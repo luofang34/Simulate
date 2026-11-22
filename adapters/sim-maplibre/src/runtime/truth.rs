@@ -140,9 +140,8 @@ impl TruthSceneMap {
         let otw_phys = validate_size(otw_w, otw_h)?;
         let sen_phys = validate_size(sen_w, sen_h)?;
 
-        let settings = runtime
-            .device_tier()
-            .truth_scene_settings(runtime.color_format());
+        let tier = runtime.device_tier();
+        let settings = tier.truth_scene_settings(runtime.color_format());
         // Minimal 16x16 default head; actual rendering targets the registered ViewSlots.
         let (kernel, renderer) = runtime.create_renderer(16, 16, settings)?;
         let aircraft_draws: SlotDraws = Rc::new(RefCell::new(BTreeMap::new()));
@@ -155,12 +154,13 @@ impl TruthSceneMap {
             Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
             Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
             Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
-            Box::new(DrapeBudgetPlugin(runtime.device_tier().otw_drape_budget())),
+            Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
             Box::new(OverlayPlugin),
-            Box::new(UsdScene3dPlugin {
-                library: Rc::clone(&aircraft_library),
-                draws: Rc::clone(&aircraft_draws),
-            }),
+            Box::new(UsdScene3dPlugin::new(
+                &aircraft_library,
+                &aircraft_draws,
+                tier.shadow_map_size(),
+            )),
         ];
         let mut map = runtime
             .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins))

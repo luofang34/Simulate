@@ -174,8 +174,20 @@ impl AvionicsRig {
             volume_buf: vec![0_u8; VOLUME_SCENE_BYTES],
             volume_pose: ViewPose3D::default(),
             last_volume_bytes: 0,
-            pfd_target: VectorTarget::new(device, "indicate pfd", PANEL_WIDTH_PX, PANEL_HEIGHT_PX)?,
-            hsi_target: VectorTarget::new(device, "indicate hsi", PANEL_WIDTH_PX, PANEL_HEIGHT_PX)?,
+            pfd_target: VectorTarget::with_sample_count(
+                device,
+                "indicate pfd",
+                PANEL_WIDTH_PX,
+                PANEL_HEIGHT_PX,
+                hud_pass.sample_count(),
+            )?,
+            hsi_target: VectorTarget::with_sample_count(
+                device,
+                "indicate hsi",
+                PANEL_WIDTH_PX,
+                PANEL_HEIGHT_PX,
+                hud_pass.sample_count(),
+            )?,
             hud_pass,
             hud_target: None,
             hud_panel: VectorHudPanel::new(),
@@ -369,9 +381,13 @@ impl AvionicsRig {
                 target.ensure_size(device, w, h)?;
                 target
             }
-            None => self
-                .hud_target
-                .insert(VectorTarget::new(device, "indicate hud", w, h)?),
+            None => self.hud_target.insert(VectorTarget::with_sample_count(
+                device,
+                "indicate hud",
+                w,
+                h,
+                self.hud_pass.sample_count(),
+            )?),
         };
         self.hud_pass
             .encode(device, queue, encoder, target, vertices)?;

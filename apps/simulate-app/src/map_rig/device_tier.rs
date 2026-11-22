@@ -27,6 +27,24 @@ pub struct DeviceFacts {
     pub fallback_adapter: bool,
     /// The largest GPU buffer the adapter allows, bytes.
     pub max_buffer_bytes: u64,
+    /// Whether the primary pointer is coarse (touch screen).
+    pub coarse_pointer: bool,
+    /// Maximum hardware touch points reported by the browser.
+    pub max_touch_points: u32,
+    /// Smaller CSS viewport edge in pixels, when reported by the browser.
+    pub min_viewport_css_px: Option<f64>,
+    /// Whether the User-Agent string identifies iPhone, iPad, iPod, Android, or Mobile.
+    pub ios_like_ua: bool,
+}
+
+/// Whether a browser `User-Agent` string identifies a phone, tablet, or mobile browser.
+#[cfg(any(target_arch = "wasm32", test))]
+#[must_use]
+pub fn is_mobile_user_agent(ua: &str) -> bool {
+    let lower = ua.to_ascii_lowercase();
+    ["iphone", "ipad", "ipod", "android", "mobile"]
+        .into_iter()
+        .any(|needle| lower.contains(needle))
 }
 
 /// The tier the maps run at, and why.
@@ -88,6 +106,15 @@ pub fn choose_tier(facts: &DeviceFacts) -> TierChoice {
             facts.max_buffer_bytes >> 20
         ));
     }
+    if facts.ios_like_ua {
+        small.push("a mobile or iOS browser user agent".to_owned());
+    }
+    if facts.coarse_pointer && facts.max_touch_points > 0 {
+        small.push("a touch-first pointer".to_owned());
+    }
+    if facts.max_touch_points > 1 && facts.min_viewport_css_px.is_some_and(|px| px <= 1024.0) {
+        small.push("a compact touch display".to_owned());
+    }
     if !small.is_empty() {
         return TierChoice {
             tier: CockpitDeviceTier::Handheld,
@@ -108,11 +135,10 @@ pub fn choose_tier(facts: &DeviceFacts) -> TierChoice {
     }
 }
 
-/// The tier for maps on `adapter` in this browser.
 #[cfg(target_arch = "wasm32")]
-#[must_use]
-pub fn choose_for(adapter: &wgpu::Adapter) -> TierChoice {
-    let navigator = web_sys::window().map(|window| window.navigator());
+fn read_browser_device_facts(fallback_adapter: bool, max_buffer_bytes: u64) -> DeviceFacts {
+    let window = web_sys::window();
+    let navigator = window.as_ref().map(web_sys::Window::navigator);
     let read = |path: &[&str]| -> Option<wasm_bindgen::JsValue> {
         let mut value: wasm_bindgen::JsValue = navigator.clone()?.into();
         for key in path {
@@ -120,12 +146,52 @@ pub fn choose_for(adapter: &wgpu::Adapter) -> TierChoice {
         }
         (!value.is_undefined() && !value.is_null()).then_some(value)
     };
-    choose_tier(&DeviceFacts {
+    let coarse_pointer = window
+        .as_ref()
+        .and_then(|w| w.match_media("(pointer: coarse)").ok().flatten())
+        .is_some_and(|mq| mq.matches());
+    let max_touch_points = navigator.as_ref().map_or(0, |nav| {
+        u32::try_from(nav.max_touch_points().max(0)).unwrap_or(0)
+    });
+    let min_viewport_css_px = window.as_ref().and_then(|w| {
+        let width = w.inner_width().ok().and_then(|v| v.as_f64())?;
+        let height = w.inner_height().ok().and_then(|v| v.as_f64())?;
+        (width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0)
+            .then(|| width.min(height))
+    });
+    let ios_like_ua = navigator
+        .as_ref()
+        .and_then(|nav| nav.user_agent().ok())
+        .is_some_and(|ua| is_mobile_user_agent(&ua));
+    DeviceFacts {
         mobile: read(&["userAgentData", "mobile"]).and_then(|value| value.as_bool()),
         device_memory_gib: read(&["deviceMemory"]).and_then(|value| value.as_f64()),
-        fallback_adapter: adapter.get_info().device_type == wgpu::DeviceType::Cpu,
-        max_buffer_bytes: adapter.limits().max_buffer_size,
-    })
+        fallback_adapter,
+        max_buffer_bytes,
+        coarse_pointer,
+        max_touch_points,
+        min_viewport_css_px,
+        ios_like_ua,
+    }
+}
+
+/// Whether the current browser should run in the handheld tier based on Web APIs alone
+/// (before a `wgpu::Adapter` is requested).
+#[cfg(target_arch = "wasm32")]
+#[must_use]
+pub fn browser_is_handheld() -> bool {
+    let facts = read_browser_device_facts(false, u64::MAX);
+    choose_tier(&facts).tier == CockpitDeviceTier::Handheld
+}
+
+/// The tier for maps on `adapter` in this browser.
+#[cfg(target_arch = "wasm32")]
+#[must_use]
+pub fn choose_for(adapter: &wgpu::Adapter) -> TierChoice {
+    choose_tier(&read_browser_device_facts(
+        adapter.get_info().device_type == wgpu::DeviceType::Cpu,
+        adapter.limits().max_buffer_size,
+    ))
 }
 
 /// The tier for maps on a native host: the desktop one.

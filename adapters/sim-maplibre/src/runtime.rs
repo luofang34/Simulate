@@ -78,7 +78,10 @@ impl SharedMapRuntime {
         let shared_assets = match loader {
             Some(l) => SharedMapAssets::with_loader(l),
             None => SharedMapAssets::new(),
-        };
+        }
+        .with_asset_cache(maplibre::sdf::assets::AssetCache::with_budget(
+            tier.shared_asset_cache_bytes(),
+        ));
         #[cfg(not(target_arch = "wasm32"))]
         let tokio_runtime = Arc::new(
             tokio::runtime::Builder::new_multi_thread()

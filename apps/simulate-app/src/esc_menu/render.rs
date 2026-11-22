@@ -81,9 +81,13 @@ impl MenuOverlay {
                 target.ensure_size(device, w, h)?;
                 target
             }
-            None => self
-                .target
-                .insert(VectorTarget::new(device, "flight hub", w, h)?),
+            None => self.target.insert(VectorTarget::with_sample_count(
+                device,
+                "flight hub",
+                w,
+                h,
+                self.pass.sample_count(),
+            )?),
         };
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("flight hub"),

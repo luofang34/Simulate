@@ -327,6 +327,18 @@ impl LookOffset {
         }
     }
 
+    /// Pans and tilts the look interactively from touch or drag deltas, clamping to limits.
+    pub fn nudge(&mut self, dyaw_rad: f64, dpitch_rad: f64) {
+        let yaw_max = LOOK_YAW_LIMIT_DEG.to_radians();
+        let pitch_max = LOOK_PITCH_LIMIT_DEG.to_radians();
+        if dyaw_rad.is_finite() {
+            self.yaw_rad = (self.yaw_rad + dyaw_rad).clamp(-yaw_max, yaw_max);
+        }
+        if dpitch_rad.is_finite() {
+            self.pitch_rad = (self.pitch_rad + dpitch_rad).clamp(-pitch_max, pitch_max);
+        }
+    }
+
     /// Back to the default view.
     pub fn reset(&mut self) {
         *self = Self::default();

@@ -6,6 +6,8 @@
 /// The shortest time between two drawn frames, seconds: a 60 Hz refresh, less a margin
 /// for the browser's timing jitter, so a 60 Hz display still draws every refresh.
 pub const MIN_FRAME_S: f64 = 1.0 / 60.0 - 0.0025;
+/// Presentation redraw interval on handheld browsers (~30 Hz) to cut fragment bandwidth and heat.
+pub const HANDHELD_FRAME_S: f64 = 1.0 / 30.0 - 0.0025;
 /// Presentation redraw interval during medium-high page warps (`8×..16×`), ~15 Hz.
 pub const WARP_15HZ_FRAME_S: f64 = 1.0 / 15.0 - 0.0025;
 /// Presentation redraw interval during maximum page warps (`32×`, `64×`, unthrottled), ~10 Hz.
@@ -14,16 +16,33 @@ pub const WARP_10HZ_FRAME_S: f64 = 1.0 / 10.0 - 0.0025;
 /// Presentation redraw interval for the browser world view given the page's requested pace
 /// (`None` when standalone, `Some(Some(speed))` for bounded warp, `Some(None)` unthrottled)
 /// and whether operator map gestures are waiting (`interactive`).
+#[cfg(test)]
 #[must_use]
 pub fn presentation_interval_s(page_pace: Option<Option<f64>>, interactive: bool) -> f64 {
-    if interactive {
-        return MIN_FRAME_S;
-    }
-    match page_pace {
-        None => MIN_FRAME_S,
-        Some(Some(speed)) if speed < 8.0 => MIN_FRAME_S,
-        Some(Some(speed)) if speed < 32.0 => WARP_15HZ_FRAME_S,
-        Some(Some(_) | None) => WARP_10HZ_FRAME_S,
+    presentation_interval_for_tier_s(page_pace, interactive, false)
+}
+
+/// Like [`presentation_interval_s`], capping handheld browsers to at most 30 Hz.
+#[must_use]
+pub fn presentation_interval_for_tier_s(
+    page_pace: Option<Option<f64>>,
+    interactive: bool,
+    handheld: bool,
+) -> f64 {
+    let base = if interactive {
+        MIN_FRAME_S
+    } else {
+        match page_pace {
+            None => MIN_FRAME_S,
+            Some(Some(speed)) if speed < 8.0 => MIN_FRAME_S,
+            Some(Some(speed)) if speed < 32.0 => WARP_15HZ_FRAME_S,
+            Some(Some(_) | None) => WARP_10HZ_FRAME_S,
+        }
+    };
+    if handheld {
+        base.max(HANDHELD_FRAME_S)
+    } else {
+        base
     }
 }
 
@@ -97,6 +116,14 @@ mod tests {
             presentation_interval_s(Some(Some(64.0)), true),
             MIN_FRAME_S,
             "interactive map gestures restore 60 Hz response immediately"
+        );
+        assert_eq!(
+            super::presentation_interval_for_tier_s(None, false, true),
+            super::HANDHELD_FRAME_S
+        );
+        assert_eq!(
+            super::presentation_interval_for_tier_s(Some(Some(64.0)), false, true),
+            WARP_10HZ_FRAME_S
         );
     }
 }

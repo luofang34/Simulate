@@ -81,6 +81,36 @@ impl CockpitDeviceTier {
         }
     }
 
+    /// Decoded font/sprite asset cache budget for [`SharedMapAssets`](maplibre::headless::SharedMapAssets).
+    #[must_use]
+    pub const fn shared_asset_cache_bytes(self) -> usize {
+        match self {
+            Self::Desktop => 128 << 20,
+            Self::Browser => 64 << 20,
+            Self::Handheld => 16 << 20,
+        }
+    }
+
+    /// Shadow-map edge in texels for the ownship sun shadow pass.
+    #[must_use]
+    pub const fn shadow_map_size(self) -> u32 {
+        match self {
+            Self::Desktop => 2048,
+            Self::Browser => 1024,
+            Self::Handheld => 512,
+        }
+    }
+
+    /// Resident Terrarium DEM tile cap for live world-surface queries, or unbounded on desktop.
+    #[must_use]
+    pub const fn live_dem_capacity(self) -> Option<usize> {
+        match self {
+            Self::Desktop => None,
+            Self::Browser => Some(256),
+            Self::Handheld => Some(64),
+        }
+    }
+
     /// Renderer settings for the Simulator `TruthScene` (OTW + optical sensors).
     ///
     /// Always sets `symbol_pools = BufferPoolSizes::EMPTY` (`0` SDF buffers,
@@ -90,7 +120,7 @@ impl CockpitDeviceTier {
         let (buffer_pools, edge_px, msaa) = match self {
             Self::Desktop => (OTW_DESKTOP_VECTORS, 1024, Msaa { samples: 4 }),
             Self::Browser => (OTW_COMPACT_VECTORS, 1024, Msaa { samples: 4 }),
-            Self::Handheld => (OTW_COMPACT_VECTORS, 1024, Msaa { samples: 1 }),
+            Self::Handheld => (OTW_COMPACT_VECTORS, 512, Msaa { samples: 1 }),
         };
         RendererSettings {
             msaa,
@@ -119,22 +149,27 @@ impl CockpitDeviceTier {
                 per_eye_frame: 5,
                 moving_time: Duration::from_micros(3_000),
             },
-            Self::Browser | Self::Handheld => DrapeBudget {
+            Self::Browser => DrapeBudget {
                 per_frame: 4,
                 per_eye_frame: 3,
                 moving_time: Duration::from_micros(2_000),
             },
+            Self::Handheld => DrapeBudget {
+                per_frame: 2,
+                per_eye_frame: 1,
+                moving_time: Duration::from_micros(1_200),
+            },
         }
     }
 
-    /// Shortest interval between conformal synthetic-vision redraws (30 Hz). Relief behind
-    /// a PFD changes slowly, so drawing it every display frame costs GPU time the OTW needs.
-    /// The interval sits just under 1/30 s so 60/120 Hz frame timestamps converted through
-    /// `f64` seconds still land on every second/fourth frame.
+    /// Shortest interval between conformal synthetic-vision redraws (`30 Hz`, or `15 Hz`
+    /// on handhelds). Relief behind a PFD changes slowly, so drawing it every display
+    /// frame costs GPU time the OTW needs.
     #[must_use]
     pub const fn conformal_min_interval(self) -> Duration {
         match self {
-            Self::Desktop | Self::Browser | Self::Handheld => Duration::from_micros(33_000),
+            Self::Desktop | Self::Browser => Duration::from_micros(33_000),
+            Self::Handheld => Duration::from_millis(66),
         }
     }
 
@@ -172,7 +207,8 @@ impl CockpitDeviceTier {
     pub fn belief_chart_settings(self, format: wgpu::TextureFormat) -> RendererSettings {
         let (buffer_pools, edge_px, msaa) = match self {
             Self::Desktop => (AVIONICS_DESKTOP_VECTORS, 512, Msaa { samples: 4 }),
-            Self::Browser | Self::Handheld => (AVIONICS_COMPACT_VECTORS, 512, Msaa { samples: 1 }),
+            Self::Browser => (AVIONICS_COMPACT_VECTORS, 512, Msaa { samples: 1 }),
+            Self::Handheld => (AVIONICS_COMPACT_VECTORS, 256, Msaa { samples: 1 }),
         };
         RendererSettings {
             msaa,

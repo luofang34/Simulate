@@ -91,6 +91,7 @@ pub(super) struct UsdPassGpu {
     pub(super) opaque_double_sided: wgpu::RenderPipeline,
     pub(super) translucent: wgpu::RenderPipeline,
     pub(super) shadow: ShadowGpu,
+    shadow_map_size: u32,
     layout: wgpu::BindGroupLayout,
     pub(super) meshes: BTreeMap<AssetKey, Vec<Option<PartMesh>>>,
     /// The textures of each asset with a skin or a display atlas; dropped before `textures`.
@@ -107,7 +108,12 @@ pub(super) struct UsdPassState {
 
 /// Prepare-stage system: builds the GPU state once, uploads airframes selected since the
 /// last frame, then uploads the executing slot's draws.
-pub(super) fn prepare(ctx: &mut MapContext, library: &SharedAircraftLibrary, draws: &SlotDraws) {
+pub(super) fn prepare(
+    ctx: &mut MapContext,
+    library: &SharedAircraftLibrary,
+    draws: &SlotDraws,
+    shadow_map_size: u32,
+) {
     let slot = ctx
         .world
         .resources
@@ -137,6 +143,7 @@ pub(super) fn prepare(ctx: &mut MapContext, library: &SharedAircraftLibrary, dra
             resources.surface.surface_format(),
             settings.depth_texture_format,
             samples.samples,
+            shadow_map_size,
         )
     });
     if let Ok(library) = library.try_borrow() {
@@ -158,7 +165,9 @@ impl UsdPassGpu {
         format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
         samples: u32,
+        shadow_map_size: u32,
     ) -> Self {
+        let shadow_map_size = shadow_map_size.max(1);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("usd aircraft draw"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -185,6 +194,7 @@ impl UsdPassGpu {
                 depth: depth_format,
                 samples,
             },
+            shadow_map_size,
         );
         let textures = AssetTexturesGpu::new(device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -212,6 +222,7 @@ impl UsdPassGpu {
             opaque_double_sided: build(PipelineKind::OpaqueDoubleSided),
             translucent: build(PipelineKind::Translucent),
             shadow,
+            shadow_map_size,
             meshes: BTreeMap::new(),
             texture_groups: BTreeMap::new(),
             layout,
@@ -269,7 +280,11 @@ impl UsdPassGpu {
             return;
         };
         slot_gpu.commands.clear();
-        queue.write_buffer(&slot_gpu.shadow.block, 0, &ShadowFrame::block(shadow));
+        queue.write_buffer(
+            &slot_gpu.shadow.block,
+            0,
+            &ShadowFrame::block(shadow, self.shadow_map_size),
+        );
         queue.write_buffer(&slot_gpu.shadow.sky, 0, &sky.block());
         slot_gpu.shadowed = shadow.is_some() && draws.iter().any(|d| d.casts_shadow);
         slot_gpu.ground_shadow = slot_gpu.shadowed && shadow.is_some_and(|s| s.ground.is_some());
