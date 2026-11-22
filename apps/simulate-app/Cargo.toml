@@ -89,6 +89,7 @@ web-sys = { workspace = true, features = [
     "PointerEvent",
     "Screen",
     "ScreenOrientation",
+    "Storage",
     "WheelEvent",
     "Window",
 ] }

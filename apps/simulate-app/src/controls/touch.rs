@@ -4,7 +4,12 @@
 use sim_input::{Control, InputMapper};
 
 use super::ControlScheme;
+use crate::cockpit_rig::{CockpitViewMode, InstrumentDockStyle};
 use crate::flight::Flight;
+use crate::host_guidance::DialedAvionicsReadout;
+
+/// Seconds without touch-deck control input before fading the bottom flight deck.
+pub const TOUCH_DECK_IDLE_S: f64 = 6.0;
 
 const STICK_DEADZONE: f64 = 0.06;
 const STICK_EXPO: f64 = 0.35;
@@ -37,8 +42,26 @@ pub enum TouchAction {
     FlapsUp,
     /// Toggle landing gear up/down.
     ToggleGear,
-    /// Toggle EFB tablet expanded/compact view.
-    ToggleEfb,
+    /// Cycle mobile EFB state (`Hidden -> CompactCorner -> ExpandedEfb -> Hidden`).
+    CycleEfb,
+    /// Switch active primary HUD + EFIS view combination (`HUD+EFIS`, `EFIS`, `HUD`, `CLEAN`).
+    SetViewMode(CockpitViewMode),
+    /// Toggle docked EFIS arrangement between vertical left rail and bottom row.
+    ToggleDockStyle,
+    /// Toggle visibility of 3D cockpit yoke/stick controls in interior cameras.
+    ToggleYoke,
+    /// Adjust HSI heading bug by signed degrees.
+    AdjustHeadingBug(i16),
+    /// Sync HSI heading bug to current aircraft heading.
+    SyncHeadingBug,
+    /// Adjust PFD/HUD altitude preselect bug by signed feet.
+    AdjustAltitudeBug(i32),
+    /// Sync altitude preselect bug to current aircraft datum altitude.
+    SyncAltitudeBug,
+    /// Adjust barometric QNH by signed tenths of hectopascals (`10` = `+1.0 hPa`).
+    AdjustBaroTenthsHpa(i16),
+    /// Reset barometric QNH to standard `1013.25 hPa`.
+    SetBaroStd,
     /// Reset cockpit/chase look offset to straight ahead.
     ResetLook,
 }
@@ -136,6 +159,38 @@ pub fn tilt_axes_for_orientation(
     ]
 }
 
+/// Live UI status snapshot pushed from [`FlightApp`] to `#touch-cockpit` each frame.
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "constructed on wasm32 when syncing DOM touch controls"
+    )
+)]
+#[derive(Debug, Clone, Copy)]
+pub struct TouchUiSnapshot {
+    /// Whether the Flight Hub overlay is currently open.
+    pub hub_open: bool,
+    /// Current throttle lever norm (`0.0..=1.0`).
+    pub throttle_norm: f64,
+    /// Active HUD + EFIS visibility preset.
+    pub view_mode: CockpitViewMode,
+    /// Active PFD+HSI dock geometry (`LeftRail` vs `BottomRow`).
+    pub dock_style: InstrumentDockStyle,
+    /// Whether interior 3D yoke/stick geometry is hidden.
+    pub hides_yoke: bool,
+    /// Whether the EFB map overlay is currently visible (compact or expanded).
+    pub efb_open: bool,
+    /// Short badge label for the `MAP` pill (`"MAP"` / `"EFB"` / `"CLOSE"`).
+    pub efb_label: &'static str,
+    /// Normalized left-edge clearance `[0.0..0.45]` reserved for the vertical PFD+HSI rail.
+    pub efis_left_fraction: f32,
+    /// Live dialed heading bug, altitude preselect, and baro QNH summary.
+    pub dial_readout: DialedAvionicsReadout,
+    /// Monotonic browser clock timestamp in seconds (`performance.now() / 1000`).
+    pub now_s: f64,
+}
+
 /// Live touch cockpit + optional gyro-tilt state synchronized into [`InputMapper`].
 #[derive(Debug, Clone, Default)]
 pub struct TouchFlightState {
@@ -160,9 +215,39 @@ pub struct TouchFlightState {
     stick_was_active: bool,
     rudder_was_active: bool,
     brakes_applied: bool,
+    last_deck_input_s: Option<f64>,
 }
 
 impl TouchFlightState {
+    /// Records an active interaction on the bottom touch-flight deck at `now_s`.
+    pub fn note_deck_interaction(&mut self, now_s: f64) {
+        if now_s.is_finite() {
+            self.last_deck_input_s = Some(now_s);
+        }
+    }
+
+    /// Returns whether the touch flight deck has been idle for [`TOUCH_DECK_IDLE_S`] seconds
+    /// with no held control surfaces, starting its timer lazily at `now_s`.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "called by wasm32 touch UI sync and unit tests")
+    )]
+    pub fn touch_deck_idle(&mut self, now_s: f64) -> bool {
+        if !now_s.is_finite() {
+            return false;
+        }
+        if self.stick_active
+            || self.rudder_active
+            || self.brakes_held
+            || self.throttle_value.is_some()
+        {
+            self.last_deck_input_s = Some(now_s);
+            return false;
+        }
+        let anchor = *self.last_deck_input_s.get_or_insert(now_s);
+        now_s - anchor >= TOUCH_DECK_IDLE_S
+    }
+
     /// Stick axes shown on the virtual stick puck (finger overrides tilt while held).
     #[must_use]
     pub fn shown_stick_axes(&self) -> [f64; 2] {
@@ -323,5 +408,20 @@ mod tests {
         mapper.set(Control::Roll, 0.9);
         let _ = state.apply_to(&mut mapper, &mut controls, &mut flight, true);
         assert_eq!(mapper.controls().roll, 0.9);
+    }
+
+    #[test]
+    fn deck_auto_hide_waits_for_idle_window_and_wakes_on_activity() {
+        let mut state = TouchFlightState::default();
+        assert!(!state.touch_deck_idle(10.0));
+        assert!(!state.touch_deck_idle(15.9));
+        assert!(state.touch_deck_idle(16.0));
+        state.note_deck_interaction(16.5);
+        assert!(!state.touch_deck_idle(18.0));
+        state.stick_active = true;
+        assert!(!state.touch_deck_idle(30.0));
+        state.stick_active = false;
+        assert!(!state.touch_deck_idle(35.0));
+        assert!(state.touch_deck_idle(36.0));
     }
 }

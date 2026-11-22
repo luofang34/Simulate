@@ -164,6 +164,12 @@ impl FlightApp {
             | CockpitAction::ToggleHud
             | CockpitAction::TogglePause
             | CockpitAction::CycleWarp => self.handle_view_action(action),
+            CockpitAction::HeadingBugLeft
+            | CockpitAction::HeadingBugRight
+            | CockpitAction::SyncHeadingBug
+            | CockpitAction::BaroDown
+            | CockpitAction::BaroUp
+            | CockpitAction::BaroStd => self.handle_dial_action(action),
         }
         if matches!(
             action,
@@ -227,6 +233,33 @@ impl FlightApp {
                 };
                 let scale = rig.supervisor_mut().cycle_warp(ladder);
                 info!(?scale, "updated simulation time warp");
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_dial_action(&mut self, action: CockpitAction) {
+        let Some(rig) = self.cockpit_rig.as_mut() else {
+            return;
+        };
+        match action {
+            CockpitAction::HeadingBugLeft => {
+                rig.adjust_heading_bug(&self.flight, -5.0);
+            }
+            CockpitAction::HeadingBugRight => {
+                rig.adjust_heading_bug(&self.flight, 5.0);
+            }
+            CockpitAction::SyncHeadingBug => {
+                rig.sync_heading_bug(&self.flight);
+            }
+            CockpitAction::BaroDown => {
+                rig.adjust_baro_hpa(&mut self.flight, -1.0);
+            }
+            CockpitAction::BaroUp => {
+                rig.adjust_baro_hpa(&mut self.flight, 1.0);
+            }
+            CockpitAction::BaroStd => {
+                rig.set_baro_std(&mut self.flight);
             }
             _ => {}
         }

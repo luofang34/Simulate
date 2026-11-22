@@ -124,3 +124,16 @@ fn cockpit_and_standalone_pacers_avoid_vsync_storms_while_keeping_zero_lag_input
         false
     ));
 }
+
+#[test]
+fn synthetic_collapsed_status_reports_compact_collapsed_state_with_airport() {
+    let status =
+        super::cockpit::synthetic_collapsed_status(Some(&("KDOV".to_owned(), "01".to_owned())));
+    assert_eq!(status.mode, EfbDisplayMode::CompactCorner);
+    assert!(status.collapsed);
+    assert_eq!(status.airport, "KDOV");
+
+    let bare = super::cockpit::synthetic_collapsed_status(None);
+    assert!(bare.collapsed);
+    assert!(bare.airport.is_empty());
+}

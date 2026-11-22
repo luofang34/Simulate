@@ -21,6 +21,7 @@ use sim_scenery::{CatalogVerticalDatum, LandingRunwayGeometry};
 use crate::error::AppSimError;
 use crate::supervisor_rig::default_delaware_spawn;
 
+mod direct;
 mod hud;
 pub use hud::ConformalSurface;
 #[cfg(test)]
@@ -100,6 +101,9 @@ pub struct AvionicsFrameInput<'a> {
     pub specific_force_frd_m_s2: Option<DVec3>,
     /// Whether a conformal SVS instrument map rendered an underlay this frame.
     pub svs_underlay_active: bool,
+    /// Tessellate vector gauges and HUD directly for `1×` swapchain presentation without
+    /// intermediate offscreen textures.
+    pub direct_mode: bool,
     /// Physical `[width, height]` of a docked PFD/HSI panel when instruments are shown (`None` skips both).
     pub dock_panel_px: Option<[u32; 2]>,
     /// The window the conformal HUD overlays, when it is shown.
@@ -148,12 +152,14 @@ pub struct AvionicsRig {
     volume_buf: Vec<u8>,
     volume_pose: ViewPose3D,
     last_volume_bytes: usize,
-    pfd_target: VectorTarget,
-    hsi_target: VectorTarget,
+    pfd_target: Option<VectorTarget>,
+    hsi_target: Option<VectorTarget>,
+    panels_offscreen_shown: bool,
     hud_pass: VectorScenePass,
     hud_target: Option<VectorTarget>,
     hud_panel: VectorHudPanel,
     hud_shown: bool,
+    direct: direct::DirectVectors,
     guidance_epoch: Option<u32>,
     #[cfg(test)]
     last_heading_ref: Option<sim_indicate::HeadingReference>,
@@ -162,9 +168,9 @@ pub struct AvionicsRig {
 }
 
 impl AvionicsRig {
-    /// Allocates reusable `Indicate` scene encoders and `4×` MSAA GPU vector targets for PFD,
-    /// HSI, and the HUD; panel targets resize automatically to match the dock's physical pixels.
-    pub fn new(device: &wgpu::Device, hud_pass: VectorScenePass) -> Result<Self, AppSimError> {
+    /// Allocates reusable `Indicate` scene encoders; GPU offscreen targets are created lazily
+    /// only when offscreen rasterization is requested (`direct_mode == false`).
+    pub fn new(_device: &wgpu::Device, hud_pass: VectorScenePass) -> Result<Self, AppSimError> {
         let domain = FeedDomain::EarthAircraft;
         Ok(Self {
             domain,
@@ -174,24 +180,14 @@ impl AvionicsRig {
             volume_buf: vec![0_u8; VOLUME_SCENE_BYTES],
             volume_pose: ViewPose3D::default(),
             last_volume_bytes: 0,
-            pfd_target: VectorTarget::with_sample_count(
-                device,
-                "indicate pfd",
-                PANEL_WIDTH_PX,
-                PANEL_HEIGHT_PX,
-                hud_pass.sample_count(),
-            )?,
-            hsi_target: VectorTarget::with_sample_count(
-                device,
-                "indicate hsi",
-                PANEL_WIDTH_PX,
-                PANEL_HEIGHT_PX,
-                hud_pass.sample_count(),
-            )?,
+            pfd_target: None,
+            hsi_target: None,
+            panels_offscreen_shown: false,
             hud_pass,
             hud_target: None,
             hud_panel: VectorHudPanel::new(),
             hud_shown: false,
+            direct: direct::DirectVectors::default(),
             guidance_epoch: None,
             #[cfg(test)]
             last_heading_ref: None,
@@ -200,16 +196,22 @@ impl AvionicsRig {
         })
     }
 
-    /// Premultiplied `Rgba8UnormSrgb` view of the latest PFD frame (`BackgroundMode::Svs` or `Horizon`).
+    /// Premultiplied `Rgba8UnormSrgb` view of the latest offscreen PFD frame, if drawn offscreen.
     #[must_use]
-    pub fn pfd_view(&self) -> &wgpu::TextureView {
-        self.pfd_target.view()
+    pub fn pfd_view(&self) -> Option<&wgpu::TextureView> {
+        self.pfd_target
+            .as_ref()
+            .filter(|_| self.panels_offscreen_shown)
+            .map(VectorTarget::view)
     }
 
-    /// Premultiplied `Rgba8UnormSrgb` view of the latest HSI frame.
+    /// Premultiplied `Rgba8UnormSrgb` view of the latest offscreen HSI frame, if drawn offscreen.
     #[must_use]
-    pub fn hsi_view(&self) -> &wgpu::TextureView {
-        self.hsi_target.view()
+    pub fn hsi_view(&self) -> Option<&wgpu::TextureView> {
+        self.hsi_target
+            .as_ref()
+            .filter(|_| self.panels_offscreen_shown)
+            .map(VectorTarget::view)
     }
 
     /// Premultiplied full-window HUD view, when the HUD drew this frame.
@@ -265,6 +267,8 @@ impl AvionicsRig {
         }
         self.guidance_epoch = Some(epoch);
         self.hud_shown = false;
+        self.panels_offscreen_shown = false;
+        self.direct.clear();
 
         let sample = build_flight_sample(self.domain, input);
         let monitored = self.monitor.step(&mut self.feed, &sample)?;
@@ -283,34 +287,10 @@ impl AvionicsRig {
         let hud_view = input
             .hud
             .filter(|_| self.domain == FeedDomain::EarthAircraft);
-        if input.dock_panel_px.is_some() || hud_view.is_some() {
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("indicate avionics vector"),
-            });
-            let mut recorded = false;
-            if let Some([pw, ph]) = input.dock_panel_px {
-                let pfd_cfg = pfd_config_for(
-                    self.domain,
-                    input.svs_underlay_active,
-                    input.airspeed_envelope.as_ref(),
-                );
-                self.encode_vector_panels(
-                    device,
-                    queue,
-                    &mut encoder,
-                    &monitored,
-                    &pfd_cfg,
-                    [pw, ph],
-                )?;
-                recorded = true;
-            }
-            if let Some(view) = hud_view {
-                recorded |=
-                    self.encode_vector_hud(device, queue, &mut encoder, &monitored, input, &view)?;
-            }
-            if recorded {
-                queue.submit([encoder.finish()]);
-            }
+        if input.direct_mode {
+            self.update_direct_vectors(&monitored, input, hud_view)?;
+        } else if input.dock_panel_px.is_some() || hud_view.is_some() {
+            self.encode_offscreen_vectors(device, queue, &monitored, input, hud_view)?;
         }
         if input.viewport_mode == OperatorViewportMode::VolumetricScene {
             self.emit_active_volume(&monitored, input.terrain_patch)?;
@@ -328,6 +308,7 @@ impl AvionicsRig {
         [raw_w, raw_h]: [u32; 2],
     ) -> Result<(), AppSimError> {
         let (w, h) = (raw_w.max(64), raw_h.max(48));
+        let samples = self.hud_pass.sample_count();
         let pfd_verts = self.panels.tessellate_pfd_slice(
             &monitored.panel,
             config,
@@ -335,16 +316,19 @@ impl AvionicsRig {
             w,
             h,
         )?;
-        self.pfd_target.ensure_size(device, w, h)?;
+        let pfd_target =
+            direct::ensure_target(&mut self.pfd_target, device, "indicate pfd", w, h, samples)?;
         self.hud_pass
-            .encode(device, queue, encoder, &mut self.pfd_target, pfd_verts)?;
+            .encode(device, queue, encoder, pfd_target, pfd_verts)?;
 
         let hsi_verts =
             self.panels
                 .tessellate_hsi_slice(&monitored.panel, Some(&monitored.alerts), w, h)?;
-        self.hsi_target.ensure_size(device, w, h)?;
+        let hsi_target =
+            direct::ensure_target(&mut self.hsi_target, device, "indicate hsi", w, h, samples)?;
         self.hud_pass
-            .encode(device, queue, encoder, &mut self.hsi_target, hsi_verts)?;
+            .encode(device, queue, encoder, hsi_target, hsi_verts)?;
+        self.panels_offscreen_shown = true;
         Ok(())
     }
 

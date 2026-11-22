@@ -47,6 +47,22 @@ pub fn is_mobile_user_agent(ua: &str) -> bool {
         .any(|needle| lower.contains(needle))
 }
 
+/// Whether `location.search` requests explicit handheld/touch cockpit preview mode.
+#[cfg(any(target_arch = "wasm32", test))]
+#[must_use]
+pub fn has_handheld_query_param(search: &str) -> bool {
+    search
+        .strip_prefix('?')
+        .unwrap_or(search)
+        .split('&')
+        .any(|pair| {
+            matches!(
+                pair.to_ascii_lowercase().as_str(),
+                "handheld=1" | "handheld=true" | "touch=1" | "touch=true"
+            )
+        })
+}
+
 /// The tier the maps run at, and why.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TierChoice {
@@ -163,8 +179,16 @@ fn read_browser_device_facts(fallback_adapter: bool, max_buffer_bytes: u64) -> D
         .as_ref()
         .and_then(|nav| nav.user_agent().ok())
         .is_some_and(|ua| is_mobile_user_agent(&ua));
+    let query_handheld = window
+        .as_ref()
+        .and_then(|w| w.location().search().ok())
+        .is_some_and(|s| has_handheld_query_param(&s));
     DeviceFacts {
-        mobile: read(&["userAgentData", "mobile"]).and_then(|value| value.as_bool()),
+        mobile: if query_handheld {
+            Some(true)
+        } else {
+            read(&["userAgentData", "mobile"]).and_then(|value| value.as_bool())
+        },
         device_memory_gib: read(&["deviceMemory"]).and_then(|value| value.as_f64()),
         fallback_adapter,
         max_buffer_bytes,

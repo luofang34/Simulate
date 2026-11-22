@@ -30,7 +30,8 @@ mod vehicle_suite;
 
 pub use vehicle_suite::{DEFAULT_CHASE_BACK_UP_M, VehicleCameraSuite, vehicle_camera_suite};
 
-const COCKPIT_NEAR_M: f64 = 0.05;
+/// Near clip distance for cockpit and close virtual-camera mounts (metres).
+pub const COCKPIT_NEAR_M: f64 = 0.05;
 const VOLUMETRIC_BACK_M: f64 = 140.0;
 const VOLUMETRIC_UP_M: f64 = 85.0;
 /// How far the reference axis may lean toward the vertical before the external cameras

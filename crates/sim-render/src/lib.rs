@@ -62,5 +62,6 @@ pub use multiscale::{
 pub use ortho::{OrthoAtlas, OrthoFootprint};
 pub use renderer::{PanelSurface, Renderer};
 pub use vector_pass::{
+    DirectVectorDraw, DirectVectorPass, DirectVectorTarget, MAX_DIRECT_VECTOR_DRAWS,
     VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorScenePass, VectorTarget, VectorVertex,
 };

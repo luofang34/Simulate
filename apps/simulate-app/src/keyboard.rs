@@ -60,6 +60,18 @@ pub enum CockpitAction {
     ToggleFeatherLeft,
     /// `X`: toggle Curtiss Electric full feathering on the starboard propeller (`85°` edge-on).
     ToggleFeatherRight,
+    /// `,`: bug HSI heading `5°` left.
+    HeadingBugLeft,
+    /// `.`: bug HSI heading `5°` right.
+    HeadingBugRight,
+    /// `/`: sync HSI heading bug to current heading.
+    SyncHeadingBug,
+    /// `-`: decrease altimeter baro QNH by `1 hPa`.
+    BaroDown,
+    /// `=`: increase altimeter baro QNH by `1 hPa`.
+    BaroUp,
+    /// `\`: reset altimeter baro QNH to standard `1013.25 hPa`.
+    BaroStd,
 }
 
 /// What a number key picks: a scripted scenario (`1`–`8`), or `None` (`0`) for free flight.
@@ -117,6 +129,12 @@ pub fn cockpit_action(event: &KeyEvent) -> Option<CockpitAction> {
         KeyCode::KeyI => Some(CockpitAction::CycleCoolingFlaps),
         KeyCode::KeyZ => Some(CockpitAction::ToggleFeatherLeft),
         KeyCode::KeyX => Some(CockpitAction::ToggleFeatherRight),
+        KeyCode::Comma => Some(CockpitAction::HeadingBugLeft),
+        KeyCode::Period => Some(CockpitAction::HeadingBugRight),
+        KeyCode::Slash => Some(CockpitAction::SyncHeadingBug),
+        KeyCode::Minus => Some(CockpitAction::BaroDown),
+        KeyCode::Equal => Some(CockpitAction::BaroUp),
+        KeyCode::Backslash => Some(CockpitAction::BaroStd),
         _ => None,
     }
 }
@@ -177,7 +195,13 @@ pub fn apply_aircraft_system_action(action: CockpitAction, flight: &mut Flight) 
         | CockpitAction::CycleWarp
         | CockpitAction::CycleSkyTime
         | CockpitAction::CycleSensorRealism
-        | CockpitAction::ToggleEfb => {}
+        | CockpitAction::ToggleEfb
+        | CockpitAction::HeadingBugLeft
+        | CockpitAction::HeadingBugRight
+        | CockpitAction::SyncHeadingBug
+        | CockpitAction::BaroDown
+        | CockpitAction::BaroUp
+        | CockpitAction::BaroStd => {}
     });
 }
 

@@ -1,7 +1,8 @@
 //! Responsive DOM `#touch-cockpit` overlay for mobile browsers (`pointer: coarse` / iPhone):
-//! virtual flight stick, throttle slider, spring-centered rudder, hold-to-brake, action bar,
-//! and optional gyro-tilt steering.
+//! compact 4-pill top bar (`MAP | DIAL | ··· | MENU`), popover `DIAL` & display/system drawers,
+//! portrait rotate reminder, virtual stick, throttle, rudder, wheel brakes, and optional gyro tilt.
 
+mod dial_dom;
 mod dom;
 mod tilt;
 
@@ -14,12 +15,13 @@ use wasm_bindgen::closure::Closure;
 use web_sys::{Element, EventTarget, HtmlElement, PointerEvent};
 
 use crate::controls::ControlScheme;
-use crate::controls::touch::{TouchAction, TouchFlightState};
+use crate::controls::touch::{TouchAction, TouchFlightState, TouchUiSnapshot};
 use crate::flight::Flight;
+use dial_dom::{PopoverBuild, PopoverUi, build_popovers_and_banner, sync_popovers};
 use dom::{
     add_top_buttons, build_rudder, build_stick, build_throttle, create_button, create_el,
     position_puck, position_rudder, update_throttle_visual, wire_brake_button, wire_rudder_slider,
-    wire_stick_pad, wire_throttle_slider, wire_tilt_zero_hide,
+    wire_stick_pad, wire_throttle_slider,
 };
 use tilt::TiltController;
 
@@ -60,12 +62,14 @@ impl Drop for PointerListenerHandle {
 /// Live touch cockpit mounted over the simulation canvas for handheld browsers.
 pub struct TouchCockpit {
     root: Element,
+    map_btn: Element,
     menu_btn: Element,
     stick_puck: HtmlElement,
     throttle_fill: HtmlElement,
     throttle_label: Element,
     rudder_thumb: HtmlElement,
     brake_btn: Element,
+    popovers: PopoverUi,
     state: Rc<RefCell<TouchFlightState>>,
     tilt: Rc<RefCell<TiltController>>,
     collapsed: Rc<RefCell<bool>>,
@@ -83,63 +87,65 @@ impl TouchCockpit {
         root.set_id("touch-cockpit");
         root.set_attribute("data-hub-open", "false").ok()?;
         root.set_attribute("data-collapsed", "false").ok()?;
+        root.set_attribute("data-rotate-dismissed", "false").ok()?;
+        root.set_attribute("data-has-rail", "false").ok()?;
+        root.set_attribute("data-deck-idle", "false").ok()?;
 
         let state = Rc::new(RefCell::new(TouchFlightState::default()));
         let mut click_listeners = Vec::new();
+        let mut pointer_listeners = Vec::new();
+        let top_wrap = create_el(&document, "div", "tc-top-wrap", None)?;
         let top = create_el(&document, "div", "tc-top", None)?;
-        let (tilt_btn, zero_btn, hide_btn, menu_btn) =
+        let (map_btn, fly_btn, menu_btn) =
             add_top_buttons(&document, &top, &state, &mut click_listeners)?;
+        let tilt_btn = create_button(
+            &document,
+            "tc-more-btn",
+            "TILT",
+            "Toggle gyro tilt steering",
+        )?;
         let tilt = Rc::new(RefCell::new(TiltController::new(
             Rc::clone(&state),
             tilt_btn.clone(),
         )));
         let collapsed = Rc::new(RefCell::new(false));
-        wire_tilt_zero_hide(
+        let PopoverBuild {
+            dial_popover,
+            more_popover,
+            rotate_banner,
+            ui: popovers,
+        } = build_popovers_and_banner(
+            &document,
             &root,
-            (&tilt_btn, &zero_btn, &hide_btn),
             &state,
             &tilt,
+            &tilt_btn,
             &collapsed,
+            &fly_btn,
             &mut click_listeners,
-        );
+            &mut pointer_listeners,
+        )?;
+        top_wrap.append_child(&top).ok()?;
+        top_wrap.append_child(&rotate_banner).ok()?;
 
-        let deck = create_el(&document, "div", "tc-deck", None)?;
-        let left = create_el(&document, "div", "tc-left", None)?;
-        let right = create_el(&document, "div", "tc-right", None)?;
-        let (throttle, throttle_fill, throttle_label) = build_throttle(&document)?;
-        let (rudder, rudder_thumb) = build_rudder(&document)?;
-        let (stick, stick_puck) = build_stick(&document)?;
-        let brake_btn = create_button(&document, "tc-btn tc-brake", "BRK", "Hold wheel brakes")?;
-        left.append_child(&throttle).ok()?;
-        left.append_child(&rudder).ok()?;
-        right.append_child(&brake_btn).ok()?;
-        right.append_child(&stick).ok()?;
-        deck.append_child(&left).ok()?;
-        deck.append_child(&right).ok()?;
-        root.append_child(&top).ok()?;
+        let (deck, stick_puck, throttle_fill, throttle_label, rudder_thumb, brake_btn) =
+            mount_deck(&document, &state, &mut pointer_listeners)?;
+        root.append_child(&top_wrap).ok()?;
+        root.append_child(&dial_popover).ok()?;
+        root.append_child(&more_popover).ok()?;
         root.append_child(&deck).ok()?;
         body.append_child(&root).ok()?;
 
-        let mut pointer_listeners = Vec::new();
-        wire_stick_pad(&stick, &stick_puck, &state, &mut pointer_listeners);
-        wire_throttle_slider(
-            &throttle,
-            &throttle_fill,
-            &throttle_label,
-            &state,
-            &mut pointer_listeners,
-        );
-        wire_rudder_slider(&rudder, &rudder_thumb, &state, &mut pointer_listeners);
-        wire_brake_button(&brake_btn, &state, &mut pointer_listeners);
-
         Some(Self {
             root,
+            map_btn,
             menu_btn,
             stick_puck,
             throttle_fill,
             throttle_label,
             rudder_thumb,
             brake_btn,
+            popovers,
             state,
             tilt,
             collapsed,
@@ -148,20 +154,42 @@ impl TouchCockpit {
         })
     }
 
-    /// Synchronizes DOM attributes, throttle bar, and virtual stick puck (showing gyro tilt
-    /// deflection when active).
-    pub fn sync_ui(&self, hub_open: bool, throttle_norm: f64) {
-        let open_attr = if hub_open { "true" } else { "false" };
+    /// Synchronizes DOM attributes, deck clearances, auto-hide fade, throttle bar, stick puck,
+    /// and `DIAL` / `···` popover readouts from the active frame snapshot.
+    pub fn sync_ui(&self, snap: &TouchUiSnapshot) {
+        let open_attr = if snap.hub_open { "true" } else { "false" };
         self.root.set_attribute("data-hub-open", open_attr).ok();
         self.menu_btn
-            .set_text_content(Some(if hub_open { "CLOSE" } else { "MENU" }));
-        let (stick_axes, rudder, brake) = {
-            let s = self.state.borrow();
-            (s.shown_stick_axes(), s.rudder_axis, s.brakes_held)
+            .set_text_content(Some(if snap.hub_open { "CLOSE" } else { "MENU" }));
+        self.map_btn.set_text_content(Some(snap.efb_label));
+        self.map_btn
+            .set_attribute("data-active", if snap.efb_open { "true" } else { "false" })
+            .ok();
+        let has_rail = snap.efis_left_fraction > 0.01;
+        self.root
+            .set_attribute("data-has-rail", if has_rail { "true" } else { "false" })
+            .ok();
+        if let Some(root_html) = self.root.dyn_ref::<HtmlElement>() {
+            root_html
+                .style()
+                .set_property("--tc-efis-left", &format!("{:.4}", snap.efis_left_fraction))
+                .ok();
+        }
+        let (stick_axes, rudder, brake, idle) = {
+            let mut s = self.state.borrow_mut();
+            let idle = s.touch_deck_idle(snap.now_s);
+            (s.shown_stick_axes(), s.rudder_axis, s.brakes_held, idle)
         };
+        self.root
+            .set_attribute("data-deck-idle", if idle { "true" } else { "false" })
+            .ok();
         position_puck(&self.stick_puck, stick_axes);
         position_rudder(&self.rudder_thumb, rudder);
-        update_throttle_visual(&self.throttle_fill, &self.throttle_label, throttle_norm);
+        update_throttle_visual(
+            &self.throttle_fill,
+            &self.throttle_label,
+            snap.throttle_norm,
+        );
         self.brake_btn
             .set_attribute("data-active", if brake { "true" } else { "false" })
             .ok();
@@ -175,6 +203,7 @@ impl TouchCockpit {
                 },
             )
             .ok();
+        sync_popovers(&self.popovers, snap);
     }
 
     /// Releases held touch axes/brakes cleanly (when opening the Flight Hub).
@@ -205,4 +234,52 @@ impl Drop for TouchCockpit {
         self.tilt.borrow_mut().disable();
         self.root.remove();
     }
+}
+
+type DeckBuild = (
+    Element,
+    HtmlElement,
+    HtmlElement,
+    Element,
+    HtmlElement,
+    Element,
+);
+
+fn mount_deck(
+    document: &web_sys::Document,
+    state: &Rc<RefCell<TouchFlightState>>,
+    pointer_listeners: &mut Vec<PointerListenerHandle>,
+) -> Option<DeckBuild> {
+    let deck = create_el(document, "div", "tc-deck", None)?;
+    let left = create_el(document, "div", "tc-left", None)?;
+    let right = create_el(document, "div", "tc-right", None)?;
+    let (throttle, throttle_fill, throttle_label) = build_throttle(document)?;
+    let (rudder, rudder_thumb) = build_rudder(document)?;
+    let (stick, stick_puck) = build_stick(document)?;
+    let brake_btn = create_button(document, "tc-btn tc-brake", "BRK", "Hold wheel brakes")?;
+    left.append_child(&throttle).ok()?;
+    left.append_child(&rudder).ok()?;
+    right.append_child(&brake_btn).ok()?;
+    right.append_child(&stick).ok()?;
+    deck.append_child(&left).ok()?;
+    deck.append_child(&right).ok()?;
+
+    wire_stick_pad(&stick, &stick_puck, state, pointer_listeners);
+    wire_throttle_slider(
+        &throttle,
+        &throttle_fill,
+        &throttle_label,
+        state,
+        pointer_listeners,
+    );
+    wire_rudder_slider(&rudder, &rudder_thumb, state, pointer_listeners);
+    wire_brake_button(&brake_btn, state, pointer_listeners);
+    Some((
+        deck,
+        stick_puck,
+        throttle_fill,
+        throttle_label,
+        rudder_thumb,
+        brake_btn,
+    ))
 }

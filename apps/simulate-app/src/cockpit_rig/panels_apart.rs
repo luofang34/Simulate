@@ -31,18 +31,23 @@ impl CockpitRig {
         if let Some(svs) = svs {
             pfd.push(OverlayQuad::inset_map(ViewportRect::FULL, svs, false));
         }
-        pfd.push(OverlayQuad::vector_panel(
-            ViewportRect::FULL,
-            self.avionics.pfd_view(),
-            svs.is_none(),
-            true,
-        ));
-        let hsi = vec![OverlayQuad::vector_panel(
-            ViewportRect::FULL,
-            self.avionics.hsi_view(),
-            true,
-            true,
-        )];
+        if let Some(pfd_view) = self.avionics.pfd_view() {
+            pfd.push(OverlayQuad::vector_panel(
+                ViewportRect::FULL,
+                pfd_view,
+                svs.is_none(),
+                true,
+            ));
+        }
+        let mut hsi = Vec::with_capacity(1);
+        if let Some(hsi_view) = self.avionics.hsi_view() {
+            hsi.push(OverlayQuad::vector_panel(
+                ViewportRect::FULL,
+                hsi_view,
+                true,
+                true,
+            ));
+        }
         Some([pfd, hsi])
     }
 
@@ -65,6 +70,6 @@ impl CockpitRig {
                 .maps
                 .as_ref()
                 .is_some_and(|m| !m.efb_shown() && m.instrument_view(MFD_CHART_MAP).is_some());
-        layout::dock_panel_px(self.surface_size, has_dock_chart)
+        layout::dock_panel_px(self.surface_size, self.dock_style, has_dock_chart)
     }
 }
