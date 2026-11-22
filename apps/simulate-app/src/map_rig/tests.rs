@@ -2,7 +2,7 @@
 //! ownship airframe chosen for what is flying.
 
 use sim_core::{AirframeArticulation, VehicleState};
-use sim_geo::{Geodetic, egm96_undulation_m};
+use sim_geo::{BodyEllipsoid, Geodetic, egm96_undulation_m};
 use sim_maplibre::OwnshipVisualKind;
 use sim_scenario::ScenarioProfile;
 use sim_scenery::{CatalogScenery, CatalogVerticalDatum};
@@ -13,6 +13,37 @@ use crate::vehicles::FreeFlightVehicle;
 
 /// Newark Liberty field reference point and its NASR field elevation, metres MSL.
 const KEWR: (f64, f64, f64) = (40.692_5, -74.168_7, 5.33);
+
+#[test]
+fn build_camera_stamp_honors_cockpit_near_clip_and_guards_invalid_values() {
+    use sim_render::{Camera, CameraPose};
+
+    use super::stamps::{build_camera_stamp, effective_near_m};
+
+    let origin = Geodetic::from_degrees(KEWR.0, KEWR.1, 150.0);
+    let frame = sim_geo::LocalFrame::at(&origin);
+    let orientation = glam::DQuat::from_mat3(&glam::DMat3::from_cols(
+        frame.east(),
+        frame.up(),
+        -frame.north(),
+    ))
+    .normalize();
+    let cam = Camera {
+        pose: CameraPose {
+            position_ecef: BodyEllipsoid::WGS84.geodetic_to_fixed(&origin),
+            orientation,
+        },
+        fov_y_rad: 45.0_f64.to_radians(),
+        near_m: 0.05,
+    };
+    let stamp = build_camera_stamp(sim_core::SimInstant::START, &cam, [1280, 720], -33.0)
+        .expect("cockpit stamp");
+    assert!((stamp.external_view.frustum.near - 0.05).abs() < 1e-9);
+    assert!((effective_near_m(0.0) - sim_maplibre::DEFAULT_NEAR_CLIP_M).abs() < 1e-9);
+    assert!((effective_near_m(-1.0) - sim_maplibre::DEFAULT_NEAR_CLIP_M).abs() < 1e-9);
+    assert!((effective_near_m(f64::NAN) - sim_maplibre::DEFAULT_NEAR_CLIP_M).abs() < 1e-9);
+    assert!((effective_near_m(0.01) - 0.05).abs() < 1e-9);
+}
 
 #[test]
 fn real_world_ownship_sits_at_its_msl_altitude_not_its_ellipsoidal_height() {

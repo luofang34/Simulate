@@ -66,6 +66,7 @@ pub struct MapLibreRig {
     npc_models: std::collections::HashMap<(String, String), sim_maplibre::TrafficModelId>,
     charts: ChartAssetStore,
     efb: Option<efb::EfbRig>,
+    efb_state: efb::EfbCockpitState,
     efb_airport: Option<EfbAirport>,
     globe: Option<globe::GlobeRig>,
     tier: TierChoice,
@@ -150,6 +151,11 @@ impl MapLibreRig {
             npc_models: std::collections::HashMap::new(),
             charts,
             efb: None,
+            efb_state: efb::EfbCockpitState {
+                collapsed: tier.tier == CockpitDeviceTier::Handheld && register_aux_sensor,
+                hidden_on_no_map: preset == AvionicsPreset::NoMapGauges,
+                ..efb::EfbCockpitState::default()
+            },
             efb_airport: None,
             globe: None,
             tier,
@@ -175,6 +181,7 @@ impl MapLibreRig {
         avionics.set_pixel_ratio(self.pixel_ratio);
         self.avionics = avionics;
         self.preset = preset;
+        self.efb_state.hidden_on_no_map = preset == AvionicsPreset::NoMapGauges;
         self.ensure_efb();
         Ok(())
     }
@@ -209,6 +216,13 @@ impl MapLibreRig {
     #[must_use]
     pub const fn truth(&self) -> &TruthSceneMap {
         &self.truth
+    }
+
+    fn otw_px(&self) -> [u32; 2] {
+        crate::app::surface_scale::capped_otw_size(
+            self.window_px,
+            self.tier.tier == CockpitDeviceTier::Handheld,
+        )
     }
 
     /// Sets the exposure time of the camera the outside scene is drawn for.
@@ -297,7 +311,8 @@ impl MapLibreRig {
         }
         self.window_px = clamp_window(input.surface_size);
         let [w, h] = self.window_px;
-        self.truth.resize_otw(w, h)?;
+        let [otw_w, otw_h] = self.otw_px();
+        self.truth.resize_otw(otw_w, otw_h)?;
         if let Some(surface) = self.avionics.get_mut(AIRPORT_SURFACE_MAP) {
             surface.resize(w, h)?;
         }
@@ -358,7 +373,7 @@ impl MapLibreRig {
                 stamps::build_camera_stamp(
                     input.timestamp,
                     &input.otw_camera,
-                    self.window_px,
+                    self.otw_px(),
                     undulation_m,
                 )
             })

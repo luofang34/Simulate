@@ -1,6 +1,6 @@
 use sim_maplibre::CockpitDeviceTier;
 
-use super::{DeviceFacts, choose_tier, is_mobile_user_agent};
+use super::{DeviceFacts, choose_tier, has_handheld_query_param, is_mobile_user_agent};
 
 const LAPTOP: DeviceFacts = DeviceFacts {
     mobile: Some(false),
@@ -108,4 +108,15 @@ fn a_phone_a_small_device_or_a_software_gpu_runs_the_handheld_tier() {
         ios_like_ua: true,
     };
     assert_eq!(choose_tier(&all).reasons.len(), 7);
+}
+
+#[test]
+fn handheld_query_param_parses_explicit_mobile_preview_flags() {
+    assert!(has_handheld_query_param("?handheld=1"));
+    assert!(has_handheld_query_param("?foo=bar&touch=1"));
+    assert!(has_handheld_query_param("?HANDHELD=TRUE"));
+    assert!(has_handheld_query_param("touch=true"));
+    assert!(!has_handheld_query_param("?handheld=0"));
+    assert!(!has_handheld_query_param("?other=handheld=1"));
+    assert!(!has_handheld_query_param(""));
 }

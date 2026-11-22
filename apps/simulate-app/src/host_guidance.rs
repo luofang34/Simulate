@@ -18,23 +18,43 @@ use crate::chain_avionics;
 use crate::flight::Flight;
 use crate::vehicles::FreeFlightVehicle;
 
-const STANDARD_QNH_HPA: f64 = 1_013.25;
+pub mod dials;
+#[cfg(any(target_arch = "wasm32", test))]
+pub use dials::DialedAvionicsReadout;
+pub use dials::PilotDialedSelections;
+
 const PATTERN_HEIGHT_M: f64 = 304.8;
 const HUNDRED_FT_M: f64 = 30.48;
 
 /// Local stand-in for the `Pilotage` session host, used when no external host is connected.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StandInPilotageHost {
     source_epoch: u32,
     sequence: u32,
     seen_discontinuity: Option<u32>,
     efb_phase: crate::efb_plan::EfbAutopilotPhase,
+    dials: PilotDialedSelections,
 }
 
 impl StandInPilotageHost {
     /// Updates the EFB autopilot phase reported on the PFD/HUD FMA scoreboard in free flight.
     pub fn set_efb_phase(&mut self, phase: crate::efb_plan::EfbAutopilotPhase) {
         self.efb_phase = phase;
+    }
+
+    /// Pilot-dialed heading bug, altitude preselect, and barometric QNH overrides.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "used by wasm32 touch controls and tests")
+    )]
+    #[must_use]
+    pub const fn dials(&self) -> &PilotDialedSelections {
+        &self.dials
+    }
+
+    /// Mutable access to pilot-dialed heading bug, altitude preselect, and baro QNH.
+    pub fn dials_mut(&mut self) -> &mut PilotDialedSelections {
+        &mut self.dials
     }
     /// A host that has published nothing yet.
     #[must_use]
@@ -103,7 +123,13 @@ impl StandInPilotageHost {
         };
         let est_datum_height_m = est_geo.height_m - undulation_m;
         HostFlightGuidance {
-            selections: pilot_selections(&est_geo, est_datum_height_m, heading_rad, runway),
+            selections: pilot_selections(
+                &est_geo,
+                est_datum_height_m,
+                heading_rad,
+                runway,
+                &self.dials,
+            ),
             nav: runway.map_or(HostNavGuidance::None, |rwy| {
                 HostNavGuidance::RunwayReceiver(runway_nav(rwy))
             }),
@@ -115,14 +141,16 @@ impl StandInPilotageHost {
 
 /// Heading bug on the landing course (projected into ownship's local meridian across `±90°`)
 /// and the altitude preselect at pattern altitude in the active vertical datum when a runway
-/// is selected; otherwise on the current heading and datum altitude.
+/// is selected; otherwise on the current heading and datum altitude, overridden by any
+/// manual [`PilotDialedSelections`].
 fn pilot_selections(
     est_geo: &Geodetic,
     est_datum_height_m: f64,
     heading_rad: f64,
     runway: Option<&LandingRunwayGeometry>,
+    dials: &PilotDialedSelections,
 ) -> PilotSelections {
-    let (heading_rad, altitude_m) = runway.map_or_else(
+    let (default_heading_rad, default_altitude_m) = runway.map_or_else(
         || {
             (
                 heading_rad,
@@ -137,9 +165,11 @@ fn pilot_selections(
         },
     );
     PilotSelections {
-        heading_rad,
-        altitude_m: Some(altitude_m),
-        baro_setting_hpa: Some(STANDARD_QNH_HPA),
+        heading_rad: dials
+            .heading_bug_deg
+            .map_or(default_heading_rad, f64::to_radians),
+        altitude_m: Some(dials.altitude_bug_m.unwrap_or(default_altitude_m)),
+        baro_setting_hpa: Some(dials.baro_hpa),
     }
 }
 

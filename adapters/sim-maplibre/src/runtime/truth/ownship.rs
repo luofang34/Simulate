@@ -70,4 +70,21 @@ impl TruthSceneMap {
                 library.ownship_kind()
             })
     }
+
+    /// Sets whether ownship 3D cockpit controls (yoke/stick/column) are hidden in interior views.
+    pub fn set_hide_cockpit_controls(&mut self, hide: bool) {
+        self.hide_cockpit_controls = hide;
+    }
+
+    /// Whether ownship 3D cockpit controls (yoke/stick/column) are hidden in interior views.
+    #[must_use]
+    pub const fn hides_cockpit_controls(&self) -> bool {
+        self.hide_cockpit_controls
+    }
+
+    /// Sets the exposure time of the camera the scene is drawn for, which a turning
+    /// propeller smears over; the eye's by default.
+    pub fn set_shutter_exposure_s(&mut self, shutter_s: f64) {
+        self.shutter_s = shutter_s;
+    }
 }

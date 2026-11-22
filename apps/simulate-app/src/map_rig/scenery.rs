@@ -170,12 +170,13 @@ pub(super) fn build_truth_scene(
     register_aux_sensor: bool,
 ) -> Result<(TruthSceneMap, Option<ViewSlotId>), AppSimError> {
     let handheld = runtime.device_tier() == CockpitDeviceTier::Handheld;
+    let otw_size = crate::app::surface_scale::capped_otw_size(window_px, handheld);
     let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
     let mut truth = TruthSceneMap::new(
         runtime,
         truth_real_world_style(endpoints)?,
         TruthSceneConfig {
-            otw_size: window_px,
+            otw_size,
             stereo_otw: false,
             otw_depth_readout: false,
             sensor_size: if handheld {

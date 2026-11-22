@@ -12,7 +12,7 @@ use sim_maplibre::{
 use sim_render::Camera;
 use sim_scenery::CatalogVerticalDatum;
 
-use crate::camera_view::{COCKPIT_FOV_Y_DEG, SVS_FOV_Y_DEG, svs_mount_for};
+use crate::camera_view::{COCKPIT_FOV_Y_DEG, COCKPIT_NEAR_M, SVS_FOV_Y_DEG, svs_mount_for};
 use crate::error::AppSimError;
 use crate::vehicles::FreeFlightVehicle;
 
@@ -96,17 +96,22 @@ pub fn build_camera_stamp(
         position_ecef: camera.pose.position_ecef,
         orientation: camera.pose.orientation,
     };
-    let frustum = symmetric_frustum(
-        fov_y,
-        w_px.max(1),
-        h_px.max(1),
-        DEFAULT_NEAR_CLIP_M,
-        DEFAULT_FAR_CLIP_M,
-    )?;
+    let near_m = effective_near_m(camera.near_m);
+    let frustum = symmetric_frustum(fov_y, w_px.max(1), h_px.max(1), near_m, DEFAULT_FAR_CLIP_M)?;
     Ok(conformal_stamp_from_pose(
         timestamp,
         &pose_ecef,
         frustum,
         undulation_m,
     )?)
+}
+
+/// Near clip distance for window cameras: honors finite positive caller values clamped to
+/// `[COCKPIT_NEAR_M, DEFAULT_FAR_CLIP_M)`, falling back to `DEFAULT_NEAR_CLIP_M`.
+pub(crate) fn effective_near_m(near_m: f64) -> f64 {
+    if near_m.is_finite() && near_m > 0.0 {
+        near_m.clamp(COCKPIT_NEAR_M, DEFAULT_FAR_CLIP_M - 1.0)
+    } else {
+        DEFAULT_NEAR_CLIP_M
+    }
 }

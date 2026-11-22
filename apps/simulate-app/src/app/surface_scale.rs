@@ -41,12 +41,17 @@ impl GpuReady {
     }
 }
 
-/// Maximum pixel ratio used on handheld browsers (`3×` Retina canvases waste fragment
-/// bandwidth and VRAM on phone screens).
-pub const HANDHELD_MAX_PIXEL_RATIO: f64 = 1.5;
+/// Maximum pixel ratio used on handheld browsers (`3×` Retina canvases still keep crisp `2×`
+/// swapchain vector instruments without `3×` fill-rate cost).
+pub const HANDHELD_MAX_PIXEL_RATIO: f64 = 2.0;
 
-/// Maximum swapchain pixel budget on handheld browsers (`~0.92 MP`, about `1280×720`).
-pub const HANDHELD_MAX_PIXELS: u64 = 1_280 * 720;
+/// Maximum swapchain pixel budget on handheld browsers (`~2.07 MP`, `1920×1080`) for crisp
+/// direct-to-swapchain PFD/HSI vector gauges and HUD.
+pub const HANDHELD_MAX_PIXELS: u64 = 1_920 * 1_080;
+
+/// Maximum offscreen 3D OTW pixel budget on handheld browsers (`~0.92 MP`, `1280×720`) so
+/// WebGPU terrain/aircraft shading stays cool while overlay vectors remain sharp at `2×`.
+pub const HANDHELD_OTW_MAX_PIXELS: u64 = 1_280 * 720;
 
 /// Returns `(surface_px, effective_pixel_ratio)` for a window reporting `window_px`
 /// physical pixels and `scale_factor`. Non-handheld devices keep native resolution.
@@ -79,6 +84,28 @@ pub fn capped_surface_size(
     }
     let effective_ratio = (w / css_w.max(1.0)).clamp(1.0, capped_ratio);
     ([w as u32, h as u32], effective_ratio)
+}
+
+/// Returns the 3D OTW target size for `surface_px`, preserving aspect ratio and capping
+/// handheld OTW area to [`HANDHELD_OTW_MAX_PIXELS`] while swapchain vectors stay full-res.
+#[must_use]
+pub fn capped_otw_size(surface_px: [u32; 2], handheld: bool) -> [u32; 2] {
+    let clamped = [surface_px[0].max(1), surface_px[1].max(1)];
+    if !handheld {
+        return clamped;
+    }
+    let w = f64::from(clamped[0]);
+    let h = f64::from(clamped[1]);
+    let area = w * h;
+    let max_px = HANDHELD_OTW_MAX_PIXELS as f64;
+    if area <= max_px {
+        return clamped;
+    }
+    let shrink = (max_px / area).sqrt();
+    [
+        (w * shrink).floor().max(1.0) as u32,
+        (h * shrink).floor().max(1.0) as u32,
+    ]
 }
 
 /// Converts a raw winit physical cursor/touch position inside `window_px` into
@@ -144,27 +171,37 @@ impl FlightApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{HANDHELD_MAX_PIXELS, capped_surface_size, map_window_pos_to_surface};
+    use super::{
+        HANDHELD_MAX_PIXEL_RATIO, HANDHELD_MAX_PIXELS, HANDHELD_OTW_MAX_PIXELS, capped_otw_size,
+        capped_surface_size, map_window_pos_to_surface,
+    };
 
     #[test]
     fn desktop_keeps_native_resolution_and_scale() {
         let (px, ratio) = capped_surface_size([2560, 1440], 2.0, false);
         assert_eq!(px, [2560, 1440]);
         assert!((ratio - 2.0).abs() < 1e-12);
+        assert_eq!(capped_otw_size([2560, 1440], false), [2560, 1440]);
     }
 
     #[test]
     fn iphone_retina_3x_caps_dpr_and_pixel_area_while_keeping_aspect() {
         let (px, ratio) = capped_surface_size([1290, 2796], 3.0, true);
-        assert_eq!(px, [645, 1398]);
-        assert!((ratio - 1.5).abs() < 1e-12);
+        assert_eq!(px, [860, 1864]);
+        assert!((ratio - HANDHELD_MAX_PIXEL_RATIO).abs() < 1e-12);
 
         let (landscape_px, _) = capped_surface_size([2796, 1290], 3.0, true);
-        assert_eq!(landscape_px, [1398, 645]);
+        assert_eq!(landscape_px, [1864, 860]);
+
+        let otw = capped_otw_size(landscape_px, true);
+        assert!(u64::from(otw[0]) * u64::from(otw[1]) <= HANDHELD_OTW_MAX_PIXELS);
+        let src_aspect = landscape_px[0] as f64 / landscape_px[1] as f64;
+        let otw_aspect = otw[0] as f64 / otw[1] as f64;
+        assert!((src_aspect - otw_aspect).abs() < 0.01);
 
         let (ipad_px, ipad_ratio) = capped_surface_size([2048, 2732], 2.0, true);
         assert!(u64::from(ipad_px[0]) * u64::from(ipad_px[1]) <= HANDHELD_MAX_PIXELS);
-        assert!(ipad_ratio <= 1.5);
+        assert!(ipad_ratio <= HANDHELD_MAX_PIXEL_RATIO);
     }
 
     #[test]

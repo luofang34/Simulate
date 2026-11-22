@@ -3,10 +3,12 @@ use bytemuck::{Pod, Zeroable};
 use crate::RenderError;
 use crate::gpu::DEPTH_FORMAT;
 
+mod direct;
 mod target;
 #[cfg(test)]
 mod tests;
 
+pub use direct::{DirectVectorDraw, DirectVectorPass, DirectVectorTarget, MAX_DIRECT_VECTOR_DRAWS};
 pub use target::{VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorTarget};
 
 /// Smallest vertex buffer a [`VectorTarget`] allocates, in vertices.
@@ -59,21 +61,9 @@ impl VectorScenePass {
         sample_count: u32,
     ) -> Result<Self, RenderError> {
         let sample_count = target::normalized_sample_count(sample_count);
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("vector scene"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let layout = create_bind_group_layout(device);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let pipeline = create_pipeline(device, &layout, sample_count);
+        let pipeline = create_pipeline_for(device, &layout, VECTOR_COLOUR_FORMAT, sample_count);
         if let Some(err) = scope.pop().await {
             return Err(RenderError::PipelineValidation(err));
         }
@@ -160,9 +150,26 @@ pub(super) fn too_large(device: &wgpu::Device, vertices: usize) -> RenderError {
     }
 }
 
-fn create_pipeline(
+pub(super) fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("vector scene"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    })
+}
+
+pub(super) fn create_pipeline_for(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
+    color_format: wgpu::TextureFormat,
     sample_count: u32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/vector_scene.wgsl"));
@@ -189,7 +196,7 @@ fn create_pipeline(
             entry_point: Some("fs_vector"),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                format: VECTOR_COLOUR_FORMAT,
+                format: color_format,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],

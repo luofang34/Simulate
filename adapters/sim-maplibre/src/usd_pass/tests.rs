@@ -99,6 +99,7 @@ fn an_aircraft_ahead_lands_mid_screen_inside_the_reversed_depth_range() {
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
         shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+        hide_cockpit_controls: false,
     };
     let draws = pack_slot_draws(&library(asset), &[aircraft_at(&target, false)], None, &view);
     assert!(draws.len() > 10);
@@ -134,6 +135,7 @@ fn ownship_shows_its_airframe_from_the_cockpit_and_nothing_from_the_belly() {
         ownship_role: SlotCameraRole::CockpitInterior,
         slot: slot(0),
         shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+        hide_cockpit_controls: false,
     };
     let own = [aircraft_at(&target, true)];
     let asset = library(asset);
@@ -160,6 +162,7 @@ fn ownship_draws_the_selected_airframe_and_traffic_keeps_the_scene_asset() {
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
         shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+        hide_cockpit_controls: false,
     };
     let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
     let own = [aircraft_at(&target, true)];
@@ -229,6 +232,7 @@ fn traffic_models_and_external_ownship_pack_distinct_assets() {
         ownship_role: SlotCameraRole::External,
         slot: slot(0),
         shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+        hide_cockpit_controls: false,
     };
     let mut library = library(UsdAircraftAsset::embedded_c172().unwrap());
     let own = [aircraft_at(&target, true)];
@@ -309,6 +313,7 @@ fn polar_skiway_at_nzsp_packs_opaque_groomed_deck_and_flags() {
         ownship_role: SlotCameraRole::CockpitInterior,
         slot: slot(0),
         shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+        hide_cockpit_controls: false,
     };
     let draws = pack_slot_draws(&library, &[], Some((key, &rwy)), &view);
     assert_eq!(draws.len(), 4);
@@ -373,6 +378,7 @@ fn polar_skiway_deck_registers_pixel_for_pixel_with_sphere_and_svs_at_nzsp() {
             ownship_role: SlotCameraRole::CockpitInterior,
             slot: slot(0),
             shutter_s: crate::UsdAircraftAsset::DISPLAY_SHUTTER_S,
+            hide_cockpit_controls: false,
         },
     );
     let deck_draw = draws
@@ -439,3 +445,5 @@ fn the_aircraft_and_studio_shaders_validate() {
             .unwrap_or_else(|e| panic!("{name}: {e:?}"));
     }
 }
+
+mod interior;

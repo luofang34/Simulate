@@ -7,11 +7,16 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use web_sys::{Document, Element, EventTarget, HtmlElement, PointerEvent};
 
-use super::tilt::TiltController;
 use super::{ListenerHandle, PointerListenerHandle};
 use crate::controls::touch::{
     TouchAction, TouchFlightState, map_rudder_track, map_stick_pad, map_throttle_track,
 };
+
+pub(super) fn browser_now_s() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map_or(0.0, |p| p.now() / 1000.0)
+}
 
 pub(super) fn create_el(
     doc: &Document,
@@ -39,109 +44,62 @@ pub(super) fn create_button(
     Some(btn)
 }
 
+/// Adds the compact 4-pill top-right bar (`MAP`, `DIAL`, `···`, `MENU`) plus the hidden
+/// `FLY` unhide pill when the control deck is collapsed. Returns `(map_btn, fly_btn, menu_btn)`.
 pub(super) fn add_top_buttons(
     doc: &Document,
     top: &Element,
     state: &Rc<RefCell<TouchFlightState>>,
     listeners: &mut Vec<ListenerHandle>,
-) -> Option<(Element, Element, Element, Element)> {
-    let action_defs = [
-        (
-            "tc-btn tc-flight-only",
-            "CAM",
-            "Cycle camera view",
-            TouchAction::CycleViewport,
-        ),
-        (
-            "tc-btn tc-flight-only",
-            "PAUSE",
-            "Pause or resume",
-            TouchAction::TogglePause,
-        ),
-        (
-            "tc-btn tc-flight-only",
-            "EFB",
-            "Toggle EFB chart",
-            TouchAction::ToggleEfb,
-        ),
-        (
-            "tc-btn tc-flight-only",
-            "FLAP-",
-            "Retract flaps",
-            TouchAction::FlapsUp,
-        ),
-        (
-            "tc-btn tc-flight-only",
-            "FLAP+",
-            "Extend flaps",
-            TouchAction::FlapsDown,
-        ),
-        (
-            "tc-btn tc-flight-only",
-            "GEAR",
-            "Toggle landing gear",
-            TouchAction::ToggleGear,
-        ),
-    ];
-    for (cls, txt, aria, act) in action_defs {
-        let btn = create_button(doc, cls, txt, aria)?;
-        let st = Rc::clone(state);
-        add_click(&btn, listeners, move || st.borrow_mut().actions.push(act));
-        top.append_child(&btn).ok()?;
-    }
-    let tilt_btn = create_button(
+) -> Option<(Element, Element, Element)> {
+    let map_btn = create_button(
         doc,
         "tc-btn tc-flight-only",
-        "TILT",
-        "Toggle gyro tilt steering",
+        "MAP",
+        "Cycle moving map and EFB tablet",
     )?;
-    let zero_btn = create_button(
-        doc,
-        "tc-btn tc-flight-only",
-        "ZERO",
-        "Recenter view and tilt",
-    )?;
-    let hide_btn = create_button(doc, "tc-btn", "HIDE", "Show or hide touch controls")?;
-    let menu_btn = create_button(doc, "tc-btn", "MENU", "Open or close Flight Hub")?;
-    let st = Rc::clone(state);
-    add_click(&menu_btn, listeners, move || {
-        st.borrow_mut().actions.push(TouchAction::ToggleHub);
+    let st_map = Rc::clone(state);
+    add_click(&map_btn, listeners, move || {
+        st_map.borrow_mut().actions.push(TouchAction::CycleEfb);
     });
-    for el in [&tilt_btn, &zero_btn, &hide_btn, &menu_btn] {
+
+    let dial_btn = create_button(
+        doc,
+        "tc-btn tc-flight-only tc-anchor-dial",
+        "DIAL",
+        "Dial heading bug, altitude preselect, and baro QNH",
+    )?;
+    dial_btn
+        .set_attribute("popovertarget", "tc-dial-popover")
+        .ok()?;
+    add_click(&dial_btn, listeners, || {});
+
+    let more_btn = create_button(
+        doc,
+        "tc-btn tc-flight-only tc-anchor-more",
+        "\u{00B7}\u{00B7}\u{00B7}",
+        "Open display and flight controls drawer",
+    )?;
+    more_btn
+        .set_attribute("popovertarget", "tc-more-popover")
+        .ok()?;
+    add_click(&more_btn, listeners, || {});
+
+    let fly_btn = create_button(
+        doc,
+        "tc-btn tc-collapsed-only",
+        "FLY",
+        "Show touch controls",
+    )?;
+    let menu_btn = create_button(doc, "tc-btn", "MENU", "Open or close Flight Hub")?;
+    let st_menu = Rc::clone(state);
+    add_click(&menu_btn, listeners, move || {
+        st_menu.borrow_mut().actions.push(TouchAction::ToggleHub);
+    });
+    for el in [&map_btn, &dial_btn, &more_btn, &fly_btn, &menu_btn] {
         top.append_child(el).ok()?;
     }
-    Some((tilt_btn, zero_btn, hide_btn, menu_btn))
-}
-
-pub(super) fn wire_tilt_zero_hide(
-    root: &Element,
-    (tilt_btn, zero_btn, hide_btn): (&Element, &Element, &Element),
-    state: &Rc<RefCell<TouchFlightState>>,
-    tilt: &Rc<RefCell<TiltController>>,
-    collapsed: &Rc<RefCell<bool>>,
-    listeners: &mut Vec<ListenerHandle>,
-) {
-    let tilt_ctrl = Rc::clone(tilt);
-    add_click(tilt_btn, listeners, move || {
-        TiltController::toggle(&tilt_ctrl);
-    });
-    let tilt_zero = Rc::clone(tilt);
-    let st_zero = Rc::clone(state);
-    add_click(zero_btn, listeners, move || {
-        tilt_zero.borrow_mut().recalibrate();
-        st_zero.borrow_mut().actions.push(TouchAction::ResetLook);
-    });
-    let root_clone = root.clone();
-    let btn_clone = hide_btn.clone();
-    let collapsed_flag = Rc::clone(collapsed);
-    add_click(hide_btn, listeners, move || {
-        let mut c = collapsed_flag.borrow_mut();
-        *c = !*c;
-        root_clone
-            .set_attribute("data-collapsed", if *c { "true" } else { "false" })
-            .ok();
-        btn_clone.set_text_content(Some(if *c { "FLY" } else { "HIDE" }));
-    });
+    Some((map_btn, fly_btn, menu_btn))
 }
 
 pub(super) fn build_throttle(doc: &Document) -> Option<(Element, HtmlElement, Element)> {
@@ -177,7 +135,11 @@ pub(super) fn build_stick(doc: &Document) -> Option<(Element, HtmlElement)> {
     Some((pad, puck))
 }
 
-fn add_click<F: FnMut() + 'static>(el: &Element, list: &mut Vec<ListenerHandle>, mut cb: F) {
+pub(super) fn add_click<F: FnMut() + 'static>(
+    el: &Element,
+    list: &mut Vec<ListenerHandle>,
+    mut cb: F,
+) {
     let target: EventTarget = el.clone().into();
     let closure = Closure::<dyn FnMut(web_sys::Event)>::new(move |ev: web_sys::Event| {
         ev.stop_propagation();
@@ -215,7 +177,7 @@ fn add_pointer<F: FnMut(PointerEvent) + 'static>(
     }
 }
 
-fn wire_captured_pointer<U, E>(
+pub(super) fn wire_captured_pointer<U, E>(
     el: &Element,
     list: &mut Vec<PointerListenerHandle>,
     on_move: U,
@@ -282,6 +244,7 @@ pub(super) fn wire_stick_pad(
                 let mut s = st_move.borrow_mut();
                 s.stick_active = true;
                 s.stick_axes = axes;
+                s.note_deck_interaction(browser_now_s());
             }
             position_puck(&puck_move, axes);
         },
@@ -289,6 +252,7 @@ pub(super) fn wire_stick_pad(
             let mut s = st_end.borrow_mut();
             s.stick_active = false;
             s.stick_axes = [0.0, 0.0];
+            s.note_deck_interaction(browser_now_s());
             position_puck(&puck_end, s.shown_stick_axes());
         },
     );
@@ -305,16 +269,21 @@ pub(super) fn wire_throttle_slider(
     let fill = fill.clone();
     let label = label.clone();
     let st = Rc::clone(state);
+    let st_end = Rc::clone(state);
     wire_captured_pointer(
         track,
         list,
         move |ev| {
             let rect = track_el.get_bounding_client_rect();
             let t = map_throttle_track(f64::from(ev.client_y()) - rect.top(), rect.height());
-            st.borrow_mut().throttle_value = Some(t);
+            let mut s = st.borrow_mut();
+            s.throttle_value = Some(t);
+            s.note_deck_interaction(browser_now_s());
             update_throttle_visual(&fill, &label, t);
         },
-        || {},
+        move || {
+            st_end.borrow_mut().note_deck_interaction(browser_now_s());
+        },
     );
 }
 
@@ -339,6 +308,7 @@ pub(super) fn wire_rudder_slider(
                 let mut s = st_move.borrow_mut();
                 s.rudder_active = true;
                 s.rudder_axis = r;
+                s.note_deck_interaction(browser_now_s());
             }
             position_rudder(&thumb_move, r);
         },
@@ -346,6 +316,7 @@ pub(super) fn wire_rudder_slider(
             let mut s = st_end.borrow_mut();
             s.rudder_active = false;
             s.rudder_axis = 0.0;
+            s.note_deck_interaction(browser_now_s());
             position_rudder(&thumb_end, 0.0);
         },
     );
@@ -364,11 +335,15 @@ pub(super) fn wire_brake_button(
         btn,
         list,
         move |_| {
-            st_down.borrow_mut().brakes_held = true;
+            let mut s = st_down.borrow_mut();
+            s.brakes_held = true;
+            s.note_deck_interaction(browser_now_s());
             btn_down.set_attribute("data-active", "true").ok();
         },
         move || {
-            st_end.borrow_mut().brakes_held = false;
+            let mut s = st_end.borrow_mut();
+            s.brakes_held = false;
+            s.note_deck_interaction(browser_now_s());
             btn_end.set_attribute("data-active", "false").ok();
         },
     );

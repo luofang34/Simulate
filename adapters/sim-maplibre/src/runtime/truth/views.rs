@@ -1,11 +1,46 @@
 //! Slot attachment, readback, stamp, and probe accessors of [`TruthSceneMap`].
 
-use maplibre::{headless::ViewSlotId, overlay::ProbeResults};
+use glam::DVec3;
+use maplibre::{
+    celestial::{EcefDirection, TwilightBand},
+    headless::ViewSlotId,
+    overlay::ProbeResults,
+};
 
+use super::super::pixel_ratio::pixel_ratio_update;
 use super::TruthSceneMap;
 use crate::{ConformalFrameStamp, MapAdapterError};
 
 impl TruthSceneMap {
+    /// Updates the ECEF solar direction driving globe daylight, twilight, and atmosphere.
+    pub fn set_sun_direction_ecef(&mut self, sun_ecef: DVec3) -> Result<(), MapAdapterError> {
+        let dir = EcefDirection::new(sun_ecef.x, sun_ecef.y, sun_ecef.z)
+            .map_err(|source| MapAdapterError::Celestial { source })?;
+        self.map.set_sun_direction(Some(dir));
+        self.sun_ecef = sun_ecef;
+        Ok(())
+    }
+
+    /// Updates the solar twilight elevation band and night-side floor brightness.
+    pub fn set_twilight_band(&mut self, band: TwilightBand) {
+        self.map.set_twilight_band(band);
+    }
+
+    /// Draws every slot at `ratio` physical pixels per logical pixel (Retina `2.0`).
+    /// Non-finite ratios are ignored, others clamped to `0.5..=4.0`, and unchanged ratios
+    /// not reapplied.
+    pub fn set_pixel_ratio(&mut self, ratio: f64) {
+        if let Some(applied) = pixel_ratio_update(self.pixel_ratio, ratio) {
+            self.map.set_pixel_ratio(applied);
+            self.pixel_ratio = Some(applied);
+        }
+    }
+
+    /// Enables or disables atmospheric limb scattering behind the globe.
+    pub fn set_atmosphere(&mut self, enabled: bool) {
+        self.map.set_atmosphere(enabled);
+    }
+
     /// Primary cockpit OTW [`ViewSlotId`].
     #[must_use]
     pub const fn otw_slot(&self) -> ViewSlotId {

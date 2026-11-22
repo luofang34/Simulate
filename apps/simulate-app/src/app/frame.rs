@@ -319,16 +319,21 @@ impl FlightApp {
         else {
             return;
         };
-        let mut quads = rig.overlay_quads(world);
+        let mut layers = rig.overlay_layers(world);
         let preview_view =
             super::hub::hub_preview_view(self.esc_menu.tab(), self.hangar.as_ref(), rig.maps());
         super::hub::hub_quads(
             self.menu_overlay.as_ref(),
             self.hub_preview,
             preview_view,
-            &mut quads,
+            &mut layers.over_quads,
         );
-        if let Err(err) = renderer.render_composite(globe, &quads) {
+        if let Err(err) = renderer.render_composite_layered(
+            globe,
+            &layers.under_quads,
+            &layers.direct_vectors,
+            &layers.over_quads,
+        ) {
             return self.fail(event_loop, "rendering failed", &err);
         }
         let apart = match (self.panels.as_mut(), rig.apart_panel_quads(world)) {
@@ -362,73 +367,6 @@ impl FlightApp {
         ) && let Err(err) = rig.present_page_map(renderer, surface, link)
         {
             tracing::warn!(error = %err, "the page map was not drawn");
-        }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn sync_touch_cockpit(&mut self, event_loop: &ActiveEventLoop) {
-        let hub_open = self.esc_menu.is_open();
-        let throttle = self.mapper.controls().throttle;
-        let actions = {
-            let Some(cockpit) = self.touch_cockpit.as_ref() else {
-                return;
-            };
-            cockpit.sync_ui(hub_open, throttle);
-            cockpit.apply_to(
-                &mut self.mapper,
-                &mut self.controls,
-                &mut self.flight,
-                !hub_open,
-            )
-        };
-        for action in actions {
-            match action {
-                crate::controls::touch::TouchAction::ToggleHub => {
-                    self.handle_menu_input(event_loop, crate::esc_menu::MenuInput::Toggle);
-                }
-                crate::controls::touch::TouchAction::CycleViewport => {
-                    self.handle_cockpit_action(
-                        event_loop,
-                        crate::keyboard::CockpitAction::CycleViewport,
-                    );
-                }
-                crate::controls::touch::TouchAction::TogglePause => {
-                    self.handle_cockpit_action(
-                        event_loop,
-                        crate::keyboard::CockpitAction::TogglePause,
-                    );
-                }
-                crate::controls::touch::TouchAction::FlapsDown => {
-                    self.handle_cockpit_action(
-                        event_loop,
-                        crate::keyboard::CockpitAction::FlapsDown,
-                    );
-                }
-                crate::controls::touch::TouchAction::FlapsUp => {
-                    self.handle_cockpit_action(event_loop, crate::keyboard::CockpitAction::FlapsUp);
-                }
-                crate::controls::touch::TouchAction::ToggleGear => {
-                    self.handle_cockpit_action(
-                        event_loop,
-                        crate::keyboard::CockpitAction::ToggleGear,
-                    );
-                }
-                crate::controls::touch::TouchAction::ToggleEfb => {
-                    self.handle_cockpit_action(
-                        event_loop,
-                        crate::keyboard::CockpitAction::ToggleEfb,
-                    );
-                }
-                crate::controls::touch::TouchAction::ResetLook => {
-                    self.look.reset();
-                    self.touch.clear_manual_look();
-                }
-            }
-        }
-        if self.esc_menu.is_open() != hub_open
-            && let Some(cockpit) = self.touch_cockpit.as_ref()
-        {
-            cockpit.sync_ui(self.esc_menu.is_open(), self.mapper.controls().throttle);
         }
     }
 }

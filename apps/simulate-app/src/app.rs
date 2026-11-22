@@ -38,6 +38,8 @@ pub(crate) mod page_panels;
 mod pointer;
 pub(crate) mod surface_scale;
 mod touch;
+#[cfg(any(target_arch = "wasm32", test))]
+mod touch_dispatch;
 
 #[cfg(test)]
 pub use hub::TAKEOVER_HINT;
@@ -263,11 +265,7 @@ impl FlightApp {
                 self.sync_hub_layout();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
                 #[cfg(target_arch = "wasm32")]
-                {
-                    self.touch_cockpit = (self.handheld && !page_view)
-                        .then(platform::TouchCockpit::mount)
-                        .flatten();
-                }
+                self.mount_mobile_touch_cockpit(page_view);
             }
             Err(err) => self.fail(event_loop, "cockpit initialization failed", &err),
         }
