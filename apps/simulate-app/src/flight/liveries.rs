@@ -7,6 +7,7 @@ use super::Flight;
 #[cfg(test)]
 use crate::error::AppSimError;
 use crate::livery_session::{LiverySession, OwnshipLiveryRef};
+use crate::vehicles::FreeFlightVehicle;
 
 impl Flight {
     /// Borrows the live aircraft variant and livery session.
@@ -30,6 +31,17 @@ impl Flight {
         self.liveries.select_livery(aircraft_id, livery_id)
     }
 
+    /// Returns the package aircraft id of `vehicle` (built-in or imported external plugin).
+    #[must_use]
+    pub fn vehicle_aircraft_id(&self, vehicle: FreeFlightVehicle) -> Option<&str> {
+        vehicle.aircraft_id().or_else(|| {
+            vehicle
+                .external_slot()
+                .and_then(|slot| self.liveries.external_meta(slot))
+                .map(|meta| meta.aircraft_id.as_str())
+        })
+    }
+
     /// Cycles to the next (`forward = true`) or previous livery on the active free-flight
     /// aircraft when it exposes a livery catalog.
     #[cfg(test)]
@@ -37,10 +49,14 @@ impl Flight {
         &mut self,
         forward: bool,
     ) -> Result<Option<VehicleLivery>, AppSimError> {
-        let Some(aircraft_id) = self.free_vehicle().and_then(|v| v.aircraft_id()) else {
+        let Some(aircraft_id) = self
+            .free_vehicle()
+            .and_then(|v| self.vehicle_aircraft_id(v))
+            .map(str::to_owned)
+        else {
             return Ok(None);
         };
-        self.liveries.cycle_livery(aircraft_id, forward)
+        self.liveries.cycle_livery(&aircraft_id, forward)
     }
 
     /// Returns the active OpenUSD ownship livery asset override for the currently flying
@@ -50,7 +66,7 @@ impl Flight {
         if self.profile().is_some() {
             return None;
         }
-        let aircraft_id = self.free_vehicle()?.aircraft_id()?;
+        let aircraft_id = self.vehicle_aircraft_id(self.free_vehicle()?)?;
         self.liveries.active_usd_override(aircraft_id)
     }
 }

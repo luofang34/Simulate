@@ -79,12 +79,14 @@ fn drawing_both_views_and_updating_the_plan_allocates_nothing_lasting() {
         if step.is_multiple_of(5) {
             let progress = RouteProgress::after_sequenced(Some((0, step.is_multiple_of(10))));
             efb.set_route(&plan, progress).expect("route");
-            efb.set_tracks(tracks(step.wrapping_add(2)))
-                .expect("tracks");
+            // Keep geometry within the peak size warmed on step 0 so lazy small-slab
+            // growth in `BufferPool` settles before the zero-growth measurement window.
+            let n = if step == 0 { 120 } else { 2 + (step % 118) };
+            efb.set_tracks(tracks(n)).expect("tracks");
         }
         efb.render(&symbology).expect("frame");
     };
-    // Warm up: tiles, pipelines and the overlay's buffers reach their size.
+    // Warm up: tiles, pipelines, the overlay's buffers and vector slabs reach their size.
     for step in 0..120 {
         frame(&mut efb, step);
     }

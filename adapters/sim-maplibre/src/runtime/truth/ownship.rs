@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::TruthSceneMap;
-use crate::{MapAdapterError, OwnshipVisualKind, UsdAircraftAsset};
+use crate::{MapAdapterError, OwnshipVisualKind, TrafficModelId, UsdAircraftAsset};
 
 impl TruthSceneMap {
     /// Selects the 3D airframe drawn for ownship; traffic keeps the scene's asset.
@@ -38,6 +38,20 @@ impl TruthSceneMap {
         Ok(())
     }
 
+    /// Registers a non-ownship OpenUSD airframe for traffic or ground NPCs, returning its handle.
+    pub fn register_traffic_model(
+        &mut self,
+        asset: Arc<UsdAircraftAsset>,
+    ) -> Result<TrafficModelId, MapAdapterError> {
+        let mut library =
+            self.aircraft_library
+                .try_borrow_mut()
+                .map_err(|_| MapAdapterError::OpenUsd {
+                    detail: "ownship airframe library is in use by a frame".to_owned(),
+                })?;
+        Ok(library.register_traffic_model(asset))
+    }
+
     /// Active ownship [`UsdAircraftAsset`] currently rendered in external and cabin views.
     #[must_use]
     pub fn active_ownship_asset(&self) -> Option<Arc<UsdAircraftAsset>> {
@@ -55,5 +69,22 @@ impl TruthSceneMap {
             .map_or(OwnshipVisualKind::default(), |library| {
                 library.ownship_kind()
             })
+    }
+
+    /// Sets whether ownship 3D cockpit controls (yoke/stick/column) are hidden in interior views.
+    pub fn set_hide_cockpit_controls(&mut self, hide: bool) {
+        self.hide_cockpit_controls = hide;
+    }
+
+    /// Whether ownship 3D cockpit controls (yoke/stick/column) are hidden in interior views.
+    #[must_use]
+    pub const fn hides_cockpit_controls(&self) -> bool {
+        self.hide_cockpit_controls
+    }
+
+    /// Sets the exposure time of the camera the scene is drawn for, which a turning
+    /// propeller smears over; the eye's by default.
+    pub fn set_shutter_exposure_s(&mut self, shutter_s: f64) {
+        self.shutter_s = shutter_s;
     }
 }

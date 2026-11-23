@@ -154,7 +154,7 @@ pub fn load_model(model: HangarModel) -> Result<UsdAircraftAsset, AppSimError> {
         HangarModel::C172p => UsdAircraftAsset::embedded_c172p_d_ecjb()?,
         HangarModel::P38g => UsdAircraftAsset::p38g()?,
         HangarModel::X500 => UsdAircraftAsset::x500_quadrotor()?,
-        HangarModel::FixedWingUav => UsdAircraftAsset::fixed_wing_uav()?,
+        HangarModel::FixedWingUav | HangarModel::External(_) => UsdAircraftAsset::fixed_wing_uav()?,
         HangarModel::LunarLander => UsdAircraftAsset::lunar_lander()?,
         HangarModel::Raketa => UsdAircraftAsset::embedded_raketa()?,
     })

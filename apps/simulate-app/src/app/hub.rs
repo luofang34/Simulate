@@ -101,7 +101,8 @@ pub const fn vehicle_class(vehicle: FreeFlightVehicle) -> VehicleClass {
         | FreeFlightVehicle::JsbsimP38g
         | FreeFlightVehicle::AviateFixedWingDirect
         | FreeFlightVehicle::C172Mission
-        | FreeFlightVehicle::Kinematic => VehicleClass::FixedWing,
+        | FreeFlightVehicle::Kinematic
+        | FreeFlightVehicle::External(_) => VehicleClass::FixedWing,
     }
 }
 
@@ -203,6 +204,7 @@ impl FlightApp {
             hangar_liveries,
             active_livery_index,
             active_livery_name,
+            npc_count: self.flight.npc_count(),
             controls: controls_status(&self.controls),
         }
     }
@@ -321,6 +323,8 @@ impl FlightApp {
             }
             MenuCommand::SelectLivery(index) => self.select_hangar_livery(index),
             MenuCommand::ImportExternalLivery => self.import_hangar_livery(),
+            MenuCommand::SpawnGroundNpc => self.spawn_selected_ground_npc(),
+            MenuCommand::ClearNpcs => self.clear_hangar_npcs(),
             MenuCommand::ApplyVehicle { vehicle, mode } => {
                 return self.apply_vehicle(event_loop, vehicle, mode);
             }

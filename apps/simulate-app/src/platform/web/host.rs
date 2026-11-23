@@ -163,7 +163,12 @@ impl Host {
 
 /// `canvas`'s laid-out size in physical pixels, with its drawing buffer set to match.
 fn laid_out_px(canvas: &HtmlCanvasElement) -> [u32; 2] {
-    let ratio = web_sys::window().map_or(1.0, |window| window.device_pixel_ratio());
+    let raw = web_sys::window().map_or(1.0, |window| window.device_pixel_ratio());
+    let ratio = if super::is_handheld_browser() {
+        raw.clamp(1.0, crate::app::surface_scale::HANDHELD_MAX_PIXEL_RATIO)
+    } else {
+        raw
+    };
     let px = |css: i32| ((f64::from(css) * ratio).round() as u32).max(1);
     let (width, height) = (px(canvas.client_width()), px(canvas.client_height()));
     if canvas.width() != width {

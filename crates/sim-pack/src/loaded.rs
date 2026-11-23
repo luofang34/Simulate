@@ -195,6 +195,26 @@ impl LoadedSyspack {
         jsbsim_wingspan_m(xml)
     }
 
+    /// Parked bogey ground clearance below CG in metres from JSBSim `<ground_reactions>`.
+    #[must_use]
+    pub fn jsbsim_parked_gear_height_m(&self) -> Option<f64> {
+        let syspack::DynamicsSpec::JsbsimXml { entry_asset, .. } = &self.manifest().dynamics else {
+            return None;
+        };
+        let xml = std::str::from_utf8(self.verified.asset(entry_asset)?).ok()?;
+        crate::views::jsbsim_parked_gear_height_m(xml)
+    }
+
+    /// Pilot eyepoint in JSBSim structural inches `[x_aft, y_right, z_up]`.
+    #[must_use]
+    pub fn jsbsim_eyepoint_structural_in(&self) -> Option<[f64; 3]> {
+        let syspack::DynamicsSpec::JsbsimXml { entry_asset, .. } = &self.manifest().dynamics else {
+            return None;
+        };
+        let xml = std::str::from_utf8(self.verified.asset(entry_asset)?).ok()?;
+        crate::views::jsbsim_eyepoint_structural_in(xml)
+    }
+
     /// The aircraft directory and model name a [`sim_core::JsbsimFdmConfig`]
     /// needs.
     pub fn jsbsim_model(&self) -> Result<(&str, &str), PackError> {

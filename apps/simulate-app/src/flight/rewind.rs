@@ -24,7 +24,15 @@ use crate::vehicles::PlantSnapshot;
 /// Simulated seconds between checkpoints.
 pub const CHECKPOINT_INTERVAL_S: f64 = 0.5;
 /// Checkpoints kept (`66 s` of history at [`CHECKPOINT_INTERVAL_S`]).
+#[cfg_attr(
+    target_arch = "wasm32",
+    allow(dead_code, reason = "used on native; wasm32 caps active checkpoints")
+)]
 pub const MAX_CHECKPOINTS: usize = 132;
+#[cfg(target_arch = "wasm32")]
+const ACTIVE_MAX_CHECKPOINTS: usize = 32;
+#[cfg(not(target_arch = "wasm32"))]
+const ACTIVE_MAX_CHECKPOINTS: usize = MAX_CHECKPOINTS;
 
 /// Mode-specific state captured at one instant.
 #[derive(Debug, Clone)]
@@ -154,7 +162,7 @@ impl RewindHistory {
     pub(super) fn push(&mut self, checkpoint: FlightCheckpoint) {
         self.commit_live_branch();
         self.entries.push_back(checkpoint);
-        while self.entries.len() > MAX_CHECKPOINTS {
+        while self.entries.len() > ACTIVE_MAX_CHECKPOINTS {
             self.entries.pop_front();
         }
     }

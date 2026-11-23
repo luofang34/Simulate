@@ -14,6 +14,8 @@ mod labels;
 mod preset;
 #[cfg(test)]
 mod tests;
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod touch;
 mod tuning;
 
 pub use keys::{KeyAction, KeyBindings, key_label};
@@ -92,6 +94,12 @@ pub enum InputSource {
     Keyboard,
     /// A gamepad, joystick, or yoke.
     Gamepad,
+    /// On-screen touch cockpit or mobile tilt.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "constructed by wasm32 touch controls")
+    )]
+    Touch,
 }
 
 /// What the next device input will be bound to.
@@ -307,6 +315,12 @@ impl ControlScheme {
     /// Records the connected controller's name (`None` when it disconnects).
     pub fn set_controller(&mut self, name: Option<String>) {
         self.controller = name;
+    }
+
+    /// Marks [`InputSource::Touch`] as active when touch or tilt moves a flight control.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn note_touch(&mut self) {
+        self.source = InputSource::Touch;
     }
 
     /// Pending click-to-rebind target.

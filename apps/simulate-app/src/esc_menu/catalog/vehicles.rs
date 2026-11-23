@@ -33,7 +33,8 @@ impl FdmEngine {
         match vehicle {
             FreeFlightVehicle::JsbsimC172
             | FreeFlightVehicle::JsbsimC172p
-            | FreeFlightVehicle::JsbsimP38g => Self::Jsbsim,
+            | FreeFlightVehicle::JsbsimP38g
+            | FreeFlightVehicle::External(_) => Self::Jsbsim,
             FreeFlightVehicle::AviateX500Direct
             | FreeFlightVehicle::AviateFixedWingDirect
             | FreeFlightVehicle::C172Mission => Self::AviateXil,
@@ -59,6 +60,8 @@ pub enum HangarModel {
     LunarLander,
     /// The packaged Raketa single-stage test rocket (`retro_rocket_v4.usd`).
     Raketa,
+    /// Runtime-imported external hangar plugin model.
+    External(u16),
 }
 
 /// How flying a vehicle starts.
@@ -102,13 +105,13 @@ pub struct VehicleDescriptor {
     /// Display name.
     pub title: String,
     /// Package aircraft identifier in [`crate::livery_session::LiverySession`], when packaged.
-    pub aircraft_id: Option<&'static str>,
+    pub aircraft_id: Option<String>,
     /// Shared aircraft family title when grouped with sibling variants (e.g. `Cessna 172 Skyhawk`).
-    pub family_title: Option<&'static str>,
+    pub family_title: Option<String>,
     /// Class, which picks the automatic control preset.
     pub class: VehicleClass,
     /// Role shown under the name, e.g. `General Aviation`.
-    pub role: &'static str,
+    pub role: String,
     /// Typical cruise speed, knots (`0` when not meaningful).
     pub cruise_kt: f64,
     /// Typical mass, kilograms.
@@ -170,10 +173,10 @@ impl VehicleDescriptor {
         vec![
             Self {
                 title: "C172S Skyhawk SP".to_owned(),
-                aircraft_id: Some("c172s"),
-                family_title: Some("Cessna 172 Skyhawk"),
+                aircraft_id: Some("c172s".to_owned()),
+                family_title: Some("Cessna 172 Skyhawk".to_owned()),
                 class: VehicleClass::FixedWing,
-                role: "General Aviation",
+                role: "General Aviation".to_owned(),
                 cruise_kt: 122.0,
                 mass_kg: 1_157.0,
                 launch: AirframeLaunch::Free(vec![
@@ -185,10 +188,10 @@ impl VehicleDescriptor {
             },
             Self {
                 title: "C172P Skyhawk II".to_owned(),
-                aircraft_id: Some("c172p"),
-                family_title: Some("Cessna 172 Skyhawk"),
+                aircraft_id: Some("c172p".to_owned()),
+                family_title: Some("Cessna 172 Skyhawk".to_owned()),
                 class: VehicleClass::FixedWing,
-                role: "General Aviation",
+                role: "General Aviation".to_owned(),
                 cruise_kt: 118.0,
                 mass_kg: 1_089.0,
                 launch: AirframeLaunch::Free(vec![FreeFlightVehicle::JsbsimC172p]),
@@ -196,10 +199,10 @@ impl VehicleDescriptor {
             },
             Self {
                 title: "Lockheed P-38G Lightning".to_owned(),
-                aircraft_id: Some("p38g"),
+                aircraft_id: Some("p38g".to_owned()),
                 family_title: None,
                 class: VehicleClass::FixedWing,
-                role: "Twin-Boom Fighter",
+                role: "Twin-Boom Fighter".to_owned(),
                 cruise_kt: 265.0,
                 mass_kg: 6_813.0,
                 launch: AirframeLaunch::Free(vec![FreeFlightVehicle::JsbsimP38g]),
@@ -210,7 +213,7 @@ impl VehicleDescriptor {
                 aircraft_id: None,
                 family_title: None,
                 class: VehicleClass::FixedWing,
-                role: "Fixed-Wing Testbed",
+                role: "Fixed-Wing Testbed".to_owned(),
                 cruise_kt: 95.0,
                 mass_kg: 750.0,
                 launch: AirframeLaunch::Free(vec![FreeFlightVehicle::Kinematic]),
@@ -221,7 +224,7 @@ impl VehicleDescriptor {
                 aircraft_id: None,
                 family_title: None,
                 class: VehicleClass::Multirotor,
-                role: "Multirotor",
+                role: "Multirotor".to_owned(),
                 cruise_kt: 24.0,
                 mass_kg: 2.0,
                 launch: AirframeLaunch::Free(FreeFlightVehicle::x500_plants()),
@@ -232,7 +235,7 @@ impl VehicleDescriptor {
                 aircraft_id: None,
                 family_title: None,
                 class: VehicleClass::Spacecraft,
-                role: "Spacecraft",
+                role: "Spacecraft".to_owned(),
                 cruise_kt: 0.0,
                 mass_kg: 15_103.0,
                 launch: AirframeLaunch::Scenario(ScenarioProfile::Apollo11LunarLanding),
@@ -240,6 +243,22 @@ impl VehicleDescriptor {
             },
             Self::raketa(),
         ]
+    }
+
+    /// Descriptor for an imported external hangar plugin vehicle.
+    #[must_use]
+    pub fn external_plugin(meta: &crate::livery_session::ExternalVehicleMeta) -> Self {
+        Self {
+            title: meta.title.clone(),
+            aircraft_id: Some(meta.aircraft_id.clone()),
+            family_title: meta.family_title.clone(),
+            class: VehicleClass::FixedWing,
+            role: "Hangar Plugin".to_owned(),
+            cruise_kt: meta.cruise_kt,
+            mass_kg: meta.mass_kg,
+            launch: AirframeLaunch::Free(vec![FreeFlightVehicle::External(meta.slot)]),
+            model: HangarModel::External(meta.slot),
+        }
     }
 
     /// Descriptor for the `Raketa` single-stage test rocket (`retro_rocket_v4.usd`, `12,000 kg`).
@@ -250,7 +269,7 @@ impl VehicleDescriptor {
             aircraft_id: None,
             family_title: None,
             class: VehicleClass::Spacecraft,
-            role: "Spacecraft",
+            role: "Spacecraft".to_owned(),
             cruise_kt: 0.0,
             mass_kg: 12_000.0,
             launch: AirframeLaunch::Space,
@@ -265,7 +284,8 @@ pub const fn mode_label(vehicle: FreeFlightVehicle) -> &'static str {
     match vehicle {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::JsbsimC172p
-        | FreeFlightVehicle::JsbsimP38g => "JSBSIM",
+        | FreeFlightVehicle::JsbsimP38g
+        | FreeFlightVehicle::External(_) => "JSBSIM",
         FreeFlightVehicle::AviateFixedWingDirect => "AVIATE FBW",
         FreeFlightVehicle::Kinematic => "KINEMATIC",
         FreeFlightVehicle::AviateX500Direct => "AVIATE DIRECT",

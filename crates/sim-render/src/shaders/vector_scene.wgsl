@@ -1,5 +1,5 @@
 struct Viewport {
-    // Target size in physical pixels: (width_px, height_px, 0, 0).
+    // Target size and top-left origin in physical pixels: (width_px, height_px, origin_x_px, origin_y_px).
     size: vec4<f32>,
 };
 
@@ -38,7 +38,7 @@ fn vs_vector(in: VertexIn) -> VertexOut {
 // step; clip rectangles are pixel-aligned by construction.
 @fragment
 fn fs_vector(in: VertexOut) -> @location(0) vec4<f32> {
-    let p = in.clip_position.xy;
+    let p = in.clip_position.xy - viewport.size.zw;
     let clip = in.clip_rect_px;
     if p.x < clip.x || p.y < clip.y || p.x >= clip.z || p.y >= clip.w {
         discard;

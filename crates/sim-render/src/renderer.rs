@@ -1,4 +1,5 @@
 use crate::compositor::{CompositorPass, CompositorTarget, OverlayQuad};
+use crate::vector_pass::{DirectVectorDraw, DirectVectorPass, DirectVectorTarget};
 
 mod panel;
 
@@ -22,6 +23,7 @@ pub struct Renderer {
     layouts: GlobeLayouts,
     pipeline: wgpu::RenderPipeline,
     compositor: CompositorPass,
+    direct_vector: DirectVectorPass,
     scene: GlobeScene,
 }
 
@@ -49,11 +51,13 @@ impl Renderer {
             return Err(RenderError::PipelineValidation(err));
         }
         let compositor = CompositorPass::new(device, gpu.view_format).await?;
+        let direct_vector = DirectVectorPass::new(device, gpu.view_format).await?;
         Ok(Self {
             gpu,
             layouts,
             pipeline,
             compositor,
+            direct_vector,
             scene,
         })
     }
@@ -139,6 +143,75 @@ impl Renderer {
         globe: Option<(&Camera, &EnvironmentFrame)>,
         quads: &[OverlayQuad<'_>],
     ) -> Result<FrameOutcome, RenderError> {
+        self.render_composite_layered(globe, quads, &[], &[])
+    }
+
+    /// Draws an optional 3D `GlobeScene` pass, underlay [`OverlayQuad`]s (OTW, SVS, MFD),
+    /// direct swapchain vector scenes ([`DirectVectorDraw`]: HUD, PFD, HSI), and top-layer
+    /// [`OverlayQuad`]s (EFB tablet, Hub preview, UI chrome) in a single GPU submission.
+    pub fn render_composite_layered(
+        &mut self,
+        globe: Option<(&Camera, &EnvironmentFrame)>,
+        under_quads: &[OverlayQuad<'_>],
+        direct_vectors: &[DirectVectorDraw<'_>],
+        over_quads: &[OverlayQuad<'_>],
+    ) -> Result<FrameOutcome, RenderError> {
+        let Some((surface_texture, view)) = self.acquire_surface_view()? else {
+            return Ok(FrameOutcome::Skipped);
+        };
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame"),
+            });
+        let clear_compositor = self.encode_optional_globe(&mut encoder, &view, globe);
+        let size_px = self.surface_size();
+        self.compositor.encode(
+            &self.gpu.device,
+            &self.gpu.queue,
+            &mut encoder,
+            CompositorTarget {
+                view: &view,
+                clear: clear_compositor,
+                size_px,
+            },
+            under_quads,
+        );
+        if !direct_vectors.is_empty() {
+            self.direct_vector.encode(
+                &self.gpu.device,
+                &self.gpu.queue,
+                &mut encoder,
+                DirectVectorTarget {
+                    color_view: &view,
+                    depth_view: &self.gpu.depth_view,
+                    size_px,
+                },
+                direct_vectors,
+            )?;
+        }
+        if !over_quads.is_empty() {
+            self.compositor.encode(
+                &self.gpu.device,
+                &self.gpu.queue,
+                &mut encoder,
+                CompositorTarget {
+                    view: &view,
+                    clear: None,
+                    size_px,
+                },
+                over_quads,
+            );
+        }
+        self.gpu.queue.submit([encoder.finish()]);
+        self.gpu.queue.present(surface_texture);
+        Ok(FrameOutcome::Presented)
+    }
+
+    fn acquire_surface_view(
+        &mut self,
+    ) -> Result<Option<(wgpu::SurfaceTexture, wgpu::TextureView)>, RenderError> {
         if let Some(message) = self.gpu.take_device_error() {
             return Err(RenderError::Device { message });
         }
@@ -146,11 +219,11 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Success(texture)
             | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return Ok(FrameOutcome::Skipped);
+                return Ok(None);
             }
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.gpu.reconfigure();
-                return Ok(FrameOutcome::Skipped);
+                return Ok(None);
             }
             wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
         };
@@ -160,42 +233,30 @@ impl Renderer {
                 format: Some(self.gpu.view_format),
                 ..Default::default()
             });
-        let mut encoder = self
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("frame"),
-            });
-        let clear_compositor = if let Some((camera, environment)) = globe {
-            let view_proj = camera.view_projection(self.gpu.aspect());
-            let params = FrameParams::visible(view_proj, environment, [0.0; 4]);
-            self.scene
-                .write_frame(&self.gpu.queue, &params, camera.pose.position_ecef);
-            let sky = environment.sky_linear_rgb_at(camera.pose.position_ecef);
-            self.encode_globe_pass(&mut encoder, &view, sky);
-            None
-        } else {
-            Some(wgpu::Color {
+        Ok(Some((surface_texture, view)))
+    }
+
+    fn encode_optional_globe(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        globe: Option<(&Camera, &EnvironmentFrame)>,
+    ) -> Option<wgpu::Color> {
+        let Some((camera, environment)) = globe else {
+            return Some(wgpu::Color {
                 r: 0.01,
                 g: 0.01,
                 b: 0.03,
                 a: 1.0,
-            })
+            });
         };
-        self.compositor.encode(
-            &self.gpu.device,
-            &self.gpu.queue,
-            &mut encoder,
-            CompositorTarget {
-                view: &view,
-                clear: clear_compositor,
-                size_px: self.surface_size(),
-            },
-            quads,
-        );
-        self.gpu.queue.submit([encoder.finish()]);
-        self.gpu.queue.present(surface_texture);
-        Ok(FrameOutcome::Presented)
+        let view_proj = camera.view_projection(self.gpu.aspect());
+        let params = FrameParams::visible(view_proj, environment, [0.0; 4]);
+        self.scene
+            .write_frame(&self.gpu.queue, &params, camera.pose.position_ecef);
+        let sky = environment.sky_linear_rgb_at(camera.pose.position_ecef);
+        self.encode_globe_pass(encoder, view, sky);
+        None
     }
 
     fn encode_globe_pass(

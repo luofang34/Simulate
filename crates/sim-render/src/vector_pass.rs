@@ -3,10 +3,12 @@ use bytemuck::{Pod, Zeroable};
 use crate::RenderError;
 use crate::gpu::DEPTH_FORMAT;
 
+mod direct;
 mod target;
 #[cfg(test)]
 mod tests;
 
+pub use direct::{DirectVectorDraw, DirectVectorPass, DirectVectorTarget, MAX_DIRECT_VECTOR_DRAWS};
 pub use target::{VECTOR_COLOUR_FORMAT, VECTOR_SAMPLE_COUNT, VectorTarget};
 
 /// Smallest vertex buffer a [`VectorTarget`] allocates, in vertices.
@@ -39,40 +41,48 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
     3 => Float32,
 ];
 
-/// Stateless multisampled triangle pass that rasterizes [`VectorVertex`] lists
-/// into any number of [`VectorTarget`]s with premultiplied blending.
+/// Stateless triangle pass (`4×` MSAA by default, or `1×` on handhelds) that rasterizes
+/// [`VectorVertex`] lists into any number of [`VectorTarget`]s with premultiplied blending.
 pub struct VectorScenePass {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    sample_count: u32,
 }
 
 impl VectorScenePass {
-    /// Compiles and validates the vector pipeline.
+    /// Compiles and validates the `4×` MSAA vector pipeline.
     pub async fn new(device: &wgpu::Device) -> Result<Self, RenderError> {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("vector scene"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        Self::with_sample_count(device, VECTOR_SAMPLE_COUNT).await
+    }
+
+    /// Compiles and validates the vector pipeline with `sample_count` (`1` or `4`).
+    pub async fn with_sample_count(
+        device: &wgpu::Device,
+        sample_count: u32,
+    ) -> Result<Self, RenderError> {
+        let sample_count = target::normalized_sample_count(sample_count);
+        let layout = create_bind_group_layout(device);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let pipeline = create_pipeline(device, &layout);
+        let pipeline = create_pipeline_for(device, &layout, VECTOR_COLOUR_FORMAT, sample_count);
         if let Some(err) = scope.pop().await {
             return Err(RenderError::PipelineValidation(err));
         }
-        Ok(Self { pipeline, layout })
+        Ok(Self {
+            pipeline,
+            layout,
+            sample_count,
+        })
+    }
+
+    /// Configured raster sample count (`1` or `4`).
+    #[must_use]
+    pub const fn sample_count(&self) -> u32 {
+        self.sample_count
     }
 
     /// Clears `target` to transparent and draws `vertices` as a triangle list,
-    /// resolving into [`VectorTarget::view`]. The pass always runs, so an
-    /// empty list still leaves a cleared overlay rather than a stale one.
+    /// writing into [`VectorTarget::view`] (directly for `1×`, or resolved from `4×` MSAA).
+    /// The pass always runs, so an empty list still leaves a cleared overlay rather than a stale one.
     ///
     /// Because each [`VectorTarget`] owns its uniform and vertex buffers,
     /// callers can encode multiple targets into the same `encoder` and submit
@@ -94,15 +104,19 @@ impl VectorScenePass {
         }
         target.write_viewport(queue);
 
+        let (color_view, resolve_target, store) = match target.msaa_view() {
+            Some(msaa) => (msaa, Some(target.view()), wgpu::StoreOp::Discard),
+            None => (target.view(), None, wgpu::StoreOp::Store),
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("vector scene"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target.msaa_view(),
+                view: color_view,
                 depth_slice: None,
-                resolve_target: Some(target.view()),
+                resolve_target,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Discard,
+                    store,
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -136,7 +150,28 @@ pub(super) fn too_large(device: &wgpu::Device, vertices: usize) -> RenderError {
     }
 }
 
-fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
+pub(super) fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("vector scene"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    })
+}
+
+pub(super) fn create_pipeline_for(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    color_format: wgpu::TextureFormat,
+    sample_count: u32,
+) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/vector_scene.wgsl"));
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("vector scene"),
@@ -161,7 +196,7 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
             entry_point: Some("fs_vector"),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                format: VECTOR_COLOUR_FORMAT,
+                format: color_format,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -178,7 +213,7 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
             bias: wgpu::DepthBiasState::default(),
         }),
         multisample: wgpu::MultisampleState {
-            count: VECTOR_SAMPLE_COUNT,
+            count: sample_count,
             mask: !0,
             alpha_to_coverage_enabled: false,
         },

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use sim_apollo::CockpitInstrumentSnapshot;
 use sim_core::SimInstant;
 use sim_input::{Control, InputMapper, ProfileLibrary};
-use sim_render::{RenderError, Renderer, VectorScenePass};
+use sim_render::Renderer;
 use sim_scenario::{ScenarioWorld, WorldScene};
 use tracing::{error, info};
 use winit::application::ApplicationHandler;
@@ -36,48 +36,26 @@ mod frame;
 mod hub;
 pub(crate) mod page_panels;
 mod pointer;
+pub(crate) mod surface_scale;
+mod touch;
+#[cfg(any(target_arch = "wasm32", test))]
+mod touch_dispatch;
 
 #[cfg(test)]
 pub use hub::TAKEOVER_HINT;
 #[cfg(test)]
 pub use hub::trim_throttle as trim_throttle_for_tests;
 use hub::{HubSettings, trim_throttle, vehicle_class};
+pub use surface_scale::GpuReady;
 
 /// Seconds between window title updates: often enough to read, rarely enough
 /// not to spend a browser's time rewriting the page title.
 const TITLE_INTERVAL_S: f64 = 0.25;
 
-/// The window's renderer and the vector passes compiled on its device.
-///
-/// The passes are built here, asynchronously, because pipeline validation awaits a
-/// browser promise on `WebGPU` and cannot block.
-pub struct GpuReady {
-    /// The window renderer.
-    pub renderer: Renderer,
-    /// Vector pass for the conformal HUD.
-    pub hud_pass: VectorScenePass,
-    /// Vector pass for the `Esc` menu.
-    pub menu_pass: VectorScenePass,
-}
-
-impl GpuReady {
-    /// Creates the renderer for `window` and compiles both vector passes on its device.
-    pub async fn new(window: Arc<Window>, width: u32, height: u32) -> Result<Self, RenderError> {
-        let renderer = Renderer::new(window, width, height).await?;
-        let hud_pass = VectorScenePass::new(renderer.device()).await?;
-        let menu_pass = VectorScenePass::new(renderer.device()).await?;
-        Ok(Self {
-            renderer,
-            hud_pass,
-            menu_pass,
-        })
-    }
-}
-
 /// Events posted back to the event loop from asynchronous work.
 pub enum AppEvent {
     /// GPU setup finished (or failed).
-    RendererReady(Box<Result<GpuReady, RenderError>>),
+    RendererReady(Box<Result<GpuReady, sim_render::RenderError>>),
 }
 
 /// The application: window, shared-GPU renderer, composite cockpit rig, `Esc` menu, sky,
@@ -110,6 +88,11 @@ pub struct FlightApp {
     hub: HubSettings,
     look: LookOffset,
     occluded: bool,
+    handheld: bool,
+    has_drawn_world: bool,
+    touch: touch::TouchTracker,
+    #[cfg(target_arch = "wasm32")]
+    touch_cockpit: Option<platform::TouchCockpit>,
     host: platform::Host,
     /// The PFD and HSI on canvases of their own, when the host lays them out apart.
     panels: Option<page_panels::PagePanels>,
@@ -150,6 +133,7 @@ impl FlightApp {
         controls.sync_live(mapper.controls());
         let mut catalog = HubCatalog::with_global_airports();
         catalog.seed_ad_hoc_presets(flight.world_surface());
+        catalog.sync_external_vehicles(flight.liveries().externals());
         let mut esc_menu = EscMenu::default();
         if let Some((kdov, _)) = sim_scenery::AirportDatabase::builtin().by_code("KDOV")
             && let Some(idx) = catalog.index_of_airport(kdov)
@@ -183,6 +167,11 @@ impl FlightApp {
             hub: HubSettings::new(&ScenerySource::from_environment()),
             look: LookOffset::default(),
             occluded: false,
+            handheld: platform::is_handheld_browser(),
+            has_drawn_world: false,
+            touch: touch::TouchTracker::default(),
+            #[cfg(target_arch = "wasm32")]
+            touch_cockpit: None,
             host,
             panels: None,
             #[cfg(not(target_arch = "wasm32"))]
@@ -221,7 +210,12 @@ impl FlightApp {
         let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor());
         if let Some(window) = &self.window {
             let size = window.inner_size();
-            renderer.resize(size.width, size.height);
+            let ([w, h], _) = surface_scale::capped_surface_size(
+                [size.width, size.height],
+                scale_factor,
+                self.handheld,
+            );
+            renderer.resize(w, h);
             window.request_redraw();
         }
         self.panels = self.host.page_panels(&renderer);
@@ -233,10 +227,7 @@ impl FlightApp {
             self.flight.world_surface().clone(),
             page_view,
         ) {
-            Ok(mut rig) => {
-                rig.set_pixel_ratio(scale_factor);
-                rig.set_page_map_px(page_map.as_ref().map(sim_render::PanelSurface::size));
-                self.page_map = page_map;
+            Ok(rig) => {
                 let code = rig
                     .supervisor()
                     .effective_aerodrome(self.flight.profile())
@@ -244,7 +235,14 @@ impl FlightApp {
                 if let Some(index) = self.catalog.aerodromes.iter().position(|a| a.code == code) {
                     self.esc_menu.select_aerodrome(index);
                 }
-                self.hangar = (!page_view)
+                self.page_map = page_map;
+                if let Some(maps) = rig.maps() {
+                    info!(tier = maps.tier().words(), "the maps' device tier");
+                    self.host
+                        .diagnostics(&maps.tier().line(), &maps.tier().words());
+                    self.handheld |= maps.tier().tier == sim_maplibre::CockpitDeviceTier::Handheld;
+                }
+                self.hangar = (!page_view && !self.handheld)
                     .then(|| {
                         HangarRig::new(renderer.device())
                             .inspect_err(
@@ -253,19 +251,21 @@ impl FlightApp {
                             .ok()
                     })
                     .flatten();
-                info!(backend = ?renderer.backend(), scale_factor, "composite cockpit ready");
+                info!(backend = ?renderer.backend(), scale_factor, handheld = self.handheld, "composite cockpit ready");
                 self.host.startup_done();
-                if let Some(maps) = rig.maps() {
-                    info!(tier = maps.tier().words(), "the maps' device tier");
-                    self.host
-                        .diagnostics(&maps.tier().line(), &maps.tier().words());
-                }
                 self.cockpit_rig = Some(rig);
+                self.renderer = Some(renderer);
+                self.sync_window_surface();
+                if let (Some(rig), Some(pm)) = (self.cockpit_rig.as_mut(), self.page_map.as_ref()) {
+                    rig.set_page_map_px(Some(pm.size()));
+                }
                 self.sync_ad_hoc_to_rig();
                 self.sync_efb_route_to_rig();
                 self.apply_vehicle_overlays();
+                self.sync_hub_layout();
                 self.menu_overlay = Some(MenuOverlay::new(menu_pass));
-                self.renderer = Some(renderer);
+                #[cfg(target_arch = "wasm32")]
+                self.mount_mobile_touch_cockpit(page_view);
             }
             Err(err) => self.fail(event_loop, "cockpit initialization failed", &err),
         }
@@ -368,14 +368,10 @@ impl ApplicationHandler<AppEvent> for FlightApp {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(renderer) = self.renderer.as_mut() {
-                    renderer.resize(size.width, size.height);
-                }
+                self.apply_window_resize(size.width, size.height);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                if let Some(rig) = self.cockpit_rig.as_mut() {
-                    rig.set_pixel_ratio(scale_factor);
-                }
+                self.sync_window_surface();
                 info!(scale_factor, "display scale factor changed");
             }
             WindowEvent::KeyboardInput { event, .. } => self.keyboard_input(event_loop, &event),
@@ -384,7 +380,8 @@ impl ApplicationHandler<AppEvent> for FlightApp {
                 self.hub.command = modifiers.state().super_key();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_moved([position.x, position.y]);
+                let mapped = self.window_pos_to_surface([position.x, position.y]);
+                self.mouse_moved(mapped);
             }
             WindowEvent::MouseInput {
                 state,
@@ -400,6 +397,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             WindowEvent::MouseWheel { delta, .. } => self.mouse_wheel(event_loop, delta),
             WindowEvent::PinchGesture { delta, .. } => self.pinch_gesture(delta),
             WindowEvent::RotationGesture { delta, .. } => self.rotation_gesture(delta),
+            WindowEvent::Touch(touch) => self.touch_event(event_loop, touch),
             WindowEvent::Occluded(occluded) => self.set_occluded(occluded),
             WindowEvent::RedrawRequested => self.redraw_when_due(event_loop),
             _ => {}

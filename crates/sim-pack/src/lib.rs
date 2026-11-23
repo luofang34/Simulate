@@ -65,5 +65,6 @@ pub use variants::{
     VariantDescriptor, VariantFamilySummary, VariantRegistry, resolve_variant_alias,
 };
 pub use views::{
-    CAMERA_VIEWS_ASSET, CameraView, CameraViewSet, ViewAirframe, ViewPlacement, jsbsim_wingspan_m,
+    CAMERA_VIEWS_ASSET, CameraView, CameraViewSet, ViewAirframe, ViewPlacement,
+    jsbsim_eyepoint_structural_in, jsbsim_parked_gear_height_m, jsbsim_wingspan_m,
 };

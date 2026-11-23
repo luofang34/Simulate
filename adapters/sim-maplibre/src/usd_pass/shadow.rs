@@ -16,8 +16,6 @@ pub(crate) mod gpu;
 
 /// Bytes of the shader's `Shadow` uniform block.
 pub(crate) const SHADOW_BYTES: usize = 192;
-/// Shadow-map edge in texels; at the P-38G's 9 m radius one texel is under 1 cm.
-pub(crate) const SHADOW_MAP_SIZE: u32 = 2048;
 
 /// Lift of the ground receiver above the reported ground, against depth fighting.
 const GROUND_LIFT_M: f64 = 0.03;
@@ -52,7 +50,7 @@ pub(crate) struct ShadowFrame {
 
 impl ShadowFrame {
     /// The shader's `Shadow` block; a `None` frame disables every lookup.
-    pub(crate) fn block(frame: Option<&Self>) -> [u8; SHADOW_BYTES] {
+    pub(crate) fn block(frame: Option<&Self>, shadow_map_size: u32) -> [u8; SHADOW_BYTES] {
         let zero = Mat4::ZERO.to_cols_array();
         let (clip, light) = frame.map_or((zero, zero), |f| {
             (
@@ -68,7 +66,8 @@ impl ShadowFrame {
         let (range, width, enabled) = frame.map_or((1.0, 1.0, 0.0), |f| {
             (f.depth_range_m.max(1e-3), f.width_m.max(1e-3), 1.0)
         });
-        let texel_m = width / SHADOW_MAP_SIZE as f32;
+        let map_size = shadow_map_size.max(1) as f32;
+        let texel_m = width / map_size;
         let floats = clip.into_iter().chain(light).chain([
             cx,
             cy,
@@ -82,7 +81,7 @@ impl ShadowFrame {
             vy,
             vz,
             enabled,
-            1.0 / SHADOW_MAP_SIZE as f32,
+            1.0 / map_size,
             texel_m * 2.5,
             PENUMBRA_PER_M,
             1.0 / width,

@@ -12,16 +12,25 @@ use sim_scenery::{AirportRecord, LandingRunwayGeometry};
 use tracing::warn;
 use web_time::Instant;
 
-use super::super::{AvionicsPreset, MapFrameInput, MapLibreRig, charts};
+use super::super::{MapFrameInput, MapLibreRig, charts};
 use super::{EfbAirport, EfbCommand, EfbRig, EfbStatus};
 use crate::cockpit_rig::efb_chrome::{efb_map_rect, rect_px};
 use crate::error::AppSimError;
 
 impl MapLibreRig {
-    /// Builds the EFB the first time a map preset needs it; a failure leaves the cockpit
-    /// without one.
+    /// Mutable access to the simulator's physical scene.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "used by wasm32 touch controls and tests")
+    )]
+    pub const fn truth_mut(&mut self) -> &mut sim_maplibre::TruthSceneMap {
+        &mut self.truth
+    }
+
+    /// Builds the EFB the first time an uncollapsed map view needs it; a failure leaves the
+    /// cockpit without one.
     pub(in crate::map_rig) fn ensure_efb(&mut self) {
-        if self.preset == AvionicsPreset::NoMapGauges || self.efb.is_some() {
+        if self.efb_state.hidden_on_no_map || self.efb_state.collapsed || self.efb.is_some() {
             return;
         }
         let compact = rect_px(
@@ -39,6 +48,14 @@ impl MapLibreRig {
         .ok()
         .map(|mut efb| {
             efb.set_pixel_ratio(self.pixel_ratio);
+            for (record, diagram) in &self.efb_state.pending_airports {
+                efb.register_extra_airport(record.clone(), diagram);
+            }
+            if let Some((plan, progress)) = &self.efb_state.pending_route
+                && let Err(err) = efb.set_route(plan, *progress)
+            {
+                warn!(error = %err, "replaying pending EFB route failed");
+            }
             efb
         });
     }
@@ -47,7 +64,7 @@ impl MapLibreRig {
     fn shown_efb(&self) -> Option<&EfbRig> {
         self.efb
             .as_ref()
-            .filter(|_| self.preset != AvionicsPreset::NoMapGauges)
+            .filter(|_| !self.efb_state.hidden_on_no_map)
     }
 
     /// Whether the preset shows the EFB.
@@ -56,34 +73,96 @@ impl MapLibreRig {
         self.shown_efb().is_some()
     }
 
-    /// What the EFB shows, when the preset shows one.
+    /// What the EFB shows, when active (returns a synthetic collapsed descriptor before lazy init).
     #[must_use]
     pub fn efb_status(&self) -> Option<EfbStatus> {
-        self.shown_efb().map(EfbRig::status)
+        if self.efb_state.hidden_on_no_map {
+            return None;
+        }
+        if let Some(efb) = self.efb.as_ref() {
+            let mut status = efb.status();
+            if self.efb_state.collapsed {
+                status.collapsed = true;
+            }
+            return Some(status);
+        }
+        self.efb_state
+            .collapsed
+            .then(|| synthetic_collapsed_status(self.efb_airport.as_ref()))
     }
 
     /// The EFB's last frame, when the preset shows one and it is not collapsed.
     #[must_use]
     pub fn efb_view(&self) -> Option<&wgpu::TextureView> {
-        self.shown_efb().and_then(EfbRig::view)
+        self.shown_efb()
+            .filter(|_| !self.efb_state.collapsed)
+            .and_then(EfbRig::view)
     }
 
     /// Whether the EFB has chrome to display (either a rendered frame or its unfold button).
     #[must_use]
     pub fn efb_ready(&self) -> bool {
-        self.shown_efb().is_some_and(EfbRig::ready)
+        if self.efb_state.hidden_on_no_map {
+            return false;
+        }
+        self.efb
+            .as_ref()
+            .map_or(self.efb_state.collapsed, EfbRig::ready)
     }
 
     /// Whether the shown EFB has tile arrivals or a command waiting to be drawn.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub fn efb_needs_redraw(&self) -> bool {
-        self.shown_efb().is_some_and(EfbRig::needs_redraw)
+        !self.efb_state.collapsed && self.shown_efb().is_some_and(EfbRig::needs_redraw)
     }
 
-    /// Applies an operator command to the EFB, if there is one.
+    /// Applies an operator command to the EFB, lazily allocating [`EfbRig`] on first open.
     pub fn efb_command(&mut self, command: EfbCommand) -> Result<(), AppSimError> {
-        self.efb.as_mut().map_or(Ok(()), |efb| efb.command(command))
+        match command {
+            EfbCommand::CycleMobileState => self.cycle_mobile_efb(),
+            EfbCommand::SetCollapsed(true) => {
+                self.efb_state.collapsed = true;
+                self.efb
+                    .as_mut()
+                    .map_or(Ok(()), |efb| efb.command(EfbCommand::SetCollapsed(true)))
+            }
+            EfbCommand::SetCollapsed(false)
+            | EfbCommand::SetMode(_)
+            | EfbCommand::ToggleExpanded => {
+                self.efb_state.hidden_on_no_map = false;
+                self.efb_state.collapsed = false;
+                self.ensure_efb();
+                self.efb.as_mut().map_or(Ok(()), |efb| efb.command(command))
+            }
+            _ => self.efb.as_mut().map_or(Ok(()), |efb| efb.command(command)),
+        }
+    }
+
+    fn cycle_mobile_efb(&mut self) -> Result<(), AppSimError> {
+        if self.efb_state.hidden_on_no_map || self.efb_state.collapsed || self.efb.is_none() {
+            self.efb_state.hidden_on_no_map = false;
+            self.efb_state.collapsed = false;
+            self.ensure_efb();
+            return self.efb.as_mut().map_or(Ok(()), |efb| {
+                efb.command(EfbCommand::SetMode(EfbDisplayMode::CompactCorner))
+            });
+        }
+        let in_compact = self
+            .efb
+            .as_ref()
+            .is_some_and(|efb| efb.mode() == EfbDisplayMode::CompactCorner);
+        if in_compact {
+            return self.efb.as_mut().map_or(Ok(()), |efb| {
+                efb.command(EfbCommand::SetMode(EfbDisplayMode::ExpandedEfb))
+            });
+        }
+        self.efb_state.collapsed = true;
+        if let Some(efb) = self.efb.as_mut() {
+            efb.command(EfbCommand::SetMode(EfbDisplayMode::CompactCorner))?;
+            efb.command(EfbCommand::SetCollapsed(true))?;
+        }
+        Ok(())
     }
 
     /// Sizes the expanded EFB page to its on-screen `size_px`.
@@ -109,6 +188,12 @@ impl MapLibreRig {
     /// both the shared `aerodrome_geojson` and the active EFB surface.
     pub fn register_extra_airport(&mut self, record: AirportRecord, diagram_geojson: &Value) {
         let code = record.ids.primary.as_str().to_owned();
+        self.efb_state
+            .pending_airports
+            .retain(|(existing, _)| existing.ids.primary.as_str() != code.as_str());
+        self.efb_state
+            .pending_airports
+            .push((record.clone(), diagram_geojson.clone()));
         if let (Some(merged_features), Some(new_features)) = (
             self.aerodrome_geojson
                 .get_mut("features")
@@ -134,6 +219,7 @@ impl MapLibreRig {
         plan: &FlightPlan,
         progress: RouteProgress,
     ) -> Result<(), AppSimError> {
+        self.efb_state.pending_route = Some((plan.clone(), progress));
         self.efb
             .as_mut()
             .map_or(Ok(()), |efb| efb.set_route(plan, progress))
@@ -179,7 +265,8 @@ impl MapLibreRig {
         sim_time: Duration,
         landing_runway: Option<&LandingRunwayGeometry>,
     ) -> Result<(), AppSimError> {
-        if self.preset == AvionicsPreset::NoMapGauges
+        if self.efb_state.hidden_on_no_map
+            || self.efb_state.collapsed
             || input.supervisor.viewport_mode() == OperatorViewportMode::ChartMap
         {
             return Ok(());
@@ -213,5 +300,22 @@ impl MapLibreRig {
                 traffic: &traffic,
             },
         )
+    }
+}
+
+pub(in crate::map_rig) fn synthetic_collapsed_status(airport: Option<&EfbAirport>) -> EfbStatus {
+    EfbStatus {
+        mode: EfbDisplayMode::CompactCorner,
+        collapsed: true,
+        zoom: sim_maplibre::DEFAULT_COMPACT_ZOOM,
+        north_up: false,
+        custom_bearing: false,
+        free_pan: false,
+        plate_shown: false,
+        plate_opacity_pct: 75,
+        diagram_shown: true,
+        airport: airport.map_or_else(String::new, |a| a.0.clone()),
+        plate_title: None,
+        satellite: false,
     }
 }

@@ -101,3 +101,5 @@ All three optional performance assets reside under `performance/` inside a fixed
 |---|---|---|
 | `SIMULATE_IMPORT_LIVERY` | Path list (`:` or `;` separated) | Imports one or more declarative livery JSON bundles (or directories containing a livery JSON spec and an optional OpenUSD ASCII stage) at startup or via the Hangar `IMPORT LIVERY` button. |
 | `SIMULATE_IMPORT_VARIANT` | Path list (`:` or `;` separated) | Loads, SHA-256-verifies, and registers one or more external `syspack.json` vehicle directories into `VariantRegistry` at startup. |
+| `SIMULATE_HANGAR_DIR` | Path list (`:` or `;` separated) | Scans external hangar plugin folders (in addition to `$HOME/hangar` when present) containing `<aircraft>/syspack.json` packages (or standalone variant/livery bundles) and registers them at startup and in the Hub Hangar. |
+| `SIMULATE_NPC_SCRIPT` | File path | Loads a declarative JSON fleet script (`schema_version`, `spawns[]` supporting `parked_apron`, `parked_geodetic`, `orbit`, and `waypoints` modes with optional `transponder` ADS-B publication) at startup. |

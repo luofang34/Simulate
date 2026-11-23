@@ -1,8 +1,8 @@
 use sim_core::SensorExposureEvent;
 use sim_geo::BodyEllipsoid;
 use sim_maplibre::{HostGpu, ViewSlotMask};
-use sim_render::{Camera, OverlayQuad, Renderer, VectorScenePass, ViewportRect};
-use sim_scenario::{OperatorViewportMode, ScenarioWorld};
+use sim_render::{Camera, Renderer, VectorScenePass};
+use sim_scenario::OperatorViewportMode;
 use tracing::warn;
 
 use crate::avionics::{AvionicsFrameInput, AvionicsRig};
@@ -16,14 +16,21 @@ use crate::sky_rig::SkyFrame;
 use crate::supervisor_rig::SupervisorRig;
 use crate::world_surface::WorldSurfaceHandle;
 
+mod direct_avionics;
 pub mod efb_chrome;
 mod layout;
 mod page_map;
 mod panels_apart;
+mod safe_area;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod verify_shots;
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub use direct_avionics::CockpitViewMode;
+pub use layout::InstrumentDockStyle;
+pub use safe_area::SafeAreaInsets;
 
 /// Composite split-viewport cockpit orchestrating [`SupervisorRig`], [`MapLibreRig`],
 /// [`AvionicsRig`], and the stand-in guidance host on one shared `wgpu::Device`.
@@ -47,6 +54,11 @@ pub struct CockpitRig {
     /// The size of the PFD and HSI when drawn apart from the window view, each on its own
     /// surface; `None` docks them over it.
     panels_apart: Option<[u32; 2]>,
+    dock_style: InstrumentDockStyle,
+    safe_area: SafeAreaInsets,
+    direct_avionics: bool,
+    suppress_collapsed_pill: bool,
+    allow_efb_solo: bool,
 }
 
 impl CockpitRig {
@@ -100,12 +112,16 @@ impl CockpitRig {
     ) -> Result<Self, AppSimError> {
         let avionics = AvionicsRig::new(&host_gpu.device, hud_pass)?;
         let device = host_gpu.device.clone();
+        let handheld = crate::map_rig::device_tier::choose_for(&host_gpu.adapter).tier
+            == sim_maplibre::CockpitDeviceTier::Handheld;
         let preset = if page_view {
             AvionicsPreset::SyntheticVisionOnly
+        } else if handheld {
+            AvionicsPreset::NoMapGauges
         } else {
             AvionicsPreset::default()
         };
-        let maps = scenery.as_ref().and_then(|source| {
+        let mut maps = scenery.as_ref().and_then(|source| {
             layout::try_build_maps(
                 host_gpu,
                 initial_size,
@@ -115,6 +131,13 @@ impl CockpitRig {
                 page_view,
             )
         });
+        if handheld
+            && !page_view
+            && let Some(rig) = maps.as_mut()
+            && let Err(err) = rig.efb_command(crate::map_rig::EfbCommand::SetCollapsed(true))
+        {
+            warn!(%err, "collapsing EFB on handheld failed");
+        }
         let mut supervisor = SupervisorRig::new();
         supervisor.set_vertical_datum(surface.vertical_datum());
         Ok(Self {
@@ -133,6 +156,15 @@ impl CockpitRig {
             page_map_shown: 0,
             page_map_in_sight: false,
             panels_apart: None,
+            dock_style: if handheld && !page_view {
+                InstrumentDockStyle::LeftRail
+            } else {
+                InstrumentDockStyle::BottomRow
+            },
+            safe_area: SafeAreaInsets::NONE,
+            direct_avionics: handheld || cfg!(target_arch = "wasm32"),
+            suppress_collapsed_pill: handheld && !page_view && cfg!(target_arch = "wasm32"),
+            allow_efb_solo: false,
         })
     }
 
@@ -230,6 +262,9 @@ impl CockpitRig {
     /// Explicitly shows or hides the bottom glass-cockpit PFD/MFD/HSI dock.
     pub fn set_show_instruments(&mut self, visible: bool) {
         self.show_instruments = visible;
+        if !visible {
+            self.allow_efb_solo = false;
+        }
     }
 
     /// Switches to the next avionics preset, rebuilding its instrument maps.
@@ -295,15 +330,12 @@ impl CockpitRig {
         sky: &SkyFrame<'_>,
         sensor_exposures: &[SensorExposureEvent],
     ) -> Result<bool, AppSimError> {
-        let now = flight.now();
         let truth_vehicle = flight.display_vehicle_state();
         let sensed = flight.onboard_sensors();
         let estimated = sensed.estimated_vehicle;
         let profile = flight.profile();
         self.surface_size = surface_size;
-        let start_utc = flight.sim_epoch().start_utc()?;
-        self.supervisor
-            .sync(truth_vehicle.position_ecef, now, start_utc, profile);
+        self.sync_supervisor(flight, &truth_vehicle, profile)?;
 
         let body = flight.world().body();
         let earth = body == BodyEllipsoid::WGS84;
@@ -354,6 +386,7 @@ impl CockpitRig {
                 air_data: sensed.air_data,
                 specific_force_frd_m_s2: sensed.specific_force_frd_m_s2,
                 svs_underlay_active,
+                direct_mode: self.uses_direct_avionics(),
                 dock_panel_px,
                 hud,
                 runway: runway.as_ref(),
@@ -365,6 +398,22 @@ impl CockpitRig {
         )?;
         let full_map_covered = map_sphere_active && self.full_window_map_view().is_some();
         Ok(!full_map_covered)
+    }
+
+    fn sync_supervisor(
+        &mut self,
+        flight: &Flight,
+        truth_vehicle: &sim_core::VehicleState,
+        profile: Option<sim_scenario::ScenarioProfile>,
+    ) -> Result<(), AppSimError> {
+        let now = flight.now();
+        let start_utc = flight.sim_epoch().start_utc()?;
+        let npc_transponders = flight.evaluate_npcs(self.supervisor.active_anchor_msl(profile));
+        self.supervisor
+            .ingest_npc_transponders(&npc_transponders, now);
+        self.supervisor
+            .sync(truth_vehicle.position_ecef, now, start_utc, profile);
+        Ok(())
     }
 
     fn step_earth_maps(
@@ -419,48 +468,8 @@ impl CockpitRig {
             .map(|rwy| self.surface.runway_datum().touchdown_plane(&rwy, datum))
     }
 
-    /// Assembles the ordered zero-copy [`OverlayQuad`] stack for [`Renderer::render_composite`].
-    #[must_use]
-    pub fn overlay_quads(&self, world: ScenarioWorld) -> Vec<OverlayQuad<'_>> {
-        let mut quads = Vec::with_capacity(6);
-        let earth = world.body() == BodyEllipsoid::WGS84;
-        let mode = self.supervisor.viewport_mode();
-        if earth && let Some(full_view) = self.full_window_map_view() {
-            quads.push(OverlayQuad::full_map(full_view));
-        }
-        if self.show_conformal_hud
-            && mode == OperatorViewportMode::Cockpit
-            && let Some(hud) = self.avionics.hud_view()
-        {
-            quads.push(OverlayQuad::vector_overlay(ViewportRect::FULL, hud));
-        }
-        if !self.show_instruments || !self.sources.avionics || self.panels_apart.is_some() {
-            return quads;
-        }
-        let maps = self.maps.as_ref().filter(|_| earth);
-        let svs_view = maps.and_then(|m| m.instrument_view(PFD_SVS_MAP));
-        let efb = self.efb_chrome(world).and_then(|chrome| {
-            let view = maps.and_then(|m| self.inset_view(m))?;
-            Some(OverlayQuad::inset_map(chrome.map_viewport(), view, true))
-        });
-        // Without an EFB, a map preset keeps its moving map in the middle of the dock.
-        let chart_view = maps
-            .filter(|m| !m.efb_shown() && mode != OperatorViewportMode::ChartMap)
-            .and_then(|m| m.instrument_view(MFD_CHART_MAP));
-        layout::push_dock_quads(
-            &mut quads,
-            self.surface_size,
-            svs_view,
-            self.avionics.pfd_view(),
-            chart_view,
-            self.avionics.hsi_view(),
-        );
-        // Last, so the expanded tablet lies over the dock.
-        quads.extend(efb);
-        quads
-    }
-
-    fn full_window_map_view(&self) -> Option<&wgpu::TextureView> {
+    /// Color view behind full-window viewports (world OTW or airport chart).
+    pub(super) fn full_window_map_view(&self) -> Option<&wgpu::TextureView> {
         let maps = self.maps.as_ref()?;
         match self.supervisor.viewport_mode() {
             OperatorViewportMode::Cockpit

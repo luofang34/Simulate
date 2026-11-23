@@ -45,7 +45,9 @@ pub struct SupervisorRig {
     /// The profile whose camera suite [`Self::cycle_virtual_camera`] last stepped through.
     camera_suite: Option<ScenarioProfile>,
     /// The flying vehicle's own views, cycled after the scenario's suite.
-    vehicle_cameras: &'static [VirtualCameraSpec],
+    vehicle_cameras: Vec<VirtualCameraSpec>,
+    /// Surveillance track IDs originating from [`crate::npc_fleet::NpcFleet`] transponders.
+    npc_track_ids: std::collections::HashSet<u64>,
 }
 
 impl Default for SupervisorRig {
@@ -84,7 +86,8 @@ impl SupervisorRig {
             graphs: AirportGraphs::build(datum, free_airport, None),
             virtual_camera_index: 0,
             camera_suite: None,
-            vehicle_cameras: &[],
+            vehicle_cameras: Vec::new(),
+            npc_track_ids: std::collections::HashSet::new(),
         }
     }
 
@@ -144,8 +147,8 @@ impl SupervisorRig {
 
     /// Gives the cycle the flying vehicle's own views; a selection past the new vehicle's
     /// last view goes back to the first camera.
-    pub fn set_vehicle_cameras(&mut self, cameras: &'static [VirtualCameraSpec]) {
-        self.vehicle_cameras = cameras;
+    pub fn set_vehicle_cameras(&mut self, cameras: &[VirtualCameraSpec]) {
+        self.vehicle_cameras = cameras.to_vec();
         if self.virtual_camera_index >= self.camera_count() {
             self.virtual_camera_index = 0;
         }

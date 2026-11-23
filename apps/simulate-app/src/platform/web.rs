@@ -21,9 +21,11 @@ mod package_run;
 mod progress_surface;
 mod route_editor;
 mod section;
+mod touch_controls;
 
 pub use host::{Host, PageView};
 use progress_surface::ProgressSurface;
+pub use touch_controls::TouchCockpit;
 
 /// Starts the app; the browser drives the event loop from here on.
 pub fn run() {
@@ -94,12 +96,23 @@ pub fn show_world(view: PageView, feed: PageFeed) {
     }
 }
 
+/// Whether the current browser should use handheld budgets and touch controls.
+#[must_use]
+pub fn is_handheld_browser() -> bool {
+    crate::map_rig::device_tier::browser_is_handheld()
+}
+
 /// Starts creating the renderer for `window`; it is posted back to the event
 /// loop when the browser has granted a GPU device.
 pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
     let size = window.inner_size();
+    let ([width, height], _) = crate::app::surface_scale::capped_surface_size(
+        [size.width, size.height],
+        window.scale_factor(),
+        is_handheld_browser(),
+    );
     wasm_bindgen_futures::spawn_local(async move {
-        let gpu = GpuReady::new(window, size.width, size.height).await;
+        let gpu = GpuReady::new(window, width, height).await;
         if proxy
             .send_event(AppEvent::RendererReady(Box::new(gpu)))
             .is_err()

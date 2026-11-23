@@ -2,17 +2,16 @@
 //! the zero or more instrument maps of the selected avionics preset, all on one
 //! [`SharedMapRuntime`].
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
 use sim_core::SimInstant;
 use sim_geo::{BodyEllipsoid, ecef_to_geodetic};
 use sim_maplibre::{
-    AvionicsMapSet, ChartAssetStore, ConformalFrameStamp, ConformalMapFrame, HostGpu,
-    InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
-    TerrainPatchSnapshot, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
-    UsdAircraftAsset, ViewSlotId, ViewSlotMask, tile_id_to_world_coords, truth_real_world_style,
+    AvionicsMapSet, ChartAssetStore, CockpitDeviceTier, ConformalFrameStamp, ConformalMapFrame,
+    HostGpu, InstrumentMapSurface, OwnshipVisualKind, SceneryEndpoints, SharedMapRuntime,
+    TerrainPatchSnapshot, TruthSceneFrame, TruthSceneMap, TruthSlotMask, ViewSlotId, ViewSlotMask,
+    tile_id_to_world_coords,
 };
 use sim_scenario::OperatorViewportMode;
 use sim_scenery::{CatalogScenery, LandingRunwayGeometry, OsmAerodromeDiagram, TileId};
@@ -23,7 +22,7 @@ use crate::world_surface::WorldSurfaceHandle;
 
 pub(crate) mod aircraft;
 mod charts;
-mod device_tier;
+pub(crate) mod device_tier;
 mod efb;
 mod frame_input;
 mod globe;
@@ -41,8 +40,8 @@ pub use globe::GlobeSelection;
 pub use preset::{AIRPORT_SURFACE_MAP, AvionicsPreset, MFD_CHART_MAP, PFD_SVS_MAP};
 pub use scenery::ScenerySource;
 
-const SENSOR_WIDTH_PX: u32 = 800;
-const SENSOR_HEIGHT_PX: u32 = 600;
+pub(super) const SENSOR_WIDTH_PX: u32 = 800;
+pub(super) const SENSOR_HEIGHT_PX: u32 = 600;
 
 /// The physical scene and the selected preset's instrument maps on one shared runtime.
 pub struct MapLibreRig {
@@ -64,8 +63,10 @@ pub struct MapLibreRig {
     surface: WorldSurfaceHandle,
     ownship_visual: OwnshipVisualKind,
     custom_livery_key: Option<(String, String, u32)>,
+    npc_models: std::collections::HashMap<(String, String), sim_maplibre::TrafficModelId>,
     charts: ChartAssetStore,
     efb: Option<efb::EfbRig>,
+    efb_state: efb::EfbCockpitState,
     efb_airport: Option<EfbAirport>,
     globe: Option<globe::GlobeRig>,
     tier: TierChoice,
@@ -121,27 +122,13 @@ impl MapLibreRig {
             Some(loader),
         )?;
         let window_px = clamp_window(initial_size);
-        // Traffic draws the generic C172; ownship selects its tail once the rig exists.
-        let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
-        let mut truth = TruthSceneMap::new(
+        let (truth, aux_virtual_camera_slot) = scenery::build_truth_scene(
             &runtime,
-            truth_real_world_style(&endpoints)?,
-            TruthSceneConfig {
-                otw_size: window_px,
-                stereo_otw: false,
-                otw_depth_readout: false,
-                sensor_size: [SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX],
-                request_overscan: 1.22,
-            },
-            asset,
+            &endpoints,
+            catalog.as_ref(),
+            window_px,
+            register_aux_sensor,
         )?;
-        let aux_virtual_camera_slot = register_aux_sensor
-            .then(|| truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true))
-            .transpose()?;
-        if let Some(scenery) = &catalog {
-            let _supplied = truth.supply_dem_synchronously(scenery)?;
-            let _supplied_ortho = truth.supply_ortho_synchronously(scenery)?;
-        }
         let mut rig = Self {
             avionics: AvionicsMapSet::default(),
             runtime,
@@ -161,8 +148,14 @@ impl MapLibreRig {
             surface,
             ownship_visual: OwnshipVisualKind::default(),
             custom_livery_key: None,
+            npc_models: std::collections::HashMap::new(),
             charts,
             efb: None,
+            efb_state: efb::EfbCockpitState {
+                collapsed: tier.tier == CockpitDeviceTier::Handheld && register_aux_sensor,
+                hidden_on_no_map: preset == AvionicsPreset::NoMapGauges,
+                ..efb::EfbCockpitState::default()
+            },
             efb_airport: None,
             globe: None,
             tier,
@@ -172,6 +165,9 @@ impl MapLibreRig {
         rig.surface
             .configure(source)
             .map_err(sim_scenario::ScenarioError::from)?;
+        if let Some(cap) = rig.tier.tier.live_dem_capacity() {
+            rig.surface.set_live_dem_capacity(cap);
+        }
         Ok(rig)
     }
 
@@ -185,6 +181,7 @@ impl MapLibreRig {
         avionics.set_pixel_ratio(self.pixel_ratio);
         self.avionics = avionics;
         self.preset = preset;
+        self.efb_state.hidden_on_no_map = preset == AvionicsPreset::NoMapGauges;
         self.ensure_efb();
         Ok(())
     }
@@ -209,10 +206,23 @@ impl MapLibreRig {
         self.preset
     }
 
+    /// The tier the maps run at, and why.
+    #[must_use]
+    pub const fn tier(&self) -> &TierChoice {
+        &self.tier
+    }
+
     /// The simulator's physical scene.
     #[must_use]
     pub const fn truth(&self) -> &TruthSceneMap {
         &self.truth
+    }
+
+    fn otw_px(&self) -> [u32; 2] {
+        crate::app::surface_scale::capped_otw_size(
+            self.window_px,
+            self.tier.tier == CockpitDeviceTier::Handheld,
+        )
     }
 
     /// Sets the exposure time of the camera the outside scene is drawn for.
@@ -301,7 +311,8 @@ impl MapLibreRig {
         }
         self.window_px = clamp_window(input.surface_size);
         let [w, h] = self.window_px;
-        self.truth.resize_otw(w, h)?;
+        let [otw_w, otw_h] = self.otw_px();
+        self.truth.resize_otw(otw_w, otw_h)?;
         if let Some(surface) = self.avionics.get_mut(AIRPORT_SURFACE_MAP) {
             surface.resize(w, h)?;
         }
@@ -345,7 +356,7 @@ impl MapLibreRig {
         let exposure = input.sensor_exposures.last();
         let mask = TruthSlotMask {
             otw: mode != OperatorViewportMode::ChartMap,
-            sensor: exposure.is_some(),
+            sensor: exposure.is_some() && self.tier.tier != CockpitDeviceTier::Handheld,
         };
         self.truth_shown = mask.otw;
         if !mask.otw && !mask.sensor {
@@ -362,17 +373,24 @@ impl MapLibreRig {
                 stamps::build_camera_stamp(
                     input.timestamp,
                     &input.otw_camera,
-                    self.window_px,
+                    self.otw_px(),
                     undulation_m,
                 )
             })
             .transpose()?;
         let sensor_stamp = exposure
+            .filter(|_| mask.sensor)
             .map(|exp| stamps::sensor_exposure_stamp(cam_body, &cam_spec, exp, undulation_m))
             .transpose()?;
         let truth_entities = input.supervisor.truth_entities(ViewSlotMask::ALL);
-        let mut aircraft = aircraft::traffic_aircraft(&truth_entities, sim_dur.as_secs_f64());
-        aircraft.push(aircraft::ownship_of(input, undulation_m));
+        let aircraft = aircraft::scene_aircraft(
+            input,
+            &truth_entities,
+            &mut self.truth,
+            &mut self.npc_models,
+            sim_dur.as_secs_f64(),
+            undulation_m,
+        )?;
         let sensor_role = aircraft::virtual_camera_role(&cam_spec);
         let window_role = if mode == OperatorViewportMode::SensorAperture {
             sensor_role
@@ -473,12 +491,4 @@ impl MapLibreRig {
 
 fn clamp_window([w, h]: [u32; 2]) -> [u32; 2] {
     [w.max(16), h.max(16)]
-}
-
-impl MapLibreRig {
-    /// The tier the maps run at, and why.
-    #[must_use]
-    pub const fn tier(&self) -> &TierChoice {
-        &self.tier
-    }
 }

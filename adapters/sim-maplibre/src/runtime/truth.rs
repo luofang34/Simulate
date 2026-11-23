@@ -9,7 +9,6 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc, time::Duratio
 use glam::DVec3;
 use maplibre::{
     background::BackgroundPlugin,
-    celestial::{EcefDirection, TwilightBand},
     headless::{
         CoveringPolicy, MultiViewFrame, SlotView, ViewSlotConfig, ViewSlotEntry, ViewSlotId,
         environment::HeadlessEnvironment, map::HeadlessMap,
@@ -27,7 +26,7 @@ use sim_scenery::CatalogScenery;
 
 use super::{
     DrapeBudgetPlugin, EARTH_POLAR_ELEVATIONS, PolarElevationsPlugin, SharedMapRuntime,
-    pixel_ratio::pixel_ratio_update, validate_size,
+    validate_size,
 };
 pub use crate::usd_pass::AircraftInstance;
 use crate::{
@@ -122,6 +121,7 @@ pub struct TruthSceneMap {
     aircraft_draws: SlotDraws,
     sun_ecef: DVec3,
     shutter_s: f64,
+    hide_cockpit_controls: bool,
     pixel_ratio: Option<f64>,
 }
 
@@ -140,9 +140,8 @@ impl TruthSceneMap {
         let otw_phys = validate_size(otw_w, otw_h)?;
         let sen_phys = validate_size(sen_w, sen_h)?;
 
-        let settings = runtime
-            .device_tier()
-            .truth_scene_settings(runtime.color_format());
+        let tier = runtime.device_tier();
+        let settings = tier.truth_scene_settings(runtime.color_format());
         // Minimal 16x16 default head; actual rendering targets the registered ViewSlots.
         let (kernel, renderer) = runtime.create_renderer(16, 16, settings)?;
         let aircraft_draws: SlotDraws = Rc::new(RefCell::new(BTreeMap::new()));
@@ -155,12 +154,13 @@ impl TruthSceneMap {
             Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
             Box::new(TerrainPlugin::<DefaultDemTransferables>::default()),
             Box::new(PolarElevationsPlugin(EARTH_POLAR_ELEVATIONS)),
-            Box::new(DrapeBudgetPlugin(runtime.device_tier().otw_drape_budget())),
+            Box::new(DrapeBudgetPlugin(tier.otw_drape_budget())),
             Box::new(OverlayPlugin),
-            Box::new(UsdScene3dPlugin {
-                library: Rc::clone(&aircraft_library),
-                draws: Rc::clone(&aircraft_draws),
-            }),
+            Box::new(UsdScene3dPlugin::new(
+                &aircraft_library,
+                &aircraft_draws,
+                tier.shadow_map_size(),
+            )),
         ];
         let mut map = runtime
             .with_runtime_context(|| HeadlessMap::new(style, renderer, kernel, plugins))
@@ -201,6 +201,7 @@ impl TruthSceneMap {
             aircraft_draws,
             sun_ecef: DVec3::Z,
             shutter_s: UsdAircraftAsset::DISPLAY_SHUTTER_S,
+            hide_cockpit_controls: false,
             pixel_ratio: None,
         })
     }
@@ -273,41 +274,6 @@ impl TruthSceneMap {
         self.runtime.with_runtime_context(|| {
             crate::supply_catalog_ortho_synchronously(&mut self.map, scenery, "ortho")
         })
-    }
-
-    /// Sets the exposure time of the camera the scene is drawn for, which a turning
-    /// propeller smears over; the eye's by default.
-    pub fn set_shutter_exposure_s(&mut self, shutter_s: f64) {
-        self.shutter_s = shutter_s;
-    }
-
-    /// Updates the ECEF solar direction driving globe daylight, twilight, and atmosphere.
-    pub fn set_sun_direction_ecef(&mut self, sun_ecef: DVec3) -> Result<(), MapAdapterError> {
-        let dir = EcefDirection::new(sun_ecef.x, sun_ecef.y, sun_ecef.z)
-            .map_err(|source| MapAdapterError::Celestial { source })?;
-        self.map.set_sun_direction(Some(dir));
-        self.sun_ecef = sun_ecef;
-        Ok(())
-    }
-
-    /// Updates the solar twilight elevation band and night-side floor brightness.
-    pub fn set_twilight_band(&mut self, band: TwilightBand) {
-        self.map.set_twilight_band(band);
-    }
-
-    /// Draws every slot at `ratio` physical pixels per logical pixel (Retina `2.0`).
-    /// Non-finite ratios are ignored, others clamped to `0.5..=4.0`, and unchanged ratios
-    /// not reapplied.
-    pub fn set_pixel_ratio(&mut self, ratio: f64) {
-        if let Some(applied) = pixel_ratio_update(self.pixel_ratio, ratio) {
-            self.map.set_pixel_ratio(applied);
-            self.pixel_ratio = Some(applied);
-        }
-    }
-
-    /// Enables or disables atmospheric limb scattering behind the globe.
-    pub fn set_atmosphere(&mut self, enabled: bool) {
-        self.map.set_atmosphere(enabled);
     }
 
     /// Physical `[width, height]` pixel dimensions of the primary OTW slot.
@@ -473,6 +439,7 @@ impl TruthSceneMap {
             ownship_role,
             slot,
             shutter_s: self.shutter_s,
+            hide_cockpit_controls: self.hide_cockpit_controls,
         };
         SlotScene {
             draws: pack_slot_draws(&library, frame.aircraft, polar_skiway, &view),

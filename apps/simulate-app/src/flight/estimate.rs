@@ -47,9 +47,18 @@ impl Flight {
         self.sensors.realism()
     }
 
-    /// Switches to `realism`, restarting the sensor errors from their seed.
+    /// Switches to `realism`, restarting the sensor errors from their seed while preserving
+    /// the pilot's Kollsman barometric setting.
     pub fn set_sensor_realism(&mut self, realism: SensorRealism) {
+        let qnh = self.sensors.altimeter_setting_hpa();
         self.sensors = OnboardSensorBus::new(realism);
+        self.sensors.set_altimeter_setting_hpa(qnh);
+    }
+
+    /// Updates the onboard sensor bus's Kollsman barometric reference (`hPa`), driving both
+    /// `Indicate` PFD/HUD readouts and 3D cockpit panel altimeters.
+    pub fn set_altimeter_setting_hpa(&mut self, hpa: f64) {
+        self.sensors.set_altimeter_setting_hpa(hpa);
     }
 
     /// Cycles to the next [`SensorRealism`] and returns it.

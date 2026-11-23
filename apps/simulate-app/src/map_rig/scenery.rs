@@ -5,10 +5,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use sim_geo::Geodetic;
-use sim_maplibre::{ChartAssetStore, HybridTileLoader, SceneryEndpoints, SharedLoader};
+use sim_maplibre::{
+    ChartAssetStore, CockpitDeviceTier, HybridTileLoader, SceneryEndpoints, SharedLoader,
+    SharedMapRuntime, TruthSceneConfig, TruthSceneMap, UsdAircraftAsset, ViewSlotId,
+    truth_real_world_style,
+};
 use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TileId};
 
-use super::live_ground::LiveGround;
+use super::{SENSOR_HEIGHT_PX, SENSOR_WIDTH_PX, live_ground::LiveGround};
 use crate::error::AppSimError;
 
 /// Everything the rig needs from a [`ScenerySource`] to load and draw tiles.
@@ -155,4 +159,41 @@ pub(super) fn tile_at(position: &Geodetic, zoom: u8) -> TileId {
         x: x.clamp(0.0, n - 1.0) as u32,
         y: y.clamp(0.0, n - 1.0) as u32,
     }
+}
+
+/// Assembles the physical scene map, optional aux sensor slot, and synchronous catalog data.
+pub(super) fn build_truth_scene(
+    runtime: &SharedMapRuntime,
+    endpoints: &SceneryEndpoints,
+    catalog: Option<&CatalogScenery>,
+    window_px: [u32; 2],
+    register_aux_sensor: bool,
+) -> Result<(TruthSceneMap, Option<ViewSlotId>), AppSimError> {
+    let handheld = runtime.device_tier() == CockpitDeviceTier::Handheld;
+    let otw_size = crate::app::surface_scale::capped_otw_size(window_px, handheld);
+    let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
+    let mut truth = TruthSceneMap::new(
+        runtime,
+        truth_real_world_style(endpoints)?,
+        TruthSceneConfig {
+            otw_size,
+            stereo_otw: false,
+            otw_depth_readout: false,
+            sensor_size: if handheld {
+                [64, 64]
+            } else {
+                [SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX]
+            },
+            request_overscan: 1.22,
+        },
+        asset,
+    )?;
+    let aux_virtual_camera_slot = (register_aux_sensor && !handheld)
+        .then(|| truth.register_virtual_camera(SENSOR_WIDTH_PX, SENSOR_HEIGHT_PX, true))
+        .transpose()?;
+    if let Some(scenery) = catalog {
+        let _supplied = truth.supply_dem_synchronously(scenery)?;
+        let _supplied_ortho = truth.supply_ortho_synchronously(scenery)?;
+    }
+    Ok((truth, aux_virtual_camera_slot))
 }

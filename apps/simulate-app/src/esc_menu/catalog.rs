@@ -238,6 +238,17 @@ impl HubCatalog {
             .position(|v| v.modes().contains(&vehicle))
     }
 
+    /// Replaces dynamic external plugin descriptors while preserving the built-in airframes.
+    pub fn sync_external_vehicles(
+        &mut self,
+        externals: &[crate::livery_session::ExternalVehicleMeta],
+    ) {
+        self.vehicles
+            .retain(|v| !matches!(v.model, HangarModel::External(_)));
+        self.vehicles
+            .extend(externals.iter().map(VehicleDescriptor::external_plugin));
+    }
+
     /// Indices of aerodromes matching `query`: over the airport database, its ranked
     /// search (exact codes first) followed by the matching corridor and Moon entries;
     /// otherwise every entry whose code or name contains `query`.

@@ -27,6 +27,7 @@ mod jwst_tests;
 mod liveries;
 mod manual;
 mod mode;
+mod npc;
 mod pacing;
 mod page;
 mod panel_gauges;
@@ -95,6 +96,7 @@ pub struct Flight {
     epoch: SimEpoch,
     model_origins: crate::vehicles::ModelOrigins,
     liveries: LiverySession,
+    npc_fleet: crate::npc_fleet::NpcFleet,
     /// A link's page whose flight the C172 mission draws, when the app runs inside one.
     page: Option<crate::vehicles::PageFeed>,
 }
@@ -103,7 +105,18 @@ impl Flight {
     /// Starts in interactive free flight on [`FreeFlightVehicle::default`] over a world
     /// surface of its own.
     pub fn new() -> Result<Self, AppSimError> {
-        Self::with_surface(WorldSurfaceHandle::new())
+        #[cfg(target_arch = "wasm32")]
+        let surface = if matches!(
+            crate::map_rig::ScenerySource::from_environment(),
+            crate::map_rig::ScenerySource::RealWorld {}
+        ) {
+            WorldSurfaceHandle::new_bare_earth()
+        } else {
+            WorldSurfaceHandle::new()
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let surface = WorldSurfaceHandle::new();
+        Self::with_surface(surface)
     }
 
     /// Starts in interactive free flight on [`FreeFlightVehicle::default`], with ground
@@ -119,9 +132,12 @@ impl Flight {
             &time_scales,
             &solar,
             None,
+            None,
         )?;
         let epoch = mode.sim_epoch();
         let prev_vehicle = mode.vehicle();
+        let mut liveries = LiverySession::new()?;
+        let npc_fleet = crate::npc_fleet::NpcFleet::from_environment(&mut liveries);
         let mut flight = Self {
             steps: RateAdapter::new(mode.period()),
             mode,
@@ -145,7 +161,8 @@ impl Flight {
             solar,
             epoch,
             model_origins: crate::vehicles::ModelOrigins::default(),
-            liveries: LiverySession::new()?,
+            liveries,
+            npc_fleet,
             page: None,
         };
         flight.begin_flight()?;
@@ -170,7 +187,8 @@ impl Flight {
     /// Cycles to the next [`FreeFlightVehicle`] and enters free flight.
     #[cfg(test)]
     pub fn cycle_vehicle(&mut self) -> Result<FreeFlightVehicle, AppSimError> {
-        let next = self.preferred_vehicle.next();
+        let ext_count = u16::try_from(self.liveries.externals().len()).unwrap_or(u16::MAX);
+        let next = self.preferred_vehicle.next_with_externals(ext_count);
         self.select_vehicle(next)?;
         Ok(next)
     }

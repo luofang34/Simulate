@@ -21,6 +21,7 @@ use crate::supervisor_rig::SupervisorRig;
 use crate::telemetry;
 use crate::vehicles::FreeFlightVehicle;
 
+mod hangar_plugins;
 mod liveries;
 mod polar_nzsp;
 mod sensor_aperture;

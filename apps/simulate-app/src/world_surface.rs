@@ -198,7 +198,6 @@ impl WorldSurfaceHandle {
 )]
 impl WorldSurfaceHandle {
     /// Bounds the live tiles to `tiles`, to force eviction.
-    #[cfg(test)]
     pub fn set_live_dem_capacity(&self, tiles: usize) {
         let mut surface = self.write();
         *surface = surface.clone().with_live_dem_capacity(tiles);

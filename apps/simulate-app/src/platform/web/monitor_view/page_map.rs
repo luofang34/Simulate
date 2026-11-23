@@ -169,7 +169,7 @@ impl PageMap {
     /// Sizes the canvas's drawing buffer to its width on screen in physical pixels and
     /// notifies the app's map so its offscreen slot matches Retina resolution from frame 1.
     fn size_buffer(&mut self) {
-        let ratio = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
+        let ratio = page_map_pixel_ratio();
         let width = (f64::from(self.canvas.client_width()).max(320.0) * ratio) as u32;
         let height = (f64::from(width) * ASPECT) as u32;
         self.canvas.set_width(width);
@@ -181,7 +181,7 @@ impl PageMap {
     /// Sizes the drawing buffer again when the canvas's width on screen changed, and
     /// tells the app's map whenever the physical dimensions differ from `sent_px`.
     fn follow_width(&mut self) {
-        let ratio = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
+        let ratio = page_map_pixel_ratio();
         let css = self.canvas.client_width();
         if css <= 0 {
             return;
@@ -342,4 +342,13 @@ pub(super) fn basemap_command(satellite: bool) -> EfbCommand {
     } else {
         EfbBasemap::Chart
     })
+}
+
+fn page_map_pixel_ratio() -> f64 {
+    let raw = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio().max(1.0));
+    if crate::platform::is_handheld_browser() {
+        raw.min(crate::app::surface_scale::HANDHELD_MAX_PIXEL_RATIO)
+    } else {
+        raw
+    }
 }

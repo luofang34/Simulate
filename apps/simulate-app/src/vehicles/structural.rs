@@ -30,7 +30,8 @@ impl ModelOrigins {
             | OwnshipVisualKind::FixedWingUav
             | OwnshipVisualKind::QuadrotorX500
             | OwnshipVisualKind::LunarLander
-            | OwnshipVisualKind::Raketa => return None,
+            | OwnshipVisualKind::Raketa
+            | OwnshipVisualKind::External(_) => return None,
         };
         *cell.get_or_init(|| fit(visual).map(|datum| datum.origin_in()))
     }

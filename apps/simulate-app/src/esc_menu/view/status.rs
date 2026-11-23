@@ -89,6 +89,8 @@ pub struct MenuStatus {
     pub active_livery_index: Option<usize>,
     /// Display label of the active livery on the previewed hangar airframe.
     pub active_livery_name: Option<String>,
+    /// Number of currently active non-player aircraft (ground + flying NPCs).
+    pub npc_count: usize,
     /// Control scheme.
     pub controls: ControlsStatus,
 }
@@ -116,6 +118,7 @@ impl Default for MenuStatus {
             hangar_liveries: Vec::new(),
             active_livery_index: None,
             active_livery_name: None,
+            npc_count: 0,
             controls: ControlsStatus::default(),
         }
     }

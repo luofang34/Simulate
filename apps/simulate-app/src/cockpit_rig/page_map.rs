@@ -44,6 +44,7 @@ pub(super) fn frame_input<'a>(
         sky,
         supervisor,
         ownship_livery_override: flight.active_ownship_livery_override(),
+        npcs: flight.evaluate_npcs(supervisor.active_anchor_msl(flight.profile())),
     }
 }
 
@@ -54,20 +55,39 @@ impl CockpitRig {
     #[must_use]
     pub fn efb_chrome(&self, world: ScenarioWorld) -> Option<EfbChrome> {
         let shown = world.body() == BodyEllipsoid::WGS84
-            && self.show_instruments
+            && (self.show_instruments || self.allow_efb_solo)
             && !self.page_map_in_sight
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
         let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
         let status = self.inset_status(maps.efb_status()?);
+        if self.suppress_collapsed_pill && status.collapsed {
+            return None;
+        }
         Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
     }
 
     /// Applies an operator command to the EFB.
     pub fn efb_command(&mut self, command: EfbCommand) -> Result<(), AppSimError> {
-        match self.maps.as_mut() {
-            Some(maps) => maps.efb_command(command),
-            None => Ok(()),
+        let Some(maps) = self.maps.as_mut() else {
+            return Ok(());
+        };
+        let was_collapsed = maps.efb_status().is_none_or(|s| s.collapsed);
+        let outcome = maps.efb_command(command);
+        let is_open = maps.efb_status().is_some_and(|s| !s.collapsed);
+        if matches!(
+            command,
+            EfbCommand::SetCollapsed(false)
+                | EfbCommand::SetMode(_)
+                | EfbCommand::ToggleExpanded
+                | EfbCommand::CycleMobileState
+        ) && (was_collapsed || is_open)
+            && !self.show_instruments
+        {
+            self.allow_efb_solo = is_open;
+        } else if !is_open {
+            self.allow_efb_solo = false;
         }
+        outcome
     }
 
     /// Activates a MapLibre navigation HUD button at `physical_px` inside the expanded EFB.

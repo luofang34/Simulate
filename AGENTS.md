@@ -1,5 +1,9 @@
 # Simulate Repository Instructions
 
+## Vehicle Models and Handoffs
+
+For vehicle modeling, source reconstruction, materials, articulation, or asset delivery, read [vehicles/skills.md](vehicles/skills.md). Use its step handoff requirements, keep reusable instructions current, and distinguish candidate component checks from complete package and simulator acceptance.
+
 ## Documentation and Code Quality Gates
 
 All code and documentation in `Simulate` must pass `./scripts/ci.sh`:

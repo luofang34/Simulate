@@ -42,4 +42,6 @@ pub struct MapFrameInput<'a> {
     pub supervisor: &'a SupervisorRig,
     /// Optional explicit per-tail OpenUSD ownship livery override (`(aircraft_id, livery_id, gen)`).
     pub ownship_livery_override: Option<crate::livery_session::OwnshipLiveryRef<'a>>,
+    /// Evaluated non-player ground and flying aircraft for `TruthSceneMap`.
+    pub npcs: Vec<crate::npc_fleet::EvaluatedNpc>,
 }

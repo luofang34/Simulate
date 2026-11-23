@@ -40,7 +40,7 @@ mod textures;
 pub(crate) mod vertex;
 
 pub(crate) use library::{AircraftLibrary, AssetKey, SharedAircraftLibrary};
-pub use library::{OwnshipVisualKind, StructuralDatum};
+pub use library::{OwnshipVisualKind, StructuralDatum, TrafficModelId};
 pub(crate) use shadow::{ShadowFrame, ownship_shadow};
 pub(crate) use skiway::PolarSkiwayKey;
 pub(crate) use sky::SkyLight;
@@ -79,6 +79,8 @@ pub struct AircraftInstance {
     /// `placement.altitude_meters`; ownship's sun shadow falls on it, and `None` (unknown
     /// ground) leaves the shadow on the airframe only.
     pub ground_height_m: Option<f64>,
+    /// Optional registered non-ownship airframe handle for mixed-type traffic or ground NPCs.
+    pub model_id: Option<TrafficModelId>,
 }
 
 /// One packed draw of one part in one slot.
@@ -107,8 +109,23 @@ pub(crate) type SlotDraws = Rc<RefCell<BTreeMap<ViewSlotId, SlotScene>>>;
 
 /// Registers the aircraft pass and its prepare system on a truth-scene map.
 pub(crate) struct UsdScene3dPlugin {
-    pub(crate) library: SharedAircraftLibrary,
-    pub(crate) draws: SlotDraws,
+    library: SharedAircraftLibrary,
+    draws: SlotDraws,
+    shadow_map_size: u32,
+}
+
+impl UsdScene3dPlugin {
+    pub(crate) fn new(
+        library: &SharedAircraftLibrary,
+        draws: &SlotDraws,
+        shadow_map_size: u32,
+    ) -> Self {
+        Self {
+            library: Rc::clone(library),
+            draws: Rc::clone(draws),
+            shadow_map_size: shadow_map_size.max(1),
+        }
+    }
 }
 
 impl Plugin<HeadlessEnvironment> for UsdScene3dPlugin {
@@ -122,8 +139,9 @@ impl Plugin<HeadlessEnvironment> for UsdScene3dPlugin {
         world.resources.insert(gpu::UsdPassState::default());
         let library = Rc::clone(&self.library);
         let draws = Rc::clone(&self.draws);
+        let shadow_map_size = self.shadow_map_size;
         schedule.add_system_to_stage(RenderStageLabel::Prepare, move |ctx: &mut _| {
-            gpu::prepare(ctx, &library, &draws);
+            gpu::prepare(ctx, &library, &draws, shadow_map_size);
             Ok(())
         })?;
         let draw_graph = &mut renderer.render_graph;
@@ -143,6 +161,17 @@ pub(crate) struct AircraftSlotView<'a> {
     pub(crate) slot: ViewSlotId,
     /// Exposure time of the camera drawing the slot, seconds (propeller blur).
     pub(crate) shutter_s: f64,
+    /// Whether ownship 3D cockpit controls (yoke/stick/column) are hidden in interior views.
+    pub(crate) hide_cockpit_controls: bool,
+}
+
+/// Transform pair placing a part into anchor ENU and clip space.
+#[derive(Clone, Copy)]
+struct PartTransforms {
+    enu_from_part: DMat4,
+    clip_from_enu: DMat4,
+    uv_lamp_enu: Option<DVec3>,
+    interior_shell: bool,
 }
 
 /// Packs every visible aircraft part of `aircraft` (plus any polar skiway) for one slot;
@@ -156,67 +185,9 @@ pub(crate) fn pack_slot_draws(
 ) -> Vec<PackedDraw> {
     let clip_from_enu = clip_from_anchor_enu(view.stamp);
     let mut packed: Vec<(f64, PackedDraw)> = Vec::new();
-    if let Some((asset_key, runway)) = polar_skiway
-        && let Some(asset) = library.get(asset_key)
-        && let Some(enu_from_skiway) =
-            enu_from_aircraft(view.stamp, &skiway::skiway_placement(runway, view.stamp))
-    {
-        for part_draw in
-            asset.evaluate_draws(&AirframeArticulation::default(), SlotCameraRole::External)
-        {
-            if let Some(part) = asset.parts().get(part_draw.part_index) {
-                packed.push(pack_part(
-                    asset_key,
-                    part,
-                    &part_draw,
-                    enu_from_skiway * part_draw.part_to_aircraft,
-                    clip_from_enu,
-                    view,
-                    None,
-                ));
-            }
-        }
-    }
+    pack_polar_skiway(library, polar_skiway, clip_from_enu, view, &mut packed);
     for instance in aircraft {
-        if !instance
-            .placement
-            .view_mask
-            .matches_current(Some(view.slot))
-        {
-            continue;
-        }
-        let Some((asset_key, asset)) = library.asset_for(instance.ownship) else {
-            continue;
-        };
-        let Some(enu_from_aircraft) = enu_from_aircraft(view.stamp, &instance.placement) else {
-            continue;
-        };
-        let role = if instance.ownship {
-            view.ownship_role
-        } else {
-            SlotCameraRole::External
-        };
-        let uv_lamp = asset
-            .uv_flood_lamp_m()
-            .map(|lamp| enu_from_aircraft.transform_point3(lamp));
-        for part_draw in asset.evaluate_draws_exposed(&instance.articulation, role, view.shutter_s)
-        {
-            let Some(part) = asset.parts().get(part_draw.part_index) else {
-                continue;
-            };
-            let enu_from_part = enu_from_aircraft * part_draw.part_to_aircraft;
-            let (distance, mut draw) = pack_part(
-                asset_key,
-                part,
-                &part_draw,
-                enu_from_part,
-                clip_from_enu,
-                view,
-                uv_lamp,
-            );
-            draw.casts_shadow = instance.ownship && !draw.translucent;
-            packed.push((distance, draw));
-        }
+        pack_instance(library, instance, clip_from_enu, view, &mut packed);
     }
     // Opaque first; translucent back to front so blending composes correctly.
     packed.sort_by(|(da, a), (db, b)| {
@@ -227,16 +198,122 @@ pub(crate) fn pack_slot_draws(
     packed.into_iter().map(|(_, draw)| draw).collect()
 }
 
+fn pack_polar_skiway(
+    library: &AircraftLibrary,
+    polar_skiway: Option<(AssetKey, &sim_scenery::LandingRunwayGeometry)>,
+    clip_from_enu: DMat4,
+    view: &AircraftSlotView<'_>,
+    packed: &mut Vec<(f64, PackedDraw)>,
+) {
+    let Some((asset_key, runway)) = polar_skiway else {
+        return;
+    };
+    let Some(asset) = library.get(asset_key) else {
+        return;
+    };
+    let Some(enu_from_skiway) =
+        enu_from_aircraft(view.stamp, &skiway::skiway_placement(runway, view.stamp))
+    else {
+        return;
+    };
+    for part_draw in
+        asset.evaluate_draws(&AirframeArticulation::default(), SlotCameraRole::External)
+    {
+        if let Some(part) = asset.parts().get(part_draw.part_index) {
+            packed.push(pack_part(
+                asset_key,
+                part,
+                &part_draw,
+                PartTransforms {
+                    enu_from_part: enu_from_skiway * part_draw.part_to_aircraft,
+                    clip_from_enu,
+                    uv_lamp_enu: None,
+                    interior_shell: false,
+                },
+                view,
+            ));
+        }
+    }
+}
+
+fn pack_instance(
+    library: &AircraftLibrary,
+    instance: &AircraftInstance,
+    clip_from_enu: DMat4,
+    view: &AircraftSlotView<'_>,
+    packed: &mut Vec<(f64, PackedDraw)>,
+) {
+    if !instance
+        .placement
+        .view_mask
+        .matches_current(Some(view.slot))
+    {
+        return;
+    }
+    let Some((asset_key, asset)) = library.asset_for_instance(instance.ownship, instance.model_id)
+    else {
+        return;
+    };
+    let Some(enu_from_aircraft) = enu_from_aircraft(view.stamp, &instance.placement) else {
+        return;
+    };
+    let role = if instance.ownship {
+        view.ownship_role
+    } else {
+        SlotCameraRole::External
+    };
+    let uv_lamp_enu = asset
+        .uv_flood_lamp_m()
+        .map(|lamp| enu_from_aircraft.transform_point3(lamp));
+    let hide_controls = instance.ownship
+        && view.hide_cockpit_controls
+        && matches!(
+            role,
+            SlotCameraRole::CockpitInterior | SlotCameraRole::PilotEye
+        );
+    for part_draw in asset.evaluate_draws_exposed(&instance.articulation, role, view.shutter_s) {
+        let Some(part) = asset.parts().get(part_draw.part_index) else {
+            continue;
+        };
+        if hide_controls && part.role == PartRole::CockpitControl {
+            continue;
+        }
+        let interior_shell = instance.ownship
+            && role == SlotCameraRole::CockpitInterior
+            && matches!(
+                part.role,
+                PartRole::CabinInterior | PartRole::CabinExterior | PartRole::NoseCowling
+            )
+            && !part.prim_path.contains("Livery")
+            && !part.prim_path.contains("Stripe");
+        let (distance, mut draw) = pack_part(
+            asset_key,
+            part,
+            &part_draw,
+            PartTransforms {
+                enu_from_part: enu_from_aircraft * part_draw.part_to_aircraft,
+                clip_from_enu,
+                uv_lamp_enu,
+                interior_shell,
+            },
+            view,
+        );
+        draw.casts_shadow = instance.ownship && !draw.translucent;
+        packed.push((distance, draw));
+    }
+}
+
 /// One part's draw and its distance from the camera, for back-to-front sorting.
 fn pack_part(
     asset: AssetKey,
     part: &crate::UsdMeshPart,
     part_draw: &crate::UsdPartDraw,
-    enu_from_part: DMat4,
-    clip_from_enu: DMat4,
+    xforms: PartTransforms,
     view: &AircraftSlotView<'_>,
-    uv_lamp_enu: Option<DVec3>,
 ) -> (f64, PackedDraw) {
+    let enu_from_part = xforms.enu_from_part;
+    let clip_from_enu = xforms.clip_from_enu;
+    let uv_lamp_enu = xforms.uv_lamp_enu;
     let translucent = part_draw.is_prop_disc || part_draw.opacity < 0.999;
     let kind = if part_draw.is_prop_disc {
         if part.prim_path.contains("P38") {
@@ -298,7 +375,7 @@ fn pack_part(
             asset,
             part_index: part_draw.part_index,
             translucent,
-            double_sided: part.double_sided || translucent,
+            double_sided: part.double_sided || translucent || xforms.interior_shell,
             casts_shadow: false,
             uniform: block.to_le_bytes(),
         },

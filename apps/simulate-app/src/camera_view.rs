@@ -28,9 +28,10 @@ const COCKPIT_STICK_SLEW_PER_S: f64 = 12.0;
 mod tests;
 mod vehicle_suite;
 
-pub use vehicle_suite::{DEFAULT_CHASE_BACK_UP_M, vehicle_camera_suite};
+pub use vehicle_suite::{DEFAULT_CHASE_BACK_UP_M, VehicleCameraSuite, vehicle_camera_suite};
 
-const COCKPIT_NEAR_M: f64 = 0.05;
+/// Near clip distance for cockpit and close virtual-camera mounts (metres).
+pub const COCKPIT_NEAR_M: f64 = 0.05;
 const VOLUMETRIC_BACK_M: f64 = 140.0;
 const VOLUMETRIC_UP_M: f64 = 85.0;
 /// How far the reference axis may lean toward the vertical before the external cameras
@@ -45,6 +46,16 @@ pub fn pilot_eye_mount() -> CameraMount {
 /// Seated cockpit or nose FPV camera mount matched to `vehicle`'s airframe geometry.
 #[must_use]
 pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
+    pilot_eye_mount_with_override(vehicle, None)
+}
+
+/// Seated cockpit or nose FPV camera mount matched to `vehicle`, substituting `external_eye_frd_m`
+/// when flying an external hangar plugin aircraft.
+#[must_use]
+pub fn pilot_eye_mount_with_override(
+    vehicle: FreeFlightVehicle,
+    external_eye_frd_m: Option<DVec3>,
+) -> CameraMount {
     match vehicle {
         FreeFlightVehicle::JsbsimC172
         | FreeFlightVehicle::JsbsimC172p
@@ -57,6 +68,12 @@ pub fn pilot_eye_mount_for(vehicle: FreeFlightVehicle) -> CameraMount {
         FreeFlightVehicle::AviateX500Direct => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
         }
+        FreeFlightVehicle::External(_) => CameraMount::oblique(
+            external_eye_frd_m.unwrap_or_else(|| DVec3::new(2.0, 0.0, -0.8)),
+            0.0,
+            -2.5_f64.to_radians(),
+            0.0,
+        ),
     }
 }
 
@@ -103,6 +120,9 @@ pub fn svs_mount_for(vehicle: Option<FreeFlightVehicle>) -> CameraMount {
         Some(FreeFlightVehicle::JsbsimP38g) => CameraMount::forward_nose(p38g_eye_frd_m()),
         Some(FreeFlightVehicle::AviateX500Direct) => {
             CameraMount::forward_nose(DVec3::new(0.18, 0.0, -0.05))
+        }
+        Some(FreeFlightVehicle::External(_)) => {
+            CameraMount::forward_nose(DVec3::new(2.0, 0.0, -0.8))
         }
     }
 }
@@ -305,6 +325,18 @@ impl LookOffset {
         }
         if tilt == 0.0 && self.pitch_rad.abs() < 1e-4 {
             self.pitch_rad = 0.0;
+        }
+    }
+
+    /// Pans and tilts the look interactively from touch or drag deltas, clamping to limits.
+    pub fn nudge(&mut self, dyaw_rad: f64, dpitch_rad: f64) {
+        let yaw_max = LOOK_YAW_LIMIT_DEG.to_radians();
+        let pitch_max = LOOK_PITCH_LIMIT_DEG.to_radians();
+        if dyaw_rad.is_finite() {
+            self.yaw_rad = (self.yaw_rad + dyaw_rad).clamp(-yaw_max, yaw_max);
+        }
+        if dpitch_rad.is_finite() {
+            self.pitch_rad = (self.pitch_rad + dpitch_rad).clamp(-pitch_max, pitch_max);
         }
     }
 

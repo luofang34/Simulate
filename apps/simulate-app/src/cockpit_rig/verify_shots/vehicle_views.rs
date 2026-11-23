@@ -92,8 +92,8 @@ fn render_declared_views(
     dir: &Path,
     prefix: &str,
 ) -> Result<(), AppSimError> {
-    let cameras = h.flight.vehicle_cameras();
-    h.rig.supervisor_mut().set_vehicle_cameras(cameras);
+    let cameras = h.flight.vehicle_cameras().to_vec();
+    h.rig.supervisor_mut().set_vehicle_cameras(&cameras);
     h.rig
         .supervisor_mut()
         .set_viewport_mode(OperatorViewportMode::SensorAperture);

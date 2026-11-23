@@ -123,6 +123,7 @@ pub struct OnboardSensorBus {
     previous: SensorErrors,
     current: SensorErrors,
     atmosphere: FullColumnAtmosphere,
+    altimeter_setting_hpa: f64,
 }
 
 impl OnboardSensorBus {
@@ -136,6 +137,20 @@ impl OnboardSensorBus {
             previous: current,
             current,
             atmosphere: FullColumnAtmosphere::new(),
+            altimeter_setting_hpa: STANDARD_QNH_HPA,
+        }
+    }
+
+    /// Active Kollsman barometric reference reported on air-data outputs (`hPa`).
+    #[must_use]
+    pub const fn altimeter_setting_hpa(&self) -> f64 {
+        self.altimeter_setting_hpa
+    }
+
+    /// Updates the Kollsman barometric reference (`hPa`), clamped to physical altimeter limits.
+    pub fn set_altimeter_setting_hpa(&mut self, hpa: f64) {
+        if hpa.is_finite() {
+            self.altimeter_setting_hpa = hpa.clamp(940.0, 1_060.0);
         }
     }
 
@@ -183,7 +198,7 @@ impl OnboardSensorBus {
             true_airspeed_m_s: airspeed.max(0.0),
             density_kg_m3: air.density_kg_m3,
             static_pressure_pa: Some((air.pressure_pa + errors.static_pa).max(0.0)),
-            altimeter_setting_hpa: Some(STANDARD_QNH_HPA),
+            altimeter_setting_hpa: Some(self.altimeter_setting_hpa),
             pec_indicated_airspeed_m_s: None,
         };
         Some(StampedReading::new(sample, at, SourceValidity::Valid))

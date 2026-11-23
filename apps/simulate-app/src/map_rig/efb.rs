@@ -37,6 +37,12 @@ pub enum EfbCommand {
     SetMode(EfbDisplayMode),
     /// Collapse (`true`) or unfold (`false`) the compact corner map into a small button.
     SetCollapsed(bool),
+    /// Cycle mobile overlay states (`Hidden/Collapsed -> CompactCorner -> ExpandedEfb -> Collapsed`).
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "constructed by wasm32 touch controls")
+    )]
+    CycleMobileState,
     /// Switch between the compact and expanded views.
     ToggleExpanded,
     /// Switch between track-up and north-up following.
@@ -92,6 +98,15 @@ pub struct EfbStatus {
     pub plate_title: Option<String>,
     /// Whether satellite imagery lies under the plan instead of the chart.
     pub satellite: bool,
+}
+
+/// Lazy-init & collapse state owned by `MapLibreRig` before or after `EfbRig` is allocated.
+#[derive(Debug, Default)]
+pub(in crate::map_rig) struct EfbCockpitState {
+    pub(super) collapsed: bool,
+    pub(super) hidden_on_no_map: bool,
+    pub(super) pending_route: Option<(FlightPlan, RouteProgress)>,
+    pub(super) pending_airports: Vec<(AirportRecord, Value)>,
 }
 
 /// The airport and runway end the EFB shows, `(code, designator)`.
@@ -236,14 +251,19 @@ impl EfbRig {
         match command {
             EfbCommand::ZoomBy(delta) => self.surface.zoom_by(delta),
             EfbCommand::RotateBy(delta_deg) => self.surface.rotate_by_deg(delta_deg),
-            EfbCommand::SetMode(mode) => {
-                self.collapsed = false;
-                self.surface.set_display_mode(mode);
-                self.view = None;
-                self.apply_layers()?;
-            }
+            EfbCommand::SetMode(mode) => self.apply_display_mode(mode)?,
             EfbCommand::SetCollapsed(collapsed) => {
                 self.collapsed = collapsed;
+            }
+            EfbCommand::CycleMobileState => {
+                if self.collapsed {
+                    self.apply_display_mode(EfbDisplayMode::CompactCorner)?;
+                } else if self.mode() == EfbDisplayMode::CompactCorner {
+                    self.apply_display_mode(EfbDisplayMode::ExpandedEfb)?;
+                } else {
+                    self.apply_display_mode(EfbDisplayMode::CompactCorner)?;
+                    self.collapsed = true;
+                }
             }
             EfbCommand::ToggleExpanded => {
                 self.collapsed = false;
@@ -326,6 +346,13 @@ impl EfbRig {
         self.frames = self.frames.wrapping_add(1);
         self.dirty = false;
         Ok(())
+    }
+
+    fn apply_display_mode(&mut self, mode: EfbDisplayMode) -> Result<(), AppSimError> {
+        self.collapsed = false;
+        self.surface.set_display_mode(mode);
+        self.view = None;
+        self.apply_layers()
     }
 
     fn mode_index(&self) -> usize {

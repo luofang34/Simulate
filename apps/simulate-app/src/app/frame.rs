@@ -155,10 +155,16 @@ impl FlightApp {
         self.controls.sync_live(self.mapper.controls());
         if self.controls.take_look_reset() {
             self.look.reset();
+            self.touch.clear_manual_look();
         }
         let look_axes = self.controls.camera_look_axes();
+        if look_axes != [0.0, 0.0] {
+            self.touch.clear_manual_look();
+        }
         if viewport_mode == OperatorViewportMode::Cockpit {
-            self.look.follow_stick(look_axes, elapsed_s);
+            if look_axes != [0.0, 0.0] || !self.touch.is_manual_look() {
+                self.look.follow_stick(look_axes, elapsed_s);
+            }
         } else {
             self.look.integrate(look_axes, elapsed_s);
         }
@@ -187,8 +193,11 @@ impl FlightApp {
                 .flight
                 .page_map()
                 .is_some_and(crate::page_map::PageMapLink::has_pending_commands);
-            let interval_s =
-                super::cadence::presentation_interval_s(self.flight.page_pace(), interactive);
+            let interval_s = super::cadence::presentation_interval_for_tier_s(
+                self.flight.page_pace(),
+                interactive,
+                self.handheld,
+            );
             if !self.cadence.due_with_interval(now_s, interval_s) {
                 if let Some(window) = &self.window {
                     window.request_redraw();
@@ -200,6 +209,8 @@ impl FlightApp {
     }
 
     pub(super) fn redraw(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_arch = "wasm32")]
+        self.sync_touch_cockpit(event_loop);
         let (viewport_mode, time_scale) = self.view_and_time_scale();
         let controls = self.step_efb_guidance(self.mapper.controls(), time_scale);
         let wall_s;
@@ -218,8 +229,18 @@ impl FlightApp {
             return;
         };
         self.follow_panel_layout();
-        let exposures = self.flight.drain_sensor_exposures();
         let world = self.flight.world();
+        self.render_and_present_frame(event_loop, world, &camera, wall_s);
+    }
+
+    fn render_and_present_frame(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        world: ScenarioWorld,
+        camera: &Camera,
+        wall_s: f64,
+    ) {
+        let exposures = self.flight.drain_sensor_exposures();
         let sky = self
             .sky
             .evaluate(&self.flight, camera.pose.position_ecef, wall_clock_utc_s());
@@ -230,21 +251,39 @@ impl FlightApp {
                 &self.flight,
                 self.renderer.as_ref(),
                 self.occluded,
-                (&camera, &sky),
+                (camera, &sky),
             )
         {
             return self.present_occluded();
+        }
+        if self.handheld
+            && self.esc_menu.is_open()
+            && self.has_drawn_world
+            && self.page_map.is_none()
+        {
+            self.render_menu(event_loop, wall_s);
+            if self.failed {
+                return;
+            }
+            if self.occluded {
+                return self.present_occluded();
+            }
+            self.present(event_loop, world, None);
+            return;
         }
         let need_globe = match (&self.renderer, self.cockpit_rig.as_mut()) {
             (Some(renderer), Some(rig)) => match rig.prepare_frame(
                 renderer.queue(),
                 renderer.surface_size(),
                 &self.flight,
-                &camera,
+                camera,
                 &sky,
                 &exposures,
             ) {
-                Ok(need_globe) => need_globe,
+                Ok(need_globe) => {
+                    self.has_drawn_world = true;
+                    need_globe
+                }
                 Err(err) => return self.fail(event_loop, "cockpit avionics update failed", &err),
             },
             (Some(_), None) => true,
@@ -266,7 +305,7 @@ impl FlightApp {
         self.present(
             event_loop,
             world,
-            need_globe.then_some((&camera, &environment)),
+            need_globe.then_some((camera, &environment)),
         );
     }
 
@@ -280,16 +319,21 @@ impl FlightApp {
         else {
             return;
         };
-        let mut quads = rig.overlay_quads(world);
+        let mut layers = rig.overlay_layers(world);
         let preview_view =
             super::hub::hub_preview_view(self.esc_menu.tab(), self.hangar.as_ref(), rig.maps());
         super::hub::hub_quads(
             self.menu_overlay.as_ref(),
             self.hub_preview,
             preview_view,
-            &mut quads,
+            &mut layers.over_quads,
         );
-        if let Err(err) = renderer.render_composite(globe, &quads) {
+        if let Err(err) = renderer.render_composite_layered(
+            globe,
+            &layers.under_quads,
+            &layers.direct_vectors,
+            &layers.over_quads,
+        ) {
             return self.fail(event_loop, "rendering failed", &err);
         }
         let apart = match (self.panels.as_mut(), rig.apart_panel_quads(world)) {

@@ -9,7 +9,7 @@ use super::Flight;
 use super::display;
 use super::mode::Mode;
 use crate::camera_view::{
-    DEFAULT_CHASE_BACK_UP_M, camera_from_virtual_spec_on, pilot_eye_mount_for,
+    DEFAULT_CHASE_BACK_UP_M, camera_from_virtual_spec_on, pilot_eye_mount_with_override,
     vehicle_camera_suite, viewport_camera_for,
 };
 use crate::error::AppSimError;
@@ -21,9 +21,15 @@ const SPACE_CHASE_BACK_UP_M: (f64, f64) = (45.0, 4.0);
 impl Flight {
     /// The free-flight vehicle's own camera views from its package, none in a scenario.
     #[must_use]
-    pub fn vehicle_cameras(&self) -> &'static [VirtualCameraSpec] {
+    pub fn vehicle_cameras(&self) -> &[VirtualCameraSpec] {
         match &self.mode {
-            Mode::Free { vehicle, .. } => &vehicle_camera_suite(*vehicle).cameras,
+            Mode::Free { vehicle, .. } => vehicle
+                .external_slot()
+                .and_then(|slot| self.liveries.external_meta(slot))
+                .map_or_else(
+                    || vehicle_camera_suite(*vehicle).cameras.as_slice(),
+                    |meta| meta.camera_suite.cameras.as_slice(),
+                ),
             Mode::Scenario(_) | Mode::Space(_) => &[],
         }
     }
@@ -31,7 +37,13 @@ impl Flight {
     /// How far behind and above the vehicle the chase camera rides, metres.
     pub(super) fn chase_back_up_m(&self) -> (f64, f64) {
         match &self.mode {
-            Mode::Free { vehicle, .. } => vehicle_camera_suite(*vehicle).chase_back_up_m,
+            Mode::Free { vehicle, .. } => vehicle
+                .external_slot()
+                .and_then(|slot| self.liveries.external_meta(slot))
+                .map_or_else(
+                    || vehicle_camera_suite(*vehicle).chase_back_up_m,
+                    |meta| meta.camera_suite.chase_back_up_m,
+                ),
             Mode::Scenario(_) => DEFAULT_CHASE_BACK_UP_M,
             Mode::Space(_) => SPACE_CHASE_BACK_UP_M,
         }
@@ -53,8 +65,14 @@ impl Flight {
     /// airframe.
     pub fn aboard_eye_pose(&self) -> Result<CameraPoseEcef, AppSimError> {
         match &self.mode {
-            Mode::Free { vehicle, world, .. } => Ok(pilot_eye_mount_for(*vehicle)
-                .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m())),
+            Mode::Free { vehicle, world, .. } => {
+                let ext_eye = vehicle
+                    .external_slot()
+                    .and_then(|slot| self.liveries.external_meta(slot))
+                    .map(|m| m.pilot_eye_frd_m);
+                Ok(pilot_eye_mount_with_override(*vehicle, ext_eye)
+                    .pose(&world.truth_state(), -self.model_origin_from_cg_frd_m()))
+            }
             Mode::Scenario(run) => Ok(run.eye_pose()?),
             Mode::Space(world) => Ok(world.eye_pose()),
         }
