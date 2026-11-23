@@ -30,6 +30,8 @@ mod verify_shots;
 #[cfg(any(target_arch = "wasm32", test))]
 pub use direct_avionics::CockpitViewMode;
 pub use layout::InstrumentDockStyle;
+pub use safe_area::DockClearance;
+#[cfg(any(target_arch = "wasm32", test))]
 pub use safe_area::SafeAreaInsets;
 
 /// Composite split-viewport cockpit orchestrating [`SupervisorRig`], [`MapLibreRig`],
@@ -55,7 +57,7 @@ pub struct CockpitRig {
     /// surface; `None` docks them over it.
     panels_apart: Option<[u32; 2]>,
     dock_style: InstrumentDockStyle,
-    safe_area: SafeAreaInsets,
+    clearance: DockClearance,
     direct_avionics: bool,
     suppress_collapsed_pill: bool,
     allow_efb_solo: bool,
@@ -156,12 +158,8 @@ impl CockpitRig {
             page_map_shown: 0,
             page_map_in_sight: false,
             panels_apart: None,
-            dock_style: if handheld && !page_view {
-                InstrumentDockStyle::LeftRail
-            } else {
-                InstrumentDockStyle::BottomRow
-            },
-            safe_area: SafeAreaInsets::NONE,
+            dock_style: InstrumentDockStyle::BottomRow,
+            clearance: DockClearance::NONE,
             direct_avionics: handheld || cfg!(target_arch = "wasm32"),
             suppress_collapsed_pill: handheld && !page_view && cfg!(target_arch = "wasm32"),
             allow_efb_solo: false,

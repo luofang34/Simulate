@@ -313,7 +313,7 @@ fn build_more_popover(
     let (views_sec, view_btns) = build_views_section(doc, state, clicks)?;
     let (cockpit_sec, layout_btn, yoke_btn) =
         build_cockpit_section(doc, state, tilt, tilt_btn, clicks)?;
-    let flight_sec = build_systems_section(doc, root, state, collapsed, fly_btn, clicks)?;
+    let flight_sec = build_systems_section(doc, root, collapsed, fly_btn, clicks)?;
     pop.append_child(&views_sec).ok()?;
     pop.append_child(&cockpit_sec).ok()?;
     pop.append_child(&flight_sec).ok()?;
@@ -395,28 +395,14 @@ fn build_cockpit_section(
 fn build_systems_section(
     doc: &Document,
     root: &Element,
-    state: &Rc<RefCell<TouchFlightState>>,
     collapsed: &Rc<RefCell<bool>>,
     fly_btn: &Element,
     clicks: &mut Vec<ListenerHandle>,
 ) -> Option<Element> {
     let sec = create_el(doc, "div", "tc-more-section", None)?;
-    let hdr = create_el(doc, "div", "tc-more-label", Some("SYSTEMS"))?;
+    let hdr = create_el(doc, "div", "tc-more-label", Some("CONTROLS"))?;
     sec.append_child(&hdr).ok()?;
     let grid = create_el(doc, "div", "tc-more-grid", None)?;
-    for (lbl, aria, act) in [
-        ("CAM", "Cycle camera view", TouchAction::CycleViewport),
-        ("PAUSE", "Pause or resume", TouchAction::TogglePause),
-        ("FLAP-", "Retract flaps", TouchAction::FlapsUp),
-        ("FLAP+", "Extend flaps", TouchAction::FlapsDown),
-        ("GEAR", "Toggle landing gear", TouchAction::ToggleGear),
-        ("RST LOOK", "Reset camera look", TouchAction::ResetLook),
-    ] {
-        let btn = create_button(doc, "tc-more-btn", lbl, aria)?;
-        let st = Rc::clone(state);
-        add_click(&btn, clicks, move || st.borrow_mut().actions.push(act));
-        grid.append_child(&btn).ok()?;
-    }
     let hide_btn = create_button(doc, "tc-more-btn", "HIDE DECK", "Hide touch controls")?;
     let root_c = root.clone();
     let collapsed_c = Rc::clone(collapsed);

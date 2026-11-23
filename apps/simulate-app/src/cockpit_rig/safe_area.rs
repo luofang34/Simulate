@@ -66,6 +66,37 @@ impl SafeAreaInsets {
     }
 }
 
+/// Everything a docked instrument keeps clear of: the edges the system covers, and the
+/// bottom corners a handheld's thumb controls occupy.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct DockClearance {
+    /// The edges the system covers.
+    pub system: SafeAreaInsets,
+    /// How far in from the left and right edges the thumb controls reach; a row of
+    /// instruments along the bottom sits between them.
+    pub thumbs: SafeAreaInsets,
+}
+
+impl DockClearance {
+    /// A window with nothing to keep clear of.
+    pub const NONE: Self = Self {
+        system: SafeAreaInsets::NONE,
+        thumbs: SafeAreaInsets::NONE,
+    };
+
+    /// What a row along the bottom edge keeps clear of: at each side the further in of the
+    /// system's inset and the thumb controls, each thumb cluster with `gap` beside it.
+    #[must_use]
+    pub fn for_bottom_row(&self, gap: f32) -> SafeAreaInsets {
+        let beside = |thumb: f32| if thumb > 0.0 { thumb + gap } else { 0.0 };
+        SafeAreaInsets {
+            left: self.system.left.max(beside(self.thumbs.left)),
+            right: self.system.right.max(beside(self.thumbs.right)),
+            ..self.system
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +121,19 @@ mod tests {
         assert!(insets.bottom.abs() < f32::EPSILON);
         let wide = SafeAreaInsets::from_lengths([800.0, 0.0, 800.0, 0.0], [874.0, 402.0]);
         assert!(wide.left + wide.right < 1.0);
+    }
+
+    #[test]
+    fn a_bottom_row_sits_between_the_thumb_controls_and_inside_the_system_insets() {
+        let clearance = DockClearance {
+            system: SafeAreaInsets::from_lengths([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]),
+            thumbs: SafeAreaInsets::from_lengths([250.0, 0.0, 30.0, 0.0], [874.0, 402.0]),
+        };
+        let row = clearance.for_bottom_row(0.015);
+        assert!((row.left - (250.0 / 874.0 + 0.015)).abs() < 1e-4);
+        assert!((row.right - 59.0 / 874.0).abs() < 1e-4);
+        assert!((row.bottom - 21.0 / 402.0).abs() < 1e-4);
+        let none = DockClearance::NONE.for_bottom_row(0.015);
+        assert!(none.left.abs() < f32::EPSILON && none.right.abs() < f32::EPSILON);
     }
 }

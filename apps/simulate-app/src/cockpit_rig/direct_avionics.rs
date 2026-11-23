@@ -5,7 +5,7 @@ use sim_render::{DirectVectorDraw, OverlayQuad, ViewportRect};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld};
 
 use super::layout::{self, InstrumentDockStyle};
-use super::safe_area::SafeAreaInsets;
+use super::safe_area::DockClearance;
 use super::{CockpitRig, MFD_CHART_MAP, PFD_SVS_MAP};
 use crate::map_rig::MapLibreRig;
 
@@ -167,7 +167,7 @@ impl CockpitRig {
         self.direct_avionics && self.panels_apart.is_none()
     }
 
-    /// Active dock arrangement (`BottomRow` on desktop, `LeftRail` by default on handheld).
+    /// The dock arrangement asked for; a window taller than wide draws the rail regardless.
     #[cfg_attr(
         not(target_arch = "wasm32"),
         allow(dead_code, reason = "used by wasm32 touch controls and tests")
@@ -225,23 +225,20 @@ impl CockpitRig {
     )]
     #[must_use]
     pub fn efis_left_clear_fraction(&self, surface_size: [u32; 2]) -> f32 {
-        if !self.show_instruments
-            || !self.sources.avionics
-            || self.panels_apart.is_some()
-            || self.dock_style != InstrumentDockStyle::LeftRail
-        {
+        if !self.show_instruments || !self.sources.avionics || self.panels_apart.is_some() {
             return 0.0;
         }
-        layout::dock_layout(surface_size, self.dock_style, false, self.safe_area).right_edge_norm
+        layout::dock_layout(surface_size, self.dock_style, false, self.clearance).right_edge_norm
     }
 
-    /// Keeps the docked instruments clear of the window edges the system covers.
+    /// Keeps the docked instruments clear of the window edges the system covers and of the
+    /// thumb controls.
     #[cfg_attr(
         not(target_arch = "wasm32"),
         allow(dead_code, reason = "only a browser reports insets")
     )]
-    pub const fn set_safe_area(&mut self, insets: SafeAreaInsets) {
-        self.safe_area = insets;
+    pub const fn set_dock_clearance(&mut self, clearance: DockClearance) {
+        self.clearance = clearance;
     }
 
     /// Shows or hides 3D cockpit control geometry (yoke/stick/column) in interior cameras.
@@ -329,7 +326,7 @@ impl CockpitRig {
             self.surface_size,
             self.dock_style,
             chart_view.is_some(),
-            self.safe_area,
+            self.clearance,
         );
         if self.uses_direct_avionics() {
             if let Some(svs) = svs_view {

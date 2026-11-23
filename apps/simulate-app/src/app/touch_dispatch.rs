@@ -62,6 +62,7 @@ impl FlightApp {
                 view_mode: CockpitViewMode::HudAndEfis,
                 dock_style: InstrumentDockStyle::LeftRail,
                 hides_yoke: false,
+                autopilot_engaged: false,
                 efb_open: false,
                 efb_label: "MAP",
                 efis_left_fraction: 0.0,
@@ -93,6 +94,7 @@ impl FlightApp {
             view_mode: rig.view_mode(),
             dock_style: rig.dock_style(),
             hides_yoke: rig.hides_cockpit_controls(),
+            autopilot_engaged: self.efb_workspace.autopilot.is_engaged(),
             efb_open,
             efb_label,
             efis_left_fraction: rig.efis_left_clear_fraction(surface_size),
@@ -131,6 +133,9 @@ impl FlightApp {
                 self.handle_cockpit_action(event_loop, CockpitAction::ToggleGear);
             }
             TouchAction::CycleEfb => self.efb_command(EfbCommand::CycleMobileState),
+            TouchAction::ToggleAutopilot => self.efb_command(EfbCommand::Plan(
+                crate::efb_plan::EfbPlanAction::ToggleAutopilot,
+            )),
             TouchAction::ResetLook => {
                 self.look.reset();
                 self.touch.clear_manual_look();
@@ -187,12 +192,12 @@ impl FlightApp {
         let now_s = web_sys::window()
             .and_then(|w| w.performance())
             .map_or(0.0, |p| p.now() / 1000.0);
-        let insets = self
+        let clearance = self
             .touch_cockpit
             .as_ref()
-            .and_then(|cockpit| cockpit.poll_safe_area(now_s));
-        if let (Some(insets), Some(rig)) = (insets, self.cockpit_rig.as_mut()) {
-            rig.set_safe_area(insets);
+            .and_then(|cockpit| cockpit.poll_dock_clearance(now_s));
+        if let (Some(clearance), Some(rig)) = (clearance, self.cockpit_rig.as_mut()) {
+            rig.set_dock_clearance(clearance);
         }
         let initial_snap = self.touch_ui_snapshot(now_s);
         let actions = {

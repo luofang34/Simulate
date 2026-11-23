@@ -20,9 +20,9 @@ use crate::controls::touch::{TouchAction, TouchFlightState, TouchUiSnapshot};
 use crate::flight::Flight;
 use dial_dom::{PopoverBuild, PopoverUi, build_popovers_and_banner, sync_popovers};
 use dom::{
-    add_top_buttons, build_rudder, build_stick, build_throttle, create_button, create_el,
-    position_puck, position_rudder, update_throttle_visual, wire_brake_button, wire_rudder_slider,
-    wire_stick_pad, wire_throttle_slider,
+    add_click, add_top_buttons, build_rudder, build_stick, build_throttle, create_button,
+    create_el, position_puck, position_rudder, update_throttle_visual, wire_brake_button,
+    wire_rudder_slider, wire_stick_pad, wire_throttle_slider,
 };
 use safe_area::SafeAreaProbe;
 use tilt::TiltController;
@@ -66,6 +66,7 @@ pub struct TouchCockpit {
     root: Element,
     map_btn: Element,
     menu_btn: Element,
+    autopilot_btn: Element,
     stick_puck: HtmlElement,
     throttle_fill: HtmlElement,
     throttle_label: Element,
@@ -86,13 +87,7 @@ impl TouchCockpit {
     pub fn mount() -> Option<Self> {
         let document = web_sys::window()?.document()?;
         let body = document.body()?;
-        let root = create_el(&document, "div", "tc-root", None)?;
-        root.set_id("touch-cockpit");
-        root.set_attribute("data-hub-open", "false").ok()?;
-        root.set_attribute("data-collapsed", "false").ok()?;
-        root.set_attribute("data-rotate-dismissed", "false").ok()?;
-        root.set_attribute("data-has-rail", "false").ok()?;
-        root.set_attribute("data-deck-idle", "false").ok()?;
+        let root = new_root(&document)?;
 
         let state = Rc::new(RefCell::new(TouchFlightState::default()));
         let mut click_listeners = Vec::new();
@@ -131,24 +126,29 @@ impl TouchCockpit {
         top_wrap.append_child(&top).ok()?;
         top_wrap.append_child(&rotate_banner).ok()?;
 
-        let (deck, stick_puck, throttle_fill, throttle_label, rudder_thumb, brake_btn) =
-            mount_deck(&document, &state, &mut pointer_listeners)?;
+        let built = mount_deck(
+            &document,
+            &state,
+            &mut pointer_listeners,
+            &mut click_listeners,
+        )?;
         root.append_child(&top_wrap).ok()?;
         root.append_child(&dial_popover).ok()?;
         root.append_child(&more_popover).ok()?;
-        root.append_child(&deck).ok()?;
-        let safe_area = SafeAreaProbe::mount(&document, &root)?;
+        root.append_child(&built.deck).ok()?;
+        let safe_area = SafeAreaProbe::mount(&document, &root, built.left, built.right)?;
         body.append_child(&root).ok()?;
 
         Some(Self {
             root,
             map_btn,
             menu_btn,
-            stick_puck,
-            throttle_fill,
-            throttle_label,
-            rudder_thumb,
-            brake_btn,
+            autopilot_btn: built.autopilot_btn,
+            stick_puck: built.stick_puck,
+            throttle_fill: built.throttle_fill,
+            throttle_label: built.throttle_label,
+            rudder_thumb: built.rudder_thumb,
+            brake_btn: built.brake_btn,
             popovers,
             safe_area,
             state,
@@ -169,6 +169,14 @@ impl TouchCockpit {
         self.map_btn.set_text_content(Some(snap.efb_label));
         self.map_btn
             .set_attribute("data-active", if snap.efb_open { "true" } else { "false" })
+            .ok();
+        let engaged = if snap.autopilot_engaged {
+            "true"
+        } else {
+            "false"
+        };
+        self.autopilot_btn
+            .set_attribute("data-active", engaged)
             .ok();
         let has_rail = snap.efis_left_fraction > 0.01;
         self.root
@@ -211,9 +219,9 @@ impl TouchCockpit {
         sync_popovers(&self.popovers, snap);
     }
 
-    /// The window edges the system covers, when a fresh reading is due at `now_s`.
+    /// What the docked instruments keep clear of, when a fresh reading is due at `now_s`.
     #[must_use]
-    pub fn poll_safe_area(&self, now_s: f64) -> Option<crate::cockpit_rig::SafeAreaInsets> {
+    pub fn poll_dock_clearance(&self, now_s: f64) -> Option<crate::cockpit_rig::DockClearance> {
         self.safe_area.poll(now_s)
     }
 
@@ -247,50 +255,129 @@ impl Drop for TouchCockpit {
     }
 }
 
-type DeckBuild = (
-    Element,
-    HtmlElement,
-    HtmlElement,
-    Element,
-    HtmlElement,
-    Element,
-);
+/// The overlay's root element, with every state attribute the style sheet reads.
+fn new_root(document: &web_sys::Document) -> Option<Element> {
+    let root = create_el(document, "div", "tc-root", None)?;
+    root.set_id("touch-cockpit");
+    for name in [
+        "data-hub-open",
+        "data-collapsed",
+        "data-rotate-dismissed",
+        "data-has-rail",
+        "data-deck-idle",
+    ] {
+        root.set_attribute(name, "false").ok()?;
+    }
+    Some(root)
+}
 
+/// The mounted thumb clusters and the parts the frame loop keeps in step.
+struct DeckBuild {
+    deck: Element,
+    left: Element,
+    right: Element,
+    stick_puck: HtmlElement,
+    throttle_fill: HtmlElement,
+    throttle_label: Element,
+    rudder_thumb: HtmlElement,
+    brake_btn: Element,
+    autopilot_btn: Element,
+}
+
+/// Appends a button to `row` that queues `action` when tapped.
+fn add_action_button(
+    document: &web_sys::Document,
+    row: &Element,
+    (text, label, action): (&str, &str, TouchAction),
+    state: &Rc<RefCell<TouchFlightState>>,
+    click_listeners: &mut Vec<ListenerHandle>,
+) -> Option<Element> {
+    let btn = create_button(document, "tc-btn tc-deck-btn", text, label)?;
+    let st = Rc::clone(state);
+    add_click(&btn, click_listeners, move || {
+        let mut s = st.borrow_mut();
+        s.actions.push(action);
+        s.note_deck_interaction(dom::browser_now_s());
+    });
+    row.append_child(&btn).ok()?;
+    Some(btn)
+}
+
+/// The two thumb clusters: power and configuration under the left thumb, the stick with
+/// autopilot, camera and brakes under the right.
 fn mount_deck(
     document: &web_sys::Document,
     state: &Rc<RefCell<TouchFlightState>>,
     pointer_listeners: &mut Vec<PointerListenerHandle>,
+    click_listeners: &mut Vec<ListenerHandle>,
 ) -> Option<DeckBuild> {
     let deck = create_el(document, "div", "tc-deck", None)?;
     let left = create_el(document, "div", "tc-left", None)?;
+    let left_col = create_el(document, "div", "tc-left-col", None)?;
+    let config = create_el(document, "div", "tc-row", None)?;
     let right = create_el(document, "div", "tc-right", None)?;
+    let actions = create_el(document, "div", "tc-row", None)?;
     let (throttle, throttle_fill, throttle_label) = build_throttle(document)?;
     let (rudder, rudder_thumb) = build_rudder(document)?;
     let (stick, stick_puck) = build_stick(document)?;
+    for spec in [
+        (
+            "FLAP\u{2191}",
+            "Retract flaps one notch",
+            TouchAction::FlapsUp,
+        ),
+        (
+            "FLAP\u{2193}",
+            "Extend flaps one notch",
+            TouchAction::FlapsDown,
+        ),
+        ("GEAR", "Toggle landing gear", TouchAction::ToggleGear),
+    ] {
+        add_action_button(document, &config, spec, state, click_listeners)?;
+    }
+    let autopilot_btn = add_action_button(
+        document,
+        &actions,
+        (
+            "AP",
+            "Engage or disengage the autopilot",
+            TouchAction::ToggleAutopilot,
+        ),
+        state,
+        click_listeners,
+    )?;
+    add_action_button(
+        document,
+        &actions,
+        ("CAM", "Cycle camera view", TouchAction::CycleViewport),
+        state,
+        click_listeners,
+    )?;
     let brake_btn = create_button(document, "tc-btn tc-brake", "BRK", "Hold wheel brakes")?;
+    actions.append_child(&brake_btn).ok()?;
+    left_col.append_child(&config).ok()?;
+    left_col.append_child(&rudder).ok()?;
     left.append_child(&throttle).ok()?;
-    left.append_child(&rudder).ok()?;
-    right.append_child(&brake_btn).ok()?;
+    left.append_child(&left_col).ok()?;
+    right.append_child(&actions).ok()?;
     right.append_child(&stick).ok()?;
     deck.append_child(&left).ok()?;
     deck.append_child(&right).ok()?;
 
-    wire_stick_pad(&stick, &stick_puck, state, pointer_listeners);
-    wire_throttle_slider(
-        &throttle,
-        &throttle_fill,
-        &throttle_label,
-        state,
-        pointer_listeners,
-    );
-    wire_rudder_slider(&rudder, &rudder_thumb, state, pointer_listeners);
-    wire_brake_button(&brake_btn, state, pointer_listeners);
-    Some((
+    let pointers = pointer_listeners;
+    wire_stick_pad(&stick, &stick_puck, state, pointers);
+    wire_throttle_slider(&throttle, &throttle_fill, &throttle_label, state, pointers);
+    wire_rudder_slider(&rudder, &rudder_thumb, state, pointers);
+    wire_brake_button(&brake_btn, state, pointers);
+    Some(DeckBuild {
         deck,
+        left,
+        right,
         stick_puck,
         throttle_fill,
         throttle_label,
         rudder_thumb,
         brake_btn,
-    ))
+        autopilot_btn,
+    })
 }

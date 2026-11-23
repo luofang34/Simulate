@@ -42,6 +42,8 @@ pub enum TouchAction {
     FlapsUp,
     /// Toggle landing gear up/down.
     ToggleGear,
+    /// Engage or disengage the flight-plan autopilot.
+    ToggleAutopilot,
     /// Cycle mobile EFB state (`Hidden -> CompactCorner -> ExpandedEfb -> Hidden`).
     CycleEfb,
     /// Switch active primary HUD + EFIS view combination (`HUD+EFIS`, `EFIS`, `HUD`, `CLEAN`).
@@ -179,6 +181,8 @@ pub struct TouchUiSnapshot {
     pub dock_style: InstrumentDockStyle,
     /// Whether interior 3D yoke/stick geometry is hidden.
     pub hides_yoke: bool,
+    /// Whether the flight-plan autopilot is flying.
+    pub autopilot_engaged: bool,
     /// Whether the EFB map overlay is currently visible (compact or expanded).
     pub efb_open: bool,
     /// Short badge label for the `MAP` pill (`"MAP"` / `"EFB"` / `"CLOSE"`).

@@ -74,7 +74,7 @@ impl CockpitRig {
             self.surface_size,
             self.dock_style,
             has_dock_chart,
-            self.safe_area,
+            self.clearance,
         )
     }
 }
