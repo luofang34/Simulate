@@ -67,6 +67,24 @@ impl InertialTransform {
         }
     }
 
+    /// Mars's body-fixed orientation at `utc`, from the IAU 2015 north pole
+    /// (`alpha_0 = 317.68143°`, `delta_0 = 52.88650°`) and prime meridian
+    /// (`W = 176.630° + 350.89198226° * d`).
+    pub fn mars_at(utc: UtcTime) -> Self {
+        let days = days_since_j2000(utc);
+        let centuries = days / DAYS_PER_CENTURY;
+        let ra = (317.681_43 - 0.1061 * centuries).to_radians();
+        let dec = (52.886_50 - 0.0609 * centuries).to_radians();
+        let pm = (176.630 + 350.891_982_26 * days)
+            .rem_euclid(360.0)
+            .to_radians();
+        Self {
+            j2000_to_fixed: DQuat::from_rotation_z(-pm)
+                * DQuat::from_rotation_x(dec - FRAC_PI_2)
+                * DQuat::from_rotation_z(-(ra + FRAC_PI_2)),
+        }
+    }
+
     /// Expresses a J2000 vector in the body-fixed frame.
     pub fn j2000_to_fixed(&self, inertial: DVec3) -> DVec3 {
         self.j2000_to_fixed * inertial
