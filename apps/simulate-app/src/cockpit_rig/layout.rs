@@ -10,6 +10,7 @@ use sim_scenery::CatalogVerticalDatum;
 use tracing::warn;
 
 use super::efb_chrome::rect_px;
+use super::safe_area::SafeAreaInsets;
 use crate::avionics::{ConformalSurface, HudView};
 use crate::map_rig::{AvionicsPreset, MapLibreRig, ScenerySource};
 use crate::world_surface::WorldSurfaceHandle;
@@ -153,20 +154,26 @@ fn snap_rect(rect: ViewportRect, [pw, ph]: [u32; 2], [sw, sh]: [u32; 2]) -> View
     px_to_viewport_rect([x, y, w, h], [sw_i, sh_i])
 }
 
-/// Computes integer-snapped dock geometry for `style` and `has_dock_chart`.
+/// Computes integer-snapped dock geometry for `style` and `has_dock_chart`, clear of the
+/// window edges `insets` says the system covers.
 pub(super) fn dock_layout(
     surface_size: [u32; 2],
     style: InstrumentDockStyle,
     has_dock_chart: bool,
+    insets: SafeAreaInsets,
 ) -> PanelDockLayout {
     match style {
-        InstrumentDockStyle::BottomRow => bottom_row_layout(surface_size, has_dock_chart),
-        InstrumentDockStyle::LeftRail => left_rail_layout(surface_size, has_dock_chart),
+        InstrumentDockStyle::BottomRow => bottom_row_layout(surface_size, has_dock_chart, insets),
+        InstrumentDockStyle::LeftRail => left_rail_layout(surface_size, has_dock_chart, insets),
     }
 }
 
-fn bottom_row_layout(surface_size: [u32; 2], has_dock_chart: bool) -> PanelDockLayout {
-    let rects = dock_rects(surface_size, if has_dock_chart { 3 } else { 2 });
+fn bottom_row_layout(
+    surface_size: [u32; 2],
+    has_dock_chart: bool,
+    insets: SafeAreaInsets,
+) -> PanelDockLayout {
+    let rects = dock_rects(surface_size, if has_dock_chart { 3 } else { 2 }, insets);
     let panel_px = rects
         .first()
         .map_or([64, 48], |&r| rect_px(r, surface_size));
@@ -189,37 +196,44 @@ fn bottom_row_layout(surface_size: [u32; 2], has_dock_chart: bool) -> PanelDockL
     }
 }
 
-fn left_rail_layout(surface_size: [u32; 2], has_dock_chart: bool) -> PanelDockLayout {
+/// The rail's share of the window height, the rest split above and below it.
+const RAIL_HEIGHT_FRACTION: f32 = 0.88;
+
+fn left_rail_layout(
+    surface_size: [u32; 2],
+    has_dock_chart: bool,
+    insets: SafeAreaInsets,
+) -> PanelDockLayout {
     let sw_i = surface_size[0].max(1);
     let sh_i = surface_size[1].max(1);
     let (sw, sh) = (sw_i as f32, sh_i as f32);
-    let x_px = (sw * 0.014).round().clamp(4.0, 24.0);
+    let edge_px = (sw * 0.014).round().clamp(4.0, 24.0);
+    let band_px = sh * (1.0 - RAIL_HEIGHT_FRACTION) * 0.5;
+    let [left_px, top_px, right_px, bottom_px] =
+        insets.margins_px([sw, sh], [edge_px, band_px, edge_px, band_px]);
     let gap_y_px = (sh * 0.014).round().clamp(6.0, 14.0);
-    let max_w_px = sw * if sh_i > sw_i { 0.36 } else { 0.30 };
-    let max_h_px = ((sh * 0.88 - gap_y_px) * 0.5).floor().max(48.0);
-    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT))
-        .floor()
-        .clamp(64.0, (sw - x_px * 2.0).max(64.0)) as u32;
-    let h_px = ((w_px as f32 / PANEL_ASPECT).round() as u32).clamp(48.0 as u32, sh_i);
-    let total_h = h_px
-        .saturating_mul(2)
-        .saturating_add(gap_y_px as u32)
-        .min(sh_i);
-    let top_y = (sh_i - total_h) / 2;
-    let x = x_px as u32;
+    let room_w_px = (sw - left_px - right_px).max(1.0);
+    let room_h_px = (sh - top_px - bottom_px).max(1.0);
+    let max_w_px = (sw * if sh_i > sw_i { 0.36 } else { 0.30 }).min(room_w_px);
+    let max_h_px = ((room_h_px - gap_y_px) * 0.5).floor().max(1.0);
+    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT).floor().max(1.0) as u32).min(sw_i);
+    let h_px = ((w_px as f32 / PANEL_ASPECT).round().max(1.0) as u32).min(sh_i);
+    let gap_y = (gap_y_px as u32).min(sh_i.saturating_sub(h_px.saturating_mul(2)));
+    let total_h = h_px.saturating_mul(2).saturating_add(gap_y).min(sh_i);
+    let slack_px = (room_h_px - total_h as f32).max(0.0) * 0.5;
+    let top_y = ((top_px + slack_px).round() as u32).min(sh_i - total_h);
+    let x = (left_px.round() as u32).min(sw_i - w_px);
     let pfd = px_to_viewport_rect([x, top_y, w_px, h_px], [sw_i, sh_i]);
     let hsi_y = top_y
         .saturating_add(h_px)
-        .saturating_add(gap_y_px as u32)
+        .saturating_add(gap_y)
         .min(sh_i - h_px);
     let hsi = px_to_viewport_rect([x, hsi_y, w_px, h_px], [sw_i, sh_i]);
     let right_edge_px = x.saturating_add(w_px);
     let mfd = has_dock_chart.then(|| {
         let gap_x = (sw * 0.015).round().max(8.0) as u32;
         let mfd_x = right_edge_px.saturating_add(gap_x).min(sw_i - w_px);
-        let mfd_y = sh_i
-            .saturating_sub(h_px)
-            .saturating_sub((sh * 0.012).round() as u32);
+        let mfd_y = (sh_i - h_px).saturating_sub(bottom_px.max(sh * 0.012).round() as u32);
         px_to_viewport_rect([mfd_x, mfd_y, w_px, h_px], [sw_i, sh_i])
     });
     PanelDockLayout {
@@ -232,26 +246,31 @@ fn left_rail_layout(surface_size: [u32; 2], has_dock_chart: bool) -> PanelDockLa
 }
 
 /// `count` panels docked along the bottom: first left, last right, any middle centred.
-pub(super) fn dock_rects([sw, sh]: [u32; 2], count: usize) -> Vec<ViewportRect> {
+pub(super) fn dock_rects(
+    [sw, sh]: [u32; 2],
+    count: usize,
+    insets: SafeAreaInsets,
+) -> Vec<ViewportRect> {
     let (sw, sh) = (sw.max(1) as f32, sh.max(1) as f32);
     let n = count.max(1) as f32;
+    let [left, _, right, bottom] = insets.margins_px([1.0, 1.0], [GAP_X, 0.0, GAP_X, GAP_BOTTOM]);
     let mut height = PANEL_HEIGHT_FRACTION;
     let mut width = height * PANEL_ASPECT * sh / sw;
-    let room = 1.0 - (n + 1.0) * GAP_X;
+    let room = (1.0 - left - right - (n - 1.0) * GAP_X).max(0.0);
     if width * n > room {
         width = room / n;
         height = width * sw / (sh * PANEL_ASPECT);
     }
-    let y = 1.0 - height - GAP_BOTTOM;
+    let y = 1.0 - height - bottom;
     (0..count)
         .map(|i| {
             let x = if i == 0 {
-                GAP_X
+                left
             } else if i + 1 == count {
-                1.0 - GAP_X - width
+                1.0 - right - width
             } else {
-                let span = 1.0 - 2.0 * GAP_X - width;
-                GAP_X + span * i as f32 / (n - 1.0)
+                let span = 1.0 - left - right - width;
+                left + span * i as f32 / (n - 1.0)
             };
             ViewportRect {
                 x,
@@ -275,8 +294,9 @@ pub(super) fn dock_panel_px(
     surface_size: [u32; 2],
     style: InstrumentDockStyle,
     has_dock_chart: bool,
+    insets: SafeAreaInsets,
 ) -> Option<[u32; 2]> {
-    Some(dock_layout(surface_size, style, has_dock_chart).panel_px)
+    Some(dock_layout(surface_size, style, has_dock_chart, insets).panel_px)
 }
 
 /// Appends the docked PFD (with optional SVS underlay), optional MFD chart, and HSI quads.
@@ -345,7 +365,7 @@ mod tests {
     #[test]
     fn docked_panels_keep_four_by_three_pixels_on_a_wide_window() {
         let size = [1280_u32, 720_u32];
-        let rects = dock_rects(size, 3);
+        let rects = dock_rects(size, 3, SafeAreaInsets::NONE);
         assert_eq!(rects.len(), 3);
         for rect in &rects {
             let aspect = (rect.width * 1280.0) / (rect.height * 720.0);
@@ -358,7 +378,7 @@ mod tests {
 
     #[test]
     fn a_narrow_window_shrinks_the_dock_instead_of_overlapping() {
-        let rects = dock_rects([600, 900], 3);
+        let rects = dock_rects([600, 900], 3, SafeAreaInsets::NONE);
         for pair in rects.windows(2) {
             assert!(pair[0].x + pair[0].width <= pair[1].x + 1e-5);
         }
@@ -370,7 +390,12 @@ mod tests {
     #[test]
     fn left_rail_stacks_pfd_above_hsi_without_overlap_or_aspect_distortion() {
         for size in [[1704_u32, 786_u32], [786_u32, 1704_u32]] {
-            let layout = dock_layout(size, InstrumentDockStyle::LeftRail, false);
+            let layout = dock_layout(
+                size,
+                InstrumentDockStyle::LeftRail,
+                false,
+                SafeAreaInsets::NONE,
+            );
             let pfd = viewport_to_px_rect(layout.pfd, size);
             let hsi = viewport_to_px_rect(layout.hsi, size);
             assert_eq!([pfd[2], pfd[3]], layout.panel_px);
@@ -382,5 +407,72 @@ mod tests {
             let aspect = pfd[2] as f32 / pfd[3] as f32;
             assert!((aspect - PANEL_ASPECT).abs() < 0.02, "{aspect}");
         }
+    }
+
+    #[test]
+    fn docks_stay_inside_a_surface_of_any_size() {
+        let insets = SafeAreaInsets::from_lengths([59.0, 59.0, 59.0, 21.0], [402.0, 402.0]);
+        for size in [
+            [1_u32, 1_u32],
+            [60, 1],
+            [1, 60],
+            [47, 47],
+            [300, 20],
+            [20, 300],
+        ] {
+            for style in [
+                InstrumentDockStyle::LeftRail,
+                InstrumentDockStyle::BottomRow,
+            ] {
+                for insets in [SafeAreaInsets::NONE, insets] {
+                    let layout = dock_layout(size, style, true, insets);
+                    for rect in [Some(layout.pfd), layout.mfd, Some(layout.hsi)]
+                        .into_iter()
+                        .flatten()
+                    {
+                        let [x, y, w, h] = viewport_to_px_rect(rect, size);
+                        assert!(w >= 1 && h >= 1, "{size:?} {style:?}");
+                        assert!(x + w <= size[0].max(1), "{size:?} {style:?}");
+                        assert!(y + h <= size[1].max(1), "{size:?} {style:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_rail_clears_a_landscape_phone_sensor_housing() {
+        let size = [1748_u32, 804_u32];
+        let housing = SafeAreaInsets::from_lengths([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
+        let bare = dock_layout(
+            size,
+            InstrumentDockStyle::LeftRail,
+            false,
+            SafeAreaInsets::NONE,
+        );
+        let clear = dock_layout(size, InstrumentDockStyle::LeftRail, false, housing);
+        let [bare_x, ..] = viewport_to_px_rect(bare.pfd, size);
+        let [x, y, w, h] = viewport_to_px_rect(clear.pfd, size);
+        let [_, hsi_y, _, hsi_h] = viewport_to_px_rect(clear.hsi, size);
+        assert!(
+            bare_x < 118,
+            "an uncovered window keeps the standard margin"
+        );
+        assert_eq!(x, 118, "the larger of margin and inset, not their sum");
+        assert!(y + h < hsi_y);
+        assert!(hsi_y + hsi_h <= 804 - 42);
+        assert!((w as f32 / h as f32 - PANEL_ASPECT).abs() < 0.02);
+    }
+
+    #[test]
+    fn the_bottom_row_clears_both_side_insets_and_the_home_indicator() {
+        let size = [1748_u32, 804_u32];
+        let housing = SafeAreaInsets::from_lengths([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
+        let rects = dock_rects(size, 2, housing);
+        let first = viewport_to_px_rect(rects[0], size);
+        let last = viewport_to_px_rect(rects[1], size);
+        assert!(first[0] >= 118);
+        assert!(last[0] + last[2] <= 1748 - 118);
+        assert!(last[1] + last[3] <= 804 - 42);
     }
 }

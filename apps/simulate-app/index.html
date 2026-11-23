@@ -138,6 +138,12 @@
           max(0.5rem, env(safe-area-inset-left, 0px));
         font: 600 12px/1 system-ui, -apple-system, sans-serif; color: #eef3ff;
       }
+      .tc-safe-probe {
+        position: absolute; visibility: hidden; pointer-events: none; width: 0; height: 0;
+        padding:
+          env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+          env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+      }
       .tc-top-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
       .tc-top {
         display: flex; flex-wrap: nowrap; gap: 0.4rem; align-items: center; justify-content: flex-end;

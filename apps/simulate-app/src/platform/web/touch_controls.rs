@@ -4,6 +4,7 @@
 
 mod dial_dom;
 mod dom;
+mod safe_area;
 mod tilt;
 
 use std::cell::RefCell;
@@ -23,6 +24,7 @@ use dom::{
     position_puck, position_rudder, update_throttle_visual, wire_brake_button, wire_rudder_slider,
     wire_stick_pad, wire_throttle_slider,
 };
+use safe_area::SafeAreaProbe;
 use tilt::TiltController;
 
 struct ListenerHandle {
@@ -70,6 +72,7 @@ pub struct TouchCockpit {
     rudder_thumb: HtmlElement,
     brake_btn: Element,
     popovers: PopoverUi,
+    safe_area: SafeAreaProbe,
     state: Rc<RefCell<TouchFlightState>>,
     tilt: Rc<RefCell<TiltController>>,
     collapsed: Rc<RefCell<bool>>,
@@ -134,6 +137,7 @@ impl TouchCockpit {
         root.append_child(&dial_popover).ok()?;
         root.append_child(&more_popover).ok()?;
         root.append_child(&deck).ok()?;
+        let safe_area = SafeAreaProbe::mount(&document, &root)?;
         body.append_child(&root).ok()?;
 
         Some(Self {
@@ -146,6 +150,7 @@ impl TouchCockpit {
             rudder_thumb,
             brake_btn,
             popovers,
+            safe_area,
             state,
             tilt,
             collapsed,
@@ -204,6 +209,12 @@ impl TouchCockpit {
             )
             .ok();
         sync_popovers(&self.popovers, snap);
+    }
+
+    /// The window edges the system covers, when a fresh reading is due at `now_s`.
+    #[must_use]
+    pub fn poll_safe_area(&self, now_s: f64) -> Option<crate::cockpit_rig::SafeAreaInsets> {
+        self.safe_area.poll(now_s)
     }
 
     /// Releases held touch axes/brakes cleanly (when opening the Flight Hub).

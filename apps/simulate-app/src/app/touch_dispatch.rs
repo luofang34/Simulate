@@ -187,6 +187,13 @@ impl FlightApp {
         let now_s = web_sys::window()
             .and_then(|w| w.performance())
             .map_or(0.0, |p| p.now() / 1000.0);
+        let insets = self
+            .touch_cockpit
+            .as_ref()
+            .and_then(|cockpit| cockpit.poll_safe_area(now_s));
+        if let (Some(insets), Some(rig)) = (insets, self.cockpit_rig.as_mut()) {
+            rig.set_safe_area(insets);
+        }
         let initial_snap = self.touch_ui_snapshot(now_s);
         let actions = {
             let Some(cockpit) = self.touch_cockpit.as_ref() else {

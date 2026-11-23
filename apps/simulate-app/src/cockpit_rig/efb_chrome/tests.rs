@@ -63,7 +63,7 @@ fn the_corner_map_sits_top_right_clear_of_the_hud_and_the_dock() {
         );
         assert!(rect.x + rect.width < 1.0, "{size:?}");
         assert!(!overlaps(rect, hud), "{size:?} covers the HUD");
-        for dock in dock_rects(size, 2) {
+        for dock in dock_rects(size, 2, crate::cockpit_rig::SafeAreaInsets::NONE) {
             assert!(!overlaps(rect, dock), "{size:?} covers {dock:?}");
         }
     }

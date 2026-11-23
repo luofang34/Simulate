@@ -5,6 +5,7 @@ use sim_render::{DirectVectorDraw, OverlayQuad, ViewportRect};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld};
 
 use super::layout::{self, InstrumentDockStyle};
+use super::safe_area::SafeAreaInsets;
 use super::{CockpitRig, MFD_CHART_MAP, PFD_SVS_MAP};
 use crate::map_rig::MapLibreRig;
 
@@ -231,7 +232,16 @@ impl CockpitRig {
         {
             return 0.0;
         }
-        layout::dock_layout(surface_size, self.dock_style, false).right_edge_norm
+        layout::dock_layout(surface_size, self.dock_style, false, self.safe_area).right_edge_norm
+    }
+
+    /// Keeps the docked instruments clear of the window edges the system covers.
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(dead_code, reason = "only a browser reports insets")
+    )]
+    pub const fn set_safe_area(&mut self, insets: SafeAreaInsets) {
+        self.safe_area = insets;
     }
 
     /// Shows or hides 3D cockpit control geometry (yoke/stick/column) in interior cameras.
@@ -315,7 +325,12 @@ impl CockpitRig {
         let chart_view = maps
             .filter(|m| !m.efb_shown() && mode != OperatorViewportMode::ChartMap)
             .and_then(|m| m.instrument_view(MFD_CHART_MAP));
-        let dock = layout::dock_layout(self.surface_size, self.dock_style, chart_view.is_some());
+        let dock = layout::dock_layout(
+            self.surface_size,
+            self.dock_style,
+            chart_view.is_some(),
+            self.safe_area,
+        );
         if self.uses_direct_avionics() {
             if let Some(svs) = svs_view {
                 layers

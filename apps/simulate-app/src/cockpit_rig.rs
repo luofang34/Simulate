@@ -21,6 +21,7 @@ pub mod efb_chrome;
 mod layout;
 mod page_map;
 mod panels_apart;
+mod safe_area;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -29,6 +30,7 @@ mod verify_shots;
 #[cfg(any(target_arch = "wasm32", test))]
 pub use direct_avionics::CockpitViewMode;
 pub use layout::InstrumentDockStyle;
+pub use safe_area::SafeAreaInsets;
 
 /// Composite split-viewport cockpit orchestrating [`SupervisorRig`], [`MapLibreRig`],
 /// [`AvionicsRig`], and the stand-in guidance host on one shared `wgpu::Device`.
@@ -53,6 +55,7 @@ pub struct CockpitRig {
     /// surface; `None` docks them over it.
     panels_apart: Option<[u32; 2]>,
     dock_style: InstrumentDockStyle,
+    safe_area: SafeAreaInsets,
     direct_avionics: bool,
     suppress_collapsed_pill: bool,
     allow_efb_solo: bool,
@@ -158,6 +161,7 @@ impl CockpitRig {
             } else {
                 InstrumentDockStyle::BottomRow
             },
+            safe_area: SafeAreaInsets::NONE,
             direct_avionics: handheld || cfg!(target_arch = "wasm32"),
             suppress_collapsed_pill: handheld && !page_view && cfg!(target_arch = "wasm32"),
             allow_efb_solo: false,

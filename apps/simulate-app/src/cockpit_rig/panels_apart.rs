@@ -70,6 +70,11 @@ impl CockpitRig {
                 .maps
                 .as_ref()
                 .is_some_and(|m| !m.efb_shown() && m.instrument_view(MFD_CHART_MAP).is_some());
-        layout::dock_panel_px(self.surface_size, self.dock_style, has_dock_chart)
+        layout::dock_panel_px(
+            self.surface_size,
+            self.dock_style,
+            has_dock_chart,
+            self.safe_area,
+        )
     }
 }
