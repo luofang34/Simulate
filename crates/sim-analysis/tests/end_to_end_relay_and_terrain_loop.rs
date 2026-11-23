@@ -11,7 +11,7 @@ use sim_orbital::BuiltinSolarSystem2026_2028;
 use sim_spacetime::{BodyOrientationCatalog, EphemerisCatalog};
 
 const SOKOLY_SAMPLE_REQ_REV1_JSON: &str = r#"{
-  "schema_version": 2,
+  "schema_version": 3,
   "request_id": "req-valley-relay-rev1",
   "design_revision": {
     "design_id": "design-valley-relay-001",
@@ -178,7 +178,7 @@ const SOKOLY_SAMPLE_REQ_REV1_JSON: &str = r#"{
 }"#;
 
 const SOKOLY_SAMPLE_REQ_REV2_JSON: &str = r#"{
-  "schema_version": 2,
+  "schema_version": 3,
   "request_id": "req-valley-relay-rev2",
   "design_revision": {
     "design_id": "design-valley-relay-001",

@@ -2,15 +2,16 @@
 //!
 //! The orbital tier stops at every carried plant's next exchange instant.
 //! There the plant is shown the state the scheduler committed, advances its
-//! internals to it, and its loads and mass are stamped onto the scheduler's
-//! command timeline at that same instant. Internals therefore only ever run
-//! on this thread between committed instants: speculative proposals stay pure
-//! functions of their checkpoints, and no rollback reaches inside a plant.
+//! internals to it, and its loads and mass become the vessel's externally held
+//! loads from that same instant, beside whatever burn a plan has latched.
+//! Internals therefore only ever run on this thread between committed
+//! instants: speculative proposals stay pure functions of their checkpoints,
+//! and no rollback reaches inside a plant.
 
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
-    DerivativeOrder, LatchedBurnLaw, MassPropertiesModel, NaifId, PlayerCommandPayload, VesselId,
+    DerivativeOrder, ExternalLoads, ExternalMassProperties, MassPropertiesModel, NaifId, VesselId,
 };
 use sim_spacetime::SolarFluxModel;
 
@@ -20,12 +21,13 @@ use crate::carry::{CarriedLoads, CarryContext};
 use crate::handoff::{naif_body, to_body_fixed};
 use crate::local::{LocalPlant, OrbitalBody};
 
-/// The law that makes the orbital tier apply `loads` until the next exchange.
-pub(super) fn wrench_law(loads: &CarriedLoads) -> LatchedBurnLaw {
-    LatchedBurnLaw::BodyWrench {
-        force_body_n: loads.force_body_n.to_array(),
-        torque_body_nm: loads.torque_body_nm.to_array(),
-    }
+/// `loads` as the orbital tier holds them until the next exchange.
+pub(super) fn external_loads(loads: &CarriedLoads) -> ExternalLoads {
+    ExternalLoads::new(
+        loads.force_body_n,
+        loads.torque_body_nm,
+        ExternalMassProperties::new(loads.body.mass_kg, loads.body.inertia_cg_body),
+    )
 }
 
 /// `body` as a mass the orbital tier holds constant: all of it dry, because
@@ -111,7 +113,7 @@ impl Universe {
     }
 
     /// Exchanges with every carried plant whose instant has come, in id
-    /// order, then lets the scheduler apply what they latched.
+    /// order.
     fn exchange_due(&mut self) -> Result<(), UniverseError> {
         let due: Vec<VesselId> = self
             .vessels
@@ -124,14 +126,10 @@ impl Universe {
                 Flight::Local(_) => None,
             })
             .collect();
-        let mut stamped = false;
         for id in due {
             if let Some(loads) = self.carry_to_now(id)? {
-                stamped |= self.latch(id, &loads)?;
+                self.latch(id, &loads)?;
             }
-        }
-        if stamped {
-            self.commit_orbital_to(self.now)?;
         }
         Ok(())
     }
@@ -249,30 +247,13 @@ impl Universe {
         })
     }
 
-    /// Stamps `loads` on the scheduler's timeline at [`Self::now`]; `true`
-    /// when anything changed. An unchanged law or mass is not stamped again,
-    /// so a carried vessel that only coasts leaves the scheduler its long
-    /// integration steps.
-    fn latch(&mut self, id: VesselId, loads: &CarriedLoads) -> Result<bool, UniverseError> {
-        let model = mass_model(&loads.body);
-        let law = wrench_law(loads);
-        let held_model = self
-            .orbital
-            .vessel_config(id)
-            .map(|config| config.mass_model);
-        let held_law = self
-            .orbital
-            .committed_checkpoint(id)
-            .map(|checkpoint| checkpoint.gnc.latched_law);
-        let mut stamped = false;
-        if held_model != Some(model) {
-            self.command(id, self.now, PlayerCommandPayload::SetMassModel(model))?;
-            stamped = true;
-        }
-        if held_law != Some(law) {
-            self.command(id, self.now, PlayerCommandPayload::SetBurnLaw(law))?;
-            stamped = true;
-        }
-        Ok(stamped)
+    /// Holds `loads` on `id` from [`Self::now`]. Loads with the same bits
+    /// as those held change nothing, so a carried vessel that only coasts
+    /// keeps the scheduler's long integration steps.
+    fn latch(&mut self, id: VesselId, loads: &CarriedLoads) -> Result<(), UniverseError> {
+        self.orbital
+            .set_external_loads(id, external_loads(loads))
+            .map(|_changed| ())
+            .map_err(|e| UniverseError::Scheduler(Box::new(e)))
     }
 }

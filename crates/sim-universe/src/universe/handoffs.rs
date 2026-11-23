@@ -7,11 +7,11 @@
 use sim_core::SimInstant;
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
-    LatchedBurnLaw, PropellantMode, ReactionWheelMode, SrpSurface, VesselCheckpoint, VesselConfig,
+    ExternalLoads, PropellantMode, ReactionWheelMode, SrpSurface, VesselCheckpoint, VesselConfig,
     VesselId,
 };
 
-use super::exchange::{mass_model, wrench_law};
+use super::exchange::{external_loads, mass_model};
 use super::{Flight, Tier, Universe};
 use crate::UniverseError;
 use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
@@ -202,13 +202,13 @@ impl Universe {
         let carryable = plant
             .carry_period()
             .is_some_and(|period| period.ticks_u128() > 0);
-        let (law, carried) = if carryable {
+        let (held, carried) = if carryable {
             let context = self.carry_context(body, local, self.now)?;
             let loads = plant.carry(&context)?;
-            (wrench_law(&loads), loads.body)
+            (external_loads(&loads), loads.body)
         } else {
             let carried = plant.orbital_body().ok_or(UniverseError::LocalOnly(id))?;
-            (LatchedBurnLaw::Coast, carried)
+            (ExternalLoads::default(), carried)
         };
         let config = VesselConfig {
             mass_model: mass_model(&carried),
@@ -222,7 +222,7 @@ impl Universe {
             auto_soi_switch: true,
         };
         let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
-        checkpoint.gnc.latched_law = law;
+        checkpoint.external.loads = held;
         if let Some(surface) = srp {
             checkpoint = checkpoint.with_srp_surface(surface);
         }

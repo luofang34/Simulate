@@ -102,6 +102,14 @@ pub enum SchedulerError {
         /// Target step timestamp that required coverage.
         step_goal: SimInstant,
     },
+    /// Externally owned loads held a non-finite component or a non-positive mass.
+    #[error("external loads for {vessel_id} at {} ticks are not finite or have no mass", instant.ticks_u128())]
+    InvalidExternalLoads {
+        /// Vessel the loads were for.
+        vessel_id: VesselId,
+        /// Committed instant at which they were to take effect.
+        instant: SimInstant,
+    },
     /// Snapshot manifest disagreed with the active universe's model manifest.
     #[error("snapshot manifest mismatch on field {0}")]
     ManifestMismatch(#[from] ManifestMismatchField),

@@ -4,6 +4,7 @@
 //! bit-identically without mutating shared controller or RNG state inside rejected RK stages.
 
 pub mod burn_law;
+pub mod external_inputs;
 
 use serde::{Deserialize, Serialize};
 pub(crate) use sim_spacetime::sim_instant_serde;
@@ -24,6 +25,7 @@ use crate::{
 };
 
 pub use burn_law::{ActuatorState, LatchedBurnLaw};
+pub use external_inputs::{ExternalInputs, ExternalLoads, ExternalMassProperties};
 
 /// Explicit per-vessel `Xoshiro256**` deterministic PRNG state (zero thread-local or OS RNG).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -232,8 +234,10 @@ impl DiscreteGncState {
     }
 }
 
-/// Mass, actuator-mode, tolerance, and SOI-switching configuration for one vessel, fixed
-/// except where a stamped [`crate::PlayerCommandPayload::SetMassModel`] replaces the mass model.
+/// Static mass, actuator-mode, tolerance, and SOI-switching configuration for one vessel.
+///
+/// An external owner's mass in [`VesselCheckpoint::external`] overrides the dry part of
+/// [`Self::mass_model`]; [`VesselCheckpoint::mass_model`] resolves the one to integrate.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VesselConfig {
     /// Mass and inertia tensor model.
@@ -310,6 +314,9 @@ pub struct VesselCheckpoint {
     pub pinned_surface: Option<PinnedSurfaceState>,
     /// Cumulative idealization/exceedance audit flags.
     pub audit: PropagationAudit,
+    /// Force, torque and mass held by an owner outside the orbital tier, added to whatever
+    /// [`DiscreteGncState::latched_law`] produces.
+    pub external: ExternalInputs,
 }
 
 impl VesselCheckpoint {
@@ -332,7 +339,15 @@ impl VesselCheckpoint {
             integrator_hint: IntegratorContinuation::default(),
             pinned_surface: None,
             audit: PropagationAudit::default(),
+            external: ExternalInputs::default(),
         }
+    }
+
+    /// The mass model this checkpoint integrates with: `config`'s, with any externally
+    /// owned mass in place of its dry mass and dry inertia.
+    #[must_use]
+    pub fn mass_model(&self, config: &VesselConfig) -> MassPropertiesModel {
+        self.external.mass_model(&config.mass_model)
     }
 
     /// Attaches a solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
@@ -363,26 +378,30 @@ impl VesselCheckpoint {
             }
             None => h.write_u8(0),
         }
+        self.external.loads.write_to_hasher(h);
     }
 
     /// Canonical SHA-256 hash of instantaneous physical and actuator state only
-    /// (`vessel_id`, `instant`, `plant`, `actuators`, and `pinned_surface`).
+    /// (`vessel_id`, `instant`, `plant`, `actuators`, `pinned_surface`, and the externally
+    /// held loads and mass).
     #[must_use]
     pub fn physics_state_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v1");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v2");
         self.write_physics_state_to_hasher(&mut h);
         h.finish()
     }
 
     /// Canonical SHA-256 content hash of the full per-vessel replay checkpoint
-    /// (covering physical state, GNC state, RNG, generations, integrator continuation, and audit).
+    /// (covering physical state, GNC state, RNG, generations including the external inputs'
+    /// own, integrator continuation, and audit).
     #[must_use]
     pub fn checkpoint_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v2");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v3");
         self.write_physics_state_to_hasher(&mut h);
         self.gnc.write_to_hasher(&mut h);
         self.rng.write_to_hasher(&mut h);
         self.generations.write_to_hasher(&mut h);
+        h.write_u64(self.external.generation);
         self.integrator_hint.write_to_hasher(&mut h);
         h.write_u8(u8::from(self.audit.mass_conservation_exempt));
         h.write_u8(u8::from(self.audit.angular_momentum_exempt));

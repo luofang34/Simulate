@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use sim_spacetime::{SimInstant, TickSpan};
 
 use crate::{
-    checkpoint::{PropagatorKind, VesselCheckpoint, VesselConfig, sim_instant_serde},
+    checkpoint::{
+        PropagatorKind, VesselCheckpoint, VesselConfig, external_inputs::ExternalWrenchLaw,
+        sim_instant_serde,
+    },
     dense_segment::PlantTrajectorySegment,
     dop853::{Dop853Stats, propagate_plant_interval},
     ephemeris::{DerivativeOrder, EphemerisCatalog},
@@ -169,9 +172,13 @@ pub(crate) fn propagate_checkpoint_interval(
                 flux: &flux,
                 ephemeris,
             });
-    let control: &dyn crate::plant::ContinuousControlLaw = match &srp_law {
+    let guidance: &dyn crate::plant::ContinuousControlLaw = match &srp_law {
         Some(law) => law,
         None => &checkpoint.gnc.latched_law,
+    };
+    let control = ExternalWrenchLaw {
+        inner: guidance,
+        loads: &checkpoint.external.loads,
     };
     propagate_plant_interval(
         &checkpoint.plant,
@@ -179,13 +186,13 @@ pub(crate) fn propagate_checkpoint_interval(
         end_epoch,
         h_init_s,
         tolerances,
-        &config.mass_model,
+        &checkpoint.mass_model(config),
         config.propellant_mode,
         config.rw_mode,
         force_model,
         ephemeris,
         orientation,
-        control,
+        &control,
     )
     .map_err(|source| SchedulerError::Propagation {
         vessel_id: checkpoint.vessel_id,

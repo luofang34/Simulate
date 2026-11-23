@@ -193,6 +193,12 @@ pub enum ModelNotApplicableReason {
         /// Version the request carries.
         schema_version: u32,
     },
+    /// A radio link description holds a non-finite or physically inadmissible parameter.
+    #[error("invalid RF link parameters: {reason}")]
+    InvalidRfLinkParameters {
+        /// Which constraint failed.
+        reason: String,
+    },
     /// Ground station minimum elevation is outside $[-\pi/2, \pi/2]$ or non-finite.
     #[error("invalid station minimum elevation {min_elevation_rad} rad")]
     InvalidStationParameters {

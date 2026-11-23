@@ -32,9 +32,9 @@ mod warp;
 pub use builtin_solar::{
     BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack, apollo_1969_spk_bytes,
 };
-pub use checkpoint::{ActuatorState, DeterministicRngState, DiscreteGncState};
-pub use checkpoint::{EventGenerationState, IntegratorContinuation, LatchedBurnLaw};
-pub use checkpoint::{PropagatorKind, VesselCheckpoint, VesselConfig};
+pub use checkpoint::{ActuatorState, DiscreteGncState, EventGenerationState, VesselCheckpoint};
+pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
+pub use checkpoint::{ExternalInputs, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
 pub use collision::{ContactRootKind, IsolatedContactRoot, OrientedCollisionShape};
 pub use collision::{RendezvousGroup, SweptObbKinematics, SweptPoseTrajectory};
 pub use collision::{SweptReachabilityTube, TubeUncertaintyBudget, certified_hull_min_norm_3d};

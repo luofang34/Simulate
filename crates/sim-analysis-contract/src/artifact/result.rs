@@ -11,6 +11,7 @@ use crate::{
         NumericalAccuracyContract, ReproducibilityStamp, TimeScaleContract,
     },
     relay::{EndpointLinkReport, GeometricRelayReport, VerificationScope},
+    rf::LinkBudgetReport,
     taxonomy::AccessAnalysisError,
 };
 
@@ -19,6 +20,8 @@ use crate::{
 pub enum AnalysisOutcomePayload {
     /// Two-endpoint geometric link report.
     EndpointPairReport(EndpointLinkReport),
+    /// Two-endpoint access report with per-epoch radio link budgets.
+    LinkBudgetReport(Box<LinkBudgetReport>),
     /// Aircraft – Satellite – Ground Station geometric relay report.
     GeometricRelayReport(GeometricRelayReport),
     /// Structured failure when evaluation fails closed (`DataCoverage` or `ModelNotApplicable`).
@@ -81,7 +84,7 @@ pub struct AnalysisResultArtifact {
     pub request_digest: ContentHash,
     /// Terminal job status (`Completed` or `Failed`).
     pub job_status: AnalysisJobStatus,
-    /// Explicit verification scope (`rf_link_budget_verified = false`, `store_and_forward_modeled = false`).
+    /// Explicit verification scope; `rf_link_budget_verified` is `true` only for link-budget outcomes.
     pub verification_scope: VerificationScope,
     /// Time-scale contract verified and echoed from the request.
     pub time_scale: TimeScaleContract,
@@ -101,7 +104,7 @@ impl AnalysisResultArtifact {
     /// Computes the canonical SHA-256 digest sealing ALL fields of this result artifact (except `result_digest`).
     #[must_use]
     pub fn compute_expected_digest(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-analysis:result-artifact:v2");
+        let mut h = DomainHasher::new(b"sim-analysis:result-artifact:v3");
         h.write_u32(self.schema_version);
         h.write_bytes(self.result_id.as_bytes());
         h.write_bytes(self.request_id.as_bytes());
@@ -181,6 +184,10 @@ impl AnalysisResultArtifact {
                 AnalysisWorkloadSpec::EndpointPairLos { .. },
                 AnalysisJobStatus::Completed,
                 AnalysisOutcomePayload::EndpointPairReport(_),
+            ) | (
+                AnalysisWorkloadSpec::EndpointPairLinkBudget { .. },
+                AnalysisJobStatus::Completed,
+                AnalysisOutcomePayload::LinkBudgetReport(_),
             ) | (
                 AnalysisWorkloadSpec::AircraftSatelliteGroundRelay { .. },
                 AnalysisJobStatus::Completed,

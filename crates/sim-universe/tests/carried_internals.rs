@@ -10,17 +10,22 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use sim_core::{Block, SimInstant, TICKS_PER_SECOND, TickSpan};
+use sim_core::{SimInstant, TICKS_PER_SECOND, TickSpan};
 use sim_geo::BodyEllipsoid;
-use sim_orbital::{ContentHash, LatchedBurnLaw, VesselId};
+use sim_orbital::{LatchedBurnLaw, PlayerCommandPayload, VesselId};
 use sim_universe::{MultibodyLocalPlant, Tier, TierChange, TierPolicy, Universe};
 
+#[path = "carried_internals/observe.rs"]
+mod observe;
 #[path = "carried_internals/spacecraft.rs"]
 mod spacecraft;
 
+use observe::{
+    Internals, Phase, fingerprint, held_mass, internals, latched_thrust_n, relative, ship,
+};
 use spacecraft::{
     BATTERY_CAPACITY_WH, BATTERY_MIN_SOC, CARRY_PERIOD, DRY_MASS_KG, EXHAUST_VELOCITY_M_S,
-    FULL_THRUST_N, Launch, ORBIT_RADIUS_M, ROOT, TANK, XENON_KG, context, counting_factory, launch,
+    FULL_THRUST_N, Launch, ORBIT_RADIUS_M, XENON_KG, context, counting_factory, launch,
     orbital_energy_j_kg, plant, seconds,
 };
 
@@ -30,48 +35,6 @@ const PROMOTED_S: u64 = 10;
 /// Exchanges flown in the orbital tier: 27,700 s, five revolutions of 92.6 min.
 const EXCHANGES: u64 = 2_770;
 const DEMOTED_S: u64 = PROMOTED_S + EXCHANGES * 10;
-
-/// What the test reads of the spacecraft's internals.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Internals {
-    tank_kg: f64,
-    battery_wh: f64,
-    temperature_k: f64,
-    thrust_n: f64,
-    lit: f64,
-}
-
-#[cfg(test)]
-fn ship(universe: &Universe) -> &MultibodyLocalPlant {
-    universe
-        .carried::<MultibodyLocalPlant>(SHIP)
-        .or_else(|| universe.local::<MultibodyLocalPlant>(SHIP))
-        .unwrap()
-}
-
-#[cfg(test)]
-fn internals(universe: &Universe) -> Internals {
-    let plant = ship(universe);
-    let subsystems = plant.block().subsystems();
-    Internals {
-        tank_kg: subsystems.fluids.tank_state(TANK).unwrap().mass_kg,
-        battery_wh: subsystems.electrical.batteries()[0].1.energy_wh,
-        temperature_k: subsystems.thermal.temperature_k(ROOT).unwrap(),
-        thrust_n: plant.block().telemetry().total_thrust_body_n.length(),
-        lit: plant.input().sun_visibility,
-    }
-}
-
-/// Everything that must match between two runs: the orbital tier's full
-/// replay hash and every bit of the plant, printed.
-#[cfg(test)]
-fn fingerprint(universe: &Universe) -> (ContentHash, String) {
-    let plant = ship(universe);
-    (
-        universe.orbital().universe_hash(),
-        format!("{:?} {:?}", plant.block().snapshot(), plant.input()),
-    )
-}
 
 #[cfg(test)]
 fn universe_with(launch: &Launch, calls: &Rc<Cell<u32>>, carried: bool, policy: bool) -> Universe {
@@ -106,28 +69,6 @@ fn advance(universe: &mut Universe, until: SimInstant, slice: Option<TickSpan>) 
         }
     }
     universe.advance_to(until).unwrap();
-}
-
-/// The thrust the orbital tier is holding for the vessel, N.
-#[cfg(test)]
-fn latched_thrust_n(universe: &Universe) -> f64 {
-    match universe
-        .orbital()
-        .committed_checkpoint(SHIP)
-        .unwrap()
-        .gnc
-        .latched_law
-    {
-        LatchedBurnLaw::BodyWrench { force_body_n, .. } => {
-            glam::DVec3::from_array(force_body_n).length()
-        }
-        other => panic!("the carried vessel flies under {other:?}"),
-    }
-}
-
-#[cfg(test)]
-fn relative(a: f64, b: f64) -> f64 {
-    (a - b).abs() / b.abs()
 }
 
 /// What the vessel did over its exchanges in the orbital tier.
@@ -201,12 +142,7 @@ fn fly_exchanges(universe: &mut Universe, promoted: Internals) -> Aloft {
         if aloft.last.lit == 1.0 && now.lit < 1.0 {
             aloft.eclipses += 1;
         }
-        let held_kg = universe
-            .orbital()
-            .vessel_config(SHIP)
-            .unwrap()
-            .mass_model
-            .dry_mass_kg;
+        let held_kg = held_mass(universe).mass_kg;
         assert_eq!(
             held_kg.to_bits(),
             ship(universe)
@@ -225,6 +161,10 @@ fn fly_exchanges(universe: &mut Universe, promoted: Internals) -> Aloft {
         if check_exchange(universe, &aloft.last, &now) {
             aloft.shed_samples += 1;
         }
+        assert!(
+            universe.orbital().command_log().entries().is_empty(),
+            "the exchange holds the loads in the vessel's checkpoint, not as commands"
+        );
         aloft.min_battery_wh = aloft.min_battery_wh.min(now.battery_wh);
         aloft.last = now;
     }
@@ -400,6 +340,51 @@ fn carried_thrust_raises_the_orbit_as_low_thrust_theory_predicts() {
 }
 
 #[test]
+fn a_planned_burn_on_a_carried_vessel_flies_beside_the_plant_thrust() {
+    let launch = launch();
+    let burn = LatchedBurnLaw::InertialThrust {
+        dir_icrf: [0.0, 0.0, 1.0],
+        thrust_n: 0.05,
+        exhaust_vel_m_s: 3_000.0,
+        rw_torque_cmd_body_nm: [0.0; 3],
+    };
+    let (mut planned, _) = promote_by_policy(&launch, &Rc::new(Cell::new(0)));
+    let (mut unplanned, _) = promote_by_policy(&launch, &Rc::new(Cell::new(0)));
+    planned
+        .command(
+            SHIP,
+            seconds(PROMOTED_S),
+            PlayerCommandPayload::SetBurnLaw(burn),
+        )
+        .unwrap();
+    for universe in [&mut planned, &mut unplanned] {
+        universe.advance_to(seconds(PROMOTED_S + 60)).unwrap();
+    }
+
+    let checkpoint = planned.orbital().committed_checkpoint(SHIP).unwrap();
+    assert_eq!(
+        checkpoint.gnc.latched_law, burn,
+        "six exchanges later the plan's burn is still the one latched"
+    );
+    assert!(
+        relative(latched_thrust_n(&planned), FULL_THRUST_N) < 1e-12,
+        "beside the plant's own thrust"
+    );
+    assert_eq!(
+        planned.orbital().command_log().entries().len(),
+        1,
+        "and the plan's command is the only one logged"
+    );
+    let velocity = |u: &Universe| u.inertial_state(SHIP).unwrap().vel_rel_icrf_m_s;
+    let gained = (velocity(&planned) - velocity(&unplanned)).z;
+    let expected = 0.05 * 60.0 / held_mass(&planned).mass_kg;
+    assert!(
+        relative(gained, expected) < 0.01,
+        "the burn adds its own impulse: {gained} m/s against {expected} m/s"
+    );
+}
+
+#[test]
 fn the_outcome_does_not_depend_on_how_the_advance_is_sliced() {
     let launch = launch();
     let fly = |slice: Option<TickSpan>| {
@@ -440,44 +425,67 @@ fn the_outcome_does_not_depend_on_how_the_advance_is_sliced() {
     );
 }
 
-#[test]
-fn a_checkpoint_taken_mid_orbit_with_one_buffered_segment_replays_bit_for_bit() {
-    let launch = launch();
-    let mut universe = universe_with(&launch, &Rc::new(Cell::new(0)), true, true);
-    // In the first eclipse, on battery, between two exchanges and two block steps.
-    let mid_orbit = seconds(2_500).advanced(TickSpan::from_ticks(TICKS_PER_SECOND / 2));
-    universe.advance_to(mid_orbit).unwrap();
-    assert_eq!(
-        universe.orbital().speculative_segment_count(SHIP),
-        Some(1),
-        "the scheduler's snapshot keeps the one segment spanning its instant, so this \
-         checks a checkpoint taken where the vessel has no further segments buffered"
-    );
+/// Checkpoints at `at`, flies on to `until`, restores, and flies to `until`
+/// again: both arrivals must be the same run.
+#[cfg(test)]
+fn replay_from(universe: &mut Universe, at: SimInstant, until: SimInstant) {
     let saved = universe.checkpoint();
-    let at_checkpoint = fingerprint(&universe);
-
-    universe.advance_to(seconds(DEMOTED_S)).unwrap();
-    let continued = fingerprint(&universe);
+    let at_checkpoint = fingerprint(universe);
+    universe.advance_to(until).unwrap();
+    let continued = fingerprint(universe);
     assert_ne!(continued, at_checkpoint);
-
     universe.restore(&saved).unwrap();
     assert_eq!(
-        fingerprint(&universe),
+        fingerprint(universe),
         at_checkpoint,
-        "restoring puts the carried plant back with the orbital tier"
+        "restoring at {at:?} puts the carried plant back with the orbital tier"
     );
-    universe.advance_to(seconds(DEMOTED_S)).unwrap();
+    universe.advance_to(until).unwrap();
     assert_eq!(
-        fingerprint(&universe),
+        fingerprint(universe),
         continued,
-        "a checkpoint holds the plant's internals, so the replay is the same run"
+        "a checkpoint at {at:?} holds the plant's internals and the orbital tier's \
+         buffered steps, so the replay is the same run"
+    );
+}
+
+#[test]
+fn checkpoints_mid_orbit_replay_bit_for_bit_with_steps_buffered_in_every_phase() {
+    let launch = launch();
+    let mut universe = universe_with(&launch, &Rc::new(Cell::new(0)), true, true);
+    // Between two exchanges and between two block steps.
+    let mid = TickSpan::from_ticks(TICKS_PER_SECOND * 11 / 2);
+    let mut taken = Vec::new();
+    let mut exchange_s = PROMOTED_S;
+    while taken.len() < 6 && exchange_s < DEMOTED_S - 600 {
+        let at = seconds(exchange_s).advanced(mid);
+        universe.advance_to(at).unwrap();
+        let phase = internals(&universe).phase();
+        let buffered = universe.orbital().speculative_segment_count(SHIP).unwrap();
+        let wanted = taken.iter().filter(|&&(p, _)| p == phase).count() < 2;
+        if buffered > 1 && wanted {
+            replay_from(&mut universe, at, seconds(exchange_s + 300));
+            taken.push((phase, buffered));
+            exchange_s += 300;
+        } else {
+            exchange_s += 10;
+        }
+    }
+    let phases: Vec<Phase> = taken.iter().map(|&(phase, _)| phase).collect();
+    assert!(
+        [Phase::Sunlit, Phase::OnBattery, Phase::Shed]
+            .iter()
+            .all(|phase| phases.iter().filter(|&p| p == phase).count() == 2),
+        "two checkpoints in sunlight, on battery and shed in the umbra, each with \
+         several steps buffered: {taken:?}"
     );
 
+    universe.advance_to(seconds(DEMOTED_S)).unwrap();
     let mut uninterrupted = universe_with(&launch, &Rc::new(Cell::new(0)), true, true);
     uninterrupted.advance_to(seconds(DEMOTED_S)).unwrap();
     assert_eq!(
+        fingerprint(&universe),
         fingerprint(&uninterrupted),
-        continued,
-        "and taking a checkpoint does not disturb the run it is taken from"
+        "a run restored six times is the run that was never interrupted"
     );
 }

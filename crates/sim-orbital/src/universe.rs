@@ -450,11 +450,6 @@ impl OrbitalUniverse {
                 .vessels
                 .get_mut(&vid)
                 .ok_or(SchedulerError::UnknownVessel(vid))?;
-            if let UniverseEventPayload::PlayerCommand(PlayerCommandPayload::SetMassModel(model)) =
-                payload
-            {
-                tl.config.mass_model = model;
-            }
             let next_ev = apply_checkpoint_event_mutation(
                 &mut tl.committed_checkpoint,
                 committed,

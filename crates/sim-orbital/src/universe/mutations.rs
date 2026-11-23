@@ -3,7 +3,7 @@
 use sim_spacetime::SimInstant;
 
 use crate::{
-    checkpoint::{VesselCheckpoint, VesselConfig},
+    checkpoint::{ExternalLoads, VesselCheckpoint, VesselConfig},
     ephemeris::EphemerisCatalog,
     events::{
         EventOrderKey, PlayerCommandPayload, ScheduledEvent, UniverseEventPayload, phase_ranks,
@@ -108,10 +108,6 @@ fn apply_player_cmd(
             switch_cp_primary(cp, new_p, ep, fm, ephem, vid)?;
         }
         PlayerCommandPayload::SetGncMode(m) => cp.gnc.mode_code = m,
-        // The mass model belongs to the vessel's configuration, which the scheduler
-        // replaces before it calls this; the generation bump below invalidates events
-        // guarded on the trajectory flown with the previous mass.
-        PlayerCommandPayload::SetMassModel(_) => {}
         PlayerCommandPayload::SetFins {
             fin_angle_rad,
             fins_locked_zero,
@@ -186,5 +182,53 @@ impl OrbitalUniverse {
             self.active_camera_vessel = None;
         }
         Ok((timeline.config, timeline.committed_checkpoint))
+    }
+}
+
+impl OrbitalUniverse {
+    /// Holds `loads` on `vessel_id` from `committed_instant` until they are set again: an
+    /// owner outside the orbital tier reporting the force, torque and mass its own model
+    /// produced at this instant. Returns `false`, changing nothing, when the vessel already
+    /// holds the same bits, so a quiet owner leaves the vessel its long integration steps.
+    ///
+    /// The change is part of the vessel's checkpoint rather than the command log, so an owner
+    /// reporting at every exchange grows no log. It applies exactly at `committed_instant`,
+    /// after every event at that instant has fired (an advance returns only once they have),
+    /// and before any event stamped later for the same instant. It touches no field a player
+    /// command or GNC tick writes, so their relative order at one instant does not change the
+    /// trajectory. Speculation from this instant on is discarded and the vessel's `state_gen`
+    /// advances, so events proposed on the superseded trajectory are skipped.
+    pub fn set_external_loads(
+        &mut self,
+        vessel_id: VesselId,
+        loads: ExternalLoads,
+    ) -> Result<bool, SchedulerError> {
+        let held = self
+            .vessels
+            .get(&vessel_id)
+            .ok_or(SchedulerError::UnknownVessel(vessel_id))?
+            .committed_checkpoint
+            .external
+            .loads;
+        if !loads.is_valid() {
+            return Err(SchedulerError::InvalidExternalLoads {
+                vessel_id,
+                instant: self.committed_instant,
+            });
+        }
+        if held.same_bits(&loads) {
+            return Ok(false);
+        }
+        self.rollback_vessel(vessel_id, self.committed_instant)?;
+        let timeline = self
+            .vessels
+            .get_mut(&vessel_id)
+            .ok_or(SchedulerError::UnknownVessel(vessel_id))?;
+        let checkpoint = &mut timeline.committed_checkpoint;
+        checkpoint.external.loads = loads;
+        checkpoint.external.generation = checkpoint.external.generation.wrapping_add(1);
+        checkpoint.generations.bump_state_gen();
+        timeline.frontier_checkpoint = checkpoint.clone();
+        Ok(true)
     }
 }

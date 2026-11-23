@@ -6,6 +6,7 @@ mod artifact;
 mod mars_mola;
 mod models;
 mod relay;
+mod rf;
 mod taxonomy;
 mod terrain;
 
@@ -27,6 +28,12 @@ pub use models::{
 pub use relay::{
     EndpointLinkReport, EndpointLinkSample, GeometricRelayReport, RelayAccessSample, RelayHopKind,
     RelayRestrictionEntry, VerificationScope,
+};
+pub use rf::{
+    AntennaPointing, AntennaSpec, BOLTZMANN_CONSTANT_J_K, BudgetUnavailableReason,
+    CosinePowerPatchSpec, LinkBudget, LinkBudgetReport, LinkBudgetSample, LinkDirection, LinkEnd,
+    ParabolicDishSpec, PropagationLossTerm, PropagationModelSpec, ReceiverNoise, RfLinkSpec,
+    RfReceiverSpec, RfTransmitterSpec,
 };
 pub use sim_geo::{BodyEllipsoid, Geodetic};
 pub use sim_spacetime::{
