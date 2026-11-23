@@ -1,0 +1,6 @@
+#ifndef FLIGHTDECK_PAD_BRIDGING_HEADER_H
+#define FLIGHTDECK_PAD_BRIDGING_HEADER_H
+
+#include "maplibre_visionos.h"
+
+#endif /* FLIGHTDECK_PAD_BRIDGING_HEADER_H */

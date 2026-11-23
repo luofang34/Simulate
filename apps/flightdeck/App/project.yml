@@ -1,0 +1,177 @@
+name: FlightDeck
+options:
+  bundleIdPrefix: sim.fsgame
+  deploymentTarget:
+    visionOS: "2.0"
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  FlightDeckKit:
+    path: ../swift/FlightDeckKit
+
+targets:
+  FlightDeckXR:
+    type: application
+    platform: visionOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: FlightDeckKit
+        product: FlightDeckKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: sim.fsgame.FlightDeckXR
+        PRODUCT_NAME: FlightDeckXR
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
+        CODE_SIGNING_ALLOWED: "NO"
+        EXCLUDED_ARCHS: "x86_64"
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Sokoly EFB
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+            UISceneSessionRoleImmersiveSpaceApplication:
+              - UISceneConfigurationName: Immersive Space Configuration
+        NSLocalNetworkUsageDescription: "Connects to cockpit avionics-link Connext TCP bridge or GDL-90 ADS-B/AHRS receiver on UDP port 4000."
+        NSWorldSensingUsageDescription: "Tracks pilot head orientation for conformal Synthetic Vision and off-axis HWD symbology."
+
+  FlightDeckPad:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SourcesPad
+        excludes:
+          - FlightDeckPad-Bridging-Header.h
+          - Info.plist
+      - path: ../../../target/ipad-bundle-resources/airspace.pmtiles
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/vfr_sectional.pmtiles
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/vfr_terminal.pmtiles
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/ifr_low.pmtiles
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/ifr_high.pmtiles
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/airspace_vfr_sectional.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/nasr_waypoints.bin
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/cifp_procedures.bin
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/dtpp_plates.bin
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/flightbag_nasr_manifest.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/cifp_faa_cifp.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/dtpp_faa_dtpp.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/chart_faa_vfr_sectional.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/chart_faa_vfr_terminal.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/chart_faa_ifr_low.json
+        buildPhase: resources
+      - path: ../../../target/ipad-bundle-resources/chart_faa_ifr_high.json
+        buildPhase: resources
+    dependencies:
+      - package: FlightDeckKit
+        product: FlightDeckKit
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: PDFKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: UniformTypeIdentifiers.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sokolysystems.visionsvs.pad
+        PRODUCT_NAME: FlightDeckPad
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "3"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_TEAM: 8GN86XC96A
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: "x86_64"
+        SWIFT_OBJC_BRIDGING_HEADER: SourcesPad/FlightDeckPad-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - "/Users/fangluo/maplibre-rs-experimental/apple/visionos"
+        OTHER_LDFLAGS[sdk=iphoneos*]:
+          - "$(inherited)"
+          - "/Users/fangluo/maplibre-rs-experimental/apple/visionos/target/aarch64-apple-ios/release/libmaplibre_visionos.a"
+          - "-lc++"
+        OTHER_LDFLAGS[sdk=iphonesimulator*]:
+          - "$(inherited)"
+          - "/Users/fangluo/maplibre-rs-experimental/apple/visionos/target/aarch64-apple-ios-sim/release/libmaplibre_visionos.a"
+          - "-lc++"
+    info:
+      path: SourcesPad/Info.plist
+      properties:
+        CFBundleDisplayName: Sokoly EFB
+        UILaunchScreen: {}
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: "Connects to cockpit avionics-link Connext TCP bridge or GDL-90 ADS-B/AHRS receiver on UDP port 4000."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: "FlightAware / Google Earth KML Track"
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes:
+              - com.google.earth.kml
+          - CFBundleTypeName: "GPX Flight Track"
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes:
+              - com.topografix.gpx
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.google.earth.kml
+            UTTypeDescription: "KML Flight Track"
+            UTTypeConformsTo:
+              - public.xml
+              - public.data
+              - public.content
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - kml
+                - KML
+              public.mime-type:
+                - application/vnd.google-earth.kml+xml
+                - application/xml
+                - text/xml
+          - UTTypeIdentifier: com.topografix.gpx
+            UTTypeDescription: "GPX Flight Track"
+            UTTypeConformsTo:
+              - public.xml
+              - public.data
+              - public.content
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - gpx
+                - GPX
+              public.mime-type:
+                - application/gpx+xml

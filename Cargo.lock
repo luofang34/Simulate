@@ -1171,7 +1171,7 @@ dependencies = [
 [[package]]
 name = "flightbag"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Flightbag?rev=60d74f362fedbe497ba3064f61961e03b6b16ffc#60d74f362fedbe497ba3064f61961e03b6b16ffc"
+source = "git+https://github.com/luofang34/Flightbag?rev=dedafd702db07234c78b6faff89585eb4bca3ca0#dedafd702db07234c78b6faff89585eb4bca3ca0"
 dependencies = [
  "flightbag-core",
 ]
@@ -1179,7 +1179,7 @@ dependencies = [
 [[package]]
 name = "flightbag-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Flightbag?rev=60d74f362fedbe497ba3064f61961e03b6b16ffc#60d74f362fedbe497ba3064f61961e03b6b16ffc"
+source = "git+https://github.com/luofang34/Flightbag?rev=dedafd702db07234c78b6faff89585eb4bca3ca0#dedafd702db07234c78b6faff89585eb4bca3ca0"
 dependencies = [
  "world-core",
 ]
@@ -2336,6 +2336,21 @@ dependencies = [
  "indicate-sha256",
  "libm",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "indicate-instrument-hmd"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Indicate?rev=c70fdefc6f89b935b6ce956d4478aff1a44d783c#c70fdefc6f89b935b6ce956d4478aff1a44d783c"
+dependencies = [
+ "indicate-alerts",
+ "indicate-frames",
+ "indicate-instrument-descriptor",
+ "indicate-instrument-glyphs",
+ "indicate-instrument-scene",
+ "indicate-instrument-state",
+ "indicate-instrument-symbology",
+ "libm",
 ]
 
 [[package]]
@@ -5476,6 +5491,34 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "web-time",
+]
+
+[[package]]
+name = "sim-flightdeck"
+version = "0.1.0"
+dependencies = [
+ "flightbag",
+ "flightbag-core",
+ "glam 0.33.12",
+ "indicate-instrument-descriptor",
+ "indicate-instrument-glyphs",
+ "indicate-instrument-hmd",
+ "indicate-instrument-hud",
+ "indicate-instrument-panels",
+ "indicate-instrument-scene",
+ "indicate-instrument-state",
+ "indicate-instrument-volumes",
+ "indicate-interaction",
+ "libm",
+ "navigate-celestial",
+ "sim-geo",
+ "sim-indicate",
+ "sim-scenery",
+ "thiserror 2.0.21",
+ "world-core",
+ "world-geomag",
+ "world-notices",
+ "world-surveillance",
 ]
 
 [[package]]

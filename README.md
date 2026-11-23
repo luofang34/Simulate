@@ -63,6 +63,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-aviate` | `adapters/sim-aviate` | Aviate flight controller, in-process (Tier 0) and shared-memory (Tier 1) |
 | `sim-chain-trial` | `adapters/sim-chain-trial` | A navigation trial on the vehicle's own control chain, stepped by its host: Navigate's sets navigate on the devices the flight controller reads |
 | `sim-flight-chain` | `adapters/sim-flight-chain` | The vehicle's own control chain: Pilotage's host core commands the Aviate flight controller of a simulated C172 in MAVLink |
+| `sim-flightdeck` | `adapters/sim-flightdeck` | Multi-body EFB, GCS, synthetic vision, Connext/GDL-90 links, 3D airspace, ADS-B traffic, and Indicate HWD/HUD/panels |
 | `sim-indicate` | `adapters/sim-indicate` | Indicate instruments, PFD/HSI, and HUD |
 | `sim-link-host` | `adapters/sim-link-host` | Hosts a simulation link: maps it to the trial request, summarises the plan with the Sun along the route, words it for a page or a terminal |
 | `sim-maplibre` | `adapters/sim-maplibre` | `maplibre-rs` out-the-window scene and instrument maps |

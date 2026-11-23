@@ -1,0 +1,34 @@
+[package]
+name = "sim-flightdeck"
+description = "Synthetic vision, avionics-link/GDL-90 telemetry, 3D airspace, ADS-B traffic, and Indicate HWD/HUD/panel suite for XR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+flightbag = { workspace = true }
+flightbag-core = { workspace = true }
+glam = { workspace = true }
+indicate-instrument-descriptor = { workspace = true }
+indicate-instrument-glyphs = { workspace = true }
+indicate-instrument-hmd = { workspace = true }
+indicate-instrument-hud = { workspace = true }
+indicate-instrument-panels = { workspace = true }
+indicate-instrument-scene = { workspace = true }
+indicate-instrument-state = { workspace = true }
+indicate-instrument-volumes = { workspace = true }
+indicate-interaction = { workspace = true }
+libm = { workspace = true }
+navigate-celestial = { workspace = true }
+sim-geo = { workspace = true }
+sim-indicate = { workspace = true }
+sim-scenery = { workspace = true }
+thiserror = { workspace = true }
+world-core = { workspace = true }
+world-geomag = { workspace = true }
+world-notices = { workspace = true }
+world-surveillance = { workspace = true }
