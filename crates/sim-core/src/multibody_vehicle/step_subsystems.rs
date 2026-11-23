@@ -25,6 +25,7 @@ pub(super) struct SubsystemStepOut {
     pub(super) prop_wrenches: Vec<WrenchAtSite>,
     pub(super) grain_contribs: Vec<DynamicMassContribution>,
     pub(super) thrust_body_n: DVec3,
+    pub(super) thrust_torque_cg_body_nm: DVec3,
     pub(super) ext_force_root_n: DVec3,
     pub(super) rf_blackout: bool,
     pub(super) peak_heat_flux_w_m2: f64,
@@ -73,19 +74,16 @@ pub(super) fn run_subsystems_step(
         ep_range,
         abep_range,
         default_v: subsystems.electrical.nominal_bus_voltage_v(),
+        cg_root_m: mass.cg_body_m,
         input,
     };
-    let mut prop_acc = PropulsionAcc {
-        wrenches: Vec::new(),
-        grains: Vec::new(),
-        thrust_root_n: DVec3::ZERO,
-        thermal_loads: &mut thermal_loads,
-    };
+    let mut prop_acc = PropulsionAcc::new(&mut thermal_loads);
     step_propulsion(&prop_ctx, subsystems, &mut prop_acc)?;
     let PropulsionAcc {
         wrenches: prop_wrenches,
         grains: grain_contribs,
         thrust_root_n: thrust_body_n,
+        torque_cg_root_nm: thrust_torque_cg_body_nm,
         ..
     } = prop_acc;
     let (rf_blackout, peak_heat_flux_w_m2, ao_erosion_depth_m, ao_remaining_fraction) =
@@ -106,6 +104,7 @@ pub(super) fn run_subsystems_step(
         prop_wrenches,
         grain_contribs,
         thrust_body_n,
+        thrust_torque_cg_body_nm,
         ext_force_root_n: sum_wrenches_in_root(poses, &input.external_wrenches),
         rf_blackout,
         peak_heat_flux_w_m2,
@@ -241,6 +240,7 @@ struct PropulsionCtx<'a> {
     ep_range: core::ops::Range<usize>,
     abep_range: core::ops::Range<usize>,
     default_v: f64,
+    cg_root_m: DVec3,
     input: &'a MultibodyVehicleInput,
 }
 
@@ -248,7 +248,20 @@ struct PropulsionAcc<'a> {
     wrenches: Vec<WrenchAtSite>,
     grains: Vec<DynamicMassContribution>,
     thrust_root_n: DVec3,
+    torque_cg_root_nm: DVec3,
     thermal_loads: &'a mut Vec<ThermalLoad>,
+}
+
+impl<'a> PropulsionAcc<'a> {
+    fn new(thermal_loads: &'a mut Vec<ThermalLoad>) -> Self {
+        Self {
+            wrenches: Vec::new(),
+            grains: Vec::new(),
+            thrust_root_n: DVec3::ZERO,
+            torque_cg_root_nm: DVec3::ZERO,
+            thermal_loads,
+        }
+    }
 }
 
 fn step_propulsion(
@@ -290,12 +303,7 @@ fn step_chemical_and_solid(
             },
         )
         .map_err(block_sys)?;
-        record_wrench(
-            ctx.poses,
-            out.wrench_local,
-            &mut acc.wrenches,
-            &mut acc.thrust_root_n,
-        );
+        record_wrench(ctx, out.wrench_local, acc);
         if out.thermal_load.heat_rate_w > 0.0 {
             acc.thermal_loads.push(out.thermal_load);
         }
@@ -305,12 +313,7 @@ fn step_chemical_and_solid(
         let out =
             step_solid_motor(spec, state, ctx.dt_s, &ctx.env.ambient, ignite).map_err(block_sys)?;
         acc.grains.push(out.grain_mass_contribution);
-        record_wrench(
-            ctx.poses,
-            out.wrench_local,
-            &mut acc.wrenches,
-            &mut acc.thrust_root_n,
-        );
+        record_wrench(ctx, out.wrench_local, acc);
     }
     Ok(())
 }
@@ -347,12 +350,7 @@ fn step_electric_propulsion(
             },
         )
         .map_err(block_sys)?;
-        record_wrench(
-            ctx.poses,
-            out.wrench_local,
-            &mut acc.wrenches,
-            &mut acc.thrust_root_n,
-        );
+        record_wrench(ctx, out.wrench_local, acc);
         if out.thermal_load.heat_rate_w > 0.0 {
             acc.thermal_loads.push(out.thermal_load);
         }
@@ -397,12 +395,7 @@ fn step_abep_propulsion(
             },
         )
         .map_err(block_sys)?;
-        record_wrench(
-            ctx.poses,
-            out.net_wrench_local,
-            &mut acc.wrenches,
-            &mut acc.thrust_root_n,
-        );
+        record_wrench(ctx, out.net_wrench_local, acc);
     }
     Ok(())
 }
@@ -442,12 +435,7 @@ fn step_airbreathing_propulsion(
             },
         )
         .map_err(block_sys)?;
-        record_wrench(
-            ctx.poses,
-            out.wrench_local,
-            &mut acc.wrenches,
-            &mut acc.thrust_root_n,
-        );
+        record_wrench(ctx, out.wrench_local, acc);
         if out.thermal_load.heat_rate_w > 0.0 {
             acc.thermal_loads.push(out.thermal_load);
         }
@@ -455,15 +443,16 @@ fn step_airbreathing_propulsion(
     Ok(())
 }
 
-fn record_wrench(
-    poses: &PoseTable,
-    w: WrenchAtSite,
-    dst: &mut Vec<WrenchAtSite>,
-    thrust_root: &mut DVec3,
-) {
-    let rot = poses
+fn record_wrench(ctx: &PropulsionCtx<'_>, w: WrenchAtSite, acc: &mut PropulsionAcc<'_>) {
+    let (rot, origin) = ctx
+        .poses
         .get(w.site)
-        .map_or(glam::DQuat::IDENTITY, |p| p.rotation_root_from_link);
-    *thrust_root += rot * w.force_local_n;
-    dst.push(w);
+        .map_or((glam::DQuat::IDENTITY, DVec3::ZERO), |p| {
+            (p.rotation_root_from_link, p.position_root_m)
+        });
+    let force_root = rot * w.force_local_n;
+    let arm = origin + rot * w.point_local_m - ctx.cg_root_m;
+    acc.thrust_root_n += force_root;
+    acc.torque_cg_root_nm += rot * w.torque_local_nm + arm.cross(force_root);
+    acc.wrenches.push(w);
 }

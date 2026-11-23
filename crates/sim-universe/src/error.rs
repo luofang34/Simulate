@@ -1,6 +1,8 @@
 use sim_core::BlockError;
 use sim_core::SimInstant;
-use sim_orbital::{LagrangeError, NaifId, OrientationError, SchedulerError, VesselId};
+use sim_orbital::{
+    EphemerisError, LagrangeError, NaifId, OrientationError, SchedulerError, VesselId,
+};
 use sim_spacetime::TimeError;
 
 use crate::planning::PlanId;
@@ -55,6 +57,21 @@ pub enum UniverseError {
         /// The vessel.
         vessel: VesselId,
     },
+    /// A plant with no [`crate::LocalPlant::carry_period`] was asked to run
+    /// its internals under the orbital tier.
+    #[error("the plant cannot be carried by the orbital tier")]
+    NotCarryable,
+    /// A checkpointed plant state was offered to a plant of another kind,
+    /// or one whose structure no longer fits it.
+    #[error("vessel {vessel:?}'s plant cannot take the state the checkpoint holds for it")]
+    PlantSnapshotMismatch {
+        /// The vessel.
+        vessel: VesselId,
+    },
+    /// A body's position was unavailable when a carried plant's sunlight
+    /// was sampled.
+    #[error("ephemeris unavailable for a carried plant's surroundings")]
+    Ephemeris(#[from] EphemerisError),
     /// The universe was asked to go back in time.
     #[error("cannot advance backwards")]
     Backwards,

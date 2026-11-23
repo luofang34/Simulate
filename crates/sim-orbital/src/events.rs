@@ -8,6 +8,7 @@ use crate::{
     checkpoint::{LatchedBurnLaw, sim_instant_serde},
     hash::{ContentHash, DomainHasher},
     ids::{NaifId, VesselId},
+    plant::MassPropertiesModel,
 };
 
 /// Deterministic phase precedence ranks within a single `SimInstant` tick.
@@ -115,6 +116,9 @@ pub enum PlayerCommandPayload {
         /// `Wrist` hinge angle ($\text{rad}$).
         wrist_rad: f64,
     },
+    /// Replaces the vessel's mass and inertia model, for a vessel whose mass is accounted
+    /// for outside the plant and handed over at an instant.
+    SetMassModel(MassPropertiesModel),
 }
 
 impl PlayerCommandPayload {
@@ -149,6 +153,10 @@ impl PlayerCommandPayload {
                 h.write_u8(5);
                 h.write_f64_canonical(carrier_rad);
                 h.write_f64_canonical(wrist_rad);
+            }
+            Self::SetMassModel(ref model) => {
+                h.write_u8(6);
+                model.write_to_hasher(h);
             }
         }
     }

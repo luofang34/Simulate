@@ -21,3 +21,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 mbd-core = { workspace = true }
+mbd-systems = { workspace = true }

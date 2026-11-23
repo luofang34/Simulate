@@ -213,6 +213,21 @@ impl MassPropertiesModel {
         }
     }
 
+    pub(crate) fn write_to_hasher(&self, h: &mut crate::hash::DomainHasher) {
+        h.write_f64_canonical(self.dry_mass_kg);
+        for col in self.dry_inertia_cols {
+            for v in col {
+                h.write_f64_canonical(v);
+            }
+        }
+        for col in self.propellant_inertia_per_kg_cols {
+            for v in col {
+                h.write_f64_canonical(v);
+            }
+        }
+        h.write_f64_canonical(self.uncompensated_idot_factor);
+    }
+
     /// Total vehicle mass $m = m_{\text{dry}} + \max(m_p, 0)$ ($\text{kg}$).
     #[must_use]
     pub fn total_mass_kg(&self, propellant_mass_kg: f64) -> f64 {

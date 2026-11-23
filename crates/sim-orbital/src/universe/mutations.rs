@@ -108,6 +108,10 @@ fn apply_player_cmd(
             switch_cp_primary(cp, new_p, ep, fm, ephem, vid)?;
         }
         PlayerCommandPayload::SetGncMode(m) => cp.gnc.mode_code = m,
+        // The mass model belongs to the vessel's configuration, which the scheduler
+        // replaces before it calls this; the generation bump below invalidates events
+        // guarded on the trajectory flown with the previous mass.
+        PlayerCommandPayload::SetMassModel(_) => {}
         PlayerCommandPayload::SetFins {
             fin_angle_rad,
             fins_locked_zero,

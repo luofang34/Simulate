@@ -378,6 +378,7 @@ pub(super) fn build_telemetry(
         dynamic_pressure_pa: env.dynamic_pressure_pa,
         specific_force_cg_body: spec_force_cg_body,
         total_thrust_body_n: sub.thrust_body_n,
+        thrust_torque_cg_body_nm: sub.thrust_torque_cg_body_nm,
         total_propellant_kg: total_prop,
         bus_voltage_v: if root_rail.enabled {
             root_rail.voltage_v

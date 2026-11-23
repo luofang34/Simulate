@@ -255,6 +255,8 @@ pub struct MultibodyVehicleTelemetry {
     pub specific_force_cg_body: DVec3,
     /// Sum of propulsion thrust forces expressed in root axes, N.
     pub total_thrust_body_n: DVec3,
+    /// Sum of propulsion moments about the centre of gravity in root axes, N·m.
+    pub thrust_torque_cg_body_nm: DVec3,
     /// Total liquid + solid propellant mass remaining across tanks and motors, kg.
     pub total_propellant_kg: f64,
     /// Nominal active bus voltage on root rail (or `0.0` if collapsed), V.
@@ -290,6 +292,7 @@ impl Default for MultibodyVehicleTelemetry {
             dynamic_pressure_pa: 0.0,
             specific_force_cg_body: DVec3::ZERO,
             total_thrust_body_n: DVec3::ZERO,
+            thrust_torque_cg_body_nm: DVec3::ZERO,
             total_propellant_kg: 0.0,
             bus_voltage_v: 0.0,
             total_electrical_gen_w: 0.0,

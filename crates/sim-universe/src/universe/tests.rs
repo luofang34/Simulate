@@ -18,6 +18,7 @@ use super::{OrbitalContext, Tier, Universe};
 use crate::UniverseError;
 use crate::local::{CoastingRigidBody, LocalFactory, LocalPlant, MultibodyLocalPlant};
 
+mod carried;
 mod checkpoints;
 mod plans;
 mod policy;

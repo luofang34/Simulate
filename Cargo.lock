@@ -5934,6 +5934,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "mbd-core",
+ "mbd-systems",
  "sim-atmosphere",
  "sim-core",
  "sim-devices",

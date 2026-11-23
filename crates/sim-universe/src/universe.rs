@@ -8,19 +8,21 @@ use sim_core::{SimInstant, TickSpan, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
     BodyOrientationCatalog, ContentHash, ContinuousPlantState, Dop853Tolerances, EphemerisCatalog,
-    ForceModel, MassPropertiesModel, NaifId, OrbitalUniverse, PlayerCommandPayload, PropellantMode,
-    ReactionWheelMode, SimulationManifestDigest, VesselCheckpoint, VesselConfig, VesselId,
+    ForceModel, NaifId, OrbitalUniverse, PlayerCommandPayload, SimulationManifestDigest,
+    VesselCheckpoint, VesselConfig, VesselId,
 };
 use sim_spacetime::{BodyRotationState, SimEpoch};
 
 use crate::UniverseError;
 use crate::bus::{VesselBusConfig, VesselBusState};
-use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
+use crate::handoff::{body_ellipsoid, naif_body, to_body_fixed};
 use crate::local::{LocalFactory, LocalPlant};
 use crate::planning::Planner;
-use crate::tiering::{TierChange, TierPolicy, planetary_dynamic_pressure_pa};
+use crate::tiering::{TierChange, TierPolicy};
 
 mod checkpoint;
+mod exchange;
+mod handoffs;
 mod planned;
 
 pub use checkpoint::UniverseCheckpoint;
@@ -53,7 +55,11 @@ pub struct OrbitalContext {
 pub(crate) enum Flight {
     Local(Box<dyn LocalPlant>),
     /// Held by the orbital scheduler, which knows the vessel's central body.
-    Orbital,
+    /// A plant that can be carried stays here, dormant but for its exchanges
+    /// with the scheduler, and flies the vessel again when it comes down.
+    Orbital {
+        carried: Option<Box<dyn LocalPlant>>,
+    },
 }
 
 pub(crate) struct Vessel {
@@ -223,7 +229,7 @@ impl Universe {
         self.vessels.insert(
             id,
             Vessel {
-                flight: Flight::Orbital,
+                flight: Flight::Orbital { carried: None },
                 rebuild,
                 bus,
             },
@@ -238,12 +244,13 @@ impl Universe {
     }
 
     /// `id`'s local plant as the type that built it, or `None` when the
-    /// vessel is orbital, unknown, or flown by another type of plant.
+    /// vessel is orbital, unknown, or flown by another type of plant. A plant
+    /// the orbital tier carries is reached through [`Self::carried`].
     #[must_use]
     pub fn local<P: LocalPlant + 'static>(&self, id: VesselId) -> Option<&P> {
         match &self.vessels.get(&id)?.flight {
             Flight::Local(plant) => plant.as_any().downcast_ref(),
-            Flight::Orbital => None,
+            Flight::Orbital { .. } => None,
         }
     }
 
@@ -252,7 +259,7 @@ impl Universe {
     pub fn local_mut<P: LocalPlant + 'static>(&mut self, id: VesselId) -> Option<&mut P> {
         match &mut self.vessels.get_mut(&id)?.flight {
             Flight::Local(plant) => plant.as_any_mut().downcast_mut(),
-            Flight::Orbital => None,
+            Flight::Orbital { .. } => None,
         }
     }
 
@@ -260,7 +267,7 @@ impl Universe {
     pub fn tier(&self, id: VesselId) -> Result<Tier, UniverseError> {
         Ok(match self.vessel(id)?.flight {
             Flight::Local(_) => Tier::Local,
-            Flight::Orbital => Tier::Orbital,
+            Flight::Orbital { .. } => Tier::Orbital,
         })
     }
 
@@ -269,7 +276,7 @@ impl Universe {
     pub fn vehicle_state(&self, id: VesselId) -> Result<VehicleState, UniverseError> {
         match &self.vessel(id)?.flight {
             Flight::Local(plant) => Ok(plant.state()),
-            Flight::Orbital => {
+            Flight::Orbital { .. } => {
                 let plant = self.inertial_state(id)?;
                 let body =
                     body_ellipsoid(plant.primary_body).ok_or(UniverseError::UnmodelledBody)?;
@@ -285,7 +292,7 @@ impl Universe {
     pub fn central_body(&self, id: VesselId) -> Result<NaifId, UniverseError> {
         match &self.vessel(id)?.flight {
             Flight::Local(plant) => naif_body(plant.body()).ok_or(UniverseError::UnmodelledBody),
-            Flight::Orbital => Ok(self.inertial_state(id)?.primary_body),
+            Flight::Orbital { .. } => Ok(self.inertial_state(id)?.primary_body),
         }
     }
 
@@ -294,7 +301,7 @@ impl Universe {
     pub fn inertial_state(&self, id: VesselId) -> Result<ContinuousPlantState, UniverseError> {
         match self.vessel(id)?.flight {
             Flight::Local(_) => Err(UniverseError::NotOrbital(id)),
-            Flight::Orbital => self
+            Flight::Orbital { .. } => self
                 .orbital
                 .sample_vessel_state(id, self.now)
                 .ok_or(UniverseError::UnknownVessel(id)),
@@ -312,158 +319,12 @@ impl Universe {
     ) -> Result<(), UniverseError> {
         match self.vessel(id)?.flight {
             Flight::Local(_) => Err(UniverseError::NotOrbital(id)),
-            Flight::Orbital => self
+            Flight::Orbital { .. } => self
                 .orbital
                 .stamp_player_command(at, id, command)
                 .map(|_stamped| ())
                 .map_err(|e| UniverseError::Scheduler(Box::new(e))),
         }
-    }
-
-    /// Advances to `until` with a tier policy acting at each of its check
-    /// instants on the way, but no plans.
-    fn advance_unplanned_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
-        while let Some(check) = self
-            .policy
-            .as_ref()
-            .and_then(|policy| policy.next_check(self.now, until))
-        {
-            self.advance_all_to(check)?;
-            self.apply_tier_policy()?;
-        }
-        self.advance_all_to(until)
-    }
-
-    fn advance_all_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
-        for vessel in self.vessels.values_mut() {
-            if let Flight::Local(plant) = &mut vessel.flight {
-                plant.advance_to(until)?;
-            }
-        }
-        self.orbital
-            .advance_committed_to(until)
-            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
-        self.now = until;
-        self.refresh_all_buses();
-        Ok(())
-    }
-
-    fn apply_tier_policy(&mut self) -> Result<(), UniverseError> {
-        let Some(policy) = &self.policy else {
-            return Ok(());
-        };
-        let mut wanted = Vec::new();
-        for (&id, vessel) in &self.vessels {
-            let (tier, body, state, q_pa, ground_contact) = match &vessel.flight {
-                Flight::Local(plant) => {
-                    if plant.now() != self.now
-                        || plant.holds_local_tier()
-                        || plant.orbital_body().is_none()
-                    {
-                        continue;
-                    }
-                    (
-                        Tier::Local,
-                        plant.body(),
-                        plant.state(),
-                        plant.dynamic_pressure_pa(),
-                        plant.is_ground_contact(),
-                    )
-                }
-                Flight::Orbital => {
-                    let primary = self.inertial_state(id)?.primary_body;
-                    let Some(body) = body_ellipsoid(primary) else {
-                        continue;
-                    };
-                    let st = self.vehicle_state(id)?;
-                    let h = body.fixed_to_geodetic(st.position_ecef).height_m;
-                    let q = planetary_dynamic_pressure_pa(primary, h, st.velocity_ecef.length());
-                    (Tier::Orbital, body, st, q, h <= 0.0)
-                }
-            };
-            let Some(naif) = naif_body(body) else {
-                continue;
-            };
-            let height_m = body.fixed_to_geodetic(state.position_ecef).height_m;
-            if let Some(to) = policy.wanted(tier, naif, height_m, q_pa, ground_contact) {
-                wanted.push((id, to));
-            }
-        }
-        for (vessel, to) in wanted {
-            match to {
-                Tier::Orbital => self.promote_to_orbital(vessel)?,
-                Tier::Local => self.demote_to_local(vessel)?,
-            }
-            let at = self.now;
-            self.tier_changes.push(TierChange { vessel, at, to });
-        }
-        Ok(())
-    }
-
-    /// Hands `id` from flight dynamics to orbital propagation. Its local
-    /// tier must have reached [`Self::now`], so both tiers describe the same
-    /// instant.
-    pub fn promote_to_orbital(&mut self, id: VesselId) -> Result<(), UniverseError> {
-        let Flight::Local(plant) = &self.vessel(id)?.flight else {
-            return Err(UniverseError::AlreadyInTier(id));
-        };
-        if plant.now() != self.now {
-            return Err(UniverseError::BetweenSteps { vessel: id });
-        }
-        let body = plant.body();
-        let (naif, rotation) = self.rotation(body, self.now)?;
-        let state = to_inertial(&plant.state(), naif, &rotation, InertialExtras::default());
-        let Some(carried) = plant.orbital_body() else {
-            return Err(UniverseError::LocalOnly(id));
-        };
-        let srp = plant
-            .srp_surface()
-            .or_else(|| self.vessels.get(&id).and_then(|v| v.bus.srp_surface()));
-        let config = VesselConfig {
-            mass_model: MassPropertiesModel {
-                dry_mass_kg: carried.mass_kg,
-                dry_inertia_cols: carried.inertia_cg_body.to_cols_array_2d(),
-                propellant_inertia_per_kg_cols: [[0.0; 3]; 3],
-                uncompensated_idot_factor: 0.0,
-            },
-            propellant_mode: PropellantMode::InfiniteConstantMass,
-            rw_mode: ReactionWheelMode::ConserveMomentum {
-                h_max_nms: 0.0,
-                tau_max_nm: 0.0,
-            },
-            tolerances: self.tolerances,
-            bounding_radius_m: carried.bounding_radius_m,
-            auto_soi_switch: true,
-        };
-        let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
-        if let Some(surface) = srp {
-            checkpoint = checkpoint.with_srp_surface(surface);
-        }
-        self.orbital
-            .insert_vessel(config, checkpoint)
-            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
-        self.vessel_mut(id)?.flight = Flight::Orbital;
-        Ok(())
-    }
-
-    /// Hands `id` from orbital propagation back to flight dynamics about the
-    /// body it currently orbits, built by the vessel's factory at
-    /// [`Self::now`].
-    pub fn demote_to_local(&mut self, id: VesselId) -> Result<(), UniverseError> {
-        let Flight::Orbital = self.vessel(id)?.flight else {
-            return Err(UniverseError::AlreadyInTier(id));
-        };
-        let primary = self.inertial_state(id)?.primary_body;
-        let body = body_ellipsoid(primary).ok_or(UniverseError::UnmodelledBody)?;
-        let (naif, rotation) = self.rotation(body, self.now)?;
-        let (_config, checkpoint) = self
-            .orbital
-            .remove_vessel(id)
-            .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
-        let (state, _extras) = to_body_fixed(&checkpoint.plant, naif, &rotation)?;
-        let plant = (self.vessel(id)?.rebuild)(body, &state, self.now, &self.epoch)?;
-        self.vessel_mut(id)?.flight = Flight::Local(plant);
-        Ok(())
     }
 
     pub(crate) fn rotation(
@@ -478,13 +339,13 @@ impl Universe {
         Ok((naif, rotation))
     }
 
-    fn vessel(&self, id: VesselId) -> Result<&Vessel, UniverseError> {
+    pub(crate) fn vessel(&self, id: VesselId) -> Result<&Vessel, UniverseError> {
         self.vessels
             .get(&id)
             .ok_or(UniverseError::UnknownVessel(id))
     }
 
-    fn vessel_mut(&mut self, id: VesselId) -> Result<&mut Vessel, UniverseError> {
+    pub(crate) fn vessel_mut(&mut self, id: VesselId) -> Result<&mut Vessel, UniverseError> {
         self.vessels
             .get_mut(&id)
             .ok_or(UniverseError::UnknownVessel(id))

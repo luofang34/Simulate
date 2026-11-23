@@ -274,7 +274,7 @@ impl Universe {
     fn vessel_barycentric_state(&self, id: VesselId, at: SimInstant) -> Option<(DVec3, DVec3)> {
         let vessel = self.vessels.get(&id)?;
         match &vessel.flight {
-            Flight::Orbital => {
+            Flight::Orbital { .. } => {
                 let st = self.orbital().sample_vessel_barycentric(id, at).ok()?;
                 Some((st.pos_m, st.vel_m_s))
             }

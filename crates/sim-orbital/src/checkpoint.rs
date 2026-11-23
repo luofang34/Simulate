@@ -232,7 +232,8 @@ impl DiscreteGncState {
     }
 }
 
-/// Static mass, actuator-mode, tolerance, and SOI-switching configuration for one vessel.
+/// Mass, actuator-mode, tolerance, and SOI-switching configuration for one vessel, fixed
+/// except where a stamped [`crate::PlayerCommandPayload::SetMassModel`] replaces the mass model.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VesselConfig {
     /// Mass and inertia tensor model.
@@ -259,18 +260,7 @@ impl VesselConfig {
     }
 
     pub(crate) fn write_to_hasher(&self, h: &mut DomainHasher) {
-        h.write_f64_canonical(self.mass_model.dry_mass_kg);
-        for col in self.mass_model.dry_inertia_cols {
-            for v in col {
-                h.write_f64_canonical(v);
-            }
-        }
-        for col in self.mass_model.propellant_inertia_per_kg_cols {
-            for v in col {
-                h.write_f64_canonical(v);
-            }
-        }
-        h.write_f64_canonical(self.mass_model.uncompensated_idot_factor);
+        self.mass_model.write_to_hasher(h);
         match self.propellant_mode {
             PropellantMode::FiniteVariableMass => h.write_u8(0),
             PropellantMode::InfiniteConstantMass => h.write_u8(1),
