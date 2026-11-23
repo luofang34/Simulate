@@ -1,5 +1,6 @@
 use glam::DVec3;
-use mbd_core::{BluntBodyCapsuleAero, ComponentId, ComponentTree};
+use mbd_aero::BluntCapsuleAero;
+use mbd_core::{ComponentId, ComponentTree};
 use sim_pack::{LoadedSyspack, MemoryPackageSource, PackError, SyspackError};
 
 const CSM_MANIFEST: &[u8] = include_bytes!("../../packages/columbia-csm/syspack.json");
@@ -38,7 +39,7 @@ pub fn apollo_csm_package() -> Result<LoadedSyspack, PackError> {
 
 /// The Columbia Command and Service Module, fully fuelled.
 ///
-/// Axes are those of [`BluntBodyCapsuleAero`]: the origin is the heat-shield
+/// Axes are those of [`BluntCapsuleAero`]: the origin is the heat-shield
 /// apex and `+x` runs out through the shield, the side leading during entry,
 /// which is opposite to Apollo's own CM `+x`. The root stays with the capsule,
 /// so separating [`CSM_SERVICE_MODULE`] leaves the entry vehicle. Masses are
@@ -51,7 +52,7 @@ pub fn build_apollo_csm_tree() -> Result<ComponentTree, PackError> {
 /// reference is the heat shield's centre of curvature. The normal-force slope
 /// is chosen with the capsule's offset centre of gravity to trim near 20° with
 /// a lift-to-drag ratio of 0.3.
-pub fn apollo_cm_aero() -> Result<BluntBodyCapsuleAero, PackError> {
+pub fn apollo_cm_aero() -> Result<BluntCapsuleAero, PackError> {
     Ok(apollo_csm_package()?.capsule_aero()?)
 }
 

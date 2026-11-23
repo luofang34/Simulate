@@ -1,7 +1,7 @@
 use std::f64::consts::{PI, TAU};
 
 use glam::{DMat3, DQuat};
-use mbd_core::{ComponentSpec, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, JointSpec, Placement, VacuumAero};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_geo::Geodetic;
 
@@ -26,6 +26,7 @@ fn spec(name: &str, placement: Placement, mass: f64, inertia: DVec3) -> Componen
         dry_inertia_body: DMat3::from_diagonal(inertia),
         thermal_capacity_j_k: 1.0,
         nominal_power_w: 0.0,
+        joint: JointSpec::FIXED,
     }
 }
 

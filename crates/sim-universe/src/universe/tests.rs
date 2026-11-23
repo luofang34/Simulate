@@ -4,7 +4,8 @@ use glam::{DMat3, DQuat, DVec3};
 use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_core::{
-    RigidBody6DofBlock, RigidBodyConfig, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
+    MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, RigidBody6DofBlock,
+    RigidBodyConfig, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, UtcTime};
 use sim_orbital::{
@@ -15,7 +16,7 @@ use sim_spacetime::SimEpoch;
 
 use super::{OrbitalContext, Tier, Universe};
 use crate::UniverseError;
-use crate::local::{CoastingRigidBody, LocalFactory, LocalPlant};
+use crate::local::{CoastingRigidBody, LocalFactory, LocalPlant, MultibodyLocalPlant};
 
 mod checkpoints;
 mod plans;
@@ -65,6 +66,7 @@ fn satellite_tree() -> ComponentTree {
             dry_inertia_body: DMat3::from_diagonal(DVec3::new(200.0, 300.0, 250.0)),
             thermal_capacity_j_k: 1.0,
             nominal_power_w: 0.0,
+            joint: mbd_core::JointSpec::FIXED,
         },
         ComponentState::at_temperature(290.0),
     )])
@@ -381,4 +383,72 @@ fn a_vessel_comes_down_about_the_body_it_orbits() {
         "rebuilt {altitude} m above the Moon"
     );
     assert_eq!(universe.central_body(VesselId(1)).unwrap(), NaifId::MOON);
+}
+
+fn multibody_coaster(
+    body: BodyEllipsoid,
+    state: &VehicleState,
+    start: SimInstant,
+    epoch: &SimEpoch,
+) -> Result<Box<dyn LocalPlant>, UniverseError> {
+    let block = MultibodyVehicleBlock::with_aero_model(
+        MultibodyVehicleConfig {
+            body,
+            period: STEP,
+            epoch: epoch.utc_at(start)?,
+            initial: *state,
+        },
+        satellite_tree(),
+        Box::new(VacuumAero),
+        MultibodySubsystems::default(),
+        Box::new(VacuumAtmosphere),
+    )?;
+    Ok(Box::new(MultibodyLocalPlant::new(block, body, start, 2.0)))
+}
+
+#[test]
+fn multibody_local_plant_promotes_and_demotes_cleanly() {
+    let epoch = epoch();
+    let plant_check = multibody_coaster(
+        BodyEllipsoid::WGS84,
+        &leo_state(),
+        SimInstant::START,
+        &epoch,
+    )
+    .unwrap();
+    assert!(plant_check.orbital_body().is_some());
+    assert!(!plant_check.holds_local_tier());
+
+    let mb_factory = || -> LocalFactory { Box::new(multibody_coaster) };
+    let mut local_only = Universe::new(epoch.clone(), solar_system_context());
+    let mut promoted = Universe::new(epoch.clone(), solar_system_context());
+    local_only
+        .insert_local(VesselId(1), plant_check, mb_factory())
+        .unwrap();
+    promoted
+        .insert_local(
+            VesselId(1),
+            multibody_coaster(
+                BodyEllipsoid::WGS84,
+                &leo_state(),
+                SimInstant::START,
+                &epoch,
+            )
+            .unwrap(),
+            mb_factory(),
+        )
+        .unwrap();
+
+    promoted.promote_to_orbital(VesselId(1)).unwrap();
+    assert_eq!(promoted.tier(VesselId(1)).unwrap(), Tier::Orbital);
+    local_only.advance_to(seconds(60)).unwrap();
+    promoted.advance_to(seconds(60)).unwrap();
+    promoted.demote_to_local(VesselId(1)).unwrap();
+    assert_eq!(promoted.tier(VesselId(1)).unwrap(), Tier::Local);
+
+    let a = local_only.vehicle_state(VesselId(1)).unwrap();
+    let b = promoted.vehicle_state(VesselId(1)).unwrap();
+    assert!((a.position_ecef - b.position_ecef).length() < 0.2);
+    assert!((a.velocity_ecef - b.velocity_ecef).length() < 1e-3);
+    assert!(a.attitude.angle_between(b.attitude) < 1e-6);
 }

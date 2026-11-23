@@ -33,6 +33,7 @@ fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
         dry_inertia_body: glam::DMat3::from_diagonal(DVec3::new(0.029, 0.029, 0.055)),
         thermal_capacity_j_k: 0.0,
         nominal_power_w: 0.0,
+        joint: mbd_core::JointSpec::FIXED,
     };
     let tree = ComponentTree::new([(spec, ComponentState::at_temperature(293.15))]).unwrap();
     let cfg = RigidBodyConfig {

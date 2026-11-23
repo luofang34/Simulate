@@ -203,6 +203,7 @@ impl X500RigidPlant {
             dry_inertia_body: DMat3::from_diagonal(DVec3::new(0.029, 0.029, 0.055)),
             thermal_capacity_j_k: 0.0,
             nominal_power_w: 0.0,
+            joint: mbd_core::JointSpec::FIXED,
         };
         let tree = ComponentTree::new([(spec, ComponentState::at_temperature(293.15))])?;
         let cfg = RigidBodyConfig {

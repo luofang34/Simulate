@@ -50,6 +50,8 @@ pub use livery::{
     VehicleLivery,
 };
 pub use loaded::{CotsDevice, LoadedSyspack, MountedCotsDevice, PackageCamera};
+pub use mbd_design::{DesignAuditReport, DesignFinding, FindingSeverity};
+pub use mbd_provenance::{Basis, SourceTable, Sourced};
 pub use pec::{
     AirspeedCalibrationPoint, PITOT_STATIC_CALIBRATION_ASSET, PitotStaticCalibration,
     PitotStaticCurve,

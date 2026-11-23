@@ -63,6 +63,24 @@ pub enum BlockError {
         #[source]
         source: mbd_core::MbdError,
     },
+    /// The multibody solver, manipulator, contact, or mechanism failed.
+    #[error("block {block}: multibody solver failed")]
+    Multibody {
+        /// Block name.
+        block: &'static str,
+        /// The underlying multibody failure.
+        #[source]
+        source: mbd_multibody::MultibodyError,
+    },
+    /// A fluid, propulsion, electrical, or thermal subsystem failed.
+    #[error("block {block}: subsystem failed")]
+    Systems {
+        /// Block name.
+        block: &'static str,
+        /// The underlying subsystem failure.
+        #[source]
+        source: mbd_systems::SystemsError,
+    },
     /// The JSBSim executive refused a load, a read, or a step.
     #[error("block {block}: JSBSim failed")]
     Fdm {

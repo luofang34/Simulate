@@ -1,6 +1,7 @@
 //! Continuous Mars $\text{CO}_2$ standard atmosphere from `-9 km` (Hellas basin) to space (`200 km`).
 
 use glam::DVec3;
+use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
 
 use crate::{
@@ -125,6 +126,7 @@ impl AtmosphereField for MarsAtmosphere {
             density_kg_m3: rho,
             speed_of_sound_m_s: mars_speed_of_sound_m_s(t_k),
             wind_ned_m_s: self.wind_ned_m_s,
+            composition: GasComposition::mars_air(),
         })
     }
 }
@@ -196,6 +198,7 @@ fn mars_thermosphere_sample(geom_m: f64, wind_ned_m_s: DVec3) -> AtmosphereSampl
         density_kg_m3: rem * rho_raw,
         speed_of_sound_m_s: rem * mars_speed_of_sound_m_s(t_k),
         wind_ned_m_s: rem * wind_ned_m_s,
+        composition: GasComposition::mars_air(),
     }
 }
 

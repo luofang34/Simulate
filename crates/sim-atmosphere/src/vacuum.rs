@@ -1,4 +1,5 @@
 use glam::DVec3;
+use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
 
 use crate::{AtmosphereError, AtmosphereField, AtmosphereSample};
@@ -24,6 +25,7 @@ impl VacuumAtmosphere {
         density_kg_m3: 0.0,
         speed_of_sound_m_s: 0.0,
         wind_ned_m_s: DVec3::ZERO,
+        composition: GasComposition::VACUUM,
     };
 }
 

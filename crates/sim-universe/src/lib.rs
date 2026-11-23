@@ -19,7 +19,7 @@ mod universe;
 pub use bus::{VesselBusConfig, VesselBusTelemetry};
 pub use error::UniverseError;
 pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
-pub use local::{CoastingRigidBody, LocalFactory, LocalPlant, OrbitalBody};
+pub use local::{CoastingRigidBody, LocalFactory, LocalPlant, MultibodyLocalPlant, OrbitalBody};
 #[cfg(not(target_arch = "wasm32"))]
 pub use planning::ThreadPlanExecutor;
 pub use planning::{

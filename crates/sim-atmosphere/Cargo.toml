@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+mbd-core = { workspace = true }
 sim-geo = { workspace = true }
 world-airmass = { workspace = true }
 world-atmosphere = { workspace = true }

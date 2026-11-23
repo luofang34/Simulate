@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 sim-atmosphere = { workspace = true }
 sim-geo = { workspace = true }
+mbd-aero = { workspace = true }
 mbd-core = { workspace = true }
 sim-pack = { workspace = true }
 sim-core = { workspace = true }

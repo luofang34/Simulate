@@ -1,5 +1,5 @@
 use glam::{DMat3, DQuat, DVec3};
-use mbd_core::{AeroFlowState, AeroModel, AeroWrench, AmbientFlow, MassProperties};
+use mbd_core::{AeroFlowState, AeroModel, AeroWrench, MassProperties};
 use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField, LocalFrame, UtcTime};
 
@@ -215,12 +215,7 @@ impl<'a> Dynamics<'a> {
         let flow = AeroFlowState {
             velocity_air_body_m_s: state.attitude.inverse() * air_velocity_fixed,
             angular_rate_body_rad_s: state.relative_rate_body(&self.body),
-            ambient: AmbientFlow {
-                pressure_pa: air.pressure_pa,
-                temperature_k: air.temperature_k,
-                density_kg_m3: air.density_kg_m3,
-                sound_speed_m_s: air.speed_of_sound_m_s,
-            },
+            ambient: air.ambient_gas(),
             control_surfaces_rad: self.control_surfaces_rad,
         };
         self.aero.evaluate(&flow).map_err(block_error)

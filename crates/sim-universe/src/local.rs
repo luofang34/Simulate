@@ -3,7 +3,10 @@
 use std::any::Any;
 
 use glam::DMat3;
-use sim_core::{Block, RigidBody6DofBlock, RigidBodyInput, SimInstant, TickSpan, VehicleState};
+use sim_core::{
+    Block, MultibodyVehicleBlock, MultibodyVehicleInput, RigidBody6DofBlock, RigidBodyInput,
+    SimInstant, TickSpan, VehicleState,
+};
 use sim_geo::BodyEllipsoid;
 use sim_spacetime::SimEpoch;
 
@@ -155,5 +158,115 @@ impl LocalPlant for CoastingRigidBody {
 
     fn step(&mut self) -> Result<(), UniverseError> {
         Ok(self.block.step(&RigidBodyInput::default())?)
+    }
+}
+
+/// A unified [`MultibodyVehicleBlock`] participating in [`crate::Universe`] across
+/// planetary atmospheric flight, surface contact, powered ascent, and orbital promotion.
+pub struct MultibodyLocalPlant {
+    block: MultibodyVehicleBlock,
+    input: MultibodyVehicleInput,
+    body: BodyEllipsoid,
+    start: SimInstant,
+    bounding_radius_m: f64,
+}
+
+impl MultibodyLocalPlant {
+    /// Wraps `block` started at `start` inside bounding sphere radius `bounding_radius_m`.
+    #[must_use]
+    pub fn new(
+        block: MultibodyVehicleBlock,
+        body: BodyEllipsoid,
+        start: SimInstant,
+        bounding_radius_m: f64,
+    ) -> Self {
+        Self {
+            block,
+            input: MultibodyVehicleInput::default(),
+            body,
+            start,
+            bounding_radius_m,
+        }
+    }
+
+    /// Replaces active per-step vehicle input.
+    #[must_use]
+    pub fn with_input(mut self, input: MultibodyVehicleInput) -> Self {
+        self.input = input;
+        self
+    }
+
+    /// Mutable access to active vehicle step input.
+    pub fn set_input(&mut self, input: MultibodyVehicleInput) {
+        self.input = input;
+    }
+
+    /// Immutable reference to underlying [`MultibodyVehicleBlock`].
+    #[must_use]
+    pub const fn block(&self) -> &MultibodyVehicleBlock {
+        &self.block
+    }
+
+    /// Mutable reference to underlying [`MultibodyVehicleBlock`].
+    pub fn block_mut(&mut self) -> &mut MultibodyVehicleBlock {
+        &mut self.block
+    }
+}
+
+impl LocalPlant for MultibodyLocalPlant {
+    fn body(&self) -> BodyEllipsoid {
+        self.body
+    }
+
+    fn period(&self) -> TickSpan {
+        self.block.period()
+    }
+
+    fn now(&self) -> SimInstant {
+        self.start
+            .advanced(self.block.now().duration_since(SimInstant::START))
+    }
+
+    fn state(&self) -> VehicleState {
+        self.block.output()
+    }
+
+    fn orbital_body(&self) -> Option<OrbitalBody> {
+        let mass = self.block.mass_properties();
+        Some(OrbitalBody {
+            mass_kg: mass.total_mass_kg,
+            inertia_cg_body: mass.inertia_cg_body,
+            bounding_radius_m: self.bounding_radius_m,
+        })
+    }
+
+    fn holds_local_tier(&self) -> bool {
+        let tel = self.block.telemetry();
+        tel.in_ground_contact
+            || tel.is_pinned_rest
+            || tel.is_splashed_down
+            || tel.total_thrust_body_n.length_squared() > 0.0
+            || tel.dynamic_pressure_pa > 0.1
+    }
+
+    fn dynamic_pressure_pa(&self) -> f64 {
+        self.block.telemetry().dynamic_pressure_pa
+    }
+
+    fn is_ground_contact(&self) -> bool {
+        let tel = self.block.telemetry();
+        tel.in_ground_contact || tel.is_pinned_rest
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn step(&mut self) -> Result<(), UniverseError> {
+        Ok(self.block.step(&self.input)?)
     }
 }

@@ -22,6 +22,8 @@ mod instrument;
 mod instrument_panel;
 mod jsbsim_fdm;
 mod kinematic;
+mod multi_vessel;
+mod multibody_vehicle;
 mod rigid_body;
 mod schedule;
 mod session;
@@ -58,6 +60,14 @@ pub use jsbsim_fdm::{
     JsbsimFdmConfig, JsbsimFdmSnapshot, MagnetoSwitch, PropellerVisualState, SystemControls,
 };
 pub use kinematic::{KinematicInput, KinematicModel};
+pub use multi_vessel::{
+    InterVesselLink, MultiVesselCoordinator, MultiVesselStepReport, SimVesselId,
+};
+pub use multibody_vehicle::{
+    CgTrimConfig, EllipsoidSurfaceProvider, MultibodySubsystems, MultibodyVehicleBlock,
+    MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
+    MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands, SurfaceContactProvider,
+};
 pub use rigid_body::{
     PropellantBurn, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, RigidBodySnapshot,
     ThrusterWrench,

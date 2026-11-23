@@ -12,6 +12,7 @@ use crate::{
 };
 
 mod devices;
+mod multibody;
 
 pub use devices::{CotsDevice, MountedCotsDevice, PackageCamera};
 

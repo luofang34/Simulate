@@ -33,6 +33,7 @@ pub fn xvs_svs_component_spec(name: impl Into<String>, placement: Placement) -> 
         dry_inertia_body: DMat3::from_diagonal(DVec3::new(ix, iy, iz)),
         thermal_capacity_j_k: 1_620.0,
         nominal_power_w: 28.0,
+        joint: mbd_core::JointSpec::FIXED,
     }
 }
 

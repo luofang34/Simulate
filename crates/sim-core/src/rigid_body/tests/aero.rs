@@ -1,5 +1,8 @@
-use mbd_core::{BluntBodyCapsuleAero, BluntBodyCapsuleParams, SUTTON_GRAVES_K_EARTH};
-use sim_atmosphere::{AtmosphereError, AtmosphereSample, ReentryAtmosphere, StandardAtmosphere};
+use mbd_aero::{BluntCapsuleAero, BluntCapsuleParams};
+use mbd_core::SUTTON_GRAVES_K_EARTH;
+use sim_atmosphere::{
+    AtmosphereError, AtmosphereSample, GasComposition, ReentryAtmosphere, StandardAtmosphere,
+};
 
 use super::*;
 
@@ -17,6 +20,7 @@ impl AtmosphereField for UniformAir {
             density_kg_m3: self.density_kg_m3,
             speed_of_sound_m_s: 300.0,
             wind_ned_m_s: self.wind_ned_m_s,
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }
@@ -25,17 +29,20 @@ const NOSE_RADIUS_M: f64 = 4.694;
 const NORMAL_FORCE_SLOPE: f64 = 0.113;
 const AXIAL_DRAG_COEFF: f64 = 1.3;
 
-pub(super) fn capsule_aero() -> Box<BluntBodyCapsuleAero> {
-    let params = BluntBodyCapsuleParams {
+pub(super) fn capsule_aero() -> Box<BluntCapsuleAero> {
+    let params = BluntCapsuleParams {
         base_radius_m: 1.956,
         nose_radius_m: NOSE_RADIUS_M,
         reference_point_body_m: DVec3::new(-NOSE_RADIUS_M, 0.0, 0.0),
         normal_force_slope: NORMAL_FORCE_SLOPE,
         axial_drag_coeff: AXIAL_DRAG_COEFF,
         pitch_damping_coeff: -10.0,
-        sutton_graves_k: SUTTON_GRAVES_K_EARTH,
+        sutton_graves_k: Some(SUTTON_GRAVES_K_EARTH),
+        subsonic_drag_coeff: None,
+        transonic_drag_rise: 0.0,
+        free_molecular_drag_coeff: None,
     };
-    Box::new(BluntBodyCapsuleAero::new(params).unwrap())
+    Box::new(BluntCapsuleAero::new(params).unwrap())
 }
 
 pub(super) fn capsule_tree(cg: DVec3) -> ComponentTree {

@@ -2,6 +2,7 @@
 //! [`AtmosphereField`] and [`CloudField`].
 
 use glam::DVec3;
+use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
 use world_airmass::{AirmassStore, CloudGenus, WindModel, dry_air_speed_of_sound_m_s};
 use world_atmosphere::{
@@ -75,6 +76,7 @@ impl<M: AtmosphereModel> AtmosphereField for WorldAtmosphere<M> {
             density_kg_m3: state.density_kg_m3,
             speed_of_sound_m_s: dry_air_speed_of_sound_m_s(state.temperature_k),
             wind_ned_m_s: DVec3::ZERO,
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }
@@ -107,6 +109,7 @@ impl AtmosphereField for AirmassStore {
                 sample.wind_ned_m_s.east_m,
                 sample.wind_ned_m_s.down_m,
             ),
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }
