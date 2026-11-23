@@ -3,15 +3,17 @@
 //! they see one realisation of each device, and nothing aboard sees the
 //! truth the devices sense.
 
+use std::sync::Arc;
+
 use glam::DVec3;
 use sim_atmosphere::AtmosphereSample;
 use sim_core::VehicleState;
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_geo::MagneticField;
 
 use crate::{
     AirDataSample, AirDataSystem, AirFlow, DeviceError, GnssErrorSpec, GnssReading, GnssReceiver,
     ImuErrorModel, ImuErrorSpec, InertialIncrement, MagneticEnvironment, Magnetometer,
-    MagnetometerSpec, PitotStatic, PressureErrorSpec,
+    MagnetometerSpec, PitotStatic, PressureErrorSpec, earth_main_field,
 };
 
 #[cfg(test)]
@@ -66,7 +68,8 @@ pub struct SensorSuiteSpec {
     pub magnetometer: MagnetometerSpec,
     /// The GNSS receiver.
     pub gnss: GnssErrorSpec,
-    /// The magnetic field the vehicle flies in.
+    /// When the magnetometer reads the world's field, and what the
+    /// vehicle's surroundings add to it.
     pub magnetic: MagneticEnvironment,
     /// Cycles between air-data samples.
     pub air_data_every: u32,
@@ -79,9 +82,10 @@ pub struct SensorSuiteSpec {
 }
 
 /// A vehicle's devices, sensing truth cycle by cycle.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SensorSuite {
     spec: SensorSuiteSpec,
+    magnetic_field: Arc<dyn MagneticField>,
     imu: ImuErrorModel,
     air_data: PitotStatic,
     magnetometer: Magnetometer,
@@ -116,12 +120,27 @@ impl SensorSuite {
         };
         Ok(Self {
             spec: *spec,
+            magnetic_field: earth_main_field()?,
             imu: ImuErrorModel::new(spec.imu, stream(IMU_STREAM))?,
             air_data,
             magnetometer: Magnetometer::new(spec.magnetometer, stream(MAGNETOMETER_STREAM))?,
             receiver: GnssReceiver::new(spec.gnss, stream(RECEIVER_STREAM))?,
             cycle: 0,
         })
+    }
+
+    /// This suite in the world whose magnetic field is `field`, instead of
+    /// the Earth's main field alone. A world with a crustal anomaly map, or
+    /// another body, passes the one instance its other consumers hold.
+    #[must_use]
+    pub fn with_magnetic_field(mut self, field: Arc<dyn MagneticField>) -> Self {
+        self.magnetic_field = field;
+        self
+    }
+
+    /// The world magnetic field the magnetometer senses.
+    pub const fn magnetic_field(&self) -> &Arc<dyn MagneticField> {
+        &self.magnetic_field
     }
 
     /// What the suite was declared as.
@@ -193,11 +212,12 @@ impl SensorSuite {
     }
 
     fn sense_field(&mut self, vehicle: &VehicleState) -> Result<DVec3, DeviceError> {
-        let position = ecef_to_geodetic(vehicle.position_ecef);
-        let field_ned = self.spec.magnetic.field_ned_ut(&position)?;
-        let field_ecef = LocalFrame::at(&position).ned_to_ecef() * field_ned;
+        let field_fixed = self
+            .spec
+            .magnetic
+            .field_fixed_ut(self.magnetic_field.as_ref(), vehicle.position_ecef)?;
         Ok(self
             .magnetometer
-            .sense(vehicle.attitude.inverse() * field_ecef))
+            .sense(vehicle.attitude.inverse() * field_fixed))
     }
 }

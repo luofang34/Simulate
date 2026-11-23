@@ -18,8 +18,8 @@ use crate::{
     ids::VesselId,
     orientation::BodyOrientationCatalog,
     plant::{
-        ContinuousPlantState, MassPropertiesModel, PropagationAudit, PropellantMode,
-        ReactionWheelMode, SrpSurface,
+        ContinuousPlantState, EnvironmentLoadSpec, EnvironmentLoads, MassPropertiesModel,
+        PropagationAudit, PropellantMode, ReactionWheelMode,
     },
     time::SimClockAdapter,
 };
@@ -197,9 +197,6 @@ pub struct DiscreteGncState {
     pub integral_att_error_body: [f64; 3],
     /// Pure continuous steering/burn law latched across continuous integration steps.
     pub latched_law: LatchedBurnLaw,
-    /// Optional cannonball solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
-    #[serde(default)]
-    pub srp_surface: Option<SrpSurface>,
 }
 
 impl DiscreteGncState {
@@ -226,11 +223,6 @@ impl DiscreteGncState {
             h.write_f64_canonical(v);
         }
         self.latched_law.write_to_hasher(h);
-        if let Some(srp) = self.srp_surface {
-            h.write_u8(1);
-            h.write_f64_canonical(srp.area_m2);
-            h.write_f64_canonical(srp.reflectivity_coefficient);
-        }
     }
 }
 
@@ -317,6 +309,10 @@ pub struct VesselCheckpoint {
     /// Force, torque and mass held by an owner outside the orbital tier, added to whatever
     /// [`DiscreteGncState::latched_law`] produces.
     pub external: ExternalInputs,
+    /// What the vessel's surroundings do to it besides gravity: sunlight, thin air, the
+    /// gravity gradient, the body's magnetic field. Evaluated at every integrator stage.
+    #[serde(default)]
+    pub environment: EnvironmentLoads,
 }
 
 impl VesselCheckpoint {
@@ -340,6 +336,7 @@ impl VesselCheckpoint {
             pinned_surface: None,
             audit: PropagationAudit::default(),
             external: ExternalInputs::default(),
+            environment: EnvironmentLoads::default(),
         }
     }
 
@@ -350,10 +347,10 @@ impl VesselCheckpoint {
         self.external.mass_model(&config.mass_model)
     }
 
-    /// Attaches a solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
+    /// This checkpoint with `load` added to the vessel's environment loads.
     #[must_use]
-    pub const fn with_srp_surface(mut self, surface: SrpSurface) -> Self {
-        self.gnc.srp_surface = Some(surface);
+    pub fn with_environment_load(mut self, load: EnvironmentLoadSpec) -> Self {
+        self.environment = self.environment.with(load);
         self
     }
 
@@ -393,12 +390,13 @@ impl VesselCheckpoint {
 
     /// Canonical SHA-256 content hash of the full per-vessel replay checkpoint
     /// (covering physical state, GNC state, RNG, generations including the external inputs'
-    /// own, integrator continuation, and audit).
+    /// own, the environment loads, integrator continuation, and audit).
     #[must_use]
     pub fn checkpoint_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v3");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v4");
         self.write_physics_state_to_hasher(&mut h);
         self.gnc.write_to_hasher(&mut h);
+        self.environment.write_to_hasher(&mut h);
         self.rng.write_to_hasher(&mut h);
         self.generations.write_to_hasher(&mut h);
         h.write_u64(self.external.generation);

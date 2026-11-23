@@ -72,10 +72,11 @@ impl Setup {
                 reflectivity_coefficient: 1.6,
             }),
         };
+        let flux = force_model.body_catalog().solar_flux_model().clone();
         Self {
             solar,
             force_model,
-            flux: SolarFluxModel::standard(),
+            flux,
             spec,
         }
     }

@@ -22,7 +22,7 @@ mod universe;
 pub use bus::{VesselBusConfig, VesselBusTelemetry};
 pub use carry::{CarriedLoads, CarryContext, PlantSnapshot};
 pub use error::UniverseError;
-pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
+pub use handoff::{InertialExtras, to_body_fixed, to_inertial};
 pub use local::{
     CoastingRigidBody, DEFAULT_CARRY_PERIOD, DEFAULT_MAX_CARRIED_THRUST_ACCEL_M_S2, LocalFactory,
     LocalPlant, MultibodyLocalPlant, OrbitalBody,
@@ -34,5 +34,5 @@ pub use planning::{
     PlanSchedule, PlannedCommand, SlicedPlanExecutor, SynchronousPlanExecutor,
 };
 pub use station_keeping::{DEFAULT_PLAN_DELAY, L2KeepingBurn, L2StationKeeper};
-pub use tiering::{AltitudeBand, TierChange, TierPolicy, planetary_dynamic_pressure_pa};
+pub use tiering::{AltitudeBand, TierChange, TierPolicy};
 pub use universe::{OrbitalContext, Tier, Universe, UniverseCheckpoint};

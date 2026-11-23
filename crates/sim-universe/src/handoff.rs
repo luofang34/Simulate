@@ -11,40 +11,10 @@
 
 use glam::{DMat3, DQuat};
 use sim_core::VehicleState;
-use sim_geo::BodyEllipsoid;
 use sim_orbital::{ContinuousPlantState, NaifId};
 use sim_spacetime::BodyRotationState;
 
 use crate::UniverseError;
-
-/// The NAIF body whose fixed frame `body` describes, or `None` for a body
-/// the orbital propagator has no ephemeris or orientation for.
-#[must_use]
-pub fn naif_body(body: BodyEllipsoid) -> Option<NaifId> {
-    if body == BodyEllipsoid::WGS84 {
-        Some(NaifId::EARTH)
-    } else if body == BodyEllipsoid::MOON_IAU {
-        Some(NaifId::MOON)
-    } else if body == BodyEllipsoid::MARS_IAU {
-        Some(NaifId::MARS)
-    } else {
-        None
-    }
-}
-
-/// The reference ellipsoid whose fixed frame flight dynamics use about
-/// `body`, or `None` for an origin nothing can fly a body-fixed state about,
-/// such as the Sun or a barycentre.
-#[must_use]
-pub fn body_ellipsoid(body: NaifId) -> Option<BodyEllipsoid> {
-    [
-        BodyEllipsoid::WGS84,
-        BodyEllipsoid::MOON_IAU,
-        BodyEllipsoid::MARS_IAU,
-    ]
-    .into_iter()
-    .find(|&ellipsoid| naif_body(ellipsoid) == Some(body))
-}
 
 /// What the orbital tier carries that a body-fixed state does not.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

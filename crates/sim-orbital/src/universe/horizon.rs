@@ -61,7 +61,9 @@ impl OrbitalUniverse {
         let mut limit_s = MAX_PROPOSAL_CHUNK_SECONDS as f64;
         if timeline.config.auto_soi_switch {
             let epoch = self.clock.instant_to_tdb(from);
-            limit_s = limit_s.min(soi_lead_s(frontier, epoch, self.ephemeris.as_ref()));
+            let bodies = self.force_model.body_catalog();
+            let lead_s = soi_lead_s(frontier, epoch, self.ephemeris.as_ref(), bodies);
+            limit_s = limit_s.min(lead_s);
         }
         if !(step_s.is_finite() && limit_s.is_finite()) || step_s <= 0.0 || limit_s <= 0.0 {
             return next_grid;
@@ -97,10 +99,15 @@ impl OrbitalUniverse {
 /// each body whose switching radius applies to its primary, could reach that
 /// radius, scaled by [`SOI_LEAD_SHARE`]; infinite when no radius applies, and zero
 /// (keep the grid) when a body cannot be located.
-fn soi_lead_s(cp: &VesselCheckpoint, epoch: TdbEpoch, ephemeris: &dyn EphemerisCatalog) -> f64 {
+fn soi_lead_s(
+    cp: &VesselCheckpoint,
+    epoch: TdbEpoch,
+    ephemeris: &dyn EphemerisCatalog,
+    bodies: &sim_bodies::BodyCatalog,
+) -> f64 {
     let primary = cp.plant.primary_body;
     let mut lead = f64::INFINITY;
-    for (body, radius_m) in soi_switch_radii_m(primary) {
+    for (body, radius_m) in soi_switch_radii_m(primary, bodies) {
         let (offset, rel_vel) = if body == primary {
             (cp.plant.pos_rel_icrf_m, cp.plant.vel_rel_icrf_m_s)
         } else {

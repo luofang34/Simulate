@@ -2,7 +2,9 @@ use sim_atmosphere::{AtmosphereField, StandardAtmosphere};
 use sim_geo::{Geodetic, UtcTime};
 
 use super::*;
-use crate::earth_field_ned_ut;
+use sim_geo::{LocalFrame, geodetic_to_ecef};
+
+use crate::earth_main_field;
 
 const CYCLE_S: f64 = 1.0 / 480.0;
 const GRAVITY_M_S2: f64 = 9.801;
@@ -68,7 +70,10 @@ fn ideal_devices_at_rest_report_the_pad_reaction_the_air_and_the_field() {
     assert_eq!(air.differential_pressure_pa, None);
     // Nose east: the field's east part lies along the nose, its north part
     // out of the left wing.
-    let field = earth_field_ned_ut(&at, 2026.5).unwrap();
+    let field_fixed = MagneticEnvironment::main_field(2026.5)
+        .field_fixed_ut(earth_main_field().unwrap().as_ref(), geodetic_to_ecef(&at))
+        .unwrap();
+    let field = LocalFrame::at(&at).ecef_to_ned_vector(field_fixed);
     let sensed = samples.magnetic_field_body_ut.unwrap();
     assert!(
         (sensed - DVec3::new(field.y, -field.x, field.z)).length() < 1e-9,

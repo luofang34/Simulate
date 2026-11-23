@@ -20,6 +20,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sim-atmosphere.workspace = true
+sim-bodies.workspace = true
 sim-geo.workspace = true
 sim-spacetime.workspace = true
 thiserror.workspace = true

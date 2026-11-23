@@ -21,8 +21,9 @@ use sim_spacetime::SolarFluxModel;
 use super::{CollinearLagrangePoint, LagrangeError, SynodicFrame};
 use crate::{
     BodyOrientationCatalog, CoastControlLaw, ContinuousControlLaw, ContinuousPlantState,
-    Dop853Tolerances, EphemerisCatalog, ForceModel, MassPropertiesModel, NaifId, PropellantMode,
-    ReactionWheelMode, SolarRadiationPressureLaw, SrpSurface, TdbEpoch, propagate_plant_interval,
+    Dop853Tolerances, EnvironmentContext, EnvironmentLaw, EnvironmentLoadSpec, EnvironmentLoads,
+    EphemerisCatalog, ForceModel, MassPropertiesModel, NaifId, PropellantMode, ReactionWheelMode,
+    SrpSurface, TdbEpoch, propagate_plant_interval,
 };
 
 mod search;
@@ -148,12 +149,23 @@ impl L2HoldingDynamics<'_> {
             )
         };
         let out = match self.srp {
-            Some(surface) => fly(&SolarRadiationPressureLaw {
-                inner: &CoastControlLaw,
-                surface,
-                flux: self.flux,
-                ephemeris: self.ephemeris,
-            }),
+            Some(surface) => {
+                let loads: EnvironmentLoads =
+                    [EnvironmentLoadSpec::SolarRadiationPressure(surface)]
+                        .into_iter()
+                        .collect();
+                fly(&EnvironmentLaw {
+                    inner: &CoastControlLaw,
+                    loads: &loads,
+                    context: EnvironmentContext {
+                        bodies: self.force_model.body_catalog(),
+                        sunlight: self.flux,
+                        ephemeris: self.ephemeris,
+                        orientation: self.orientation,
+                        mass_model: self.mass_model,
+                    },
+                })
+            }
             None => fly(&CoastControlLaw),
         }?;
         Ok(out.final_state)

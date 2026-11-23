@@ -13,12 +13,11 @@ use sim_geo::BodyEllipsoid;
 use sim_orbital::{
     DerivativeOrder, ExternalLoads, ExternalMassProperties, MassPropertiesModel, NaifId, VesselId,
 };
-use sim_spacetime::SolarFluxModel;
 
 use super::{Flight, Universe};
 use crate::UniverseError;
 use crate::carry::{CarriedLoads, CarryContext};
-use crate::handoff::{naif_body, to_body_fixed};
+use crate::handoff::to_body_fixed;
 use crate::local::{LocalPlant, OrbitalBody};
 
 /// `loads` as the orbital tier holds them until the next exchange.
@@ -192,7 +191,10 @@ impl Universe {
         id: VesselId,
         body: BodyEllipsoid,
     ) -> Result<VehicleState, UniverseError> {
-        let naif = naif_body(body).ok_or(UniverseError::UnmodelledBody)?;
+        let naif = self
+            .bodies()
+            .naif_of(&body)
+            .ok_or(UniverseError::UnmodelledBody)?;
         let mut plant = self
             .orbital
             .sample_vessel_state(id, self.now)
@@ -235,8 +237,11 @@ impl Universe {
         )?;
         let position_ssb_m =
             origin.pos_m + rotation.r_icrf_to_fixed.transpose() * state.position_ecef;
-        let sunlight =
-            SolarFluxModel::standard().sample(position_ssb_m, tdb, self.ephemeris.as_ref())?;
+        let sunlight = self.bodies().solar_flux_model().sample(
+            position_ssb_m,
+            tdb,
+            self.ephemeris.as_ref(),
+        )?;
         Ok(CarryContext {
             at,
             body,

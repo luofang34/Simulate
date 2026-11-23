@@ -4,6 +4,7 @@
 //! without mutating shared universe state or advancing discrete GNC state inside RK stages.
 
 use serde::{Deserialize, Serialize};
+use sim_bodies::BodyCatalog;
 use sim_spacetime::{SimInstant, TickSpan};
 
 use crate::{
@@ -18,6 +19,7 @@ use crate::{
     gravity::ForceModel,
     ids::{NaifId, VesselId},
     orientation::BodyOrientationCatalog,
+    plant::{EnvironmentContext, EnvironmentLaw},
     time::{SimClockAdapter, TdbEpoch},
     universe::SchedulerError,
 };
@@ -31,9 +33,8 @@ pub const MAX_PROPOSAL_CHUNK_SECONDS: u64 = 3_600;
 const DETECTOR_DISCRETE_GNC: u32 = 1;
 const DETECTOR_SOI_SWITCH: u32 = 2;
 
-const MOON_SOI_RADIUS_M: f64 = 66_183_000.0;
-const EARTH_SOI_RADIUS_M: f64 = 924_600_000.0;
-const MARS_SOI_RADIUS_M: f64 = 577_200_000.0;
+/// A vessel enters a sphere of influence a little inside its radius and leaves a
+/// little outside, so one skimming the boundary does not switch origin back and forth.
 const SOI_ENTRY_FACTOR: f64 = 0.95;
 const SOI_EXIT_FACTOR: f64 = 1.05;
 
@@ -145,6 +146,7 @@ pub fn propose_vessel_horizon(
         remaining_slots,
         clock,
         ephemeris,
+        force_model.body_catalog(),
         out,
     )
 }
@@ -161,20 +163,17 @@ pub(crate) fn propagate_checkpoint_interval(
     ephemeris: &dyn EphemerisCatalog,
     orientation: &dyn BodyOrientationCatalog,
 ) -> Result<crate::dop853::PlantPropagationOutput, SchedulerError> {
-    let flux = sim_spacetime::SolarFluxModel::standard();
-    let srp_law =
-        checkpoint
-            .gnc
-            .srp_surface
-            .map(|surface| crate::plant::SolarRadiationPressureLaw {
-                inner: &checkpoint.gnc.latched_law,
-                surface,
-                flux: &flux,
-                ephemeris,
-            });
-    let guidance: &dyn crate::plant::ContinuousControlLaw = match &srp_law {
-        Some(law) => law,
-        None => &checkpoint.gnc.latched_law,
+    let mass_model = checkpoint.mass_model(config);
+    let environment = EnvironmentLaw {
+        inner: &checkpoint.gnc.latched_law,
+        loads: &checkpoint.environment,
+        context: EnvironmentContext::of(force_model, ephemeris, orientation, &mass_model),
+    };
+    // A vessel that feels nothing but gravity keeps the bare law, and its bits.
+    let guidance: &dyn crate::plant::ContinuousControlLaw = match checkpoint.environment.is_empty()
+    {
+        true => &checkpoint.gnc.latched_law,
+        false => &environment,
     };
     let control = ExternalWrenchLaw {
         inner: guidance,
@@ -186,7 +185,7 @@ pub(crate) fn propagate_checkpoint_interval(
         end_epoch,
         h_init_s,
         tolerances,
-        &checkpoint.mass_model(config),
+        &mass_model,
         config.propellant_mode,
         config.rw_mode,
         force_model,
@@ -257,7 +256,10 @@ fn build_dormant_kepler_proposal(
     let mu_p = force_model
         .constants()
         .require_mu(base.plant.primary_body)
-        .unwrap_or(3.986_004_418e14);
+        .map_err(|source| SchedulerError::Propagation {
+            vessel_id: base.vessel_id,
+            source: crate::dop853::Dop853Error::Rhs(source.into()),
+        })?;
     let (r_end, v_end) = crate::kepler::propagate_kepler_universal(
         base.plant.pos_rel_icrf_m,
         base.plant.vel_rel_icrf_m_s,
@@ -273,7 +275,9 @@ fn build_dormant_kepler_proposal(
         dt_s.max(1.0),
         crate::plant::PropagationAudit::default(),
     );
-    let events = collect_boundary_events(&mut end_cp, config, end_instant, clock, ephemeris);
+    let bodies = force_model.body_catalog();
+    let events =
+        collect_boundary_events(&mut end_cp, config, end_instant, clock, ephemeris, bodies);
     Ok(SpeculativeProposal {
         vessel_id: base.vessel_id,
         base_state_gen: base.generations.state_gen,
@@ -291,6 +295,7 @@ fn build_dormant_kepler_proposal(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn package_segments_and_events(
     base: &VesselCheckpoint,
     config: &VesselConfig,
@@ -298,6 +303,7 @@ fn package_segments_and_events(
     remaining_slots: usize,
     clock: &SimClockAdapter,
     ephemeris: &dyn EphemerisCatalog,
+    bodies: &BodyCatalog,
     out: crate::dop853::PlantPropagationOutput,
 ) -> Result<SpeculativeProposal, SchedulerError> {
     let take_count = out.segments.len().min(remaining_slots);
@@ -317,7 +323,7 @@ fn package_segments_and_events(
             seg.audit,
         );
         let seg_events =
-            collect_boundary_events(&mut next_cp, config, seg_end_inst, clock, ephemeris);
+            collect_boundary_events(&mut next_cp, config, seg_end_inst, clock, ephemeris, bodies);
         let stop_here = !seg_events.is_empty();
         events.extend(seg_events);
         entries.push(SpeculativeSegmentEntry {
@@ -352,12 +358,13 @@ fn collect_boundary_events(
     through_instant: SimInstant,
     clock: &SimClockAdapter,
     ephemeris: &dyn EphemerisCatalog,
+    bodies: &BodyCatalog,
 ) -> Vec<ScheduledEvent> {
     let mut events = Vec::new();
     maybe_emit_gnc_boundary_event(cursor_cp, through_instant, &mut events);
     if config.auto_soi_switch {
         let ep = clock.instant_to_tdb(through_instant);
-        if let Some(target_body) = detect_soi_switch_target(cursor_cp, ep, ephemeris) {
+        if let Some(target_body) = detect_soi_switch_target(cursor_cp, ep, ephemeris, bodies) {
             let seq = cursor_cp.generations.next_emit_seq();
             let key = EventOrderKey::single(
                 through_instant,
@@ -405,78 +412,42 @@ fn maybe_emit_gnc_boundary_event(
     }
 }
 
+/// The origin a vessel should be integrated about instead of its present one: a body
+/// directly inside the present origin's region whose own region it has entered, in
+/// identifier order, or else the present origin's parent once it has left.
 fn detect_soi_switch_target(
     cp: &VesselCheckpoint,
     epoch: TdbEpoch,
     ephemeris: &dyn EphemerisCatalog,
+    bodies: &BodyCatalog,
 ) -> Option<NaifId> {
-    let p = cp.plant.primary_body;
-    let r_norm = cp.plant.pos_rel_icrf_m.length();
-    if p == NaifId::EARTH {
-        if let Ok(moon_rel) = ephemeris.geometric_state_icrf(
-            NaifId::MOON,
-            NaifId::EARTH,
-            epoch,
-            DerivativeOrder::Position,
-        ) && (cp.plant.pos_rel_icrf_m - moon_rel.pos_m).length()
-            < MOON_SOI_RADIUS_M * SOI_ENTRY_FACTOR
+    let primary = cp.plant.primary_body;
+    let position = cp.plant.pos_rel_icrf_m;
+    for child in bodies.children_of(primary) {
+        let Some(soi) = child.sphere_of_influence else {
+            continue;
+        };
+        if let Ok(child_state) =
+            ephemeris.geometric_state_icrf(child.naif, primary, epoch, DerivativeOrder::Position)
+            && (position - child_state.pos_m).length() < soi.radius_m * SOI_ENTRY_FACTOR
         {
-            return Some(NaifId::MOON);
-        }
-        if r_norm > EARTH_SOI_RADIUS_M * SOI_EXIT_FACTOR {
-            return Some(NaifId::SSB);
-        }
-    } else if p == NaifId::MOON {
-        if r_norm > MOON_SOI_RADIUS_M * SOI_EXIT_FACTOR {
-            return Some(NaifId::EARTH);
-        }
-    } else if p == NaifId::MARS {
-        if r_norm > MARS_SOI_RADIUS_M * SOI_EXIT_FACTOR {
-            return Some(NaifId::SSB);
-        }
-    } else if p == NaifId::SSB {
-        if let Ok(earth_st) = ephemeris.geometric_state_icrf(
-            NaifId::EARTH,
-            NaifId::SSB,
-            epoch,
-            DerivativeOrder::Position,
-        ) && (cp.plant.pos_rel_icrf_m - earth_st.pos_m).length()
-            < EARTH_SOI_RADIUS_M * SOI_ENTRY_FACTOR
-        {
-            return Some(NaifId::EARTH);
-        }
-        if let Ok(mars_st) = ephemeris.geometric_state_icrf(
-            NaifId::MARS,
-            NaifId::SSB,
-            epoch,
-            DerivativeOrder::Position,
-        ) && (cp.plant.pos_rel_icrf_m - mars_st.pos_m).length()
-            < MARS_SOI_RADIUS_M * SOI_ENTRY_FACTOR
-        {
-            return Some(NaifId::MARS);
+            return Some(child.naif);
         }
     }
-    None
+    let own = bodies.get(primary)?.sphere_of_influence?;
+    (position.length() > own.radius_m * SOI_EXIT_FACTOR).then_some(own.parent)
 }
 
 /// The radii (`m`) about each body at which [`detect_soi_switch_target`] switches a
 /// vessel flying about `primary` to another origin.
-pub(crate) fn soi_switch_radii_m(primary: NaifId) -> Vec<(NaifId, f64)> {
-    if primary == NaifId::EARTH {
-        vec![
-            (NaifId::MOON, MOON_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
-            (NaifId::EARTH, EARTH_SOI_RADIUS_M * SOI_EXIT_FACTOR),
-        ]
-    } else if primary == NaifId::MOON {
-        vec![(NaifId::MOON, MOON_SOI_RADIUS_M * SOI_EXIT_FACTOR)]
-    } else if primary == NaifId::MARS {
-        vec![(NaifId::MARS, MARS_SOI_RADIUS_M * SOI_EXIT_FACTOR)]
-    } else if primary == NaifId::SSB {
-        vec![
-            (NaifId::EARTH, EARTH_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
-            (NaifId::MARS, MARS_SOI_RADIUS_M * SOI_ENTRY_FACTOR),
-        ]
-    } else {
-        Vec::new()
-    }
+pub(crate) fn soi_switch_radii_m(primary: NaifId, bodies: &BodyCatalog) -> Vec<(NaifId, f64)> {
+    let entries = bodies.children_of(primary).filter_map(|child| {
+        let soi = child.sphere_of_influence?;
+        Some((child.naif, soi.radius_m * SOI_ENTRY_FACTOR))
+    });
+    let exit = bodies
+        .get(primary)
+        .and_then(|body| body.sphere_of_influence)
+        .map(|soi| (primary, soi.radius_m * SOI_EXIT_FACTOR));
+    entries.chain(exit).collect()
 }

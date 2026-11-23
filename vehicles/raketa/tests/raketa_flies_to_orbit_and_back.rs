@@ -14,7 +14,7 @@ use sim_orbital::{
 };
 use sim_raketa::{RAKETA_MASS_KG, RaketaCommand, RaketaEnvironment, RaketaPlant};
 use sim_spacetime::SimEpoch;
-use sim_universe::{OrbitalContext, Tier, TierPolicy, Universe};
+use sim_universe::{OrbitalContext, Tier, Universe};
 
 const RAKETA: VesselId = VesselId(1);
 /// `2027-03-01T00:00:00Z`.
@@ -44,8 +44,7 @@ fn universe_with_raketa_on_the_pad() -> Universe {
         quantum: TickSpan::from_seconds_and_subsec_ticks(10, 0),
         tolerances: Dop853Tolerances::default(),
     };
-    let mut universe =
-        Universe::new(epoch.clone(), context).with_tier_policy(TierPolicy::standard());
+    let mut universe = Universe::new(epoch.clone(), context).with_regime_tier_policy();
     let pad = Geodetic {
         lat_rad: 28.572_9_f64.to_radians(),
         lon_rad: (-80.649_0_f64).to_radians(),

@@ -18,6 +18,7 @@ members = [
     "crates/sim-analysis",
     "crates/sim-analysis-contract",
     "crates/sim-atmosphere",
+    "crates/sim-bodies",
     "crates/sim-devices",
     "crates/sim-geo",
     "crates/sim-input",
@@ -59,6 +60,7 @@ sim-analysis = { path = "crates/sim-analysis" }
 sim-analysis-contract = { path = "crates/sim-analysis-contract" }
 sim-atmosphere = { path = "crates/sim-atmosphere" }
 sim-aviate = { path = "adapters/sim-aviate" }
+sim-bodies = { path = "crates/sim-bodies" }
 sim-chain-trial = { path = "adapters/sim-chain-trial" }
 sim-flight-chain = { path = "adapters/sim-flight-chain" }
 sim-devices = { path = "crates/sim-devices" }
@@ -96,6 +98,7 @@ world-atmosphere = { git = "https://github.com/luofang34/world", rev = "075e2caf
 world-core = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2" }
 world-geomag = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2" }
 world-notices = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2" }
+world-potential = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2" }
 world-surveillance = { git = "https://github.com/luofang34/world", rev = "075e2cafee7fa3dc044f28d750f6b1094d5c5ab2" }
 indicate-alerts = { git = "https://github.com/luofang34/Indicate", rev = "c70fdefc6f89b935b6ce956d4478aff1a44d783c" }
 indicate-frames = { git = "https://github.com/luofang34/Indicate", rev = "c70fdefc6f89b935b6ce956d4478aff1a44d783c" }

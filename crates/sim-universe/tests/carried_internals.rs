@@ -40,10 +40,11 @@ const DEMOTED_S: u64 = PROMOTED_S + EXCHANGES * 10;
 fn universe_with(launch: &Launch, calls: &Rc<Cell<u32>>, carried: bool, policy: bool) -> Universe {
     let mut universe = Universe::new(launch.epoch.clone(), context());
     if policy {
-        universe = universe.with_tier_policy(TierPolicy {
+        let policy = TierPolicy {
             check_period: CARRY_PERIOD,
-            ..TierPolicy::standard()
-        });
+            ..TierPolicy::for_bodies(universe.bodies())
+        };
+        universe = universe.with_tier_policy(policy);
     }
     let ship = plant(
         BodyEllipsoid::WGS84,

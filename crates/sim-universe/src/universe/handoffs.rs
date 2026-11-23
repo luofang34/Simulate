@@ -7,16 +7,16 @@
 use sim_core::SimInstant;
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
-    ExternalLoads, PropellantMode, ReactionWheelMode, SrpSurface, VesselCheckpoint, VesselConfig,
-    VesselId,
+    EnvironmentLoadSpec, EnvironmentLoads, ExternalLoads, PropellantMode, ReactionWheelMode,
+    VesselCheckpoint, VesselConfig, VesselId,
 };
 
 use super::exchange::{external_loads, mass_model};
 use super::{Flight, Tier, Universe};
 use crate::UniverseError;
-use crate::handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
+use crate::handoff::{InertialExtras, to_body_fixed, to_inertial};
 use crate::local::LocalPlant;
-use crate::tiering::{TierChange, planetary_dynamic_pressure_pa};
+use crate::tiering::TierChange;
 
 /// Whether `plant`'s own steps land on `at`, so its internals can be brought
 /// to that instant.
@@ -68,20 +68,25 @@ impl Universe {
             return Ok(None);
         }
         let primary = self.inertial_state(id)?.primary_body;
-        let Some(body) = body_ellipsoid(primary) else {
+        let Some(described) = self.bodies().get(primary).cloned() else {
             return Ok(None);
         };
+        let body = described.ellipsoid;
         let state = self.vehicle_state(id)?;
-        let height_m = body.fixed_to_geodetic(state.position_ecef).height_m;
+        let position = body.fixed_to_geodetic(state.position_ecef);
+        let height_m = position.height_m;
+        // The body's own air where and when the vessel is; beyond the model's
+        // reach there is none to press on it.
+        let utc = self.epoch().utc_at(self.now)?;
+        let density_kg_m3 = described
+            .atmosphere()
+            .sample(&position, utc)
+            .map_or(0.0, |air| air.density_kg_m3);
         Ok(Some(PolicyView {
             tier: Tier::Orbital,
             body,
             height_m,
-            dynamic_pressure_pa: planetary_dynamic_pressure_pa(
-                primary,
-                height_m,
-                state.velocity_ecef.length(),
-            ),
+            dynamic_pressure_pa: 0.5 * density_kg_m3 * state.velocity_ecef.length_squared(),
             ground_contact: height_m <= 0.0,
             // Only at an exchange do the plant's internals describe this instant.
             holds_local: carried
@@ -119,7 +124,7 @@ impl Universe {
             let Some(view) = view else {
                 continue;
             };
-            let Some(naif) = naif_body(view.body) else {
+            let Some(naif) = self.bodies().naif_of(&view.body) else {
                 continue;
             };
             let to = policy
@@ -152,7 +157,7 @@ impl Universe {
     /// tier must have reached [`Self::now`], so both tiers describe the same
     /// instant. A plant with a [`LocalPlant::carry_period`] goes with the
     /// vessel and keeps its internals running there; any other is dropped,
-    /// and only its mass, inertia, size and radiation-pressure surface go on.
+    /// and only its mass, inertia, size and environment loads go on.
     pub fn promote_to_orbital(&mut self, id: VesselId) -> Result<(), UniverseError> {
         let Flight::Local(plant) = &self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
@@ -163,15 +168,17 @@ impl Universe {
         if plant.orbital_body().is_none() {
             return Err(UniverseError::LocalOnly(id));
         }
-        let srp = plant
-            .srp_surface()
-            .or_else(|| self.vessels.get(&id).and_then(|v| v.bus.srp_surface()));
+        let mut environment = plant.environment_loads();
+        let bus_srp = self.vessels.get(&id).and_then(|v| v.bus.srp_surface());
+        if let (None, Some(surface)) = (environment.srp_surface(), bus_srp) {
+            environment = environment.with(EnvironmentLoadSpec::SolarRadiationPressure(surface));
+        }
         let aloft = Flight::Orbital { carried: None };
         let Flight::Local(mut plant) = std::mem::replace(&mut self.vessel_mut(id)?.flight, aloft)
         else {
             return Err(UniverseError::AlreadyInTier(id));
         };
-        match self.insert_promoted(id, plant.as_mut(), srp) {
+        match self.insert_promoted(id, plant.as_mut(), environment) {
             Ok(carryable) => {
                 self.vessel_mut(id)?.flight = Flight::Orbital {
                     carried: carryable.then_some(plant),
@@ -193,7 +200,7 @@ impl Universe {
         &mut self,
         id: VesselId,
         plant: &mut dyn LocalPlant,
-        srp: Option<SrpSurface>,
+        environment: EnvironmentLoads,
     ) -> Result<bool, UniverseError> {
         let body = plant.body();
         let (naif, rotation) = self.rotation(body, self.now)?;
@@ -223,9 +230,7 @@ impl Universe {
         };
         let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
         checkpoint.external.loads = held;
-        if let Some(surface) = srp {
-            checkpoint = checkpoint.with_srp_surface(surface);
-        }
+        checkpoint.environment = environment;
         self.orbital
             .insert_vessel(config, checkpoint)
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))?;
@@ -248,7 +253,10 @@ impl Universe {
             return Err(UniverseError::BetweenSteps { vessel: id });
         }
         let primary = self.inertial_state(id)?.primary_body;
-        let body = body_ellipsoid(primary).ok_or(UniverseError::UnmodelledBody)?;
+        let body = self
+            .bodies()
+            .ellipsoid_of(primary)
+            .ok_or(UniverseError::UnmodelledBody)?;
         let (naif, rotation) = self.rotation(body, self.now)?;
         self.bring_carried_to_now(id)?;
         let (_config, checkpoint) = self

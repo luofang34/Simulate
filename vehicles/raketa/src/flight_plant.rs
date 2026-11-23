@@ -19,7 +19,7 @@ use sim_orbital::{
 };
 use sim_spacetime::SimEpoch;
 use sim_universe::{
-    InertialExtras, LocalFactory, LocalPlant, OrbitalBody, UniverseError, naif_body, to_body_fixed,
+    InertialExtras, LocalFactory, LocalPlant, OrbitalBody, UniverseError, to_body_fixed,
     to_inertial,
 };
 
@@ -132,7 +132,11 @@ impl RaketaPlant {
         body: BodyEllipsoid,
         site: &Geodetic,
     ) -> Result<Self, RaketaPlantError> {
-        let primary = naif_body(body).ok_or(RaketaPlantError::UnmodelledBody)?;
+        let primary = environment
+            .force_model
+            .body_catalog()
+            .naif_of(&body)
+            .ok_or(RaketaPlantError::UnmodelledBody)?;
         let cg = Geodetic {
             height_m: site.height_m + RAKETA_CG_Y_M,
             ..*site
@@ -172,7 +176,11 @@ impl RaketaPlant {
         body: BodyEllipsoid,
         state: &VehicleState,
     ) -> Result<Self, RaketaPlantError> {
-        let primary = naif_body(body).ok_or(RaketaPlantError::UnmodelledBody)?;
+        let primary = environment
+            .force_model
+            .body_catalog()
+            .naif_of(&body)
+            .ok_or(RaketaPlantError::UnmodelledBody)?;
         let rotation = environment
             .orientation
             .body_rotation(primary, epoch.tdb_at(start))?;

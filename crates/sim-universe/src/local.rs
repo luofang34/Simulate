@@ -62,6 +62,16 @@ pub trait LocalPlant {
     fn srp_surface(&self) -> Option<sim_orbital::SrpSurface> {
         None
     }
+    /// What the vessel's surroundings do to it in the orbital tier besides
+    /// gravity: by default its radiation-pressure surface alone. A plant that
+    /// should decay in thin air, librate in the gravity gradient or feel the
+    /// body's magnetic field names those loads here.
+    fn environment_loads(&self) -> sim_orbital::EnvironmentLoads {
+        self.srp_surface()
+            .map(sim_orbital::EnvironmentLoadSpec::SolarRadiationPressure)
+            .into_iter()
+            .collect()
+    }
     /// Advances one period.
     fn step(&mut self) -> Result<(), UniverseError>;
     /// Advances by whole periods to the last step instant at or before

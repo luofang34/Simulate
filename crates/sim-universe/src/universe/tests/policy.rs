@@ -31,8 +31,8 @@ fn dipping_orbit() -> VehicleState {
 
 fn fly_dipping_orbit(slice: TickSpan) -> (Vec<TierChange>, VehicleState) {
     let epoch = epoch();
-    let mut universe = Universe::new(epoch.clone(), solar_system_context())
-        .with_tier_policy(TierPolicy::standard());
+    let mut universe =
+        Universe::new(epoch.clone(), solar_system_context()).with_regime_tier_policy();
     let plant = coaster(
         BodyEllipsoid::WGS84,
         &dipping_orbit(),
@@ -103,8 +103,8 @@ impl LocalPlant for Held {
 #[test]
 fn a_vessel_that_holds_its_local_tier_is_left_there() {
     let epoch = epoch();
-    let mut universe = Universe::new(epoch.clone(), solar_system_context())
-        .with_tier_policy(TierPolicy::standard());
+    let mut universe =
+        Universe::new(epoch.clone(), solar_system_context()).with_regime_tier_policy();
     let free = coaster(
         BodyEllipsoid::WGS84,
         &leo_state(),
@@ -166,8 +166,8 @@ impl LocalPlant for Airborne {
 #[test]
 fn a_plant_only_flight_dynamics_can_fly_never_goes_orbital() {
     let epoch = epoch();
-    let mut universe = Universe::new(epoch.clone(), solar_system_context())
-        .with_tier_policy(TierPolicy::standard());
+    let mut universe =
+        Universe::new(epoch.clone(), solar_system_context()).with_regime_tier_policy();
     let plant = coaster(
         BodyEllipsoid::WGS84,
         &leo_state(),
@@ -259,7 +259,8 @@ impl LocalPlant for GroundContactPlant {
 
 #[test]
 fn dynamic_pressure_and_ground_contact_block_promotion_and_trigger_demotion() {
-    let policy = TierPolicy::standard();
+    let bodies = sim_bodies::BodyCatalog::standard_solar_system().unwrap();
+    let policy = TierPolicy::for_bodies(&bodies);
     let e = sim_orbital::NaifId::EARTH;
     assert_eq!(
         policy.wanted(Tier::Local, e, 200_000.0, 0.05, false),
@@ -273,8 +274,8 @@ fn dynamic_pressure_and_ground_contact_block_promotion_and_trigger_demotion() {
     );
 
     let epoch = epoch();
-    let mut universe = Universe::new(epoch.clone(), solar_system_context())
-        .with_tier_policy(TierPolicy::standard());
+    let mut universe =
+        Universe::new(epoch.clone(), solar_system_context()).with_regime_tier_policy();
     let high_q = coaster(
         BodyEllipsoid::WGS84,
         &leo_state(),
@@ -318,8 +319,7 @@ fn demotion_on_a_minute_quantum(escorted: bool) -> SimInstant {
         quantum: TickSpan::from_seconds_and_subsec_ticks(60, 0),
         ..solar_system_context()
     };
-    let mut universe =
-        Universe::new(epoch.clone(), context).with_tier_policy(TierPolicy::standard());
+    let mut universe = Universe::new(epoch.clone(), context).with_regime_tier_policy();
     let orbit = dipping_orbit();
     let spin = DVec3::Z * BodyEllipsoid::WGS84.omega_rad_s;
     let state = sim_orbital::ContinuousPlantState {

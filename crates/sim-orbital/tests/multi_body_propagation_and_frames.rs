@@ -3,9 +3,10 @@
 //! dense output, and 50-period `CR3BP` Jacobi integral conservation.
 
 use glam::DVec3;
+use sim_bodies::{HarmonicGravity, HarmonicTerm, TideSystem};
 use sim_orbital::{
-    Dop853GenericConfig, HarmonicTerm, NaifId, dop853_fixed_steps, dop853_integrate_generic,
-    evaluate_bernstein_8, evaluate_spherical_harmonics_fixed, third_body_tidal_accel_icrf,
+    Dop853GenericConfig, NaifId, dop853_fixed_steps, dop853_integrate_generic,
+    evaluate_bernstein_8, third_body_tidal_accel_icrf,
 };
 use sim_spacetime::{cos, ln, sin, sqrt};
 
@@ -100,28 +101,28 @@ fn nonsingular_spherical_harmonics_gradient_and_poles_verified() {
         DVec3::new(4_200_000.0, -3_800_000.0, 4_500_000.0),
     ];
 
+    // The non-central terms alone, as the force model sums them.
+    let field = HarmonicGravity::from_terms(mu, r_eq, &terms, TideSystem::Unstated)
+        .expect("field")
+        .capped(1, 4, 4)
+        .expect("cap");
+    let potential = |p: DVec3| field.sample(p, false).expect("sample").potential_m2_s2;
     let h = 500.0_f64;
     let axes = [DVec3::X, DVec3::Y, DVec3::Z];
     for p in test_points {
-        let eval = evaluate_spherical_harmonics_fixed(p, mu, r_eq, &terms);
-        assert!(eval.accel_fixed_m_s2.is_finite());
+        let accel = field.sample(p, false).expect("sample").acceleration_m_s2;
+        assert!(accel.is_finite());
         if p.x == 0.0 && p.y == 0.0 {
-            assert!(eval.accel_fixed_m_s2.truncate().length() > 1.0e-7);
+            assert!(accel.truncate().length() > 1.0e-7);
         }
-        let mut grad_neg = [0.0_f64; 3];
+        let mut gradient = [0.0_f64; 3];
         for (k, &ax) in axes.iter().enumerate() {
-            let um2 = evaluate_spherical_harmonics_fixed(p - 2.0 * h * ax, mu, r_eq, &terms)
-                .potential_j_kg;
-            let um1 =
-                evaluate_spherical_harmonics_fixed(p - h * ax, mu, r_eq, &terms).potential_j_kg;
-            let up1 =
-                evaluate_spherical_harmonics_fixed(p + h * ax, mu, r_eq, &terms).potential_j_kg;
-            let up2 = evaluate_spherical_harmonics_fixed(p + 2.0 * h * ax, mu, r_eq, &terms)
-                .potential_j_kg;
-            grad_neg[k] = -(um2 - 8.0 * um1 + 8.0 * up1 - up2) / (12.0 * h);
+            let (um2, um1) = (potential(p - 2.0 * h * ax), potential(p - h * ax));
+            let (up1, up2) = (potential(p + h * ax), potential(p + 2.0 * h * ax));
+            gradient[k] = (um2 - 8.0 * um1 + 8.0 * up1 - up2) / (12.0 * h);
         }
-        let fd_acc = DVec3::from_array(grad_neg);
-        let rel = (eval.accel_fixed_m_s2 - fd_acc).length() / eval.accel_fixed_m_s2.length();
+        let fd_acc = DVec3::from_array(gradient);
+        let rel = (accel - fd_acc).length() / accel.length();
         assert!(
             rel < 1.0e-11,
             "harmonic gradient mismatch at {p:?}: rel={rel:e}"

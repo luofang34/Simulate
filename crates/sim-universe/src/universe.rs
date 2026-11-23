@@ -4,18 +4,19 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use sim_bodies::BodyCatalog;
 use sim_core::{SimInstant, TickSpan, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
-    BodyOrientationCatalog, ContentHash, ContinuousPlantState, Dop853Tolerances, EphemerisCatalog,
-    ForceModel, NaifId, OrbitalUniverse, PlayerCommandPayload, SimulationManifestDigest,
-    VesselCheckpoint, VesselConfig, VesselId,
+    BodyOrientationCatalog, ContentHash, ContinuousPlantState, Dop853Tolerances,
+    EnvironmentLoadSpec, EphemerisCatalog, ForceModel, NaifId, OrbitalUniverse,
+    PlayerCommandPayload, SimulationManifestDigest, VesselCheckpoint, VesselConfig, VesselId,
 };
 use sim_spacetime::{BodyRotationState, SimEpoch};
 
 use crate::UniverseError;
 use crate::bus::{VesselBusConfig, VesselBusState};
-use crate::handoff::{body_ellipsoid, naif_body, to_body_fixed};
+use crate::handoff::to_body_fixed;
 use crate::local::{LocalFactory, LocalPlant};
 use crate::planning::Planner;
 use crate::tiering::{TierChange, TierPolicy};
@@ -78,6 +79,7 @@ pub(crate) struct Vessel {
 pub struct Universe {
     epoch: SimEpoch,
     orbital: OrbitalUniverse,
+    bodies: Arc<BodyCatalog>,
     pub(crate) ephemeris: Arc<dyn EphemerisCatalog>,
     orientation: Arc<dyn BodyOrientationCatalog>,
     tolerances: Dop853Tolerances,
@@ -94,6 +96,7 @@ impl Universe {
     #[must_use]
     pub fn new(epoch: SimEpoch, context: OrbitalContext) -> Self {
         let clock = epoch.clock();
+        let bodies = Arc::clone(context.force_model.body_catalog());
         let manifest = SimulationManifestDigest::compute(
             clock.base_tdb(),
             context.ephemeris.content_hash(),
@@ -115,6 +118,7 @@ impl Universe {
         Self {
             epoch,
             orbital,
+            bodies,
             ephemeris: context.ephemeris,
             orientation: context.orientation,
             tolerances: context.tolerances,
@@ -141,6 +145,14 @@ impl Universe {
         self
     }
 
+    /// Moves vessels between tiers by the regime limits each body of this
+    /// run declares ([`TierPolicy::for_bodies`]).
+    #[must_use]
+    pub fn with_regime_tier_policy(self) -> Self {
+        let policy = TierPolicy::for_bodies(&self.bodies);
+        self.with_tier_policy(policy)
+    }
+
     /// The tier changes the policy has made since this was last called, in
     /// the order they happened.
     pub fn take_tier_changes(&mut self) -> Vec<TierChange> {
@@ -151,6 +163,14 @@ impl Universe {
     #[must_use]
     pub const fn now(&self) -> SimInstant {
         self.now
+    }
+
+    /// The bodies of this run, as the orbital force model's constants
+    /// describe them: one catalog for both tiers, so a vessel changing tier
+    /// keeps its body, its fields and its air.
+    #[must_use]
+    pub const fn bodies(&self) -> &Arc<BodyCatalog> {
+        &self.bodies
     }
 
     /// The run's clock.
@@ -220,7 +240,8 @@ impl Universe {
         }
         let mut checkpoint = VesselCheckpoint::new(id, self.now, state, 0);
         if let Some(srp) = bus_config.srp_surface {
-            checkpoint = checkpoint.with_srp_surface(srp);
+            checkpoint =
+                checkpoint.with_environment_load(EnvironmentLoadSpec::SolarRadiationPressure(srp));
         }
         self.orbital
             .insert_vessel(config, checkpoint)
@@ -278,8 +299,10 @@ impl Universe {
             Flight::Local(plant) => Ok(plant.state()),
             Flight::Orbital { .. } => {
                 let plant = self.inertial_state(id)?;
-                let body =
-                    body_ellipsoid(plant.primary_body).ok_or(UniverseError::UnmodelledBody)?;
+                let body = self
+                    .bodies
+                    .ellipsoid_of(plant.primary_body)
+                    .ok_or(UniverseError::UnmodelledBody)?;
                 let (naif, rotation) = self.rotation(body, self.now)?;
                 Ok(to_body_fixed(&plant, naif, &rotation)?.0)
             }
@@ -291,7 +314,10 @@ impl Universe {
     /// scheduler currently integrates it around.
     pub fn central_body(&self, id: VesselId) -> Result<NaifId, UniverseError> {
         match &self.vessel(id)?.flight {
-            Flight::Local(plant) => naif_body(plant.body()).ok_or(UniverseError::UnmodelledBody),
+            Flight::Local(plant) => self
+                .bodies
+                .naif_of(&plant.body())
+                .ok_or(UniverseError::UnmodelledBody),
             Flight::Orbital { .. } => Ok(self.inertial_state(id)?.primary_body),
         }
     }
@@ -332,7 +358,10 @@ impl Universe {
         body: BodyEllipsoid,
         at: SimInstant,
     ) -> Result<(NaifId, BodyRotationState), UniverseError> {
-        let naif = naif_body(body).ok_or(UniverseError::UnmodelledBody)?;
+        let naif = self
+            .bodies
+            .naif_of(&body)
+            .ok_or(UniverseError::UnmodelledBody)?;
         let rotation = self
             .orientation
             .body_rotation(naif, self.epoch.tdb_at(at))?;

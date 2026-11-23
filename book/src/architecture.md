@@ -96,14 +96,18 @@ axes about a primary body, with a full solar-system force model. They meet in
   own catalog, so a vessel does not jump.
 - Gravity is n-body everywhere, so an orbital vessel has no sphere of
   influence, only an origin its motion is integrated about. The scheduler
-  moves that origin between Earth, the Moon, Mars and the solar-system
-  barycentre as the vessel travels, and `Universe::central_body` reports it.
-  A vessel comes back to flight dynamics about whichever body it then orbits.
-- A `TierPolicy` makes those handoffs by itself. It holds, per body, the
-  height above which a local vessel goes orbital and a lower height below
-  which an orbital one comes back, so a vessel skimming one threshold does
-  not flip. It acts only at whole multiples of its check period, and a local
-  plant in ground contact, in air or under power holds its tier.
+  moves that origin between the catalog's bodies and the solar-system
+  barycentre as the vessel travels, by the radius and parent each body
+  declares, and `Universe::central_body` reports it. A vessel comes back to
+  flight dynamics about whichever body it then orbits.
+- A `TierPolicy` makes those handoffs by itself. `TierPolicy::for_bodies`
+  takes, from each body's regime limits, the height above which a local
+  vessel goes orbital and a lower height below which an orbital one comes
+  back, so a vessel skimming one threshold does not flip. An orbital vessel
+  also comes back when the dynamic pressure of that body's own atmosphere,
+  sampled where and when the vessel is, passes a threshold. The policy acts
+  only at whole multiples of its check period, and a local plant in ground
+  contact, in air or under power holds its tier.
   `Universe::take_tier_changes` reports what it did.
 - A plant says whether orbital propagation can carry it at all. An aircraft
   cannot, so it stays in flight dynamics whatever a policy says.
@@ -122,7 +126,9 @@ axes about a primary body, with a full solar-system force model. They meet in
   `RaketaPlant` as the ownship. It leaves the pad in flight dynamics, coasts
   in orbital propagation, and is handed back whenever the pilot flies it.
 - `scripts/check-architecture.sh` refuses any `sim-core` dependency on the
-  orbital stack, so `sim-universe` stays the only bridge.
+  orbital stack, so `sim-universe` stays the only bridge. It also keeps
+  `sim-bodies` the only crate that links `world-potential`, and refuses a
+  second harmonic evaluator anywhere.
 
 An Earth-centred orbital propagation must include the Sun and the Moon. The
 frame's own acceleration towards them is always applied, and only their pull on
@@ -130,6 +136,71 @@ the vessel cancels it. An Earth-only force model drifts by hundreds of metres in
 minutes. The test `flight_and_orbital_dynamics_agree_across_a_handoff` flies
 one orbit both ways. It allows the two tiers to differ only by the solar and
 lunar tide, which `RigidBody6DofBlock` does not model.
+
+## Bodies and fields
+
+What a vehicle is near is data. `sim_bodies::BodyDescriptor` holds one body:
+its NAIF identifier, reference ellipsoid and `GM`, where its orientation
+comes from, its gravity field, its magnetic field, its atmosphere, its
+terrain where one is modelled, its sphere of influence and parent, the
+regime limits the tier policy reads, and the radius that hides the Sun.
+`BodyCatalog` holds the bodies of a run; `standard_solar_system` registers
+Earth, the Moon and Mars. Handoffs, the tier policy, origin switching, the
+solar occulters, the orbital force model's attracting set and its
+orientation policies all look a body up there, so a body registered once
+exists for every one of them. The catalog's hash is part of the orbital
+constants' hash, and so of the run's manifest. It covers gravity
+coefficients and anomaly grids by value, and magnetic fields and
+atmospheres by the name their descriptor gives them.
+
+Gravity and magnetism have one synthesis, `world-potential`'s
+spherical-harmonic core, reached only through `sim-bodies`:
+
+- `HarmonicGravity` is a body's gravitation: `GM`, a reference radius and
+  fully normalised coefficients summed over a chosen degree and order. It
+  serves `sim_geo::GravityField` to flight dynamics and sensors, with the
+  gravity-gradient tensor, and its terms beyond the central one to
+  `sim_orbital::ForceModel`, which hashes every coefficient it sums.
+- Each standard body carries its reference field, the point mass and `J2`
+  the navigator also models, equal to `BodyEllipsoid::gravity_fixed` to
+  round-off. A scenario that wants gravity the navigator does not know
+  gives the body another field with `BodyDescriptor::with_gravity`: EGM96 to
+  degree 36 is built in, and an ICGEM `.gfc` or a PDS SHADR table of any
+  degree is read from text. Over the Earth's surface degree 36 differs from
+  `J2` by about 30 mGal rms. The degree the descriptor states is the degree
+  `ForceModel::standard_solar_system` sums in orbit; the central term there
+  is the ephemeris kernel's `GM`.
+- `HarmonicMagnetism` serves `sim_geo::MagneticField`: IGRF-14 for the
+  Earth, a dipole or no field for another body. It is never extrapolated
+  past the dates its model covers.
+- `AnomalyOverlay` adds a surveyed grid to either field near the ground.
+
+One instance of each field is the truth of one world, and a host hands it
+to everything that reads that world: `RigidBody6DofBlock::with_gravity` and
+`MultibodyVehicleBlock::with_gravity` for the dynamics, the simulated
+inertial unit's `with_gravity`, `sim_devices::gravimeter_truth`, and
+`SensorSuite::with_magnetic_field` for the magnetometer. A block or a suite
+built without one flies the reference field of its body and the Earth's
+IGRF-14. A navigator's reference model is a different instance: the
+difference between the two is the model error a gravity-map or
+magnetic-anomaly navigator steers by.
+
+## Environment loads in orbit
+
+A vessel in the orbital tier carries a set of environment loads in its
+checkpoint, covered by the checkpoint's hash and summed at every integrator
+stage from the body it is integrated about:
+
+- solar radiation pressure on a cannonball;
+- drag by a ballistic coefficient in the body's atmosphere, turning with the
+  body. The catalog's Earth has a thermosphere, so a vessel at 300 km decays
+  in orbital propagation without the flight tier;
+- gravity-gradient torque from the gradient tensor of the body's field;
+- the torque `m × B` on a residual magnetic dipole.
+
+A load is immutable data and a pure function of the stage, so a proposal is
+the same bits on whichever worker computes it. A plant names its loads with
+`LocalPlant::environment_loads` when it is handed to orbit.
 
 ## Libration-point orbits
 
@@ -160,11 +231,11 @@ model are geometric.
 Everything that feels the Sun reads one model.
 `sim_spacetime::SolarFluxModel::sample` gives, at a barycentric position and
 an instant, the direction to the Sun, the irradiance by the inverse square of
-its distance, and the fraction of the solar disc that Earth, the Moon or Mars
-leave in view. From that one sample:
+its distance, and the fraction of the solar disc that the catalog's bodies
+leave in view (`BodyCatalog::solar_flux_model`). From that one sample:
 
-- `sim_orbital::SolarRadiationPressureLaw` adds the light's momentum to a
-  vessel's environment force, wrapped around whatever law flies it;
+- `sim_orbital::SrpSurface`, one of a vessel's environment loads, adds the
+  light's momentum to the force on it;
 - `sim_devices::SolarArrayBlock` turns it into electrical power, in orbit or
   on a surface;
 - `AtmosphericTransmission` takes off what a clear atmosphere absorbs from

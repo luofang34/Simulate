@@ -6,9 +6,9 @@ use glam::{DQuat, DVec3};
 use sim_orbital::{
     BuiltinSolarSystem2026_2028, CoastControlLaw, ContinuousControlLaw, ContinuousPlantState,
     DerivativeOrder, Dop853Tolerances, EphemerisCatalog, ForceModel, MassPropertiesModel, NaifId,
-    PropellantMode, ReactionWheelMode, SolarRadiationPressureLaw, SrpSurface, TdbEpoch,
-    propagate_plant_interval,
+    PropellantMode, ReactionWheelMode, SrpSurface, TdbEpoch, propagate_plant_interval,
 };
+use sim_orbital::{EnvironmentContext, EnvironmentLaw, EnvironmentLoadSpec, EnvironmentLoads};
 use sim_spacetime::{SPEED_OF_LIGHT_M_S, SolarFluxModel};
 
 /// A large sunshield on a light bus.
@@ -46,15 +46,39 @@ fn at_rest_about_earth(position_m: DVec3) -> ContinuousPlantState {
     }
 }
 
+fn srp_alone() -> EnvironmentLoads {
+    [EnvironmentLoadSpec::SolarRadiationPressure(SURFACE)]
+        .into_iter()
+        .collect()
+}
+
+fn mass_model() -> MassPropertiesModel {
+    MassPropertiesModel::diagonal(MASS_KG, [100.0, 100.0, 100.0], [0.0; 3])
+}
+
+fn context<'a>(
+    solar: &'a BuiltinSolarSystem2026_2028,
+    sunlight: &'a SolarFluxModel,
+    mass_model: &'a MassPropertiesModel,
+) -> EnvironmentContext<'a> {
+    EnvironmentContext {
+        bodies: solar.constants.body_catalog(),
+        sunlight,
+        ephemeris: &solar.ephemeris,
+        orientation: &solar.orientation,
+        mass_model,
+    }
+}
+
 #[test]
 fn sunlight_pushes_away_from_the_sun_and_not_at_all_in_earths_shadow() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
-    let flux = SolarFluxModel::standard();
-    let law = SolarRadiationPressureLaw {
+    let flux = solar.constants.body_catalog().solar_flux_model().clone();
+    let (loads, mass) = (srp_alone(), mass_model());
+    let law = EnvironmentLaw {
         inner: &CoastControlLaw,
-        surface: SURFACE,
-        flux: &flux,
-        ephemeris: &solar.ephemeris,
+        loads: &loads,
+        context: context(&solar, &flux, &mass),
     };
     let to_sun = sun_from_earth(&solar, epoch());
     let sun_distance = to_sun.length();
@@ -92,7 +116,7 @@ fn sunlight_pushes_away_from_the_sun_and_not_at_all_in_earths_shadow() {
 fn a_day_of_sunlight_moves_a_vessel_by_half_a_t_squared() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
     let force_model = ForceModel::standard_solar_system(solar.constants.clone()).expect("gravity");
-    let flux = SolarFluxModel::standard();
+    let flux = solar.constants.body_catalog().solar_flux_model().clone();
     let start = epoch();
     let day_s = 86_400.0;
     let end = start.advanced_seconds(day_s);
@@ -123,11 +147,11 @@ fn a_day_of_sunlight_moves_a_vessel_by_half_a_t_squared() {
         .final_state
     };
     let coasting = fly(&CoastControlLaw);
-    let pushed = fly(&SolarRadiationPressureLaw {
+    let (loads, mass) = (srp_alone(), mass_model());
+    let pushed = fly(&EnvironmentLaw {
         inner: &CoastControlLaw,
-        surface: SURFACE,
-        flux: &flux,
-        ephemeris: &solar.ephemeris,
+        loads: &loads,
+        context: context(&solar, &flux, &mass),
     });
 
     let drift = pushed.pos_rel_icrf_m - coasting.pos_rel_icrf_m;

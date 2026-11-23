@@ -12,6 +12,7 @@ use sim_orbital::{
     SimClockAdapter, SimulationManifestDigest, TdbEpoch, VesselCheckpoint, VesselConfig, VesselId,
     run_fleet_scale_benchmark,
 };
+use sim_orbital::{DragSurface, EnvironmentLoadSpec, GravityGradient, ResidualDipole, SrpSurface};
 use sim_spacetime::{SimInstant, TICKS_PER_SECOND, TickSpan};
 
 #[cfg(test)]
@@ -55,6 +56,25 @@ fn insert_test_vessel(univ: &mut OrbitalUniverse, idx: u64) {
     let mut cp = VesselCheckpoint::new(vid, SimInstant::START, plant, vid.0);
     cp.integrator_hint.propagator = prop;
     cp.integrator_hint.h_trial_s = Some(5.0);
+    // The fully coupled vessels feel everything their surroundings can do to them, so
+    // the worker pool is checked on every environment load.
+    if prop == PropagatorKind::FullCoupled6Dof {
+        cp.environment = [
+            EnvironmentLoadSpec::SolarRadiationPressure(SrpSurface {
+                area_m2: 20.0 + idx as f64,
+                reflectivity_coefficient: 1.4,
+            }),
+            EnvironmentLoadSpec::Drag(DragSurface {
+                ballistic_coefficient_kg_m2: 60.0,
+            }),
+            EnvironmentLoadSpec::GravityGradient(GravityGradient),
+            EnvironmentLoadSpec::MagneticDipole(ResidualDipole {
+                moment_body_a_m2: [3.0, -1.0, 0.5],
+            }),
+        ]
+        .into_iter()
+        .collect();
+    }
     univ.insert_vessel(cfg, cp).expect("insert vessel");
 }
 

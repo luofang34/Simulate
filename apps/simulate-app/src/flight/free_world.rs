@@ -79,6 +79,12 @@ impl SolarSystem {
         }
     }
 
+    /// The NAIF body whose fixed frame `body` describes, in this solar system's
+    /// body catalog.
+    pub(super) fn naif_of(&self, body: &sim_geo::BodyEllipsoid) -> Option<sim_orbital::NaifId> {
+        self.force_model.body_catalog().naif_of(body)
+    }
+
     /// Unit direction from `observer_fixed_m`, in `observer_body`'s fixed axes, to
     /// `target`'s centre at `at`, as the dynamics see it; `None` outside the kernels'
     /// coverage.

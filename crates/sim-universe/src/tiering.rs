@@ -3,13 +3,13 @@
 //! Flight dynamics are needed where air, ground or another vessel acts on
 //! a vehicle, and orbital propagation is needed everywhere else. A
 //! [`TierPolicy`] draws that line by height above each body, with a gap
-//! between the two thresholds so a vessel skimming one does not flip tiers.
+//! between the two thresholds so a vessel skimming one does not flip tiers,
+//! and by the dynamic pressure of the body's own air where the vessel is.
 
 use std::collections::BTreeMap;
 
-use sim_atmosphere::{AtmosphereField, MarsAtmosphere, ReentryAtmosphere};
+use sim_bodies::BodyCatalog;
 use sim_core::{SimInstant, TickSpan};
-use sim_geo::{Geodetic, UtcTime};
 use sim_orbital::{NaifId, VesselId};
 
 use crate::universe::Tier;
@@ -49,22 +49,22 @@ pub struct TierPolicy {
 }
 
 impl TierPolicy {
-    /// Checks once a second, with bands that clear what flight dynamics
-    /// must model: Earth's and Mars's sensible atmosphere, and the Moon's
-    /// highest terrain, plus dynamic-pressure and ground-contact gates.
+    /// Checks once a second, with the band each body of `bodies` declares as
+    /// its regime limits, plus dynamic-pressure and ground-contact gates. A
+    /// body that declares none keeps its vessels in the tier they have.
     #[must_use]
-    pub fn standard() -> Self {
-        let band = |promote_above_m, demote_below_m| AltitudeBand {
-            promote_above_m,
-            demote_below_m,
-        };
+    pub fn for_bodies(bodies: &BodyCatalog) -> Self {
+        let bands = bodies.iter().filter_map(|body| {
+            let regime = body.regime?;
+            let band = AltitudeBand {
+                promote_above_m: regime.promote_above_m,
+                demote_below_m: regime.demote_below_m,
+            };
+            Some((body.naif, band))
+        });
         Self {
             check_period: TickSpan::SECOND,
-            bands: BTreeMap::from([
-                (NaifId::EARTH, band(160_000.0, 140_000.0)),
-                (NaifId::MOON, band(20_000.0, 15_000.0)),
-                (NaifId::MARS, band(130_000.0, 110_000.0)),
-            ]),
+            bands: bands.collect(),
             max_promote_dynamic_pressure_pa: DEFAULT_MAX_PROMOTE_DYNAMIC_PRESSURE_PA,
             demote_above_dynamic_pressure_pa: DEFAULT_DEMOTE_ABOVE_DYNAMIC_PRESSURE_PA,
         }
@@ -113,26 +113,6 @@ impl TierPolicy {
             Tier::Local | Tier::Orbital => None,
         }
     }
-}
-
-/// Evaluates standard planetary atmospheric dynamic pressure $q = \frac{1}{2} \rho(h) v^2$ (`Pa`)
-/// for `body` at ellipsoidal `height_m` and body-relative speed `speed_ecef_m_s`.
-#[must_use]
-pub fn planetary_dynamic_pressure_pa(body: NaifId, height_m: f64, speed_ecef_m_s: f64) -> f64 {
-    let pos = Geodetic::from_degrees(0.0, 0.0, height_m);
-    let utc = UtcTime::from_unix_seconds(0.0);
-    let rho = if body == NaifId::EARTH {
-        ReentryAtmosphere
-            .sample(&pos, utc)
-            .map_or(0.0, |s| s.density_kg_m3)
-    } else if body == NaifId::MARS {
-        MarsAtmosphere::new()
-            .sample(&pos, utc)
-            .map_or(0.0, |s| s.density_kg_m3)
-    } else {
-        0.0
-    };
-    0.5 * rho * speed_ecef_m_s * speed_ecef_m_s
 }
 
 /// One vessel's change of tier, made by a [`TierPolicy`].

@@ -5468,6 +5468,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sim-bodies"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "sim-atmosphere",
+ "sim-geo",
+ "sim-spacetime",
+ "thiserror 2.0.21",
+ "world-core",
+ "world-geomag",
+ "world-potential",
+]
+
+[[package]]
 name = "sim-chain-trial"
 version = "0.1.0"
 dependencies = [
@@ -5512,12 +5526,11 @@ dependencies = [
  "glam 0.33.12",
  "mbd-core",
  "sim-atmosphere",
+ "sim-bodies",
  "sim-core",
  "sim-geo",
  "sim-spacetime",
  "thiserror 2.0.21",
- "world-core",
- "world-geomag",
 ]
 
 [[package]]
@@ -5771,6 +5784,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sim-atmosphere",
+ "sim-bodies",
  "sim-geo",
  "sim-spacetime",
  "spicekit",
@@ -5936,6 +5950,7 @@ dependencies = [
  "mbd-core",
  "mbd-systems",
  "sim-atmosphere",
+ "sim-bodies",
  "sim-core",
  "sim-devices",
  "sim-geo",
@@ -7573,7 +7588,6 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "world"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "world-airmass",
  "world-atmosphere",
@@ -7586,7 +7600,6 @@ dependencies = [
 [[package]]
 name = "world-airmass"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -7596,7 +7609,6 @@ dependencies = [
 [[package]]
 name = "world-atmosphere"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",
@@ -7605,7 +7617,6 @@ dependencies = [
 [[package]]
 name = "world-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
 ]
@@ -7613,7 +7624,6 @@ dependencies = [
 [[package]]
 name = "world-geomag"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",
@@ -7622,7 +7632,6 @@ dependencies = [
 [[package]]
 name = "world-notices"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -7630,9 +7639,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "world-potential"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "world-core",
+]
+
+[[package]]
 name = "world-surveillance"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=075e2cafee7fa3dc044f28d750f6b1094d5c5ab2#075e2cafee7fa3dc044f28d750f6b1094d5c5ab2"
 dependencies = [
  "libm",
  "world-core",

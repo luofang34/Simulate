@@ -9,7 +9,7 @@ use sim_orbital::VesselId;
 
 use super::{STEP, epoch, leo_state, multibody_coaster, seconds, solar_system_context};
 use crate::local::{LocalFactory, LocalPlant, MultibodyLocalPlant};
-use crate::tiering::{TierChange, TierPolicy};
+use crate::tiering::TierChange;
 use crate::{Tier, Universe, UniverseError};
 
 fn multibody_universe() -> Universe {
@@ -83,7 +83,7 @@ fn a_checkpoint_puts_a_local_multibody_plant_back_itself() {
 
 #[test]
 fn a_policy_brings_down_a_carried_plant_that_asks_for_flight_dynamics() {
-    let mut universe = multibody_universe().with_tier_policy(TierPolicy::standard());
+    let mut universe = multibody_universe().with_regime_tier_policy();
     universe.advance_to(seconds(5)).unwrap();
     assert_eq!(universe.tier(VesselId(1)).unwrap(), Tier::Orbital);
     // An external wrench is a load the carried path does not report.

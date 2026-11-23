@@ -1,16 +1,17 @@
-//! The magnetic field a magnetometer on the Earth sits in.
+//! The magnetic field a magnetometer sits in.
+
+use std::sync::Arc;
 
 use glam::DVec3;
-use sim_geo::Geodetic;
-use world_core::{DecimalYear, GeodeticPosition};
-use world_geomag::wmm2025;
+use sim_bodies::HarmonicMagnetism;
+use sim_geo::{LocalFrame, MagneticField, ecef_to_geodetic};
 
 use crate::DeviceError;
 
 const NANOTESLA_PER_MICROTESLA: f64 = 1_000.0;
 
-/// The magnetic field of a place: the Earth's main field and whatever the
-/// ground there adds to it.
+/// When a vehicle's magnetometer reads the world's magnetic field, and what
+/// its surroundings add to it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MagneticEnvironment {
     /// Date the main field is evaluated for, decimal years.
@@ -31,26 +32,39 @@ impl MagneticEnvironment {
         }
     }
 
-    /// The field at `position`, north-east-down, microtesla.
-    pub fn field_ned_ut(&self, position: &Geodetic) -> Result<DVec3, DeviceError> {
-        Ok(earth_field_ned_ut(position, self.decimal_year)? + self.local_anomaly_ned_ut)
+    /// The field of the world `field` at the Earth-fixed position `fixed`,
+    /// with the declared local anomaly, in Earth-fixed axes, microtesla.
+    ///
+    /// # Errors
+    ///
+    /// [`DeviceError::NoMagneticField`] where `field` has no value.
+    pub fn field_fixed_ut(
+        &self,
+        field: &dyn MagneticField,
+        fixed: DVec3,
+    ) -> Result<DVec3, DeviceError> {
+        let main_nt = field
+            .field_fixed_nt(fixed, self.decimal_year)
+            .map_err(|source| DeviceError::NoMagneticField { source })?;
+        let anomaly = match self.local_anomaly_ned_ut == DVec3::ZERO {
+            true => DVec3::ZERO,
+            false => {
+                LocalFrame::at(&ecef_to_geodetic(fixed)).ned_to_ecef() * self.local_anomaly_ned_ut
+            }
+        };
+        Ok(main_nt / NANOTESLA_PER_MICROTESLA + anomaly)
     }
 }
 
-/// The Earth's main field at `position` in `decimal_year`, north-east-down,
-/// microtesla: the World Magnetic Model 2025. Crustal and local fields are
-/// not in it.
-pub fn earth_field_ned_ut(position: &Geodetic, decimal_year: f64) -> Result<DVec3, DeviceError> {
-    let (lat_deg, lon_deg) = (position.lat_rad.to_degrees(), position.lon_rad.to_degrees());
-    let at = GeodeticPosition::wgs84(lat_deg, lon_deg, position.height_m);
-    let field =
-        wmm2025(at, DecimalYear(decimal_year)).map_err(|source| DeviceError::NoMagneticField {
-            lat_deg,
-            lon_deg,
-            decimal_year,
-            source,
-        })?;
-    Ok(DVec3::new(field.north_nt, field.east_nt, field.down_nt) / NANOTESLA_PER_MICROTESLA)
+/// The Earth's main field: IGRF-14, valid from 1900 to 2030. Crustal and
+/// local fields are not in it. Share the returned field between every
+/// device and model that should see the same world.
+///
+/// # Errors
+///
+/// [`DeviceError::MagneticModel`] if the embedded coefficients do not parse.
+pub fn earth_main_field() -> Result<Arc<dyn MagneticField>, DeviceError> {
+    Ok(Arc::new(HarmonicMagnetism::igrf14()?))
 }
 
 #[cfg(test)]
