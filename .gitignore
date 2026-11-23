@@ -1,5 +1,11 @@
 /target
 /apps/simulate-app/dist
+/apps/flightdeck/App/*.xcodeproj
+/apps/flightdeck/App/Config/Local.xcconfig
+/apps/flightdeck/swift/*/.build
+/apps/flightdeck/swift/*/.swiftpm
+/apps/flightdeck/swift/*/Artifacts
+/apps/flightdeck/ffi/Cargo.lock
 /book/build
 __pycache__/
 /.cargo/config.toml
