@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mbd_core::{ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_bodies::{BodyDescriptor, HarmonicGravity};
 use sim_core::{RigidBody6DofBlock, RigidBodyConfig, TICKS_PER_SECOND, TickSpan, VehicleState};
@@ -113,7 +113,7 @@ fn dynamics_and_sensors_share_the_bodys_field_instances() {
             initial: state,
         },
         point_mass(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
     )
     .unwrap()

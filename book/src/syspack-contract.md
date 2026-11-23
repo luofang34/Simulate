@@ -4,7 +4,7 @@ Every vehicle in `Simulate` and `ironbird` — whether embedded in the binary un
 
 Loading is **fail-closed**:
 
-1. `syspack::VerifiedSyspack::load` verifies `schema_version == 1`, checks that every declared asset exists, and verifies both the exact **byte length** (`size_bytes`) and **SHA-256 digest** (`sha256`) of every file before any parser sees its bytes.
+1. `syspack::VerifiedSyspack::load` verifies `schema_version == 3`, checks that every declared asset exists, and verifies both the exact **byte length** (`size_bytes`) and **SHA-256 digest** (`sha256`) of every file before any parser sees its bytes.
 2. `sim_pack::LoadedSyspack::load` then validates the `mbd-core` component tree, instantiates every declared COTS sensor and camera mount, and parses any optional `performance/*.json` envelopes and benchmarks. If any check fails, a typed `PackError` is returned and no partial vehicle state is constructed.
 
 ## Directory Layout of a Fixed-Wing `syspack`
@@ -26,7 +26,7 @@ A fixed-wing `syspack.json` declares six top-level sections:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `schema_version` | `u32` | Always `1`. |
+| `schema_version` | `u32` | Always `3`. |
 | `id` | `String` | Stable machine identifier (e.g. `"c172s"`, `"c172p"`, `"p38g"`). |
 | `name` | `String` | Human-readable aircraft title. |
 | `version` | `String` | Semantic version of the package. |

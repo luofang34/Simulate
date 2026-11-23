@@ -6,7 +6,7 @@ use std::f64::consts::FRAC_PI_2;
 
 use aviate_xil_contract::{FcState, SharedStateV2, pack_fc_status, seqlock_read, seqlock_write};
 use glam::{DMat3, DQuat, DVec3};
-use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_aviate::{
     AviateSharedMemoryEndpoint, AviateStimulus, AviateXilBridge, EnuWorld, FlightControllerCommand,
@@ -87,7 +87,7 @@ fn x500(roll_rad: f64, offset_up_m: f64) -> RigidBody6DofBlock {
             initial,
         },
         x500_tree(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
     )
     .unwrap()

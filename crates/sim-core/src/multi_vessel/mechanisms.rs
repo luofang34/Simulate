@@ -1,96 +1,67 @@
 use std::collections::BTreeMap;
 
-use glam::{DQuat, DVec3};
-use mbd_core::{ComponentId, PoseTable, WrenchAtSite};
+use glam::DVec3;
+use mbd_core::ComponentId;
 use mbd_multibody::{
-    FloatingBaseState, HardMateResult, ImpulseReleaseResult, SpatialForce, step_docking_capture,
-    step_hinge_release, step_rail_drive, step_tether,
+    DockingCapture, DockingPhase, HardMateResult, HingeRelease, ImpulseReleaseResult,
+    PinnedSurfaceRest, PortAnchor, PortKinematics, RailSlide, Tether, TetherAnchor,
 };
-use mbd_systems::{PlumeImpingementSpec, PlumeSurfaceTarget, evaluate_plume_impingement};
 
+use super::plume::{eval_plume_link, site_world_kinematics};
 use super::{
-    COORD_BLOCK, InterVesselLink, MultiVesselCoordinator, MultiVesselStepReport, SimVesselId,
-    map_multi_coord, map_sys_coord, missing_vessel,
+    InterVesselLink, MultiVesselCoordinator, MultiVesselStepReport, SimVesselId, map_sys_coord,
+    missing_vessel,
+};
+use crate::BlockError;
+use crate::flight_model::coupled_mechanism::{CoupledMechanism, CoupledMechanismState};
+use crate::flight_model::planet_frame::{
+    fixed_to_instantaneous_inertial, inertial_to_fixed_after_step,
 };
 use crate::multibody_vehicle::{
-    MultibodyVehicleBlock, MultibodyVehicleInput, fixed_to_instantaneous_inertial,
-    inertial_to_fixed_after_step, merge_aero_remapped, merge_subsystems_remapped,
+    MultibodyVehicleBlock, MultibodyVehicleInput, merge_aero_remapped, merge_subsystems_remapped,
     remap_aero_subset, remap_subsystems_subset,
 };
-use crate::{Block, BlockError};
 
-pub(super) fn site_world_kinematics(
-    poses: &PoseTable,
-    base: &FloatingBaseState,
-    site: ComponentId,
-    offset_local_m: DVec3,
-) -> Result<(DVec3, DQuat, DVec3, DVec3), BlockError> {
-    let pose = poses.get(site).map_err(|source| BlockError::Mbd {
-        block: COORD_BLOCK,
-        source,
-    })?;
-    let rot_link = (base.rotation_world_from_root * pose.rotation_root_from_link).normalize();
-    let pos = base.position_world_m
-        + base.rotation_world_from_root * pose.position_root_m
-        + rot_link * offset_local_m;
-    let vel_root = base.linear_vel_root_m_s
-        + base.angular_vel_root_rad_s.cross(pose.position_root_m)
-        + pose.linear_vel_root_m_s;
-    let omega_root = base.angular_vel_root_rad_s + pose.angular_vel_root_rad_s;
-    let omega_world = base.rotation_world_from_root * omega_root;
-    let vel =
-        base.rotation_world_from_root * vel_root + omega_world.cross(rot_link * offset_local_m);
-    Ok((pos, rot_link, vel, omega_world))
+/// Which vessel integrates a link's state this step, and where in that
+/// vessel's mechanisms it sits.
+pub(super) type LinkOwner = Option<(SimVesselId, usize)>;
+
+/// Appends `mechanism` to the step input of `vessel` and returns where it
+/// landed.
+fn couple(
+    step_inputs: &mut BTreeMap<SimVesselId, MultibodyVehicleInput>,
+    vessel: SimVesselId,
+    mechanism: CoupledMechanism,
+) -> LinkOwner {
+    let input = step_inputs.get_mut(&vessel)?;
+    input.mechanisms.push(mechanism);
+    Some((vessel, input.mechanisms.len().saturating_sub(1)))
 }
 
-fn world_force_to_local_wrench(
-    poses: &PoseTable,
-    base: &FloatingBaseState,
-    site: ComponentId,
-    offset_local_m: DVec3,
-    spatial_world: SpatialForce,
-) -> Result<WrenchAtSite, BlockError> {
-    let pose = poses.get(site).map_err(|source| BlockError::Mbd {
-        block: COORD_BLOCK,
-        source,
-    })?;
-    let rot_inv = (base.rotation_world_from_root * pose.rotation_root_from_link)
-        .normalize()
-        .conjugate();
-    Ok(WrenchAtSite {
-        site,
-        point_local_m: offset_local_m,
-        force_local_n: rot_inv * spatial_world.force,
-        torque_local_nm: rot_inv * spatial_world.torque,
-    })
-}
-
+/// Builds each vessel's input for the step: the caller's commands plus the
+/// mechanisms and loads of every link, with the far end of a two-vessel link
+/// given as it is at the start of the step. Returns, per link, the vessel
+/// that carries its state.
 pub(super) fn prepare_step_inputs(
-    coord: &mut MultiVesselCoordinator,
+    coord: &MultiVesselCoordinator,
     inputs: &BTreeMap<SimVesselId, MultibodyVehicleInput>,
-) -> Result<BTreeMap<SimVesselId, MultibodyVehicleInput>, BlockError> {
+) -> Result<(BTreeMap<SimVesselId, MultibodyVehicleInput>, Vec<LinkOwner>), BlockError> {
     let mut step_inputs = BTreeMap::new();
     for id in coord.vessel_ids() {
         step_inputs.insert(id, inputs.get(&id).cloned().unwrap_or_default());
     }
-    coord.pending_releases.clear();
-    coord.pending_hard_mates.clear();
-
-    let link_count = coord.links.len();
-    for idx in 0..link_count {
-        eval_single_link(coord, idx, &mut step_inputs)?;
+    let mut owners = Vec::with_capacity(coord.links.len());
+    for link in &coord.links {
+        owners.push(couple_link(&coord.vessels, link, &mut step_inputs)?);
     }
-    Ok(step_inputs)
+    Ok((step_inputs, owners))
 }
 
-fn eval_single_link(
-    coord: &mut MultiVesselCoordinator,
-    idx: usize,
+fn couple_link(
+    vessels: &BTreeMap<SimVesselId, MultibodyVehicleBlock>,
+    link: &InterVesselLink,
     step_inputs: &mut BTreeMap<SimVesselId, MultibodyVehicleInput>,
-) -> Result<(), BlockError> {
-    let Some(link) = coord.links.get_mut(idx) else {
-        return Ok(());
-    };
+) -> Result<LinkOwner, BlockError> {
     match link {
         InterVesselLink::RailSlide {
             vessel,
@@ -98,20 +69,15 @@ fn eval_single_link(
             state,
             ..
         } => {
-            if let Some(v) = coord.vessels.get(vessel) {
-                let out = step_rail_drive(spec, state, v.tree()).map_err(map_multi_coord)?;
-                if let Some(drive) = out.drive
-                    && let Some(inp) = step_inputs.get_mut(vessel)
-                {
-                    inp.joint_drives.push(drive);
-                }
-                if out.ready_to_release && !state.released {
-                    state.released = true;
-                    coord
-                        .pending_releases
-                        .push((*vessel, spec.component, 0.0, DVec3::X));
-                }
-            }
+            let element = RailSlide {
+                spec: *spec,
+                fire: state.fired,
+            };
+            Ok(couple(
+                step_inputs,
+                *vessel,
+                CoupledMechanism::Rail(element, *state),
+            ))
         }
         InterVesselLink::HingeSwing {
             vessel,
@@ -119,46 +85,67 @@ fn eval_single_link(
             state,
             ..
         } => {
-            if let Some(v) = coord.vessels.get(vessel) {
-                let (drive_opt, ready) =
-                    step_hinge_release(spec, state, v.tree()).map_err(map_multi_coord)?;
-                if let Some(drive) = drive_opt
-                    && let Some(inp) = step_inputs.get_mut(vessel)
-                {
-                    inp.joint_drives.push(drive);
-                }
-                if ready && !state.released {
-                    state.released = true;
-                    coord
-                        .pending_releases
-                        .push((*vessel, spec.component, 0.0, DVec3::X));
-                }
-            }
+            let element = HingeRelease {
+                spec: *spec,
+                unlatch: state.unlatched,
+            };
+            Ok(couple(
+                step_inputs,
+                *vessel,
+                CoupledMechanism::Hinge(element, *state),
+            ))
         }
-        InterVesselLink::Docking { .. } => eval_docking_link(
-            &coord.vessels,
-            link,
-            &mut coord.pending_hard_mates,
-            step_inputs,
-        )?,
-        InterVesselLink::WinchTether { .. } => eval_tether_link(&coord.vessels, link, step_inputs)?,
-        InterVesselLink::PlumeLink { .. } => eval_plume_link(&coord.vessels, link, step_inputs)?,
+        InterVesselLink::Docking { .. } => couple_docking(vessels, link, step_inputs),
+        InterVesselLink::WinchTether { .. } => couple_tether(vessels, link, step_inputs),
+        InterVesselLink::PlumeLink { .. } => {
+            eval_plume_link(vessels, link, step_inputs)?;
+            Ok(None)
+        }
     }
-    Ok(())
 }
 
-fn eval_docking_link(
+/// Which of the two copies of a link's state is kept: the first vessel's,
+/// unless that vessel is latched at rest on a surface and so does not
+/// integrate its mechanisms this step.
+fn stepping_owner(
+    first: &MultibodyVehicleBlock,
+    on_first: LinkOwner,
+    on_second: LinkOwner,
+) -> LinkOwner {
+    if matches!(first.pinned_rest(), PinnedSurfaceRest::Pinned { .. }) {
+        on_second.or(on_first)
+    } else {
+        on_first.or(on_second)
+    }
+}
+
+/// A port of `vessel` at the start of the coming step, in the inertial axes
+/// that coincide with the fixed ones then: what the other end of a link is
+/// given, to carry on at this velocity over the step.
+fn port_at_step_start(
+    vessel: &MultibodyVehicleBlock,
+    port: ComponentId,
+    offset_local_m: DVec3,
+) -> Result<PortKinematics, BlockError> {
+    let axes = fixed_to_instantaneous_inertial(&vessel.body_axes(), &vessel.body());
+    let (position_world_m, rotation_world, velocity_world_m_s, angular_vel_world_rad_s) =
+        site_world_kinematics(vessel.pose_table(), &axes, port, offset_local_m)?;
+    Ok(PortKinematics {
+        position_world_m,
+        rotation_world,
+        velocity_world_m_s,
+        angular_vel_world_rad_s,
+    })
+}
+
+/// Gives each vessel its end of the ring and the other vessel's port as it
+/// starts the step. The chaser's copy of the ring's state is the one kept,
+/// unless the chaser is resting on a surface.
+fn couple_docking(
     vessels: &BTreeMap<SimVesselId, MultibodyVehicleBlock>,
-    link: &mut InterVesselLink,
-    pending_mates: &mut Vec<(
-        SimVesselId,
-        ComponentId,
-        SimVesselId,
-        ComponentId,
-        mbd_core::Placement,
-    )>,
+    link: &InterVesselLink,
     step_inputs: &mut BTreeMap<SimVesselId, MultibodyVehicleInput>,
-) -> Result<(), BlockError> {
+) -> Result<LinkOwner, BlockError> {
     let InterVesselLink::Docking {
         chaser,
         port_a,
@@ -167,71 +154,53 @@ fn eval_docking_link(
         target,
         port_b,
         offset_b_local_m,
-        mate_placement,
         spec,
         state,
         ..
     } = link
     else {
-        return Ok(());
+        return Ok(None);
     };
     let (Some(va), Some(vb)) = (vessels.get(chaser), vessels.get(target)) else {
-        return Ok(());
+        return Ok(None);
     };
-    let dt_s = va.period().as_seconds();
-    let ba_i = fixed_to_instantaneous_inertial(va.floating_base_fixed(), &va.body());
-    let bb_i = fixed_to_instantaneous_inertial(vb.floating_base_fixed(), &vb.body());
-    let (pa, ra, va_w, wa_w) =
-        site_world_kinematics(va.pose_table(), &ba_i, *port_a, *offset_a_local_m)?;
-    let (pb, rb, vb_w, wb_w) =
-        site_world_kinematics(vb.pose_table(), &bb_i, *port_b, *offset_b_local_m)?;
-    let out = step_docking_capture(
-        spec,
-        state,
-        pa,
-        ra,
-        va_w,
-        wa_w,
-        pb,
-        rb,
-        vb_w,
-        wb_w,
-        *axis_a_local,
-        dt_s,
+    let on_chaser = PortAnchor::Link {
+        component: *port_a,
+        offset_local_m: *offset_a_local_m,
+    };
+    let on_target = PortAnchor::Link {
+        component: *port_b,
+        offset_local_m: *offset_b_local_m,
+    };
+    let chaser_port = port_at_step_start(va, *port_a, *offset_a_local_m)?;
+    let target_port = port_at_step_start(vb, *port_b, *offset_b_local_m)?;
+    let ring = |port_a, port_b| DockingCapture {
+        spec: *spec,
+        port_a,
+        port_b,
+        axis_a_local: *axis_a_local,
+    };
+    let on_first = couple(
+        step_inputs,
+        *chaser,
+        CoupledMechanism::Docking(ring(on_chaser, PortAnchor::World(target_port)), *state),
     );
-    if out.world_wrench_on_a != SpatialForce::ZERO
-        && let Some(inp) = step_inputs.get_mut(chaser)
-    {
-        inp.external_wrenches.push(world_force_to_local_wrench(
-            va.pose_table(),
-            va.floating_base_fixed(),
-            *port_a,
-            *offset_a_local_m,
-            out.world_wrench_on_a,
-        )?);
-    }
-    if out.world_wrench_on_b != SpatialForce::ZERO
-        && let Some(inp) = step_inputs.get_mut(target)
-    {
-        inp.external_wrenches.push(world_force_to_local_wrench(
-            vb.pose_table(),
-            vb.floating_base_fixed(),
-            *port_b,
-            *offset_b_local_m,
-            out.world_wrench_on_b,
-        )?);
-    }
-    if out.ready_for_hard_mate {
-        pending_mates.push((*chaser, *port_a, *target, *port_b, *mate_placement));
-    }
-    Ok(())
+    let on_second = couple(
+        step_inputs,
+        *target,
+        CoupledMechanism::Docking(ring(PortAnchor::World(chaser_port), on_target), *state),
+    );
+    Ok(stepping_owner(va, on_first, on_second))
 }
 
-fn eval_tether_link(
+/// Gives each vessel its end of the line and the other vessel's anchor as
+/// it starts the step. The carrier's copy of the line's state is the one
+/// kept, unless the carrier is resting on a surface.
+fn couple_tether(
     vessels: &BTreeMap<SimVesselId, MultibodyVehicleBlock>,
-    link: &mut InterVesselLink,
+    link: &InterVesselLink,
     step_inputs: &mut BTreeMap<SimVesselId, MultibodyVehicleInput>,
-) -> Result<(), BlockError> {
+) -> Result<LinkOwner, BlockError> {
     let InterVesselLink::WinchTether {
         carrier,
         anchor_carrier,
@@ -241,124 +210,127 @@ fn eval_tether_link(
         offset_payload_m,
         spec,
         state,
-        umbilical_heat_rate_w,
+        command,
         ..
     } = link
     else {
-        return Ok(());
+        return Ok(None);
     };
     let (Some(va), Some(vb)) = (vessels.get(carrier), vessels.get(payload)) else {
-        return Ok(());
+        return Ok(None);
     };
-    let dt_s = va.period().as_seconds();
-    let ba_i = fixed_to_instantaneous_inertial(va.floating_base_fixed(), &va.body());
-    let bb_i = fixed_to_instantaneous_inertial(vb.floating_base_fixed(), &vb.body());
-    let (pa, _, va_w, _) =
-        site_world_kinematics(va.pose_table(), &ba_i, *anchor_carrier, *offset_carrier_m)?;
-    let (pb, _, vb_w, _) =
-        site_world_kinematics(vb.pose_table(), &bb_i, *anchor_payload, *offset_payload_m)?;
-    let out = step_tether(
-        spec,
-        state,
-        pa,
-        va_w,
-        pb,
-        vb_w,
-        *umbilical_heat_rate_w,
-        dt_s,
-    )
-    .map_err(map_multi_coord)?;
-    if out.force_on_a_world_n.length_squared() > 0.0
-        && let Some(inp) = step_inputs.get_mut(carrier)
-    {
-        inp.external_wrenches.push(world_force_to_local_wrench(
-            va.pose_table(),
-            va.floating_base_fixed(),
-            *anchor_carrier,
-            *offset_carrier_m,
-            SpatialForce::new(DVec3::ZERO, out.force_on_a_world_n),
-        )?);
-    }
-    if out.force_on_b_world_n.length_squared() > 0.0
-        && let Some(inp) = step_inputs.get_mut(payload)
-    {
-        inp.external_wrenches.push(world_force_to_local_wrench(
-            vb.pose_table(),
-            vb.floating_base_fixed(),
-            *anchor_payload,
-            *offset_payload_m,
-            SpatialForce::new(DVec3::ZERO, out.force_on_b_world_n),
-        )?);
-    }
-    Ok(())
+    let held = |port: PortKinematics| TetherAnchor::World {
+        position_world_m: port.position_world_m,
+        velocity_world_m_s: port.velocity_world_m_s,
+    };
+    let carrier_end = held(port_at_step_start(va, *anchor_carrier, *offset_carrier_m)?);
+    let payload_end = held(port_at_step_start(vb, *anchor_payload, *offset_payload_m)?);
+    let line = |anchor_a, anchor_b| Tether {
+        spec: *spec,
+        anchor_a,
+        anchor_b,
+        initial_length_m: state.deployed_length_m,
+        command: *command,
+    };
+    let on_carrier = TetherAnchor::Link {
+        component: *anchor_carrier,
+        offset_local_m: *offset_carrier_m,
+    };
+    let on_payload = TetherAnchor::Link {
+        component: *anchor_payload,
+        offset_local_m: *offset_payload_m,
+    };
+    let on_first = couple(
+        step_inputs,
+        *carrier,
+        CoupledMechanism::Tether(line(on_carrier, payload_end), *state),
+    );
+    let on_second = couple(
+        step_inputs,
+        *payload,
+        CoupledMechanism::Tether(line(carrier_end, on_payload), *state),
+    );
+    Ok(stepping_owner(va, on_first, on_second))
 }
 
-fn eval_plume_link(
-    vessels: &BTreeMap<SimVesselId, MultibodyVehicleBlock>,
-    link: &InterVesselLink,
-    step_inputs: &mut BTreeMap<SimVesselId, MultibodyVehicleInput>,
-) -> Result<(), BlockError> {
-    let InterVesselLink::PlumeLink {
-        source_vessel,
-        nozzle_site,
-        nozzle_offset_local_m,
-        exhaust_dir_local,
-        nozzle_radius_m,
-        cone_half_angle_rad,
-        exhaust_thermal_w_per_n,
-        target_vessel,
-        target_site,
-        target_point_local_m,
-        target_normal_local,
-        target_area_m2,
-        thermal_absorptivity,
-        ..
-    } = link
-    else {
-        return Ok(());
-    };
-    let (Some(src), Some(dst)) = (vessels.get(source_vessel), vessels.get(target_vessel)) else {
-        return Ok(());
-    };
-    let thrust_n = src.telemetry().total_thrust_body_n.length();
-    if thrust_n <= 0.0 {
-        return Ok(());
+/// Takes the state each link ended the step in from the vessel that carried
+/// it, and queues the releases and hard mates those states call for.
+pub(super) fn take_link_states(coord: &mut MultiVesselCoordinator, owners: &[LinkOwner]) {
+    coord.pending_releases.clear();
+    coord.pending_hard_mates.clear();
+    for (link, owner) in coord.links.iter_mut().zip(owners) {
+        let Some((vessel, index)) = owner else {
+            continue;
+        };
+        let Some(ended) = coord
+            .vessels
+            .get(vessel)
+            .and_then(|v| v.mechanism_states().get(*index))
+        else {
+            continue;
+        };
+        match (link, ended) {
+            (
+                InterVesselLink::RailSlide {
+                    vessel,
+                    spec,
+                    state,
+                    ..
+                },
+                CoupledMechanismState::Rail(ended),
+            ) => {
+                *state = *ended;
+                if ended.ready_to_release {
+                    coord
+                        .pending_releases
+                        .push((*vessel, spec.component, 0.0, DVec3::X));
+                }
+            }
+            (
+                InterVesselLink::HingeSwing {
+                    vessel,
+                    spec,
+                    state,
+                    ..
+                },
+                CoupledMechanismState::Hinge(ended),
+            ) => {
+                *state = *ended;
+                if ended.ready_to_release {
+                    coord
+                        .pending_releases
+                        .push((*vessel, spec.component, 0.0, DVec3::X));
+                }
+            }
+            (
+                InterVesselLink::Docking {
+                    chaser,
+                    port_a,
+                    target,
+                    port_b,
+                    mate_placement,
+                    state,
+                    ..
+                },
+                CoupledMechanismState::Docking(ended),
+            ) => {
+                *state = *ended;
+                if ended.phase == DockingPhase::HardLatched {
+                    coord.pending_hard_mates.push((
+                        *chaser,
+                        *port_a,
+                        *target,
+                        *port_b,
+                        *mate_placement,
+                    ));
+                }
+            }
+            (InterVesselLink::WinchTether { state, .. }, CoupledMechanismState::Tether(ended)) => {
+                *state = *ended;
+            }
+            _ => {}
+        }
     }
-    let (nozzle_origin_m, rot_src, _, _) = site_world_kinematics(
-        src.pose_table(),
-        src.floating_base_fixed(),
-        *nozzle_site,
-        *nozzle_offset_local_m,
-    )?;
-    let (target_center_m, rot_dst, _, _) = site_world_kinematics(
-        dst.pose_table(),
-        dst.floating_base_fixed(),
-        *target_site,
-        *target_point_local_m,
-    )?;
-    let plume = PlumeImpingementSpec {
-        nozzle_origin_m,
-        exhaust_dir: (rot_src * *exhaust_dir_local).normalize_or(DVec3::NEG_X),
-        nozzle_radius_m: *nozzle_radius_m,
-        cone_half_angle_rad: *cone_half_angle_rad,
-        thrust_n,
-        exhaust_thermal_power_w: thrust_n * *exhaust_thermal_w_per_n,
-    };
-    let target = PlumeSurfaceTarget {
-        target_site: *target_site,
-        surface_center_m: target_center_m,
-        point_local_m: *target_point_local_m,
-        rotation_root_from_target: rot_dst,
-        outward_normal: (rot_dst * *target_normal_local).normalize_or(DVec3::Z),
-        area_m2: *target_area_m2,
-        thermal_absorptivity: *thermal_absorptivity,
-    };
-    let res = evaluate_plume_impingement(&plume, &[target], None).map_err(map_sys_coord)?;
-    if let Some(inp) = step_inputs.get_mut(target_vessel) {
-        inp.external_wrenches.extend(res.target_wrenches);
-        inp.extra_thermal_loads.extend(res.target_thermal_loads);
-    }
-    Ok(())
 }
 
 pub(super) fn process_post_step_links(
@@ -388,11 +360,11 @@ pub(super) fn process_post_step_links(
         }
     }
     coord.links.retain(|l| match l {
-        InterVesselLink::Docking { state, .. } => {
-            !matches!(state.phase, mbd_multibody::DockingPhase::HardLatched)
-        }
+        InterVesselLink::Docking { state, .. } => !matches!(state.phase, DockingPhase::HardLatched),
         InterVesselLink::WinchTether { state, .. } => state.intact,
-        _ => true,
+        InterVesselLink::RailSlide { state, .. } => !state.ready_to_release,
+        InterVesselLink::HingeSwing { state, .. } => !state.ready_to_release,
+        InterVesselLink::PlumeLink { .. } => true,
     });
     Ok(report)
 }
@@ -422,8 +394,9 @@ pub(super) fn split_vessel_with_release(
         &release.child_id_map,
     )
     .map_err(map_sys_coord)?;
-    let p_aero = remap_aero_subset(parent.aero_storage(), &release.parent_id_map);
-    let c_aero = remap_aero_subset(parent.aero_storage(), &release.child_id_map);
+    let aero = parent.aero_with_states();
+    let p_aero = remap_aero_subset(&aero, &release.parent_id_map);
+    let c_aero = remap_aero_subset(&aero, &release.child_id_map);
 
     let child_block = parent.spawn_detached(release.child_tree, c_fixed, c_subs, c_aero)?;
     let parent_mut = coord
@@ -460,9 +433,9 @@ pub(super) fn mate_vessels_from_result(
     )
     .map_err(map_sys_coord)?;
     let merged_aero = merge_aero_remapped(
-        chaser.aero_storage(),
+        &chaser.aero_with_states(),
         &res.a_id_map,
-        target.aero_storage(),
+        &target.aero_with_states(),
         &res.b_id_map,
     );
 

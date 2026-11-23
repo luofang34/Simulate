@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use glam::{DMat3, DQuat, DVec3};
-use mbd_aero::CompositeAeroModel;
 use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
 use mbd_multibody::{
     DockingPhase, DockingSpec, DockingState, MultiBodyDynamics, RailSlideSpec, RailSlideState,
@@ -13,10 +12,12 @@ use sim_atmosphere::VacuumAtmosphere;
 use sim_geo::{BodyEllipsoid, UtcTime};
 
 use super::*;
+
+mod mechanism_reference;
 use crate::multibody_vehicle::{
     MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig,
 };
-use crate::{TICKS_PER_SECOND, TickSpan, VehicleState};
+use crate::{MotionTimeScale, TICKS_PER_SECOND, TickSpan, VehicleIntegrator, VehicleState};
 
 fn zero_grav_body() -> BodyEllipsoid {
     BodyEllipsoid {
@@ -88,13 +89,101 @@ fn tank_block(
                 attitude: DQuat::IDENTITY,
                 angular_rate_body: DVec3::ZERO,
             },
+            integrator: VehicleIntegrator::REAL_TIME,
+            // No field sets a time here; the mechanisms act over about a
+            // second.
+            time_scale: MotionTimeScale::Seconds(1.0),
         },
         tree,
-        CompositeAeroModel::default(),
+        Vec::new(),
         subs,
         Box::new(VacuumAtmosphere),
     )
     .unwrap()
+}
+
+/// The soft-capture ring between vessel 1 and `target`, 0.2 m apart.
+fn docking_link(target: SimVesselId) -> InterVesselLink {
+    InterVesselLink::Docking {
+        id: 1,
+        chaser: SimVesselId(1),
+        port_a: ComponentId(0),
+        offset_a_local_m: DVec3::ZERO,
+        axis_a_local: DVec3::X,
+        target,
+        port_b: ComponentId(0),
+        offset_b_local_m: DVec3::ZERO,
+        mate_placement: Placement::child_of(ComponentId(0), DVec3::ZERO),
+        spec: DockingSpec {
+            capture_radius_m: 0.5,
+            capture_angle_rad: 0.2,
+            max_closing_speed_m_s: 1.0,
+            damping_vel_threshold_m_s: 0.2,
+            damping_rate_threshold_rad_s: 0.1,
+            retraction_speed_m_s: 1.0,
+            linear_stiffness_n_m: 4_000.0,
+            linear_damping_n_s_m: 2_000.0,
+            angular_stiffness_nm_rad: 800.0,
+            angular_damping_nm_s_rad: 200.0,
+            undock_impulse_ns: 50.0,
+            min_capture_standoff_m: DockingSpec::DEFAULT_MIN_CAPTURE_STANDOFF_M,
+            damped_dwell_s: DockingSpec::DEFAULT_DAMPED_DWELL_S,
+            latch_standoff_tolerance_m: DockingSpec::DEFAULT_LATCH_STANDOFF_TOLERANCE_M,
+            latch_distance_m: DockingSpec::DEFAULT_LATCH_DISTANCE_M,
+        },
+        state: DockingState {
+            phase: DockingPhase::Open,
+            standoff_m: 0.2,
+            dwell_s: 0.0,
+        },
+    }
+}
+
+/// A 2,000 kg airframe with a 100 kg seat on a 2 m rail along `+z`.
+fn rail_carrier() -> MultibodyVehicleBlock {
+    let rail = JointSpec::prismatic(DVec3::Z, -0.1, 2.0);
+    let tree = ComponentTree::new([
+        part(
+            "airframe",
+            Placement::ROOT,
+            JointSpec::FIXED,
+            2_000.0,
+            1_000.0,
+        ),
+        part(
+            "seat",
+            Placement::child_of(ComponentId(0), DVec3::ZERO),
+            rail,
+            100.0,
+            10.0,
+        ),
+    ])
+    .unwrap();
+    tank_block(
+        tree,
+        ComponentId(0),
+        0,
+        10.0,
+        DVec3::new(6_378_137.0, 0.0, 0.0),
+    )
+}
+
+/// The seat's catapult, already fired.
+fn rail_link() -> InterVesselLink {
+    InterVesselLink::RailSlide {
+        id: 1,
+        vessel: SimVesselId(1),
+        spec: RailSlideSpec {
+            component: ComponentId(1),
+            rail_length_m: 1.0,
+            catapult_force_n: 4_000.0,
+            guide_friction_n: 50.0,
+        },
+        state: RailSlideState {
+            fired: true,
+            ready_to_release: false,
+        },
+    }
 }
 
 #[test]
@@ -119,7 +208,8 @@ fn stage_separation_partitions_tanks_conserves_momentum_and_switches_focus() {
     );
     let mom_before = {
         let m = parent.dynamic_mass_contributions().unwrap();
-        MultiBodyDynamics::system_momentum(parent.tree(), &m, parent.floating_base_fixed()).unwrap()
+        MultiBodyDynamics::system_momentum(parent.tree(), &m, &parent.floating_base_fixed())
+            .unwrap()
     };
 
     let mut coord = MultiVesselCoordinator::new(parent);
@@ -136,13 +226,13 @@ fn stage_separation_partitions_tanks_conserves_momentum_and_switches_focus() {
     let mp = MultiBodyDynamics::system_momentum(
         p.tree(),
         &p.dynamic_mass_contributions().unwrap(),
-        p.floating_base_fixed(),
+        &p.floating_base_fixed(),
     )
     .unwrap();
     let mc = MultiBodyDynamics::system_momentum(
         c.tree(),
         &c.dynamic_mass_contributions().unwrap(),
-        c.floating_base_fixed(),
+        &c.floating_base_fixed(),
     )
     .unwrap();
     assert!(
@@ -187,35 +277,7 @@ fn docking_soft_capture_converges_to_hard_mate_and_merges_colliding_tanks() {
     );
     let mut coord = MultiVesselCoordinator::new(chaser);
     let target_id = coord.spawn_independent(target);
-    coord.add_link(InterVesselLink::Docking {
-        id: 1,
-        chaser: SimVesselId(1),
-        port_a: ComponentId(0),
-        offset_a_local_m: DVec3::ZERO,
-        axis_a_local: DVec3::X,
-        target: target_id,
-        port_b: ComponentId(0),
-        offset_b_local_m: DVec3::ZERO,
-        mate_placement: Placement::child_of(ComponentId(0), DVec3::ZERO),
-        spec: DockingSpec {
-            capture_radius_m: 0.5,
-            capture_angle_rad: 0.2,
-            max_closing_speed_m_s: 1.0,
-            damping_vel_threshold_m_s: 0.2,
-            damping_rate_threshold_rad_s: 0.1,
-            retraction_speed_m_s: 1.0,
-            linear_stiffness_n_m: 4_000.0,
-            linear_damping_n_s_m: 2_000.0,
-            angular_stiffness_nm_rad: 800.0,
-            angular_damping_nm_s_rad: 200.0,
-            undock_impulse_ns: 50.0,
-        },
-        state: DockingState {
-            phase: DockingPhase::Open,
-            standoff_m: 0.2,
-            dwell_s: 0.0,
-        },
-    });
+    coord.add_link(docking_link(target_id));
 
     let mut mated = false;
     for _ in 0..80 {
@@ -233,46 +295,8 @@ fn docking_soft_capture_converges_to_hard_mate_and_merges_colliding_tanks() {
 
 #[test]
 fn rail_slide_ejection_fires_along_guide_and_spawns_free_seat() {
-    let rail = JointSpec::prismatic(DVec3::Z, -0.1, 2.0);
-    let tree = ComponentTree::new([
-        part(
-            "airframe",
-            Placement::ROOT,
-            JointSpec::FIXED,
-            2_000.0,
-            1_000.0,
-        ),
-        part(
-            "seat",
-            Placement::child_of(ComponentId(0), DVec3::ZERO),
-            rail,
-            100.0,
-            10.0,
-        ),
-    ])
-    .unwrap();
-    let carrier = tank_block(
-        tree,
-        ComponentId(0),
-        0,
-        10.0,
-        DVec3::new(6_378_137.0, 0.0, 0.0),
-    );
-    let mut coord = MultiVesselCoordinator::new(carrier);
-    coord.add_link(InterVesselLink::RailSlide {
-        id: 1,
-        vessel: SimVesselId(1),
-        spec: RailSlideSpec {
-            component: ComponentId(1),
-            rail_length_m: 1.0,
-            catapult_force_n: 4_000.0,
-            guide_friction_n: 50.0,
-        },
-        state: RailSlideState {
-            fired: true,
-            released: false,
-        },
-    });
+    let mut coord = MultiVesselCoordinator::new(rail_carrier());
+    coord.add_link(rail_link());
 
     let mut ejected = None;
     for _ in 0..40 {

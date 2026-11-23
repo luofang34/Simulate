@@ -1,7 +1,6 @@
 use glam::{DMat3, DVec3};
 use mbd_core::{
     ComponentId, ComponentSpec, ComponentState, ComponentTree, LocalSiteKinematics, Placement,
-    VacuumAero,
 };
 use sim_atmosphere::{AtmosphereField, AtmosphereSample, StandardAtmosphere};
 use sim_aviate::RotorLayout;
@@ -212,12 +211,7 @@ impl X500RigidPlant {
             epoch: UtcTime::from_unix_seconds(0.0),
             initial: VehicleState::level_flight(&origin, 0.0, 0.0),
         };
-        let body = RigidBody6DofBlock::new(
-            cfg,
-            tree,
-            Box::new(VacuumAero),
-            Box::new(StandardAtmosphere),
-        )?;
+        let body = RigidBody6DofBlock::new(cfg, tree, Vec::new(), Box::new(StandardAtmosphere))?;
         Ok(Self {
             body,
             rotors: RotorLayout::x500(),

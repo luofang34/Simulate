@@ -1,10 +1,10 @@
 use glam::{DMat3, DQuat, DVec3};
-use mbd_aero::{AeroElement, BluntCapsuleAero, CompositeAeroModel};
+use mbd_aero::{AeroElement, AeroElementKind, BluntCapsuleAero};
 use mbd_core::{
     ComponentId, ComponentSpec, ComponentState, ComponentTree, JointSpec, MbdError, Placement,
     SUTTON_GRAVES_K_EARTH,
 };
-use mbd_multibody::{MultiBodyDynamics, PinnedSurfaceRest};
+use mbd_multibody::{ContactPointSpec, ContactPointState, MultiBodyDynamics, PinnedSurfaceRest};
 use mbd_systems::{
     FeedRegime, FluidNetwork, FluidSpecies, LiquidRocketSpec, LiquidRocketState, TankGeometry,
     TankId, TankSpec, TankState, TpsAblationSpec, TpsAblationState,
@@ -13,9 +13,12 @@ use sim_atmosphere::{ReentryAtmosphere, VacuumAtmosphere};
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime};
 
 use super::*;
+
+mod integrator_choice;
+mod trajectory_reference;
 use crate::{
-    Block, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, TICKS_PER_SECOND, TickSpan,
-    VehicleState,
+    Block, MotionTimeScale, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, TICKS_PER_SECOND,
+    TickSpan, VehicleIntegrator, VehicleState,
 };
 
 fn rigid_part(
@@ -70,11 +73,8 @@ fn revolute_arm_tree() -> ComponentTree {
     .unwrap()
 }
 
-#[test]
-fn rigid_fast_path_matches_rigid_body_block_on_rotating_earth() {
-    let body = BodyEllipsoid::WGS84;
-    let period = TickSpan::from_ticks(TICKS_PER_SECOND / 100);
-    let epoch = UtcTime::from_unix_seconds(1_700_000_000.0);
+/// The capsule's tree, air load and state at the top of its arc.
+fn capsule_parts() -> (ComponentTree, Vec<AeroElement>, VehicleState) {
     let pos = Geodetic::from_degrees(28.5, -80.6, 50_000.0);
     let initial = VehicleState {
         angular_rate_body: DVec3::new(0.02, -0.05, 0.01),
@@ -97,51 +97,75 @@ fn rigid_fast_path_matches_rigid_body_block_on_rotating_earth() {
         SUTTON_GRAVES_K_EARTH,
     )
     .unwrap();
-    let mut comp = CompositeAeroModel::default();
-    comp.push(ComponentId(0), AeroElement::BluntCapsule(capsule));
+    let aero = vec![AeroElement::new(
+        ComponentId(0),
+        AeroElementKind::BluntCapsule(capsule),
+    )];
+    (tree, aero, initial)
+}
 
-    let mut legacy = RigidBody6DofBlock::new(
-        RigidBodyConfig {
-            body,
-            period,
-            epoch,
-            initial,
-        },
-        tree.clone(),
-        Box::new(capsule),
-        Box::new(ReentryAtmosphere),
-    )
-    .unwrap();
-    let mut mb = MultibodyVehicleBlock::new(
+const CAPSULE_PERIOD: TickSpan = TickSpan::from_ticks(TICKS_PER_SECOND / 100);
+const CAPSULE_EPOCH_UNIX_S: f64 = 1_700_000_000.0;
+
+/// The capsule as a multibody vehicle integrated by `integrator`.
+fn capsule_block(integrator: VehicleIntegrator) -> MultibodyVehicleBlock {
+    let (tree, aero, initial) = capsule_parts();
+    MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
-            body,
-            period,
-            epoch,
+            body: BodyEllipsoid::WGS84,
+            period: CAPSULE_PERIOD,
+            epoch: UtcTime::from_unix_seconds(CAPSULE_EPOCH_UNIX_S),
             initial,
+            integrator,
+            time_scale: MotionTimeScale::SurfaceGravity,
         },
         tree,
-        comp,
+        aero,
         MultibodySubsystems::default(),
         Box::new(ReentryAtmosphere),
     )
+    .unwrap()
+}
+
+/// The same capsule on the same arc as a rigid-body block and as a multibody
+/// vehicle, both at rest in the same state.
+fn capsule_pair() -> (RigidBody6DofBlock, MultibodyVehicleBlock) {
+    let (tree, aero, initial) = capsule_parts();
+    let rigid = RigidBody6DofBlock::new(
+        RigidBodyConfig {
+            body: BodyEllipsoid::WGS84,
+            period: CAPSULE_PERIOD,
+            epoch: UtcTime::from_unix_seconds(CAPSULE_EPOCH_UNIX_S),
+            initial,
+        },
+        tree,
+        aero,
+        Box::new(ReentryAtmosphere),
+    )
     .unwrap();
+    (rigid, capsule_block(VehicleIntegrator::REAL_TIME))
+}
+
+#[test]
+fn rigid_fast_path_matches_rigid_body_block_on_rotating_earth() {
+    let (mut rigid, mut mb) = capsule_pair();
     assert!(mb.telemetry().used_rigid_fast_path);
 
     let in_l = RigidBodyInput::default();
     let in_m = MultibodyVehicleInput::default();
     for _ in 0..100 {
-        legacy.step(&in_l).unwrap();
+        rigid.step(&in_l).unwrap();
         mb.step(&in_m).unwrap();
     }
-    let s1 = legacy.output();
+    let s1 = rigid.output();
     let s2 = mb.output();
     assert!((s1.position_ecef - s2.position_ecef).length() < 1e-4);
     assert!((s1.velocity_ecef - s2.velocity_ecef).length() < 1e-4);
     assert!(s1.attitude.angle_between(s2.attitude) < 1e-6);
 }
 
-#[test]
-fn floating_arm_articulation_conserves_inertial_angular_momentum() {
+/// The bus and its arm far from any field, at rest.
+fn floating_arm_block() -> MultibodyVehicleBlock {
     let body = BodyEllipsoid {
         mu_m3_s2: 0.0,
         omega_rad_s: 0.0,
@@ -155,23 +179,31 @@ fn floating_arm_articulation_conserves_inertial_angular_momentum() {
         attitude: DQuat::IDENTITY,
         angular_rate_body: DVec3::ZERO,
     };
-    let mut block = MultibodyVehicleBlock::new(
+    MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
             body,
             period,
             epoch: UtcTime::from_unix_seconds(0.0),
             initial,
+            integrator: VehicleIntegrator::REAL_TIME,
+            // No field sets a time here; the arm slews in about a second.
+            time_scale: MotionTimeScale::Seconds(1.0),
         },
         tree,
-        CompositeAeroModel::default(),
+        Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
     )
-    .unwrap();
+    .unwrap()
+}
+
+#[test]
+fn floating_arm_articulation_conserves_inertial_angular_momentum() {
+    let mut block = floating_arm_block();
     assert!(!block.telemetry().used_rigid_fast_path);
 
-    let mom0 =
-        MultiBodyDynamics::system_momentum(block.tree(), &[], block.floating_base_fixed()).unwrap();
+    let mom0 = MultiBodyDynamics::system_momentum(block.tree(), &[], &block.floating_base_fixed())
+        .unwrap();
     let input = MultibodyVehicleInput {
         joint_drives: vec![mbd_multibody::JointDriveInput::scalar(ComponentId(1), 15.0)],
         ..MultibodyVehicleInput::default()
@@ -179,8 +211,8 @@ fn floating_arm_articulation_conserves_inertial_angular_momentum() {
     for _ in 0..80 {
         block.step(&input).unwrap();
     }
-    let mom1 =
-        MultiBodyDynamics::system_momentum(block.tree(), &[], block.floating_base_fixed()).unwrap();
+    let mom1 = MultiBodyDynamics::system_momentum(block.tree(), &[], &block.floating_base_fixed())
+        .unwrap();
     assert!(
         (mom1.angular_about_com_world_nms - mom0.angular_about_com_world_nms).length() < 1e-9,
         "L0={:?} L1={:?}",
@@ -249,8 +281,50 @@ fn lunar_lander_subsystems() -> MultibodySubsystems {
     subs
 }
 
-fn lunar_lander_block(pos: Geodetic) -> MultibodyVehicleBlock {
-    let body = BodyEllipsoid::MOON_IAU;
+/// A footpad for the 1,000 kg lander: four of them sink 8 mm on the Moon and
+/// 49 mm on the Earth, at 0.7 of critical damping.
+fn footpad_spec(offset_local_m: DVec3) -> ContactPointSpec {
+    ContactPointSpec {
+        component: ComponentId(0),
+        offset_local_m,
+        stiffness_n_m: 5.0e4,
+        damping_n_s_m: 5.0e3,
+        mu_static: 0.8,
+        mu_dynamic: 0.6,
+        bristle_stiffness_n_m: 5.0e4,
+        bristle_damping_n_s_m: 2.0e3,
+        damping_ramp_depth_m: ContactPointSpec::DEFAULT_DAMPING_RAMP_DEPTH_M,
+    }
+}
+
+/// Four footpads 1.5 m out and 1 m below the root of the lander.
+fn footpad_set() -> Vec<(ContactPointSpec, ContactPointState)> {
+    [(1.5, 0.0), (-1.5, 0.0), (0.0, 1.5), (0.0, -1.5)]
+        .into_iter()
+        .map(|(x, y)| {
+            (
+                footpad_spec(DVec3::new(x, y, 1.0)),
+                ContactPointState::default(),
+            )
+        })
+        .collect()
+}
+
+/// The lander level over `pos` on `body`, body `+z` down, free to move.
+fn footpad_lander(
+    body: BodyEllipsoid,
+    pos: Geodetic,
+    contact_points: Vec<(ContactPointSpec, ContactPointState)>,
+) -> MultibodyVehicleBlock {
+    footpad_lander_with(body, pos, contact_points, VehicleIntegrator::REAL_TIME)
+}
+
+fn footpad_lander_with(
+    body: BodyEllipsoid,
+    pos: Geodetic,
+    contact_points: Vec<(ContactPointSpec, ContactPointState)>,
+    integrator: VehicleIntegrator,
+) -> MultibodyVehicleBlock {
     let period = TickSpan::from_ticks(TICKS_PER_SECOND / 50);
     let pos_fixed = body.geodetic_to_fixed(&pos);
     let frame = LocalFrame::at(&pos);
@@ -269,23 +343,33 @@ fn lunar_lander_block(pos: Geodetic) -> MultibodyVehicleBlock {
         DVec3::splat(400.0),
     )])
     .unwrap();
-
+    let subsystems = MultibodySubsystems {
+        contact_points,
+        ..lunar_lander_subsystems()
+    };
     MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
             body,
             period,
             epoch: UtcTime::from_unix_seconds(0.0),
             initial,
+            integrator,
+            time_scale: MotionTimeScale::SurfaceGravity,
         },
         tree,
-        CompositeAeroModel::default(),
-        lunar_lander_subsystems(),
+        Vec::new(),
+        subsystems,
         Box::new(VacuumAtmosphere),
     )
     .unwrap()
-    .with_pinned_rest(PinnedSurfaceRest::Pinned {
-        world_pos_m: pos_fixed,
-        world_rot: attitude,
+}
+
+fn lunar_lander_block(pos: Geodetic) -> MultibodyVehicleBlock {
+    let block = footpad_lander(BodyEllipsoid::MOON_IAU, pos, Vec::new());
+    let start = block.output();
+    block.with_pinned_rest(PinnedSurfaceRest::Pinned {
+        world_pos_m: start.position_ecef,
+        world_rot: start.attitude,
     })
 }
 
@@ -333,9 +417,11 @@ fn detached_site_kinematics_is_rejected() {
                 attitude: DQuat::IDENTITY,
                 angular_rate_body: DVec3::ZERO,
             },
+            integrator: VehicleIntegrator::REAL_TIME,
+            time_scale: MotionTimeScale::SurfaceGravity,
         },
         revolute_arm_tree(),
-        CompositeAeroModel::default(),
+        Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
     )

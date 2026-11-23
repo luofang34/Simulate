@@ -1,192 +1,154 @@
 use std::sync::Arc;
 
 use glam::DVec3;
-use mbd_aero::CompositeAeroModel;
+use mbd_aero::AeroElement;
 use mbd_core::{
-    AeroModel, AeroWrench, ComponentId, ComponentState, ComponentTree, DynamicMassContribution,
-    LocalSiteKinematics, MassProperties, MbdError, PoseTable, compute_site_kinematics,
+    ComponentId, ComponentTree, DynamicMassContribution, LocalSiteKinematics, MassProperties,
+    MbdError, PoseTable, compute_site_kinematics,
 };
-use mbd_multibody::{FloatingBaseState, MultiBodyDynamics, PinnedSurfaceRest};
+use mbd_multibody::{
+    FloatingBaseState, ModelScale, ModelState, MultibodyModel, PinnedSurfaceRest, Workspace,
+};
 use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
-use step::{
-    BLOCK_NAME, StepContext, advance_step, block_mbd, block_multi, collect_dynamic_masses,
-    invalid_input, sample_env_and_aero,
-};
-use subsystems::{AeroStorage, fixed_base_from_vehicle, validate_input, vehicle_from_fixed_base};
+use element_state::CanopyState;
+use step::{BLOCK_NAME, collect_dynamic_masses};
+use subsystems::validate_input;
 pub use subsystems::{
     CgTrimConfig, EllipsoidSurfaceProvider, MultibodySubsystems, MultibodyVehicleConfig,
     MultibodyVehicleInput, MultibodyVehicleSnapshot, MultibodyVehicleTelemetry, PropulsionAssembly,
     PropulsionCommands, SurfaceContactProvider,
 };
-pub(crate) use subsystems::{fixed_to_instantaneous_inertial, inertial_to_fixed_after_step};
 pub(crate) use topology::{
-    merge_aero_remapped, merge_subsystems_remapped, remap_aero_subset, remap_subsystems_subset,
+    VehicleAero, merge_aero_remapped, merge_subsystems_remapped, remap_aero_subset,
+    remap_subsystems_subset,
 };
 
+use crate::flight_model::coupled_mechanism::CoupledMechanismState;
+use crate::flight_model::elements::VehicleElements;
+use crate::flight_model::environment::FlightEnvironment;
+use crate::flight_model::integration::Stepper;
+use crate::flight_model::loads::AeroLoad;
+use crate::flight_model::planet_frame::{RootMount, spin};
+
+mod assembly;
 mod carried;
+mod element_state;
+mod rest;
 mod step;
-mod step_contacts;
 mod step_subsystems;
+mod step_thermal;
 mod subsystems;
+mod telemetry;
 mod topology;
 
 #[cfg(test)]
 mod tests;
 
-/// Unified floating-base Featherstone multibody and subsystem vehicle block.
+/// The fields a vehicle flies through and the surface under it.
+pub(crate) struct VehicleWorld {
+    pub(crate) atmosphere: Arc<dyn AtmosphereField>,
+    pub(crate) gravity: Arc<dyn GravityField>,
+    pub(crate) surface: Arc<dyn SurfaceContactProvider>,
+}
+
+impl VehicleWorld {
+    /// What the force elements sample over a step starting at `utc` with
+    /// the root at `base_fixed`, under the control channels of `input`.
+    fn environment<'a>(
+        &'a self,
+        body: BodyEllipsoid,
+        utc: UtcTime,
+        input: &'a MultibodyVehicleInput,
+        base_fixed: &FloatingBaseState,
+    ) -> FlightEnvironment<'a> {
+        FlightEnvironment::new(
+            body,
+            self.gravity.as_ref(),
+            self.atmosphere.as_ref(),
+            utc,
+            &input.control_surfaces_rad,
+            base_fixed,
+        )
+        .over(self.surface.as_ref())
+    }
+}
+
+/// Floating-base articulated multibody vehicle with its subsystems.
 ///
-/// Shares one physical representation (`ComponentTree`, [`mbd_aero`], [`mbd_multibody`],
-/// and [`mbd_systems`]) across atmospheric flight, orbital coasting, powered ascent,
-/// hypersonic ablation, ground wheel/footpad contact, splashdown hydrodynamics, and
-/// articulated robotic manipulation.
+/// One [`MultibodyModel`] of the component tree is loaded by force elements
+/// that are evaluated at every integrator stage: gravity at the centre of
+/// gravity, the aerodynamic elements on their own links with the air sampled
+/// where each one is, footpads and wheels against the surface, the hull in
+/// water, and loop constraints. The fluid, propulsion, electrical and thermal
+/// subsystems of [`mbd_systems`] step once per period and hold their wrenches
+/// and masses over it. The same block flies atmospheric flight, orbital
+/// coasting, powered ascent, entry, ground contact, splashdown and articulated
+/// manipulation; [`MultibodyVehicleConfig::integrator`] picks the scheme.
 pub struct MultibodyVehicleBlock {
     config: MultibodyVehicleConfig,
     tree: ComponentTree,
     poses: PoseTable,
     subsystems: MultibodySubsystems,
-    aero: AeroStorage,
-    atmosphere: Arc<dyn AtmosphereField>,
-    gravity: Arc<dyn GravityField>,
-    surface: Arc<dyn SurfaceContactProvider>,
-    base_fixed: FloatingBaseState,
+    world: VehicleWorld,
+    model: MultibodyModel,
+    /// Scale of the model, kept across rebuilds so a restored vehicle
+    /// integrates with the tolerances it had.
+    scale: ModelScale,
+    mount: RootMount,
+    elements: VehicleElements,
+    canopies: Vec<CanopyState>,
+    stepper: Stepper,
+    work: Workspace,
+    rates: Vec<f64>,
+    /// The model's state with its base in the central body's fixed axes.
+    state: ModelState,
     mass: MassProperties,
     pinned_rest: PinnedSurfaceRest,
     last_alpha_root_rad_s2: DVec3,
     telemetry: MultibodyVehicleTelemetry,
+    mechanism_states: Vec<CoupledMechanismState>,
     now: crate::SimInstant,
 }
 
 impl MultibodyVehicleBlock {
-    /// Constructs a multibody vehicle block with composite multi-element aerodynamics
-    /// and complete [`MultibodySubsystems`].
+    /// Constructs a multibody vehicle block carrying the aerodynamic elements
+    /// `aero` on the components they name, over the solid ellipsoid of
+    /// `config.body`. A vehicle that flies in vacuum has none.
     pub fn new(
         config: MultibodyVehicleConfig,
         tree: ComponentTree,
-        aero: CompositeAeroModel,
+        aero: Vec<AeroElement>,
         subsystems: MultibodySubsystems,
         atmosphere: Box<dyn AtmosphereField>,
     ) -> Result<Self, crate::BlockError> {
-        Self::build_with_storage(
+        let canopies = element_state::initial_canopies(&aero);
+        Self::build_with_parts(
             config,
             tree,
-            AeroStorage::Composite(aero),
+            aero.into_iter().zip(canopies).collect(),
             subsystems,
-            Arc::from(atmosphere),
-            Arc::new(config.body),
-            Arc::new(EllipsoidSurfaceProvider::solid(config.body)),
+            VehicleWorld {
+                atmosphere: Arc::from(atmosphere),
+                gravity: Arc::new(config.body),
+                surface: Arc::new(EllipsoidSurfaceProvider::solid(config.body)),
+            },
             PinnedSurfaceRest::Free,
         )
-    }
-
-    /// Constructs a multibody vehicle block with any boxed [`AeroModel`].
-    pub fn with_aero_model(
-        config: MultibodyVehicleConfig,
-        tree: ComponentTree,
-        aero: Box<dyn AeroModel>,
-        subsystems: MultibodySubsystems,
-        atmosphere: Box<dyn AtmosphereField>,
-    ) -> Result<Self, crate::BlockError> {
-        Self::build_with_storage(
-            config,
-            tree,
-            AeroStorage::Dynamic(aero),
-            subsystems,
-            Arc::from(atmosphere),
-            Arc::new(config.body),
-            Arc::new(EllipsoidSurfaceProvider::solid(config.body)),
-            PinnedSurfaceRest::Free,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn build_with_storage(
-        config: MultibodyVehicleConfig,
-        tree: ComponentTree,
-        aero: AeroStorage,
-        subsystems: MultibodySubsystems,
-        atmosphere: Arc<dyn AtmosphereField>,
-        gravity: Arc<dyn GravityField>,
-        surface: Arc<dyn SurfaceContactProvider>,
-        pinned_rest: PinnedSurfaceRest,
-    ) -> Result<Self, crate::BlockError> {
-        if config.period == crate::TickSpan::ZERO {
-            return Err(invalid_input(
-                "period",
-                "a zero period never advances".to_owned(),
-            ));
-        }
-        let dyn_masses = collect_dynamic_masses(&subsystems)?;
-        let mass = tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        let poses = tree.evaluate_pose_table().map_err(block_mbd)?;
-        let base_fixed = fixed_base_from_vehicle(&config.initial, &mass);
-        let env = sample_env_and_aero(
-            &config.body,
-            atmosphere.as_ref(),
-            &aero,
-            &poses,
-            &base_fixed,
-            &mass,
-            config.epoch,
-            [0.0; 8],
-        )?;
-        let cg_fixed =
-            base_fixed.position_world_m + base_fixed.rotation_world_from_root * mass.cg_body_m;
-        let g_fixed = gravity.attraction_fixed(cg_fixed);
-        let base_i = fixed_to_instantaneous_inertial(&base_fixed, &config.body);
-        let accel = MultiBodyDynamics::forward_dynamics(
-            &tree,
-            &dyn_masses,
-            &base_i,
-            g_fixed,
-            &[],
-            &[env.aero_site_wrench],
-        )
-        .map_err(block_multi)?;
-        let telemetry = MultibodyVehicleTelemetry {
-            aero_wrench: env.aero_root,
-            dynamic_pressure_pa: env.dynamic_pressure_pa,
-            specific_force_cg_body: env.aero_root.force_body_n / mass.total_mass_kg,
-            total_propellant_kg: subsystems.fluids.total_fluid_mass_kg()
-                + subsystems.propulsion.total_solid_propellant_kg(),
-            bus_voltage_v: subsystems.electrical.nominal_bus_voltage_v(),
-            ao_remaining_fraction: 1.0,
-            used_rigid_fast_path: accel.used_rigid_fast_path,
-            is_pinned_rest: matches!(pinned_rest, PinnedSurfaceRest::Pinned { .. }),
-            ..MultibodyVehicleTelemetry::default()
-        };
-        Ok(Self {
-            config,
-            tree,
-            poses,
-            subsystems,
-            aero,
-            atmosphere,
-            gravity,
-            surface,
-            base_fixed,
-            mass,
-            pinned_rest,
-            last_alpha_root_rad_s2: accel.base_spatial_accel_root.ang,
-            telemetry,
-            now: crate::SimInstant::START,
-        })
     }
 
     /// Replaces the truth gravity field read during integration.
     #[must_use]
     pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
-        self.gravity = gravity;
+        self.world.gravity = gravity;
         self
     }
 
     /// Replaces the terrain / ocean contact surface provider.
     #[must_use]
     pub fn with_surface_provider(mut self, surface: Arc<dyn SurfaceContactProvider>) -> Self {
-        self.surface = surface;
+        self.world.surface = surface;
         self
     }
 
@@ -213,19 +175,19 @@ impl MultibodyVehicleBlock {
     /// Shared truth gravity field.
     #[must_use]
     pub fn gravity(&self) -> &Arc<dyn GravityField> {
-        &self.gravity
+        &self.world.gravity
     }
 
     /// Shared atmosphere field.
     #[must_use]
     pub fn atmosphere(&self) -> &Arc<dyn AtmosphereField> {
-        &self.atmosphere
+        &self.world.atmosphere
     }
 
     /// Shared surface contact/ocean provider.
     #[must_use]
     pub fn surface_provider(&self) -> &Arc<dyn SurfaceContactProvider> {
-        &self.surface
+        &self.world.surface
     }
 
     /// Live component tree.
@@ -248,8 +210,21 @@ impl MultibodyVehicleBlock {
 
     /// Floating-base root pose/velocity expressed in central-body fixed coordinates.
     #[must_use]
-    pub const fn floating_base_fixed(&self) -> &FloatingBaseState {
-        &self.base_fixed
+    pub fn floating_base_fixed(&self) -> FloatingBaseState {
+        self.state.base()
+    }
+
+    /// The model's state: base in fixed axes, joints, and the continuous
+    /// states and modes of every element.
+    #[must_use]
+    pub const fn model_state(&self) -> &ModelState {
+        &self.state
+    }
+
+    /// Where the mechanisms of the latest step's input ended, in its order.
+    #[must_use]
+    pub fn mechanism_states(&self) -> &[CoupledMechanismState] {
+        &self.mechanism_states
     }
 
     /// Live subsystem bundle (fluids, propulsion, electrical, thermal, manipulators, wheels).
@@ -269,9 +244,9 @@ impl MultibodyVehicleBlock {
         &self.telemetry
     }
 
-    /// Current aerodynamic load in root axes.
+    /// Current aerodynamic load in body axes.
     #[must_use]
-    pub const fn aero_wrench(&self) -> &AeroWrench {
+    pub const fn aero_wrench(&self) -> &AeroLoad {
         &self.telemetry.aero_wrench
     }
 
@@ -300,9 +275,9 @@ impl MultibodyVehicleBlock {
             return Err(MbdError::DetachedComponent { id: site });
         }
         let pose = self.poses.get(site)?;
-        let omega_i = self.base_fixed.angular_vel_root_rad_s
-            + self.base_fixed.rotation_world_from_root.conjugate()
-                * (DVec3::Z * self.config.body.omega_rad_s);
+        let axes = self.mount.body_axes(&self.state.base());
+        let omega_i = axes.angular_vel_root_rad_s
+            + axes.rotation_world_from_root.conjugate() * spin(&self.config.body);
         Ok(compute_site_kinematics(
             self.telemetry.specific_force_cg_body,
             omega_i,
@@ -312,28 +287,24 @@ impl MultibodyVehicleBlock {
         ))
     }
 
-    /// Updates joint state kinematics directly (e.g. from position-controlled servo loops)
-    /// and refreshes the pose table and mass properties.
-    pub fn set_component_states(
-        &mut self,
-        states: &[ComponentState],
-    ) -> Result<(), crate::BlockError> {
-        self.tree.restore_states(states).map_err(block_mbd)?;
-        self.poses = self.tree.evaluate_pose_table().map_err(block_mbd)?;
-        let dyn_masses = collect_dynamic_masses(&self.subsystems)?;
-        self.mass = self
-            .tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        Ok(())
-    }
-
-    pub(crate) fn aero_storage(&self) -> &AeroStorage {
-        &self.aero
+    /// The aerodynamic elements with the canopy state each one holds.
+    pub(crate) fn aero_with_states(&self) -> VehicleAero {
+        self.elements
+            .aero
+            .iter()
+            .cloned()
+            .zip(self.canopies.iter().copied())
+            .collect()
     }
 
     pub(crate) fn snapshot_for_coord(&self) -> MultibodyVehicleSnapshot {
         crate::Block::snapshot(self)
+    }
+
+    /// Whether no joint has a degree of freedom, so the vehicle moves as one
+    /// rigid body.
+    fn moves_as_one_body(&self) -> bool {
+        self.model.layout().velocity_len() == 6
     }
 
     fn current_utc(&self) -> UtcTime {
@@ -344,30 +315,15 @@ impl MultibodyVehicleBlock {
         self.config.epoch.advanced_by(elapsed)
     }
 
+    fn vehicle_state(&self) -> crate::VehicleState {
+        self.mount
+            .vehicle_of(&self.state.base(), self.mass.cg_body_m)
+    }
+
     fn run_step(&mut self, input: &MultibodyVehicleInput) -> Result<(), crate::BlockError> {
         validate_input(input)?;
-        let ctx = StepContext {
-            body: self.config.body,
-            gravity: self.gravity.as_ref(),
-            atmosphere: self.atmosphere.as_ref(),
-            surface: self.surface.as_ref(),
-            aero: &self.aero,
-            utc: self.current_utc(),
-            dt_s: self.config.period.as_seconds(),
-        };
-        let tel = advance_step(
-            &ctx,
-            &mut self.tree,
-            &mut self.subsystems,
-            &mut self.base_fixed,
-            &mut self.mass,
-            &mut self.pinned_rest,
-            self.telemetry.specific_force_cg_body,
-            &mut self.last_alpha_root_rad_s2,
-            input,
-        )?;
-        let next_now = self.now.advanced(self.config.period);
-        let state = vehicle_from_fixed_base(&self.base_fixed, &self.mass);
+        let tel = self.advance_step(input)?;
+        let state = self.vehicle_state();
         if !(state.position_ecef.is_finite()
             && state.velocity_ecef.is_finite()
             && state.attitude.is_finite()
@@ -378,9 +334,15 @@ impl MultibodyVehicleBlock {
                 detail: format!("{state:?}"),
             });
         }
-        self.poses = self.tree.evaluate_pose_table().map_err(block_mbd)?;
+        self.poses = self.tree.evaluate_pose_table().map_err(step::block_mbd)?;
+        element_state::read_own(
+            &self.elements,
+            &self.state,
+            &mut self.canopies,
+            &mut self.subsystems,
+        );
         self.telemetry = tel;
-        self.now = next_now;
+        self.now = self.now.advanced(self.config.period);
         Ok(())
     }
 }
@@ -406,13 +368,13 @@ impl crate::Block for MultibodyVehicleBlock {
     }
 
     fn output(&self) -> Self::Output {
-        vehicle_from_fixed_base(&self.base_fixed, &self.mass)
+        self.vehicle_state()
     }
 
     fn snapshot(&self) -> Self::Snapshot {
         MultibodyVehicleSnapshot {
             now: self.now,
-            base_fixed: self.base_fixed,
+            state: self.state.clone(),
             last_alpha_root_rad_s2: self.last_alpha_root_rad_s2,
             component_states: self.tree.states().to_vec(),
             fluids: self.subsystems.fluids.clone(),
@@ -431,13 +393,6 @@ impl crate::Block for MultibodyVehicleBlock {
                 .iter()
                 .map(|(_, s)| *s)
                 .collect(),
-            contact_states: self
-                .subsystems
-                .contact_points
-                .iter()
-                .map(|(_, s)| *s)
-                .collect(),
-            wheel_states: self.subsystems.wheels.iter().map(|(_, s)| *s).collect(),
             pinned_rest: self.pinned_rest,
             telemetry: self.telemetry,
         }

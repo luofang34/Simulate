@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "ga-analog-six-pack",
   "name": "Light GA analog flight and engine instruments",
   "version": "1.0.0",

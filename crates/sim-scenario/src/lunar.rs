@@ -1,5 +1,5 @@
 use glam::{DQuat, DVec3};
-use mbd_core::{ComponentTree, VacuumAero};
+use mbd_core::ComponentTree;
 use sim_apollo::{
     CockpitInstrumentPanel, CockpitInstrumentSnapshot, GuidanceSource, InertialSiteSample, LM_ASA,
     LM_CDR_EYE, LM_DPS_EXHAUST_VELOCITY_M_S, LM_DPS_TANK, LM_DPS_THRUST_N, LM_DPS_THRUST_POINT_M,
@@ -232,7 +232,7 @@ impl LunarLandingRun {
                 },
             },
             lm_tree()?,
-            Box::new(VacuumAero),
+            Vec::new(),
             Box::new(VacuumAtmosphere),
         )?;
         let inertial = InertialTransform::moon_at(epoch.start_utc()?);

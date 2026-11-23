@@ -1,7 +1,7 @@
 use std::f64::consts::{PI, TAU};
 
 use glam::{DMat3, DQuat};
-use mbd_core::{ComponentSpec, JointSpec, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, JointSpec, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_geo::Geodetic;
 
@@ -11,6 +11,7 @@ mod aero;
 mod mass;
 mod replay;
 mod staging;
+mod trajectory_reference;
 
 const CORE: ComponentId = ComponentId(0);
 const TANK: ComponentId = ComponentId(1);
@@ -88,13 +89,7 @@ fn config(body: BodyEllipsoid, period: TickSpan, initial: VehicleState) -> Rigid
 }
 
 fn vacuum_block(config: RigidBodyConfig, tree: ComponentTree) -> RigidBody6DofBlock {
-    RigidBody6DofBlock::new(
-        config,
-        tree,
-        Box::new(VacuumAero),
-        Box::new(VacuumAtmosphere),
-    )
-    .unwrap()
+    RigidBody6DofBlock::new(config, tree, Vec::new(), Box::new(VacuumAtmosphere)).unwrap()
 }
 
 fn run(block: &mut RigidBody6DofBlock, steps: usize, input: &RigidBodyInput) {

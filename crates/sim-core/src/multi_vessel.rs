@@ -4,21 +4,22 @@ use glam::DVec3;
 use mbd_core::{ComponentId, Placement};
 use mbd_multibody::{
     DockingSpec, DockingState, GrappleLockSpec, HingeSwingSpec, HingeSwingState, RailSlideSpec,
-    RailSlideState, TetherCutReason, WinchTetherSpec, WinchTetherState, execute_impulse_release,
-    grapple_lock, hard_mate_vessels, undock_vessel,
+    RailSlideState, TetherCommand, TetherCutReason, WinchTetherSpec, WinchTetherState,
+    execute_impulse_release, grapple_lock, hard_mate_vessels, undock_vessel,
 };
 use mbd_systems::payload::transfer_payload_mass;
 
 use crate::BlockError;
-use crate::multibody_vehicle::{
-    MultibodyVehicleBlock, MultibodyVehicleInput, fixed_to_instantaneous_inertial,
-};
+use crate::flight_model::planet_frame::fixed_to_instantaneous_inertial;
+use crate::multibody_vehicle::{MultibodyVehicleBlock, MultibodyVehicleInput};
 use mechanisms::{
-    mate_vessels_from_result, prepare_step_inputs, process_post_step_links, site_world_kinematics,
-    split_vessel_with_release,
+    mate_vessels_from_result, prepare_step_inputs, process_post_step_links,
+    split_vessel_with_release, take_link_states,
 };
+use plume::site_world_kinematics;
 
 mod mechanisms;
+mod plume;
 
 #[cfg(test)]
 mod tests;
@@ -62,7 +63,8 @@ pub enum InterVesselLink {
         vessel: SimVesselId,
         /// Rail length, catapult force, and sliding friction specification.
         spec: RailSlideSpec,
-        /// Current rail slide state (`fired`, `released`).
+        /// Current rail slide state (`fired`, `ready_to_release`). The link is
+        /// dropped once the seat has left the rail.
         state: RailSlideState,
     },
     /// Hinged fairing/petal swing mechanism separating automatically past `release_angle_rad`.
@@ -73,7 +75,8 @@ pub enum InterVesselLink {
         vessel: SimVesselId,
         /// Hinge swing angle and spring/damper specification.
         spec: HingeSwingSpec,
-        /// Current hinge state (`unlatched`, `released`).
+        /// Current hinge state (`unlatched`, `ready_to_release`). The link is
+        /// dropped once the panel has separated.
         state: HingeSwingState,
     },
     /// Compliant soft-capture docking interface converging to rigid `hard_mate`.
@@ -119,10 +122,11 @@ pub enum InterVesselLink {
         offset_payload_m: DVec3,
         /// Tensile stiffness, breaking tension, burn-through energy, and touchdown auto-cut spec.
         spec: WinchTetherSpec,
-        /// Mutable deployed length, payout speed, and intact/cut status.
+        /// Deployed length, absorbed heat, and intact/cut status.
         state: WinchTetherState,
-        /// Thermal heat rate applied to umbilical jacket each step, W.
-        umbilical_heat_rate_w: f64,
+        /// Winch payout rate, umbilical heating and cutter command held over
+        /// each step.
+        command: TetherCommand,
     },
     /// Thruster exhaust plume impingement and heating transferred onto a nearby vessel surface.
     PlumeLink {
@@ -299,7 +303,7 @@ impl MultiVesselCoordinator {
             .get(&parent_id)
             .ok_or_else(|| missing_vessel(parent_id))?;
         let parent_i =
-            fixed_to_instantaneous_inertial(parent.floating_base_fixed(), &parent.body());
+            fixed_to_instantaneous_inertial(&parent.floating_base_fixed(), &parent.body());
         let masses = parent.dynamic_mass_contributions()?;
         let release = execute_impulse_release(
             parent.tree(),
@@ -327,7 +331,7 @@ impl MultiVesselCoordinator {
             .get(&parent_id)
             .ok_or_else(|| missing_vessel(parent_id))?;
         let parent_i =
-            fixed_to_instantaneous_inertial(parent.floating_base_fixed(), &parent.body());
+            fixed_to_instantaneous_inertial(&parent.floating_base_fixed(), &parent.body());
         let masses = parent.dynamic_mass_contributions()?;
         let release = undock_vessel(
             parent.tree(),
@@ -360,9 +364,9 @@ impl MultiVesselCoordinator {
             .get(&target_id)
             .ok_or_else(|| missing_vessel(target_id))?;
         let chaser_i =
-            fixed_to_instantaneous_inertial(chaser.floating_base_fixed(), &chaser.body());
+            fixed_to_instantaneous_inertial(&chaser.floating_base_fixed(), &chaser.body());
         let target_i =
-            fixed_to_instantaneous_inertial(target.floating_base_fixed(), &target.body());
+            fixed_to_instantaneous_inertial(&target.floating_base_fixed(), &target.body());
         let ma = chaser.dynamic_mass_contributions()?;
         let mb = target.dynamic_mass_contributions()?;
         let res = hard_mate_vessels(
@@ -412,9 +416,9 @@ impl MultiVesselCoordinator {
             })?;
         let ee_comp = chain.ee_component();
         let servicer_i =
-            fixed_to_instantaneous_inertial(servicer.floating_base_fixed(), &servicer.body());
+            fixed_to_instantaneous_inertial(&servicer.floating_base_fixed(), &servicer.body());
         let target_i =
-            fixed_to_instantaneous_inertial(target.floating_base_fixed(), &target.body());
+            fixed_to_instantaneous_inertial(&target.floating_base_fixed(), &target.body());
         let (ee_pos, ee_rot, ee_vel, _) = site_world_kinematics(
             servicer.pose_table(),
             &servicer_i,
@@ -457,7 +461,7 @@ impl MultiVesselCoordinator {
         &mut self,
         inputs: &BTreeMap<SimVesselId, MultibodyVehicleInput>,
     ) -> Result<MultiVesselStepReport, BlockError> {
-        let mut step_inputs = prepare_step_inputs(self, inputs)?;
+        let (mut step_inputs, owners) = prepare_step_inputs(self, inputs)?;
         let ids = self.vessel_ids();
         for id in ids {
             if let Some(vessel) = self.vessels.get_mut(&id) {
@@ -465,6 +469,7 @@ impl MultiVesselCoordinator {
                 crate::Block::step(vessel, &input)?;
             }
         }
+        take_link_states(self, &owners);
         process_post_step_links(self)
     }
 }

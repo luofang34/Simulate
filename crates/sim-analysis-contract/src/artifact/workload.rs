@@ -50,7 +50,7 @@ pub struct SerializableGroundStationSpec {
     pub altitude_spec: Option<AltitudeSpec>,
 }
 
-/// Analysis workload payload inside an [`AnalysisRequestArtifact`].
+/// Analysis workload payload inside an [`super::AnalysisRequestArtifact`].
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AnalysisWorkloadSpec {

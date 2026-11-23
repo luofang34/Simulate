@@ -17,6 +17,8 @@ use sim_universe::{MultibodyLocalPlant, Tier, TierChange, TierPolicy, Universe};
 
 #[path = "carried_internals/observe.rs"]
 mod observe;
+#[path = "carried_internals/reference.rs"]
+mod reference;
 #[path = "carried_internals/spacecraft.rs"]
 mod spacecraft;
 

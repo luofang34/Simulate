@@ -1,0 +1,194 @@
+# Static architecture and structure gates for FSgame (Simulate).
+# Run: cargo evidence gate --format=jsonl
+# scripts/check-architecture.sh and scripts/check-structure.sh stay authoritative
+# until the owner retires them.
+schema_version = 1
+
+[workspace]
+name = "simulate"
+exclude_paths = ["target/**", "**/dist/**", "book/build/**", ".claude/**"]
+
+[architecture]
+in_scope = [
+    "sim-geo", "sim-link", "sim-spacetime", "sim-atmosphere", "sim-core", "sim-analysis-contract",
+    "sim-scenery", "sim-orbital", "sim-analysis", "sim-devices", "sim-xil", "sim-input",
+    "sim-render", "sim-mission", "sim-universe", "sim-pack", "sim-scenario",
+    "sim-apollo", "sim-raketa", "sim-p38g",
+    "sim-aviate", "sim-navdata", "sim-indicate", "sim-pilotage", "sim-navigate",
+    "sim-flight-chain", "sim-maplibre", "sim-chain-trial", "sim-link-host",
+    "ironbird", "link-replay", "nav-trial", "simulate-app",
+]
+no_out_of_scope_deps = false
+forbidden_external_transitive = false
+require_all_crates_layered = true
+git_dep_lockstep = true
+export_hygiene_crates = ["sim-analysis-contract", "sim-spacetime", "sim-orbital", "sim-analysis", "sim-mission"]
+
+# Only sim-bodies links world-potential (in_scope above omits it on purpose).
+[architecture.forbidden_external]
+world-potential = "read gravity and magnetic fields through sim-bodies, the only adapter onto world-potential"
+
+[[architecture.layers]]
+name = "foundation"
+crates = ["sim-geo", "sim-link"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "environment"
+crates = ["sim-spacetime", "sim-atmosphere"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "domain_core"
+crates = ["sim-bodies", "sim-analysis-contract", "sim-core", "sim-scenery"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "orbital_devices_render"
+crates = ["sim-orbital", "sim-analysis", "sim-devices", "sim-xil", "sim-input", "sim-render"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "mission_universe_pack"
+crates = ["sim-mission", "sim-universe", "sim-pack"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "vehicles"
+crates = ["sim-apollo", "sim-raketa", "sim-p38g"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "scenario"
+crates = ["sim-scenario"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "adapter_endpoints"
+crates = ["sim-aviate", "sim-navdata", "sim-indicate", "sim-pilotage", "sim-navigate"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "adapter_composites"
+crates = ["sim-flight-chain", "sim-maplibre"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "adapter_chain_trial"
+crates = ["sim-chain-trial"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "adapter_link_host"
+crates = ["sim-link-host"]
+allow_same_layer = false
+
+[[architecture.layers]]
+name = "apps"
+crates = ["ironbird", "link-replay", "nav-trial", "simulate-app"]
+allow_same_layer = false
+
+[[architecture.dep_closures]]
+id = "sim-analysis-contract-closure"
+package = "sim-analysis-contract"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-orbital" = "`sim-analysis-contract` sits below `sim-orbital` in the orbital DAG", "sim-analysis" = "`sim-analysis-contract` sits below `sim-analysis` in the orbital DAG", "sim-mission" = "`sim-analysis-contract` sits below `sim-mission` in the orbital DAG" }
+
+[[architecture.dep_closures]]
+id = "sim-bodies-closure"
+package = "sim-bodies"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-orbital" = "`sim-bodies` sits below `sim-orbital` in the orbital DAG", "sim-analysis" = "`sim-bodies` sits below `sim-analysis` in the orbital DAG", "sim-mission" = "`sim-bodies` sits below `sim-mission` in the orbital DAG", "sim-universe" = "`sim-bodies` sits below `sim-universe` in the orbital DAG", "sim-devices" = "`sim-bodies` sits below `sim-devices` in the orbital DAG" }
+
+[[architecture.dep_closures]]
+id = "sim-spacetime-closure"
+package = "sim-spacetime"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-analysis-contract" = "`sim-spacetime` sits below `sim-analysis-contract` in the orbital DAG", "sim-orbital" = "`sim-spacetime` sits below `sim-orbital` in the orbital DAG", "sim-analysis" = "`sim-spacetime` sits below `sim-analysis` in the orbital DAG", "sim-mission" = "`sim-spacetime` sits below `sim-mission` in the orbital DAG" }
+
+[[architecture.dep_closures]]
+id = "sim-orbital-closure"
+package = "sim-orbital"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-analysis" = "`sim-orbital` sits below `sim-analysis` in the orbital DAG", "sim-mission" = "`sim-orbital` sits below `sim-mission` in the orbital DAG" }
+
+[[architecture.dep_closures]]
+id = "sim-analysis-closure"
+package = "sim-analysis"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-orbital" = "`sim-analysis` sits below `sim-orbital` in the orbital DAG", "sim-mission" = "`sim-analysis` sits below `sim-mission` in the orbital DAG" }
+
+[[architecture.dep_closures]]
+id = "sim-mission-closure"
+package = "sim-mission"
+forbid_crates = { "sim-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "jsbsim" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-scenery" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "flightbag-core" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "sim-render" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "wgpu" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-celestial" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-fusion" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "navigate-visual" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates", "hifitime" = "orbital stack must not reach flight dynamics, scenery, rendering, or Navigate filter/visual/sky crates" }
+
+[[architecture.dep_closures]]
+id = "sim-core-no-orbital"
+package = "sim-core"
+forbid_crates = { "sim-orbital" = "sim-core reaches the orbital stack only through sim-universe", "sim-mission" = "sim-core reaches the orbital stack only through sim-universe", "sim-universe" = "sim-core reaches the orbital stack only through sim-universe" }
+
+[structure]
+enabled = true
+max_rs_lines = 500
+max_lib_rs_lines = 100
+max_fn_lines = 80
+require_lib_rs_doc = true
+forbid_mod_rs = true
+forbid_generic_filenames = ["utils.rs", "helpers.rs", "common.rs"]
+forbid_stray_artifacts = true
+
+[[banned_patterns]]
+id = "no-plus-equals-one"
+pattern = '\+= *1([^0-9.]|$)'
+languages = ["rust"]
+include_globs = ["crates/**", "adapters/**", "apps/**", "vehicles/**"]
+exclude_globs = ["**/tests.rs", "**/tests/**"]
+context = "code"
+allow_in_tests = true
+reason = "monotonic counters use wrapping_add(1)"
+
+[[banned_patterns]]
+id = "no-second-utc-clock"
+pattern = '\bfn utc_at\('
+languages = ["rust"]
+include_globs = ["crates/**", "adapters/**", "apps/**", "vehicles/**"]
+exclude_globs = ["**/tests.rs", "**/tests/**", "crates/sim-spacetime/**", "crates/sim-core/src/rigid_body.rs"]
+context = "code"
+allow_in_tests = true
+reason = "tick-to-time conversion goes through sim_spacetime::SimEpoch::utc_at"
+
+[[banned_patterns]]
+id = "no-epoch-constant"
+pattern = 'const [A-Z0-9_]*(EPOCH|UTC)[A-Z0-9_]*: f64'
+languages = ["rust"]
+include_globs = ["crates/**", "adapters/**", "apps/**", "vehicles/**"]
+exclude_globs = ["**/tests.rs", "**/tests/**", "crates/sim-spacetime/**", "crates/sim-scenario/src/profile.rs"]
+context = "code"
+allow_in_tests = true
+reason = "scenario start times live in ScenarioProfile::start_utc_unix_s; epochs come from sim_spacetime::SimEpoch"
+
+[[banned_patterns]]
+id = "no-second-harmonic-synthesis"
+pattern = 'fn\s+[a-z0-9_]*(spherical_harmonic|solid_harmonic|legendre|normalized_vw|cunningham)[a-z0-9_]*\s*[(<]'
+languages = ["rust"]
+include_globs = ["crates/**", "adapters/**", "apps/**", "vehicles/**"]
+exclude_globs = ["**/tests.rs", "**/tests/**"]
+context = "code"
+allow_in_tests = true
+reason = "harmonic synthesis belongs to world-potential, reached through sim-bodies"
+
+[[banned_patterns]]
+id = "fields-via-sim-bodies"
+pattern = 'world_geomag|world_potential'
+languages = ["rust"]
+include_globs = ["crates/sim-devices/src/**", "crates/sim-orbital/src/**", "crates/sim-universe/src/**", "crates/sim-core/src/**"]
+exclude_globs = ["**/tests.rs", "**/tests/**"]
+context = "code"
+allow_in_tests = true
+reason = "simulated fields come from sim-bodies, not a model crate directly"
+
+[[banned_patterns]]
+id = "no-legacy-public-names"
+pattern = 'pub\s+(fn|struct|enum|trait|type)\s+[A-Za-z0-9_]*(Gmat|gmat|HaloSeed|target_l2_halo_orbit)'
+languages = ["rust"]
+include_globs = ["crates/**", "adapters/**", "vehicles/**"]
+exclude_globs = []
+context = "code"
+allow_in_tests = true
+reason = "use domain names, not Gmat / HaloSeed / target_l2_halo_orbit"

@@ -141,7 +141,7 @@ impl CapsuleReentryRun {
                 initial: entry_state(trim),
             },
             build_apollo_csm_tree()?,
-            Box::new(apollo_cm_aero()?),
+            apollo_cm_aero()?,
             Box::new(ReentryAtmosphere),
         )?;
         vehicle.separate_stage(CSM_SERVICE_MODULE)?;

@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_core::{
-    Block, MultibodyVehicleConfig, MultibodyVehicleInput, PropulsionCommands, TICKS_PER_SECOND,
-    TickSpan, VehicleState,
+    Block, MotionTimeScale, MultibodyVehicleConfig, MultibodyVehicleInput, PropulsionCommands,
+    TICKS_PER_SECOND, TickSpan, VehicleIntegrator, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime};
 use sim_pack::{
@@ -35,7 +35,7 @@ fn component(key: &str, parent: Option<&str>) -> Value {
 #[cfg(test)]
 fn stationary(kind: &str) -> Value {
     json!({
-        "schema_version": 1,
+        "schema_version": 3,
         "id": "stationary-system",
         "name": "Stationary system",
         "version": "1.0.0",
@@ -99,7 +99,7 @@ fn a_stationary_system_gives_a_simulator_nothing_to_fly() {
         package.jsbsim_model(),
         Err(PackError::Syspack(SyspackError::DynamicsMismatch { .. }))
     ));
-    assert!(package.build_aero_model().is_err());
+    assert!(package.build_aero_elements().is_err());
 }
 
 #[test]
@@ -113,11 +113,11 @@ fn a_device_a_stationary_system_cannot_build_still_refuses_it() {
 }
 
 #[cfg(test)]
-fn v2_multibody_manifest() -> Value {
+fn composed_multibody_manifest() -> Value {
     json!({
-        "schema_version": 2,
-        "id": "test-v2-spacecraft",
-        "name": "Test v2 Spacecraft",
+        "schema_version": 3,
+        "id": "test-spacecraft",
+        "name": "Test Spacecraft",
         "version": "1.0.0",
         "kind": "Spacecraft",
         "assets": {},
@@ -192,15 +192,15 @@ fn v2_multibody_manifest() -> Value {
 }
 
 #[test]
-fn builtin_v1_package_audits_cleanly() {
+fn builtin_package_audits_cleanly() {
     let package = builtin_c172s_package().unwrap();
     let report = package.audit_design().unwrap();
     assert!(report.passed(), "findings: {:?}", report.findings);
 }
 
 #[test]
-fn v2_multibody_package_builds_and_steps_deterministically() {
-    let package = load(&v2_multibody_manifest()).unwrap();
+fn composed_multibody_package_builds_and_steps_deterministically() {
+    let package = load(&composed_multibody_manifest()).unwrap();
     let report = package.audit_design().unwrap();
     assert!(report.passed(), "findings: {:?}", report.findings);
 
@@ -215,6 +215,8 @@ fn v2_multibody_package_builds_and_steps_deterministically() {
                 period: TickSpan::from_ticks(TICKS_PER_SECOND / 10),
                 epoch: UtcTime::from_unix_seconds(1_700_000_000.0),
                 initial,
+                integrator: VehicleIntegrator::REAL_TIME,
+                time_scale: MotionTimeScale::SurfaceGravity,
             },
             Box::new(VacuumAtmosphere),
         )

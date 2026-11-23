@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "p38g",
   "name": "Lockheed P-38G-13-LO Lightning",
   "version": "1.1.0",
@@ -313,6 +313,6 @@
   "instrument_pack": {
     "id": "usaaf-1943-fighter",
     "version": "2.0.0",
-    "manifest_sha256": "e01b1c531617f0dc47d38be0487b79aae20f2301cb99a085358569dfcd56083d"
+    "manifest_sha256": "8306fd021db0b669d789ef7f827831131589ecb732928bd26c80cf2cdc2854f1"
   }
 }

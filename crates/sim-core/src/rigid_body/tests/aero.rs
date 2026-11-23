@@ -1,4 +1,4 @@
-use mbd_aero::{BluntCapsuleAero, BluntCapsuleParams};
+use mbd_aero::{AeroElement, AeroElementKind, BluntCapsuleAero, BluntCapsuleParams};
 use mbd_core::SUTTON_GRAVES_K_EARTH;
 use sim_atmosphere::{
     AtmosphereError, AtmosphereSample, GasComposition, ReentryAtmosphere, StandardAtmosphere,
@@ -7,9 +7,9 @@ use sim_atmosphere::{
 use super::*;
 
 /// An air mass of fixed density, so a trim test is not racing the descent.
-struct UniformAir {
-    density_kg_m3: f64,
-    wind_ned_m_s: DVec3,
+pub(super) struct UniformAir {
+    pub(super) density_kg_m3: f64,
+    pub(super) wind_ned_m_s: DVec3,
 }
 
 impl AtmosphereField for UniformAir {
@@ -29,11 +29,14 @@ const NOSE_RADIUS_M: f64 = 4.694;
 const NORMAL_FORCE_SLOPE: f64 = 0.113;
 const AXIAL_DRAG_COEFF: f64 = 1.3;
 
-pub(super) fn capsule_aero() -> Box<BluntCapsuleAero> {
+/// The capsule's air load on the one component of [`capsule_tree`], whose
+/// origin is the centre of gravity `cg`: the heat shield's centre of
+/// curvature is given from there.
+pub(super) fn capsule_aero(cg: DVec3) -> Vec<AeroElement> {
     let params = BluntCapsuleParams {
         base_radius_m: 1.956,
         nose_radius_m: NOSE_RADIUS_M,
-        reference_point_body_m: DVec3::new(-NOSE_RADIUS_M, 0.0, 0.0),
+        reference_point_body_m: DVec3::new(-NOSE_RADIUS_M, 0.0, 0.0) - cg,
         normal_force_slope: NORMAL_FORCE_SLOPE,
         axial_drag_coeff: AXIAL_DRAG_COEFF,
         pitch_damping_coeff: -10.0,
@@ -42,7 +45,10 @@ pub(super) fn capsule_aero() -> Box<BluntCapsuleAero> {
         transonic_drag_rise: 0.0,
         free_molecular_drag_coeff: None,
     };
-    Box::new(BluntCapsuleAero::new(params).unwrap())
+    vec![AeroElement::new(
+        CORE,
+        AeroElementKind::BluntCapsule(BluntCapsuleAero::new(params).unwrap()),
+    )]
 }
 
 pub(super) fn capsule_tree(cg: DVec3) -> ComponentTree {
@@ -76,7 +82,7 @@ fn capsule_block(cg: DVec3, density_kg_m3: f64) -> RigidBody6DofBlock {
     RigidBody6DofBlock::new(
         config(body, TEN_MS, start),
         capsule_tree(cg),
-        capsule_aero(),
+        capsule_aero(cg),
         Box::new(UniformAir {
             density_kg_m3,
             wind_ned_m_s: DVec3::ZERO,
@@ -124,7 +130,7 @@ fn wind_reaches_the_aerodynamics_model_in_body_axes() {
     let block = RigidBody6DofBlock::new(
         config(body, TEN_MS, start),
         capsule_tree(DVec3::ZERO),
-        capsule_aero(),
+        capsule_aero(DVec3::ZERO),
         Box::new(UniformAir {
             density_kg_m3: 0.4,
             wind_ned_m_s: DVec3::new(0.0, 0.0, -50.0),
@@ -152,7 +158,7 @@ fn the_block_accepts_every_atmosphere_on_its_own_body() {
         let mut block = RigidBody6DofBlock::new(
             config(body, TEN_MS, start),
             capsule_tree(DVec3::ZERO),
-            capsule_aero(),
+            capsule_aero(DVec3::ZERO),
             atmosphere,
         )
         .unwrap();

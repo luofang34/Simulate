@@ -13,6 +13,9 @@ use sim_core::{
 };
 use sim_geo::{BodyEllipsoid, Geodetic, InertialTransform, UtcTime};
 
+#[path = "support/recorded.rs"]
+mod recorded;
+
 const HZ: u64 = 100;
 const EPOCH_UNIX_S: f64 = -14_000_000.0;
 
@@ -55,7 +58,7 @@ fn command_module(initial: VehicleState) -> RigidBody6DofBlock {
             initial,
         },
         build_apollo_csm_tree().unwrap(),
-        Box::new(apollo_cm_aero().unwrap()),
+        apollo_cm_aero().unwrap(),
         Box::new(ReentryAtmosphere),
     )
     .unwrap();
@@ -221,4 +224,38 @@ fn sample(vehicle: &RigidBody6DofBlock, site: mbd_core::ComponentId) -> Inertial
             .as_seconds(),
     );
     InertialSiteSample::of(vehicle, site, &InertialTransform::earth_at(utc)).unwrap()
+}
+
+#[test]
+fn the_ballistic_entry_arc_ends_where_it_was_recorded() {
+    let mut vehicle = command_module(entry_state(100_000.0, 7_620.0, 3f64.to_radians(), 0.0));
+    let none = RigidBodyInput::default();
+    for _ in 0..120 * HZ {
+        vehicle.step(&none).unwrap();
+    }
+    let state = vehicle.output();
+    let force = vehicle.aero_wrench().force_body_n;
+    // Two minutes from the entry interface through peak heating. The
+    // capsule's pitch damping reads the inertial rate of its link, the
+    // planet's spin (7e-5 rad/s) included, and its trim oscillation is
+    // lightly damped: a phase shift of that oscillation moves the lift by
+    // parts in a thousand and the arc by metres.
+    recorded::assert_rows(&[
+        ("height_m", height_m(&vehicle), 60358.397757655286, 20.0),
+        (
+            "speed_m_s",
+            state.velocity_ecef.length(),
+            7122.058990410221,
+            0.5,
+        ),
+        (
+            "incidence_rad",
+            incidence_rad(&vehicle),
+            -0.35193822819296505,
+            5e-3,
+        ),
+        ("axial_force_n", force.x, -103385.75026591787, 500.0),
+        ("east_m", state.position_ecef.y, -1991911.7013915323, 50.0),
+        ("north_m", state.position_ecef.z, 0.0, 5.0),
+    ]);
 }

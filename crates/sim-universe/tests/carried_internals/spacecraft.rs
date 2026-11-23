@@ -13,9 +13,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use glam::{DMat3, DQuat, DVec3};
-use mbd_core::{
-    ComponentId, ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement, VacuumAero,
-};
+use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
 use mbd_systems::{
     BatterySpec, BatteryState, ElectricThrusterSpec, ElectricThrusterState, ElectricalBus,
     FeedRegime, FluidNetwork, FluidSpecies, SolarArraySpec, SolarArrayState, TankGeometry, TankId,
@@ -23,8 +21,9 @@ use mbd_systems::{
 };
 use sim_atmosphere::VacuumAtmosphere;
 use sim_core::{
-    MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleInput,
-    PropulsionCommands, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
+    MotionTimeScale, MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig,
+    MultibodyVehicleInput, PropulsionCommands, SimInstant, TICKS_PER_SECOND, TickSpan,
+    VehicleIntegrator, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, UtcTime};
 use sim_orbital::{
@@ -262,15 +261,17 @@ pub fn plant(
     sun_fixed: DVec3,
     carried: bool,
 ) -> Result<Box<dyn LocalPlant>, UniverseError> {
-    let block = MultibodyVehicleBlock::with_aero_model(
+    let block = MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
             body,
             period: BLOCK_PERIOD,
             epoch: epoch.utc_at(start)?,
             initial: *state,
+            integrator: VehicleIntegrator::REAL_TIME,
+            time_scale: MotionTimeScale::SurfaceGravity,
         },
         tree(),
-        Box::new(VacuumAero),
+        Vec::new(),
         subsystems(),
         Box::new(VacuumAtmosphere),
     )?;

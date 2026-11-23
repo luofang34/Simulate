@@ -30,15 +30,18 @@ fn component(key: &str, parent: Option<&str>, x_m: f64, mass_kg: f64, inertia: f
 }
 
 fn capsule_dynamics() -> Value {
-    json!({"RigidBodyBluntCapsule": {
-        "base_radius_m": 1.0,
-        "nose_radius_m": 2.0,
-        "reference_point_body_m": [-2.0, 0.0, 0.0],
-        "normal_force_slope": 0.1,
-        "axial_drag_coeff": 1.2,
-        "pitch_damping_coeff": -5.0,
-        "sutton_graves_k": 1.7415e-4,
-    }})
+    json!({"MultibodyComposed": {"aero_elements": [{
+        "site": "root",
+        "kind": {"BluntCapsule": {
+            "base_radius_m": 1.0,
+            "nose_radius_m": 2.0,
+            "reference_point_body_m": [-2.0, 0.0, 0.0],
+            "normal_force_slope": 0.1,
+            "axial_drag_coeff": 1.2,
+            "pitch_damping_coeff": -5.0,
+            "sutton_graves_k": 1.7415e-4,
+        }},
+    }]}})
 }
 
 /// A vehicle nobody compiled: every part of it arrives as JSON.
@@ -48,7 +51,7 @@ fn downloaded_capsule() -> Value {
     let mut payload = component("payload_bay", Some("root"), 0.4, 2.0, 0.0);
     payload["initial_payload_mass_kg"] = json!(8.0);
     json!({
-        "schema_version": 1,
+        "schema_version": 3,
         "id": "community-capsule",
         "name": "Community capsule",
         "version": "0.3.1",
@@ -140,7 +143,7 @@ fn a_downloaded_capsule_flies_in_the_rigid_body_block() {
                 initial,
             },
             package.tree().clone(),
-            package.build_aero_model().unwrap(),
+            package.build_aero_elements().unwrap(),
             Box::new(ReentryAtmosphere),
         )
         .unwrap();
@@ -158,7 +161,7 @@ fn a_downloaded_capsule_flies_in_the_rigid_body_block() {
 }
 
 #[test]
-fn a_jsbsim_package_has_no_aero_model_and_a_rigid_body_has_no_resolver() {
+fn a_jsbsim_package_has_no_aero_elements_and_a_composed_one_has_no_resolver() {
     let package = load_json(&downloaded_capsule()).unwrap();
     assert!(matches!(
         package.build_jsbsim_resolver(),
@@ -173,15 +176,11 @@ fn a_jsbsim_package_has_no_aero_model_and_a_rigid_body_has_no_resolver() {
     ));
     let c172 = crate::builtin_c172_package().unwrap();
     assert!(matches!(
-        c172.build_aero_model(),
+        c172.build_aero_elements(),
         Err(SyspackError::DynamicsMismatch {
             declared: "JsbsimXml",
             ..
         })
-    ));
-    assert!(matches!(
-        c172.capsule_aero(),
-        Err(SyspackError::DynamicsMismatch { .. })
     ));
 }
 

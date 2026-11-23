@@ -18,6 +18,8 @@ mod error;
 mod lunar;
 mod pattern;
 mod profile;
+#[cfg(test)]
+mod recorded;
 mod reentry;
 mod registry;
 mod run;

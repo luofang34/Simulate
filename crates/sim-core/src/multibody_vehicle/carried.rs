@@ -9,11 +9,11 @@
 use glam::DVec3;
 use mbd_multibody::PinnedSurfaceRest;
 
-use super::step::{block_mbd, invalid_input, sample_env_and_aero};
-use super::step_contacts::{build_telemetry, merge_dynamic_masses};
-use super::step_subsystems::run_subsystems_step;
-use super::subsystems::{fixed_base_from_vehicle, validate_input};
+use super::step::invalid_input;
+use super::subsystems::validate_input;
+use super::telemetry::build_telemetry;
 use super::{MultibodyVehicleBlock, MultibodyVehicleInput};
+use crate::flight_model::loads::LoadReadout;
 use crate::{BlockError, VehicleState};
 
 impl MultibodyVehicleBlock {
@@ -45,56 +45,44 @@ impl MultibodyVehicleBlock {
     ) -> Result<(), BlockError> {
         validate_input(input)?;
         check_prescribed(prescribed)?;
-        let body = self.config.body;
-        let base = fixed_base_from_vehicle(prescribed, &self.mass);
-        let poses = self.tree.evaluate_pose_table().map_err(block_mbd)?;
-        let env = sample_env_and_aero(
-            &body,
-            self.atmosphere.as_ref(),
-            &self.aero,
-            &poses,
-            &base,
-            &self.mass,
-            self.current_utc(),
-            input.control_surfaces_rad,
-        )?;
-        let sub = run_subsystems_step(
-            self.config.period.as_seconds(),
-            &mut self.tree,
-            &poses,
-            &mut self.subsystems,
-            &env,
-            base,
-            &self.mass,
-            self.telemetry.specific_force_cg_body,
-            DVec3::ZERO,
-            &body,
-            input,
-        )?;
-        let dyn_masses =
-            merge_dynamic_masses(&sub.fluid_out.mass_contributions, &sub.grain_contribs);
-        self.mass = self
-            .tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        self.poses = self.tree.evaluate_pose_table().map_err(block_mbd)?;
+        self.sync_elements()?;
+        let dt_s = self.config.period.as_seconds();
+        self.state
+            .set_base(&self.mount.base_of(prescribed, self.mass.cg_body_m));
+        let (env, sub) = self.step_subsystems(dt_s, input)?;
+        self.take_up_masses(&sub)?;
         // The prescribed point is the centre of gravity, which moves in the
         // root frame as tanks drain, so the root is placed from the new mass.
-        self.base_fixed = fixed_base_from_vehicle(prescribed, &self.mass);
+        self.state
+            .set_base(&self.mount.base_of(prescribed, self.mass.cg_body_m));
+        self.poses = self
+            .tree
+            .evaluate_pose_table()
+            .map_err(super::step::block_mbd)?;
+        self.hold_loads(&sub, input);
+        // A carried vehicle's far ends are not followed over the period, so
+        // its mechanisms stay out of the loads read at its end.
+        self.elements.mechanisms.clear();
+        self.mechanism_states.clear();
+        let state = self.state.clone();
+        let loads = self.read_loads(&state, input)?;
         self.pinned_rest = PinnedSurfaceRest::Free;
         self.last_alpha_root_rad_s2 = DVec3::ZERO;
-        let specific_force =
-            (sub.thrust_body_n + env.aero_root.force_body_n + sub.ext_force_root_n)
-                / self.mass.total_mass_kg;
+        // What the other integrator has to apply: thrust, air and outside
+        // loads, without the surface the vehicle is carried clear of.
+        let applied = loads.external_force_body_n - loads.support_force_body_n;
+        let carried = LoadReadout {
+            any_contact: false,
+            buoyancy_n: 0.0,
+            ..loads
+        };
         self.telemetry = build_telemetry(
             &self.subsystems,
             &env,
             &sub,
-            specific_force,
+            &carried,
+            applied / self.mass.total_mass_kg,
             false,
-            false,
-            false,
-            0.0,
             self.telemetry.used_rigid_fast_path,
         );
         self.now = self.now.advanced(self.config.period);
@@ -106,7 +94,8 @@ impl MultibodyVehicleBlock {
     /// vehicle flown elsewhere comes back to this block's own integration.
     pub fn adopt_base_state(&mut self, state: &VehicleState) -> Result<(), BlockError> {
         check_prescribed(state)?;
-        self.base_fixed = fixed_base_from_vehicle(state, &self.mass);
+        self.state
+            .set_base(&self.mount.base_of(state, self.mass.cg_body_m));
         self.pinned_rest = PinnedSurfaceRest::Free;
         self.last_alpha_root_rad_s2 = DVec3::ZERO;
         self.telemetry.in_ground_contact = false;

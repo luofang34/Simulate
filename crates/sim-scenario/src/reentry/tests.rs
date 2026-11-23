@@ -87,3 +87,51 @@ fn two_entries_fly_the_same_bits() {
     assert_eq!(bits(&one), bits(&two));
     assert_eq!(one.report(), two.report());
 }
+
+#[test]
+fn the_entry_ends_where_it_was_recorded() {
+    let run = fly();
+    let report = run.report();
+    let elapsed = run.now().duration_since(SimInstant::START).as_seconds();
+    let state = run.vehicle();
+    // Bank steering closes the loop on deceleration, and the capsule's
+    // pitch damping reads the inertial rate of its link, the planet's spin
+    // included: the flown arc keeps its shape while its timing and its
+    // lowest point shift with the phase of the lightly damped trim
+    // oscillation at each bank command.
+    crate::recorded::assert_rows(&[
+        ("end_s", elapsed, 670.88, 2.0),
+        ("peak_g", report.peak_g_load, 4.647991096365093, 0.02),
+        (
+            "threshold_height_m",
+            report.threshold_height_m.unwrap(),
+            90299.89582991318,
+            50.0,
+        ),
+        (
+            "mean_trim_rad",
+            report.mean_trim_incidence_rad,
+            -0.35158545809797703,
+            1e-3,
+        ),
+        (
+            "lift_to_drag",
+            report.lift_to_drag,
+            0.31408337420041477,
+            5e-3,
+        ),
+        ("lowest_m", report.height_m, 18745.171037868415, 200.0),
+        (
+            "delta_v_counter",
+            report.delta_v_counter_m_s,
+            -623.0067131685945,
+            5.0,
+        ),
+        (
+            "speed_m_s",
+            state.velocity_ecef.length(),
+            299.9579498481294,
+            1.0,
+        ),
+    ]);
+}

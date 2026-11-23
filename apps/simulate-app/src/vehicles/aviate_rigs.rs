@@ -4,7 +4,7 @@ use aviate_core::mixer::Mixer;
 use aviate_core::types::{Meters, MetersPerSecond, NormalizedThrust, Radians};
 use aviate_hal_io::SystemCommand;
 use glam::{DMat3, DVec3, EulerRot, Quat};
-use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::FullColumnAtmosphere;
 use sim_aviate::{
     AviateDirectConfig, AviateDirectRunner, DirectFixedWingKernel, DirectX500Kernel, RotorLayout,
@@ -99,7 +99,7 @@ pub(super) fn build_aviate_x500(
             initial: VehicleState::level_flight(&origin, heading_rad, 0.0),
         },
         tree,
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(FullColumnAtmosphere::new()),
     )
     .map_err(sim_scenario::ScenarioError::from)?;

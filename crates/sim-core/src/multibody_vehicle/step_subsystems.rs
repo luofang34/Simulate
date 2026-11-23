@@ -12,10 +12,9 @@ use mbd_systems::{
 use sim_geo::BodyEllipsoid;
 
 use super::step::{EnvSample, block_sys};
-use super::step_contacts::{
-    apply_cg_trim, find_rail, step_thermal_bus, step_tps_and_ao, sum_wrenches_in_root,
-};
+use super::step_thermal::{apply_cg_trim, step_thermal_bus, step_tps_and_ao};
 use super::subsystems::{MultibodySubsystems, MultibodyVehicleInput};
+use super::telemetry::find_rail;
 use super::topology::apply_fault_override;
 use crate::BlockError;
 
@@ -26,7 +25,6 @@ pub(super) struct SubsystemStepOut {
     pub(super) grain_contribs: Vec<DynamicMassContribution>,
     pub(super) thrust_body_n: DVec3,
     pub(super) thrust_torque_cg_body_nm: DVec3,
-    pub(super) ext_force_root_n: DVec3,
     pub(super) rf_blackout: bool,
     pub(super) peak_heat_flux_w_m2: f64,
     pub(super) ao_erosion_depth_m: f64,
@@ -105,7 +103,6 @@ pub(super) fn run_subsystems_step(
         grain_contribs,
         thrust_body_n,
         thrust_torque_cg_body_nm,
-        ext_force_root_n: sum_wrenches_in_root(poses, &input.external_wrenches),
         rf_blackout,
         peak_heat_flux_w_m2,
         ao_erosion_depth_m,

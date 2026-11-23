@@ -1,20 +1,15 @@
-use std::sync::Arc;
-
-use mbd_aero::{BoundAeroElement, CompositeAeroModel};
+use mbd_aero::AeroElement;
 use mbd_core::{ComponentId, ComponentTree, FaultState};
-use mbd_multibody::{
-    FloatingBaseState, HydrodynamicsModel, LoopConstraint, ManipulatorChain, PinnedSurfaceRest,
-};
+use mbd_multibody::{HydrodynamicsModel, LoopConstraint, ManipulatorChain};
 use mbd_systems::{
     AbepThrusterSpec, AirbreathingEngineSpec, ElectricThrusterSpec, LiquidRocketSpec, TankId,
 };
 
-use super::step::{block_mbd, collect_dynamic_masses};
-use super::subsystems::{
-    AeroStorage, MultibodySubsystems, PropulsionAssembly, lookup_mapped_comp,
-    vehicle_from_fixed_base,
-};
-use super::{MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleSnapshot};
+use super::element_state::CanopyState;
+use super::subsystems::{MultibodySubsystems, PropulsionAssembly, lookup_mapped_comp};
+
+/// A vehicle's aerodynamic elements, each with the canopy state it holds.
+pub(crate) type VehicleAero = Vec<(AeroElement, CanopyState)>;
 
 fn map_opt_comp(map: &[(ComponentId, ComponentId)], old: ComponentId) -> Option<ComponentId> {
     lookup_mapped_comp(map, old)
@@ -126,48 +121,31 @@ fn append_propulsion(
     }
 }
 
+/// The elements of `aero` mounted on components that `comp_map` keeps,
+/// re-bound to their new ids.
 pub(crate) fn remap_aero_subset(
-    aero: &AeroStorage,
+    aero: &[(AeroElement, CanopyState)],
     comp_map: &[(ComponentId, ComponentId)],
-) -> AeroStorage {
-    match aero {
-        AeroStorage::Composite(composite) => {
-            let elements = composite
-                .elements()
-                .iter()
-                .filter_map(|elem| {
-                    map_opt_comp(comp_map, elem.component).map(|component| BoundAeroElement {
-                        component,
-                        element: elem.element.clone(),
-                    })
-                })
-                .collect();
-            AeroStorage::Composite(CompositeAeroModel::new(elements))
-        }
-        AeroStorage::Dynamic(_) => AeroStorage::Composite(CompositeAeroModel::default()),
-    }
+) -> VehicleAero {
+    aero.iter()
+        .filter_map(|(element, canopy)| {
+            map_opt_comp(comp_map, element.component)
+                .map(|component| (AeroElement::new(component, element.kind.clone()), *canopy))
+        })
+        .collect()
 }
 
+/// The elements of two vehicles joined into one, each re-bound through its
+/// own vehicle's map.
 pub(crate) fn merge_aero_remapped(
-    aero_a: &AeroStorage,
+    aero_a: &[(AeroElement, CanopyState)],
     map_a: &[(ComponentId, ComponentId)],
-    aero_b: &AeroStorage,
+    aero_b: &[(AeroElement, CanopyState)],
     map_b: &[(ComponentId, ComponentId)],
-) -> AeroStorage {
-    let mut elements = Vec::new();
-    for (aero, map) in [(aero_a, map_a), (aero_b, map_b)] {
-        if let AeroStorage::Composite(comp) = aero {
-            for elem in comp.elements() {
-                if let Some(component) = map_opt_comp(map, elem.component) {
-                    elements.push(BoundAeroElement {
-                        component,
-                        element: elem.element.clone(),
-                    });
-                }
-            }
-        }
-    }
-    AeroStorage::Composite(CompositeAeroModel::new(elements))
+) -> VehicleAero {
+    let mut merged = remap_aero_subset(aero_a, map_a);
+    merged.extend(remap_aero_subset(aero_b, map_b));
+    merged
 }
 
 pub(crate) fn remap_subsystems_subset(
@@ -376,117 +354,5 @@ fn append_loop_constraints(
 pub(crate) fn apply_fault_override(slot: &mut FaultState, ov: Option<FaultState>) {
     if let Some(f) = ov {
         *slot = f;
-    }
-}
-
-impl MultibodyVehicleBlock {
-    /// Restores `snapshot`, returning an error without altering state if tree topology mismatches.
-    pub fn try_restore(
-        &mut self,
-        snapshot: &MultibodyVehicleSnapshot,
-    ) -> Result<(), crate::BlockError> {
-        self.tree
-            .restore_states(&snapshot.component_states)
-            .map_err(block_mbd)?;
-        self.subsystems.fluids = snapshot.fluids.clone();
-        self.subsystems.propulsion = snapshot.propulsion.clone();
-        self.subsystems.electrical = snapshot.electrical.clone();
-        self.subsystems.thermal = snapshot.thermal.clone();
-        for ((_, dst), src) in self
-            .subsystems
-            .tps_shields
-            .iter_mut()
-            .zip(&snapshot.tps_states)
-        {
-            *dst = *src;
-        }
-        for ((_, dst), src) in self
-            .subsystems
-            .ao_coatings
-            .iter_mut()
-            .zip(&snapshot.ao_states)
-        {
-            *dst = *src;
-        }
-        for ((_, dst), src) in self
-            .subsystems
-            .contact_points
-            .iter_mut()
-            .zip(&snapshot.contact_states)
-        {
-            *dst = *src;
-        }
-        for ((_, dst), src) in self
-            .subsystems
-            .wheels
-            .iter_mut()
-            .zip(&snapshot.wheel_states)
-        {
-            *dst = *src;
-        }
-        self.base_fixed = snapshot.base_fixed;
-        self.last_alpha_root_rad_s2 = snapshot.last_alpha_root_rad_s2;
-        self.pinned_rest = snapshot.pinned_rest;
-        self.telemetry = snapshot.telemetry;
-        self.now = snapshot.now;
-        self.poses = self.tree.evaluate_pose_table().map_err(block_mbd)?;
-        let dyn_masses = collect_dynamic_masses(&self.subsystems)?;
-        self.mass = self
-            .tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        Ok(())
-    }
-
-    pub(crate) fn replace_topology_state(
-        &mut self,
-        tree: ComponentTree,
-        base_fixed: FloatingBaseState,
-        subsystems: MultibodySubsystems,
-        aero: AeroStorage,
-    ) -> Result<(), crate::BlockError> {
-        let dyn_masses = collect_dynamic_masses(&subsystems)?;
-        self.mass = tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        self.poses = tree.evaluate_pose_table().map_err(block_mbd)?;
-        self.tree = tree;
-        self.base_fixed = base_fixed;
-        self.subsystems = subsystems;
-        self.aero = aero;
-        self.telemetry.total_propellant_kg = self.subsystems.fluids.total_fluid_mass_kg()
-            + self.subsystems.propulsion.total_solid_propellant_kg();
-        Ok(())
-    }
-
-    pub(crate) fn spawn_detached(
-        &self,
-        tree: ComponentTree,
-        base_fixed: FloatingBaseState,
-        subsystems: MultibodySubsystems,
-        aero: AeroStorage,
-    ) -> Result<Self, crate::BlockError> {
-        let dyn_masses = collect_dynamic_masses(&subsystems)?;
-        let mass = tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-        let initial = vehicle_from_fixed_base(&base_fixed, &mass);
-        let config = MultibodyVehicleConfig {
-            initial,
-            ..self.config
-        };
-        let mut child = Self::build_with_storage(
-            config,
-            tree,
-            aero,
-            subsystems,
-            Arc::clone(&self.atmosphere),
-            Arc::clone(&self.gravity),
-            Arc::clone(&self.surface),
-            PinnedSurfaceRest::Free,
-        )?;
-        child.base_fixed = base_fixed;
-        child.now = self.now;
-        Ok(child)
     }
 }

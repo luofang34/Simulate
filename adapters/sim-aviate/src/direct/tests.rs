@@ -4,7 +4,7 @@ use aviate_core::types::{Meters, NormalizedThrust};
 use aviate_hal_io::SystemCommand;
 use aviate_xil_direct::DirectNoiseTier;
 use glam::DVec3;
-use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::StandardAtmosphere;
 use sim_core::{
     Block, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, SimInstant, TICKS_PER_SECOND,
@@ -42,13 +42,7 @@ fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
         epoch: UtcTime::from_unix_seconds(0.0),
         initial: VehicleState::level_flight(origin, 0.0, 0.0),
     };
-    RigidBody6DofBlock::new(
-        cfg,
-        tree,
-        Box::new(VacuumAero),
-        Box::new(StandardAtmosphere),
-    )
-    .unwrap()
+    RigidBody6DofBlock::new(cfg, tree, Vec::new(), Box::new(StandardAtmosphere)).unwrap()
 }
 
 fn hold_cmd(sequence: u32, z_ned: f32) -> SystemCommand {

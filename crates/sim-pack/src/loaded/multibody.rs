@@ -1,5 +1,3 @@
-use mbd_aero::{AeroElement, CompositeAeroModel};
-use mbd_core::ComponentId;
 use mbd_design::{DesignAuditReport, audit_verified_syspack};
 use mbd_multibody::WheelState;
 use mbd_systems::{
@@ -10,7 +8,6 @@ use sim_atmosphere::AtmosphereField;
 use sim_core::{
     MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, PropulsionAssembly,
 };
-use syspack::{DynamicsSpec, SyspackError};
 
 use super::LoadedSyspack;
 use crate::PackError;
@@ -23,14 +20,14 @@ impl LoadedSyspack {
     }
 
     /// Instantiates a complete [`MultibodyVehicleBlock`] wiring component tree,
-    /// aerodynamics, fluids, propulsion, electrical bus, thermal network, TPS,
+    /// aerodynamic elements, fluids, propulsion, electrical bus, thermal network, TPS,
     /// atomic-oxygen coatings, robotic manipulators, and wheels from this verified package.
     pub fn build_multibody_vehicle(
         &self,
         config: MultibodyVehicleConfig,
         atmosphere: Box<dyn AtmosphereField>,
     ) -> Result<MultibodyVehicleBlock, PackError> {
-        let aero = self.build_composite_or_capsule_aero()?;
+        let aero = self.verified.build_aero_elements()?;
         let propulsion = self.build_propulsion_assembly()?;
         let subsystems = self.build_multibody_subsystems(propulsion)?;
 
@@ -45,27 +42,6 @@ impl LoadedSyspack {
             device: "multibody_vehicle".to_owned(),
             source: Box::new(err),
         })
-    }
-
-    fn build_composite_or_capsule_aero(&self) -> Result<CompositeAeroModel, PackError> {
-        match &self.verified.manifest().dynamics {
-            DynamicsSpec::MultibodyComposed { .. } => Ok(self.verified.build_composite_aero()?),
-            DynamicsSpec::RigidBodyBluntCapsule { .. } => {
-                let mut model = CompositeAeroModel::default();
-                model.push(
-                    ComponentId(0),
-                    AeroElement::BluntCapsule(self.verified.capsule_aero()?),
-                );
-                Ok(model)
-            }
-            DynamicsSpec::RigidBodyVacuum => Ok(CompositeAeroModel::default()),
-            other => Err(SyspackError::DynamicsMismatch {
-                operation: "build_multibody_vehicle",
-                needed: "MultibodyComposed or RigidBody",
-                declared: other.kind(),
-            }
-            .into()),
-        }
     }
 
     fn build_propulsion_assembly(&self) -> Result<PropulsionAssembly, PackError> {

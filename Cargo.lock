@@ -3109,6 +3109,7 @@ dependencies = [
  "glam 0.33.12",
  "libm",
  "mbd-core",
+ "mbd-multibody",
 ]
 
 [[package]]

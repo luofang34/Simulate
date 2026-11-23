@@ -118,7 +118,7 @@ fn leaving_the_atmosphere_model_reports_the_environment_and_keeps_the_state() {
     let mut block = RigidBody6DofBlock::new(
         config(body, TickSpan::SECOND, start),
         capsule_tree(DVec3::ZERO),
-        capsule_aero(),
+        capsule_aero(DVec3::ZERO),
         Box::new(StandardAtmosphere),
     )
     .unwrap();
@@ -141,7 +141,7 @@ fn a_degenerate_inertia_is_refused_at_construction() {
     let result = RigidBody6DofBlock::new(
         config(body, TEN_MS, rest_at(&body, 1_000.0)),
         point_mass,
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
     );
     assert!(matches!(result, Err(BlockError::InputOutOfRange { .. })));

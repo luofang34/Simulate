@@ -1,12 +1,8 @@
-use glam::{DQuat, DVec3};
-use mbd_aero::CompositeAeroModel;
-use mbd_core::{
-    AeroModel, AeroWrench, ComponentId, ElectricalLoad, FaultState, MassProperties, ThermalLoad,
-    WrenchAtSite,
-};
+use glam::DVec3;
+use mbd_core::{ComponentId, ElectricalLoad, FaultState, ThermalLoad, WrenchAtSite};
 use mbd_multibody::{
-    ContactPointSpec, ContactPointState, FloatingBaseState, HydrodynamicsModel, JointDriveInput,
-    LoopConstraint, ManipulatorChain, PinnedSurfaceRest, SurfaceMedium, SurfaceSample, WaterState,
+    ContactPointSpec, ContactPointState, HydrodynamicsModel, JointDriveInput, LoopConstraint,
+    ManipulatorChain, ModelState, PinnedSurfaceRest, SurfaceMedium, SurfaceSample, WaterState,
     WheelCommand, WheelSpec, WheelState,
 };
 use mbd_systems::{
@@ -18,7 +14,10 @@ use mbd_systems::{
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime};
 
 use super::step::invalid_input;
-use crate::{SimInstant, VehicleState};
+use crate::SimInstant;
+use crate::flight_model::coupled_mechanism::CoupledMechanism;
+use crate::flight_model::integration::{MotionTimeScale, VehicleIntegrator};
+use crate::flight_model::loads::AeroLoad;
 
 /// Fixed setup of a [`super::MultibodyVehicleBlock`].
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +30,11 @@ pub struct MultibodyVehicleConfig {
     pub epoch: UtcTime,
     /// Initial 6-DoF state at the vehicle's instantaneous centre of gravity.
     pub initial: crate::VehicleState,
+    /// How the equations of motion are integrated across a period.
+    pub integrator: VehicleIntegrator,
+    /// The characteristic time of the vehicle's motion. Its characteristic
+    /// length and mass are taken from the component tree.
+    pub time_scale: MotionTimeScale,
 }
 
 /// Planetary ground / liquid ocean geometry sampled at body-fixed coordinates
@@ -156,8 +160,11 @@ pub struct MultibodySubsystems {
     /// Articulated robotic manipulator chains keyed by manifest arm name.
     pub manipulators: Vec<(String, ManipulatorChain)>,
     /// Compliant footpads / skids / airframe hardpoints with bristle stiction.
+    /// The states here are those of the last completed step and are taken
+    /// up again at the start of the next.
     pub contact_points: Vec<(ContactPointSpec, ContactPointState)>,
-    /// Driven, steered, and braked landing-gear or rover wheels.
+    /// Driven, steered, and braked landing-gear or rover wheels, with states
+    /// kept as those of the footpads are.
     pub wheels: Vec<(WheelSpec, WheelState)>,
     /// Optional ocean splashdown hydrodynamics hull stations.
     pub hydrodynamics: Option<HydrodynamicsModel>,
@@ -205,7 +212,8 @@ pub struct MultibodyVehicleInput {
     pub joint_drives: Vec<JointDriveInput>,
     /// External/mechanism/tether wrenches applied at component sites.
     pub external_wrenches: Vec<WrenchAtSite>,
-    /// Aerodynamic control surface deflections passed to `AeroModel`, rad.
+    /// Control channels the aerodynamic elements read, in the order they
+    /// name them: surface deflections, rad; rotor speeds, rad/s.
     pub control_surfaces_rad: [f64; 8],
     /// Steer/drive/brake commands indexed to `wheels`.
     pub wheel_commands: Vec<WheelCommand>,
@@ -223,6 +231,10 @@ pub struct MultibodyVehicleInput {
     pub extra_thermal_loads: Vec<ThermalLoad>,
     /// Optional override for longitudinal CG trim target in root frame, m.
     pub cg_trim_target_x_m: Option<f64>,
+    /// Mechanisms acting on the vehicle over this step with their state
+    /// supplied here; [`super::MultibodyVehicleBlock::mechanism_states`]
+    /// reports where each ended, in the same order.
+    pub mechanisms: Vec<CoupledMechanism>,
 }
 
 impl Default for MultibodyVehicleInput {
@@ -240,6 +252,7 @@ impl Default for MultibodyVehicleInput {
             extra_electrical_loads: Vec::new(),
             extra_thermal_loads: Vec::new(),
             cg_trim_target_x_m: None,
+            mechanisms: Vec::new(),
         }
     }
 }
@@ -247,8 +260,8 @@ impl Default for MultibodyVehicleInput {
 /// Diagnostic and subsystem telemetry published after each [`super::MultibodyVehicleBlock`] step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MultibodyVehicleTelemetry {
-    /// Net aerodynamic wrench resolved to vehicle root frame.
-    pub aero_wrench: AeroWrench,
+    /// Net aerodynamic load of every element, in body axes.
+    pub aero_wrench: AeroLoad,
     /// Instantaneous freestream dynamic pressure $q_\infty$, Pa.
     pub dynamic_pressure_pa: f64,
     /// Non-gravitational specific force at center of gravity in root frame, m/s².
@@ -281,14 +294,15 @@ pub struct MultibodyVehicleTelemetry {
     pub is_splashed_down: bool,
     /// Total ocean buoyant force acting upward, N.
     pub total_buoyancy_n: f64,
-    /// True if forward dynamics dispatched through zero-DoF `RigidFastPath`.
+    /// True while no joint of the vehicle has a degree of freedom, so it
+    /// moves as one rigid body.
     pub used_rigid_fast_path: bool,
 }
 
 impl Default for MultibodyVehicleTelemetry {
     fn default() -> Self {
         Self {
-            aero_wrench: AeroWrench::ZERO,
+            aero_wrench: AeroLoad::ZERO,
             dynamic_pressure_pa: 0.0,
             specific_force_cg_body: DVec3::ZERO,
             total_thrust_body_n: DVec3::ZERO,
@@ -314,7 +328,9 @@ impl Default for MultibodyVehicleTelemetry {
 #[derive(Debug, Clone)]
 pub struct MultibodyVehicleSnapshot {
     pub(super) now: SimInstant,
-    pub(super) base_fixed: FloatingBaseState,
+    /// The model's state with its base in fixed axes: joints, and the
+    /// continuous states and modes of every element.
+    pub(super) state: ModelState,
     pub(super) last_alpha_root_rad_s2: DVec3,
     pub(super) component_states: Vec<mbd_core::ComponentState>,
     pub(super) fluids: FluidNetwork,
@@ -323,13 +339,18 @@ pub struct MultibodyVehicleSnapshot {
     pub(super) thermal: ThermalNetwork,
     pub(super) tps_states: Vec<TpsAblationState>,
     pub(super) ao_states: Vec<AtomicOxygenErosionState>,
-    pub(super) contact_states: Vec<ContactPointState>,
-    pub(super) wheel_states: Vec<WheelState>,
     pub(super) pinned_rest: PinnedSurfaceRest,
     pub(super) telemetry: MultibodyVehicleTelemetry,
 }
 
 impl MultibodyVehicleSnapshot {
+    /// The model state at capture: base in fixed axes, joints, element
+    /// states and modes.
+    #[must_use]
+    pub const fn model_state(&self) -> &ModelState {
+        &self.state
+    }
+
     /// Component runtime states at snapshot capture.
     #[must_use]
     pub fn component_states(&self) -> &[mbd_core::ComponentState] {
@@ -341,28 +362,6 @@ impl MultibodyVehicleSnapshot {
     pub const fn now(&self) -> SimInstant {
         self.now
     }
-}
-
-pub(crate) enum AeroStorage {
-    Composite(CompositeAeroModel),
-    Dynamic(Box<dyn AeroModel>),
-}
-
-impl AeroStorage {
-    pub(super) fn evaluate_root(
-        &self,
-        flow: &mbd_core::AeroFlowState,
-        poses: &mbd_core::PoseTable,
-    ) -> Result<AeroWrench, mbd_core::MbdError> {
-        match self {
-            Self::Composite(c) => c.evaluate_with_poses(flow, poses),
-            Self::Dynamic(d) => d.evaluate(flow),
-        }
-    }
-}
-
-pub(super) fn wheel_inertia_estimate(wheel: &WheelSpec) -> f64 {
-    (0.5 * 8.0 * wheel.wheel_radius_m * wheel.wheel_radius_m).max(0.05)
 }
 
 pub(super) fn lookup_mapped_comp(
@@ -398,71 +397,4 @@ pub(super) fn validate_input(input: &MultibodyVehicleInput) -> Result<(), crate:
         }
     }
     Ok(())
-}
-
-pub(super) fn fixed_base_from_vehicle(
-    vehicle: &VehicleState,
-    mass: &MassProperties,
-) -> FloatingBaseState {
-    let p_root = vehicle.position_ecef - vehicle.attitude * mass.cg_body_m;
-    let v_root_fixed =
-        vehicle.velocity_ecef - vehicle.attitude * vehicle.angular_rate_body.cross(mass.cg_body_m);
-    FloatingBaseState {
-        position_world_m: p_root,
-        rotation_world_from_root: vehicle.attitude,
-        linear_vel_root_m_s: vehicle.attitude.conjugate() * v_root_fixed,
-        angular_vel_root_rad_s: vehicle.angular_rate_body,
-    }
-}
-
-pub(super) fn vehicle_from_fixed_base(
-    base: &FloatingBaseState,
-    mass: &MassProperties,
-) -> VehicleState {
-    let cg_world = base.rotation_world_from_root * mass.cg_body_m;
-    let v_root_fixed = base.rotation_world_from_root * base.linear_vel_root_m_s;
-    let v_cg_fixed = v_root_fixed
-        + base.rotation_world_from_root * base.angular_vel_root_rad_s.cross(mass.cg_body_m);
-    VehicleState {
-        position_ecef: base.position_world_m + cg_world,
-        velocity_ecef: v_cg_fixed,
-        attitude: base.rotation_world_from_root,
-        angular_rate_body: base.angular_vel_root_rad_s,
-    }
-}
-
-pub(crate) fn fixed_to_instantaneous_inertial(
-    base_fixed: &FloatingBaseState,
-    body: &BodyEllipsoid,
-) -> FloatingBaseState {
-    let omega_p = DVec3::Z * body.omega_rad_s;
-    let v_fixed = base_fixed.rotation_world_from_root * base_fixed.linear_vel_root_m_s;
-    let v_inertial = v_fixed + omega_p.cross(base_fixed.position_world_m);
-    let q_conj = base_fixed.rotation_world_from_root.conjugate();
-    FloatingBaseState {
-        position_world_m: base_fixed.position_world_m,
-        rotation_world_from_root: base_fixed.rotation_world_from_root,
-        linear_vel_root_m_s: q_conj * v_inertial,
-        angular_vel_root_rad_s: base_fixed.angular_vel_root_rad_s + q_conj * omega_p,
-    }
-}
-
-pub(crate) fn inertial_to_fixed_after_step(
-    base_i_next: &FloatingBaseState,
-    body: &BodyEllipsoid,
-    dt_s: f64,
-) -> FloatingBaseState {
-    let q_f_from_i = DQuat::from_axis_angle(DVec3::Z, -body.omega_rad_s * dt_s);
-    let pos_fixed = q_f_from_i * base_i_next.position_world_m;
-    let rot_fixed = (q_f_from_i * base_i_next.rotation_world_from_root).normalize();
-    let v_i_in_f = q_f_from_i * base_i_next.linear_vel_world_m_s();
-    let omega_p = DVec3::Z * body.omega_rad_s;
-    let v_rel_fixed = v_i_in_f - omega_p.cross(pos_fixed);
-    let q_conj = rot_fixed.conjugate();
-    FloatingBaseState {
-        position_world_m: pos_fixed,
-        rotation_world_from_root: rot_fixed,
-        linear_vel_root_m_s: q_conj * v_rel_fixed,
-        angular_vel_root_rad_s: base_i_next.angular_vel_root_rad_s - q_conj * omega_p,
-    }
 }

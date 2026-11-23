@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use glam::{DMat3, DQuat, DVec3};
-use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_core::{
-    MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, RigidBody6DofBlock,
-    RigidBodyConfig, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleState,
+    MotionTimeScale, MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig,
+    RigidBody6DofBlock, RigidBodyConfig, SimInstant, TICKS_PER_SECOND, TickSpan, VehicleIntegrator,
+    VehicleState,
 };
 use sim_geo::{BodyEllipsoid, UtcTime};
 use sim_orbital::{
@@ -89,7 +90,7 @@ fn coaster(
             initial: *state,
         },
         satellite_tree(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
     )?;
     Ok(Box::new(CoastingRigidBody::new(block, body, start, 2.0)))
@@ -393,15 +394,17 @@ fn multibody_coaster(
     start: SimInstant,
     epoch: &SimEpoch,
 ) -> Result<Box<dyn LocalPlant>, UniverseError> {
-    let block = MultibodyVehicleBlock::with_aero_model(
+    let block = MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
             body,
             period: STEP,
             epoch: epoch.utc_at(start)?,
             initial: *state,
+            integrator: VehicleIntegrator::REAL_TIME,
+            time_scale: MotionTimeScale::SurfaceGravity,
         },
         satellite_tree(),
-        Box::new(VacuumAero),
+        Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
     )?;
