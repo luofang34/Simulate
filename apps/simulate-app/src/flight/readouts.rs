@@ -140,7 +140,7 @@ impl Flight {
         body: sim_orbital::NaifId,
         observer_fixed_m: DVec3,
     ) -> Option<DVec3> {
-        let about = sim_universe::naif_body(self.world().body())?;
+        let about = self.solar.naif_of(&self.world().body())?;
         let at = self.epoch.tdb_at(self.now());
         self.solar
             .direction_fixed(body, about, observer_fixed_m, at)

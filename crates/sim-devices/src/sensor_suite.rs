@@ -3,10 +3,12 @@
 //! they see one realisation of each device, and nothing aboard sees the
 //! truth the devices sense.
 
+use std::sync::Arc;
+
 use glam::DVec3;
 use sim_atmosphere::AtmosphereSample;
 use sim_core::VehicleState;
-use sim_geo::{LocalFrame, ecef_to_geodetic};
+use sim_geo::MagneticField;
 
 use crate::{
     AirDataSample, AirDataSystem, AirFlow, DeviceError, GnssErrorSpec, GnssReading, GnssReceiver,
@@ -66,7 +68,8 @@ pub struct SensorSuiteSpec {
     pub magnetometer: MagnetometerSpec,
     /// The GNSS receiver.
     pub gnss: GnssErrorSpec,
-    /// The magnetic field the vehicle flies in.
+    /// When the magnetometer reads the world's field, and what the
+    /// vehicle's surroundings add to it.
     pub magnetic: MagneticEnvironment,
     /// Cycles between air-data samples.
     pub air_data_every: u32,
@@ -79,9 +82,10 @@ pub struct SensorSuiteSpec {
 }
 
 /// A vehicle's devices, sensing truth cycle by cycle.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SensorSuite {
     spec: SensorSuiteSpec,
+    magnetic_field: Arc<dyn MagneticField>,
     imu: ImuErrorModel,
     air_data: PitotStatic,
     magnetometer: Magnetometer,
@@ -90,8 +94,13 @@ pub struct SensorSuite {
 }
 
 impl SensorSuite {
-    /// The devices of `spec` at turn-on.
-    pub fn new(spec: &SensorSuiteSpec) -> Result<Self, DeviceError> {
+    /// The devices of `spec` at turn-on, in the world whose magnetic field
+    /// is `magnetic_field`: the instance the catalog entry of the vehicle's
+    /// body holds, which its dynamics are built on too.
+    pub fn new(
+        spec: &SensorSuiteSpec,
+        magnetic_field: Arc<dyn MagneticField>,
+    ) -> Result<Self, DeviceError> {
         let rates = [
             ("air_data_every", spec.air_data_every),
             ("magnetometer_every", spec.magnetometer_every),
@@ -116,12 +125,18 @@ impl SensorSuite {
         };
         Ok(Self {
             spec: *spec,
+            magnetic_field,
             imu: ImuErrorModel::new(spec.imu, stream(IMU_STREAM))?,
             air_data,
             magnetometer: Magnetometer::new(spec.magnetometer, stream(MAGNETOMETER_STREAM))?,
             receiver: GnssReceiver::new(spec.gnss, stream(RECEIVER_STREAM))?,
             cycle: 0,
         })
+    }
+
+    /// The world magnetic field the magnetometer senses.
+    pub const fn magnetic_field(&self) -> &Arc<dyn MagneticField> {
+        &self.magnetic_field
     }
 
     /// What the suite was declared as.
@@ -193,11 +208,12 @@ impl SensorSuite {
     }
 
     fn sense_field(&mut self, vehicle: &VehicleState) -> Result<DVec3, DeviceError> {
-        let position = ecef_to_geodetic(vehicle.position_ecef);
-        let field_ned = self.spec.magnetic.field_ned_ut(&position)?;
-        let field_ecef = LocalFrame::at(&position).ned_to_ecef() * field_ned;
+        let field_fixed = self
+            .spec
+            .magnetic
+            .field_fixed_ut(self.magnetic_field.as_ref(), vehicle.position_ecef)?;
         Ok(self
             .magnetometer
-            .sense(vehicle.attitude.inverse() * field_ecef))
+            .sense(vehicle.attitude.inverse() * field_fixed))
     }
 }

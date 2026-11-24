@@ -4,7 +4,7 @@ use aviate_core::types::{Meters, NormalizedThrust};
 use aviate_hal_io::SystemCommand;
 use aviate_xil_direct::DirectNoiseTier;
 use glam::DVec3;
-use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::StandardAtmosphere;
 use sim_core::{
     Block, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, SimInstant, TICKS_PER_SECOND,
@@ -33,6 +33,7 @@ fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
         dry_inertia_body: glam::DMat3::from_diagonal(DVec3::new(0.029, 0.029, 0.055)),
         thermal_capacity_j_k: 0.0,
         nominal_power_w: 0.0,
+        joint: mbd_core::JointSpec::FIXED,
     };
     let tree = ComponentTree::new([(spec, ComponentState::at_temperature(293.15))]).unwrap();
     let cfg = RigidBodyConfig {
@@ -44,8 +45,9 @@ fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
     RigidBody6DofBlock::new(
         cfg,
         tree,
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(StandardAtmosphere),
+        std::sync::Arc::new(cfg.body),
     )
     .unwrap()
 }

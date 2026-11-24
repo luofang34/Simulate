@@ -194,7 +194,12 @@ fn fly(
 ) -> Flown {
     let clock = MasterClockBridge::default();
     let now = |at: SimInstant| clock.to_monotonic(at).unwrap();
-    let mut imu = SimulatedImu::new(grade.spec(), IMU_SEED).unwrap();
+    let mut imu = SimulatedImu::new(
+        grade.spec(),
+        IMU_SEED,
+        std::sync::Arc::new(sim_geo::BodyEllipsoid::WGS84),
+    )
+    .unwrap();
     let mut navigator = navigator(grade, frames.is_some());
     let (start, initial) = *truth[0].get();
     let fix = ALIGNMENT.measure(&initial);

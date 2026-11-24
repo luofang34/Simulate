@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 sim-geo = { workspace = true }
+sim-bodies = { workspace = true }
 sim-core = { workspace = true }
 sim-spacetime = { workspace = true }
 glam = { workspace = true }

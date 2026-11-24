@@ -5,23 +5,27 @@
 //! datums, explicit unit/frame/accuracy contracts, and cryptographic `ReproducibilityStamp`s.
 
 mod result;
+mod workload;
 
 use serde::{Deserialize, Serialize};
 
 pub use result::{AnalysisOutcomePayload, AnalysisResultArtifact, ArtifactBindingError};
+pub use workload::{
+    AnalysisWorkloadSpec, SerializableGroundStationSpec, SerializablePlatformSpec,
+    TrajectoryNodesFrame,
+};
 
 use crate::{
-    ContentHash, DomainHasher, KinematicTrajectoryNode, NaifId, TICKS_PER_SECOND,
-    models::{
-        AccessQuerySpec, GroundStationModel, OccultationEnvironmentModel, VehicleSensorModel,
-    },
+    ContentHash, DomainHasher, TICKS_PER_SECOND,
+    models::{AccessQuerySpec, OccultationEnvironmentModel},
     taxonomy::ModelNotApplicableReason,
-    terrain::{AltitudeSpec, DemElevationGrid, TerrainLosConfig},
+    terrain::{DemElevationGrid, TerrainLosConfig},
 };
 
 /// Schema version of [`AnalysisRequestArtifact`] and [`AnalysisResultArtifact`]; no other
-/// version is read. Version 2 states how a link's two ends are timed.
-pub const ANALYSIS_CONTRACT_SCHEMA_VERSION: u32 = 2;
+/// version is read. Version 3 adds radio link budgets: the `EndpointPairLinkBudget` workload,
+/// look directions on link samples, and `LinkBudgetReport` outcomes.
+pub const ANALYSIS_CONTRACT_SCHEMA_VERSION: u32 = 3;
 
 /// Identifies the immutable planning design revision that produced an [`AnalysisRequestArtifact`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -370,79 +374,6 @@ impl ReproducibilityStamp {
     }
 }
 
-/// Reference frame in which a [`SerializablePlatformSpec`]'s discrete nodes are expressed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TrajectoryNodesFrame {
-    /// Nodes are expressed in `body`-fixed rotating `ECEF` (`m`, `m/s`) and transformed to `ICRF`.
-    BodyFixedEcef {
-        /// Central rotating body (`NaifId::EARTH`, etc.).
-        body: NaifId,
-    },
-    /// Nodes are expressed in `body`-centered `ICRF` (`m`, `m/s`).
-    BodyCenteredIcrf {
-        /// Central body (`NaifId::EARTH`, `MOON`, `SSB`, etc.).
-        body: NaifId,
-    },
-}
-
-/// Serializable moving platform specification (aircraft or satellite) for external analysis requests.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SerializablePlatformSpec {
-    /// Unique numeric endpoint ID.
-    pub endpoint_id: u32,
-    /// Human-readable platform label.
-    pub label: String,
-    /// Host body for local horizon (`ENU`) elevation calculations.
-    pub host_body: NaifId,
-    /// Coordinate frame of `nodes`.
-    pub nodes_frame: TrajectoryNodesFrame,
-    /// Chronological 6-DoF kinematic sample nodes.
-    pub nodes: Vec<KinematicTrajectoryNode>,
-    /// Optional minimum local topocentric elevation mask (`rad`) at this platform.
-    pub min_local_elevation_rad: Option<f64>,
-}
-
-/// Serializable ground station specification pairing [`GroundStationModel`] with an optional [`AltitudeSpec`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SerializableGroundStationSpec {
-    /// Ground station model.
-    pub station: GroundStationModel,
-    /// Optional explicit vertical datum altitude specification (`WGS84`, `AGL`, or `MSL`).
-    pub altitude_spec: Option<AltitudeSpec>,
-}
-
-/// Analysis workload payload inside an [`AnalysisRequestArtifact`].
-#[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum AnalysisWorkloadSpec {
-    /// Two-endpoint geometric line-of-sight and sensor `FOV` analysis between a moving platform and a ground station.
-    EndpointPairLos {
-        /// Moving platform trajectory specification.
-        source_platform: SerializablePlatformSpec,
-        /// Sensor mounted on `source_platform`.
-        source_sensor: VehicleSensorModel,
-        /// Target surface station specification.
-        target_station: SerializableGroundStationSpec,
-    },
-    /// Aircraft – Satellite – Ground Station simultaneous geometric relay and direct-link analysis.
-    AircraftSatelliteGroundRelay {
-        /// Aircraft trajectory specification.
-        aircraft: SerializablePlatformSpec,
-        /// Aircraft dorsal/satcom antenna used on Hop 1 (`Aircraft <-> Satellite`).
-        aircraft_to_sat_sensor: VehicleSensorModel,
-        /// Optional aircraft belly/direct antenna used on the direct link (`Aircraft <-> Ground Station`).
-        aircraft_to_ground_sensor: Option<VehicleSensorModel>,
-        /// Relay satellite trajectory specification.
-        satellite: SerializablePlatformSpec,
-        /// Satellite crosslink/spot-beam antenna facing the aircraft on Hop 1.
-        sat_to_aircraft_sensor: VehicleSensorModel,
-        /// Satellite feeder-link antenna facing the ground station on Hop 2.
-        sat_to_ground_sensor: VehicleSensorModel,
-        /// Ground station specification.
-        ground_station: SerializableGroundStationSpec,
-    },
-}
-
 /// Versioned external analysis request artifact emitted by `Sokoly` and evaluated by `Simulate`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisRequestArtifact {
@@ -478,7 +409,7 @@ impl AnalysisRequestArtifact {
     /// Computes a deterministic SHA-256 [`ContentHash`] over the entire request artifact.
     #[must_use]
     pub fn content_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-analysis:request-artifact:v2");
+        let mut h = DomainHasher::new(b"sim-analysis:request-artifact:v3");
         h.write_u32(self.schema_version);
         h.write_bytes(self.request_id.as_bytes());
         self.design_revision.write_to_hasher(&mut h);

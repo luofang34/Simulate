@@ -196,7 +196,9 @@ fn a_ground_calibrated_unit_holds_its_heading_unaided() {
     let truth = VehicleState::level_flight(&delaware(), 0.3, 0.0);
     let spec = ImuGrade::ConsumerMemsCalibrated.spec();
     let heading_after_a_minute = |calibrated: bool| {
-        let mut imu = SimulatedImu::new(spec, 11).unwrap();
+        let mut imu =
+            SimulatedImu::new(spec, 11, std::sync::Arc::new(sim_geo::BodyEllipsoid::WGS84))
+                .unwrap();
         let mut fix = InitialAlignment::EXACT.measure(&truth);
         let bias = imu.errors().gyro_bias_rad_s();
         if calibrated {

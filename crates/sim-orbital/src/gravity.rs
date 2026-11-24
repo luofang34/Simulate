@@ -6,12 +6,12 @@
 
 mod far_field;
 mod frames;
-pub mod harmonics;
 #[cfg(test)]
 mod tests;
 
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
+use sim_bodies::{GravitySample, HarmonicGravity};
 
 use crate::{
     constants::{ConstantsError, GravityConstantsCatalog},
@@ -24,7 +24,6 @@ use crate::{
 };
 
 pub use far_field::{HARMONIC_FAR_FIELD_ACCEL_M_S2, harmonic_reach_m};
-pub use harmonics::{HarmonicFieldEval, evaluate_spherical_harmonics_fixed};
 
 /// How primary-frame origin acceleration $\ddot{\mathbf{x}}_P(t)$ relates to the force model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -55,6 +54,15 @@ pub enum GravityError {
     /// Primary coordinate origin is neither `SSB (0)` nor a member of the active attracting set.
     #[error("primary body {0} is neither SSB (0) nor in the active attracting set")]
     UnsupportedPrimaryOrigin(NaifId),
+    /// A body's magnetic field has no value where and when an environment load read it.
+    #[error("magnetic field of {body} has no value: {source}")]
+    MagneticField {
+        /// The body whose field was read.
+        body: NaifId,
+        /// The field's reason, with the place and date.
+        #[source]
+        source: sim_geo::MagneticFieldError,
+    },
     /// Spacecraft collided with a point-mass singularity ($\|\mathbf{r} - \mathbf{s}_k\| = 0$).
     #[error("singular zero distance to attracting body {0}")]
     SingularRadius(NaifId),
@@ -114,7 +122,7 @@ pub fn third_body_tidal_accel_icrf(
 }
 
 /// Configured multi-body point-mass + extended spherical-harmonic force model.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ForceModel {
     attracting_bodies: Vec<NaifId>,
     harmonic_bodies: Vec<NaifId>,
@@ -122,6 +130,9 @@ pub struct ForceModel {
     max_harmonic_degree: u32,
     /// Harmonic fields weaker than this (`m/s²`) are skipped; see [`harmonic_reach_m`].
     harmonic_far_field_accel_m_s2: f64,
+    /// The non-central terms of each of `harmonic_bodies`' fields up to
+    /// `max_harmonic_degree`, in the same order; `None` for a body with none.
+    harmonic_fields: Vec<Option<HarmonicGravity>>,
     /// Reach of each of `harmonic_bodies`' fields (`m`), in the same order.
     harmonic_reach_m: Vec<f64>,
     constants: GravityConstantsCatalog,
@@ -144,8 +155,10 @@ impl ForceModel {
         let mut sorted_harm = harmonic_bodies;
         sorted_harm.sort();
         sorted_harm.dedup();
+        let mut harmonic_fields = Vec::with_capacity(sorted_harm.len());
         for &hb in &sorted_harm {
-            let _ = constants.require_mu(hb)?;
+            constants.require_mu(hb)?;
+            harmonic_fields.push(non_central_field(&constants, hb, max_harmonic_degree)?);
         }
 
         let model = Self {
@@ -154,6 +167,7 @@ impl ForceModel {
             dynamical_mode,
             max_harmonic_degree,
             harmonic_far_field_accel_m_s2: 0.0,
+            harmonic_fields,
             harmonic_reach_m: Vec::new(),
             constants,
             hash: ContentHash([0; 32]),
@@ -167,12 +181,12 @@ impl ForceModel {
     pub fn with_harmonic_far_field_accel_m_s2(mut self, accel_m_s2: f64) -> Self {
         self.harmonic_far_field_accel_m_s2 = accel_m_s2;
         self.harmonic_reach_m = self
-            .harmonic_bodies
+            .harmonic_fields
             .iter()
-            .map(|&hb| {
-                self.constants.get(hb).map_or(f64::INFINITY, |spec| {
-                    harmonic_reach_m(spec, self.max_harmonic_degree, accel_m_s2)
-                })
+            .map(|field| {
+                field
+                    .as_ref()
+                    .map_or(f64::INFINITY, |field| harmonic_reach_m(field, accel_m_s2))
             })
             .collect();
         self.hash = compute_force_hash(&self);
@@ -193,31 +207,77 @@ impl ForceModel {
         self.harmonic_reach_m.get(index).copied()
     }
 
-    /// Whether `body`'s harmonic field is skipped at `offset_m` from its centre.
-    fn beyond_harmonic_reach(&self, body: NaifId, offset_m: DVec3) -> bool {
-        self.harmonic_reach_of_m(body)
-            .is_some_and(|reach| offset_m.length_squared() > reach * reach)
+    /// The non-central gravitation of the harmonic body at `index`, at `offset_icrf_m`
+    /// from its centre, in its own fixed axes; `None` for a body with no such terms.
+    ///
+    /// A position the series has no value at (a non-finite one, or the centre) adds
+    /// nothing here: the point-mass term reports that singularity.
+    pub(crate) fn harmonic_sample(
+        &self,
+        index: usize,
+        offset_icrf_m: DVec3,
+        r_icrf_to_fixed: glam::DMat3,
+    ) -> Option<GravitySample> {
+        let field = self.harmonic_fields.get(index)?.as_ref()?;
+        field.sample(r_icrf_to_fixed * offset_icrf_m, false).ok()
     }
 
-    /// Standard solar-system force model (`Sun`, `Mercury..Saturn` barycenters, `Earth`, `Moon`,
-    /// `Mars`, with Earth/Moon/Mars spherical harmonics under `PrescribedEphemeris`).
+    /// Whether the harmonic body at `index` has a field that reaches `offset_m`.
+    pub(crate) fn harmonics_reach(&self, index: usize, offset_m: DVec3) -> bool {
+        let has_field = matches!(self.harmonic_fields.get(index), Some(Some(_)));
+        let reach = self.harmonic_reach_m.get(index).copied();
+        has_field && reach.is_none_or(|reach| offset_m.length_squared() <= reach * reach)
+    }
+
+    /// The solar system as `constants`' body catalog describes it: the Sun and the
+    /// planetary systems out to Saturn as point masses under `PrescribedEphemeris`, with
+    /// each described body attracting in its own right in place of its system's
+    /// barycentre. Every described body's field is summed as far as its constants
+    /// state it, so the degree a descriptor gives its gravity is the degree both
+    /// tiers fly.
     pub fn standard_solar_system(constants: GravityConstantsCatalog) -> Result<Self, GravityError> {
+        let described: Vec<NaifId> = constants
+            .body_catalog()
+            .iter()
+            .map(|body| body.naif)
+            .collect();
+        let replaced: Vec<NaifId> = described
+            .iter()
+            .filter_map(|body| body.parent_planetary_barycenter())
+            .collect();
+        let systems = [
+            NaifId::SUN,
+            NaifId::MERCURY_BARYCENTER,
+            NaifId::VENUS_BARYCENTER,
+            NaifId::EARTH_MOON_BARYCENTER,
+            NaifId::MARS_BARYCENTER,
+            NaifId::JUPITER_BARYCENTER,
+            NaifId::SATURN_BARYCENTER,
+        ];
+        let attracting = systems
+            .into_iter()
+            .filter(|system| !replaced.contains(system))
+            .chain(described.iter().copied())
+            .collect();
+        let stated_degree = described
+            .iter()
+            .filter_map(|&body| constants.get(body)?.harmonics.as_ref())
+            .map(|field| field.truncation().degree)
+            .max()
+            .unwrap_or(0);
         Self::new(
             constants,
-            vec![
-                NaifId::SUN,
-                NaifId::MERCURY_BARYCENTER,
-                NaifId::VENUS_BARYCENTER,
-                NaifId::EARTH,
-                NaifId::MOON,
-                NaifId::MARS,
-                NaifId::JUPITER_BARYCENTER,
-                NaifId::SATURN_BARYCENTER,
-            ],
-            vec![NaifId::EARTH, NaifId::MOON, NaifId::MARS],
+            attracting,
+            described,
             DynamicalMode::PrescribedEphemeris,
-            8,
+            u32::try_from(stated_degree).unwrap_or(u32::MAX),
         )
+    }
+
+    /// The bodies this model's constants describe.
+    #[must_use]
+    pub fn body_catalog(&self) -> &std::sync::Arc<sim_bodies::BodyCatalog> {
+        self.constants.body_catalog()
     }
 
     /// Canonical SHA-256 content hash of this force model configuration and its constants.
@@ -364,13 +424,7 @@ impl ForceModel {
         orientation: &dyn BodyOrientationCatalog,
     ) -> Result<DVec3, GravityError> {
         let mut acc = DVec3::ZERO;
-        for &hb in &self.harmonic_bodies {
-            let Some(spec) = self.constants.get(hb) else {
-                continue;
-            };
-            if spec.harmonics.is_empty() || spec.equatorial_radius_m <= 0.0 {
-                continue;
-            }
+        for (index, &hb) in self.harmonic_bodies.iter().enumerate() {
             let rel_to_hb_icrf = if hb == primary_body {
                 pos_rel_m
             } else {
@@ -379,27 +433,37 @@ impl ForceModel {
                     .pos_m;
                 pos_rel_m - s_hb
             };
-            if self.beyond_harmonic_reach(hb, rel_to_hb_icrf) {
+            if !self.harmonics_reach(index, rel_to_hb_icrf) {
                 continue;
             }
             let rot = orientation.body_rotation(hb, epoch)?;
-            let pos_fixed = rot.r_icrf_to_fixed * rel_to_hb_icrf;
-            let filtered: Vec<_> = spec
-                .harmonics
-                .iter()
-                .copied()
-                .filter(|t| t.degree <= self.max_harmonic_degree)
-                .collect();
-            let eval = evaluate_spherical_harmonics_fixed(
-                pos_fixed,
-                spec.mu_m3_s2,
-                spec.equatorial_radius_m,
-                &filtered,
-            );
-            acc += rot.r_icrf_to_fixed.transpose() * eval.accel_fixed_m_s2;
+            if let Some(sample) = self.harmonic_sample(index, rel_to_hb_icrf, rot.r_icrf_to_fixed) {
+                acc += rot.r_icrf_to_fixed.transpose() * sample.acceleration_m_s2;
+            }
         }
         Ok(acc)
     }
+}
+
+/// `body`'s field without its central term and cut to `max_degree`, or `None` when
+/// nothing is left of it.
+fn non_central_field(
+    constants: &GravityConstantsCatalog,
+    body: NaifId,
+    max_degree: u32,
+) -> Result<Option<HarmonicGravity>, GravityError> {
+    let Some(field) = constants.get(body).and_then(|spec| spec.harmonics.as_ref()) else {
+        return Ok(None);
+    };
+    let cap = max_degree as usize;
+    if cap == 0 || field.truncation().degree == 0 {
+        return Ok(None);
+    }
+    let cut = field
+        .clone()
+        .capped(1, cap, cap)
+        .map_err(|source| ConstantsError::InvalidHarmonics { body, source })?;
+    Ok(Some(cut))
 }
 
 /// Hashes everything that shapes the dynamics, the far-field threshold included: it

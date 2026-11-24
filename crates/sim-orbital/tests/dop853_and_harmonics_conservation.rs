@@ -3,11 +3,13 @@
 //! mass/velocity balance, $\mathbf{H}_{\text{ICRF}}$ conservation, and specific power.
 
 use glam::{DQuat, DVec3};
+use sim_bodies::{HarmonicGravity, HarmonicTerm, TideSystem};
+use sim_geo::BodyEllipsoid;
 use sim_orbital::{
     BodyGravitySpec, BuiltinSolarSystem2026_2028, CoastControlLaw, ConstantWrenchLaw,
     ContinuousPlantState, DerivativeOrder, Dop853GenericConfig, Dop853Tolerances, DynamicalMode,
-    EphemerisCatalog, ForceModel, GravityConstantsCatalog, HarmonicTerm, KinematicStateIcrf,
-    MassPropertiesModel, NaifId, PlantStageWrench, PropellantMode, ReactionWheelMode, TdbEpoch,
+    EphemerisCatalog, ForceModel, GravityConstantsCatalog, KinematicStateIcrf, MassPropertiesModel,
+    NaifId, PlantStageWrench, PropellantMode, ReactionWheelMode, TdbEpoch,
     dop853_integrate_generic, propagate_plant_interval,
 };
 use sim_spacetime::{TickSpan, ln};
@@ -206,7 +208,7 @@ fn vacuum_tsiolkovsky_and_reaction_wheel_momentum_conservation_verified() {
         mu_m3_s2: 1.0e-18,
         equatorial_radius_m: 1.0,
         polar_radius_m: 1.0,
-        harmonics: Vec::new(),
+        harmonics: None,
     }]);
     let fm_free = ForceModel::new(
         tiny_mu,
@@ -313,23 +315,43 @@ fn verify_rw_saturation_momentum(
     assert!((hf_icrf - h0_icrf).length() / h0_icrf.length() < 1.0e-12);
 }
 
+/// The standard model with Earth's `J2` and a degree-2 sectoral term, which makes its
+/// potential turn with the Earth.
+#[cfg(test)]
+fn standard_model_with_earth_sectoral_term(solar: &BuiltinSolarSystem2026_2028) -> ForceModel {
+    let mut specs: Vec<_> = solar.constants.bodies().values().cloned().collect();
+    for sp in &mut specs {
+        if sp.naif_id == NaifId::EARTH {
+            let terms = [
+                HarmonicTerm::from_unnormalized_j2(BodyEllipsoid::WGS84.j2),
+                HarmonicTerm {
+                    degree: 2,
+                    order: 2,
+                    c_bar: 2.439e-6,
+                    s_bar: -1.400e-6,
+                },
+            ];
+            let field = HarmonicGravity::from_terms(
+                sp.mu_m3_s2,
+                sp.equatorial_radius_m,
+                &terms,
+                TideSystem::Unstated,
+            )
+            .expect("field");
+            sp.harmonics = Some(field);
+        }
+    }
+    let bodies = solar.constants.body_catalog().clone();
+    let constants = GravityConstantsCatalog::from_specs(specs).with_body_catalog(bodies);
+    ForceModel::standard_solar_system(constants).expect("fm")
+}
+
 #[test]
 fn time_dependent_specific_mechanical_power_identity_verified() {
     let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
     let t0 = TdbEpoch::new(850_000_000, 0);
-    let mut specs: Vec<_> = solar.constants.bodies().values().cloned().collect();
-    for sp in &mut specs {
-        if sp.naif_id == NaifId::EARTH {
-            sp.harmonics.push(HarmonicTerm {
-                degree: 2,
-                order: 2,
-                c_bar: 2.439e-6,
-                s_bar: -1.400e-6,
-            });
-        }
-    }
-    let fm =
-        ForceModel::standard_solar_system(GravityConstantsCatalog::from_specs(specs)).expect("fm");
+    let fm = standard_model_with_earth_sectoral_term(&solar);
+    assert!(fm.harmonic_bodies().contains(&NaifId::EARTH));
     let e0 = solar
         .ephemeris
         .geometric_state_icrf(NaifId::EARTH, NaifId::SSB, t0, DerivativeOrder::Velocity)

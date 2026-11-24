@@ -11,6 +11,7 @@ use super::route::{STEP_HZ, step_seconds};
 use super::stars::{StarExposure, StarFrame, StarScene, StarSky, render_star_frames};
 use super::terrain_camera::TerrainFrame;
 use super::{TrialError, TrialRequest};
+use crate::inertial::earth_gravity;
 use crate::{AlignmentFix, InitialAlignment, SimulatedImu, Truth};
 
 mod window;
@@ -151,7 +152,11 @@ pub fn record(
     };
     let (start, initial) = *first.get();
     let alignment = initial_alignment(request).measure(&initial);
-    let mut imu = SimulatedImu::new(request.imu_grade.grade().spec(), request.seeds.imu)?;
+    let mut imu = SimulatedImu::new(
+        request.imu_grade.grade().spec(),
+        request.seeds.imu,
+        earth_gravity()?,
+    )?;
     imu.sense(start, &initial)?;
     let mut increments = Vec::with_capacity(truth.len());
     for sample in truth.iter().skip(1) {

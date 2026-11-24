@@ -85,7 +85,12 @@ struct Drift {
 /// Dead-reckons over `truth`, scoring once a second.
 #[cfg(test)]
 fn dead_reckon(truth: &Truth, spec: ImuErrorSpec, seed: u64, alignment: InitialAlignment) -> Drift {
-    let imu = SimulatedImu::new(spec, seed).unwrap();
+    let imu = SimulatedImu::new(
+        spec,
+        seed,
+        std::sync::Arc::new(sim_geo::BodyEllipsoid::WGS84),
+    )
+    .unwrap();
     dead_reckon_with(truth, imu, spec, alignment)
 }
 
@@ -169,9 +174,7 @@ fn unmodelled_gravity_reaches_the_navigator_as_drift() {
     let anomaly = Arc::new(Anomalous {
         extra_m_s2: north * 1e-4,
     });
-    let imu = SimulatedImu::new(ImuErrorSpec::IDEAL, 0)
-        .unwrap()
-        .with_gravity(anomaly);
+    let imu = SimulatedImu::new(ImuErrorSpec::IDEAL, 0, anomaly).unwrap();
     let drift = dead_reckon_with(&truth, imu, ImuErrorSpec::IDEAL, InitialAlignment::EXACT);
     tracing::info!(
         horizontal_m = drift.final_horizontal_m,

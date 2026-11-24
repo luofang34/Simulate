@@ -5,9 +5,12 @@
 //! coasting one is propagated by `sim-orbital` in ICRF axes. [`Universe`]
 //! advances every vessel together and hands each between tiers through the
 //! exact frame change in [`to_inertial`] / [`to_body_fixed`], reading body
-//! orientation from the same catalog the orbital propagator uses.
+//! orientation from the same catalog the orbital propagator uses. A plant
+//! that can be carried stays with its vessel in the orbital tier, running
+//! its internals at exchange instants ([`CarryContext`], [`CarriedLoads`]).
 
 mod bus;
+mod carry;
 mod error;
 mod handoff;
 mod local;
@@ -17,9 +20,13 @@ mod tiering;
 mod universe;
 
 pub use bus::{VesselBusConfig, VesselBusTelemetry};
+pub use carry::{CarriedLoads, CarryContext, PlantSnapshot};
 pub use error::UniverseError;
-pub use handoff::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
-pub use local::{CoastingRigidBody, LocalFactory, LocalPlant, OrbitalBody};
+pub use handoff::{InertialExtras, to_body_fixed, to_inertial};
+pub use local::{
+    CoastingRigidBody, DEFAULT_CARRY_PERIOD, DEFAULT_MAX_CARRIED_THRUST_ACCEL_M_S2, LocalFactory,
+    LocalPlant, MultibodyLocalPlant, OrbitalBody,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use planning::ThreadPlanExecutor;
 pub use planning::{
@@ -27,5 +34,5 @@ pub use planning::{
     PlanSchedule, PlannedCommand, SlicedPlanExecutor, SynchronousPlanExecutor,
 };
 pub use station_keeping::{DEFAULT_PLAN_DELAY, L2KeepingBurn, L2StationKeeper};
-pub use tiering::{AltitudeBand, TierChange, TierPolicy, planetary_dynamic_pressure_pa};
+pub use tiering::{AltitudeBand, TierChange, TierPolicy};
 pub use universe::{OrbitalContext, Tier, Universe, UniverseCheckpoint};

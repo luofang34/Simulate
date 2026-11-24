@@ -1,19 +1,24 @@
-use glam::DVec3;
-use mbd_core::{
-    AeroModel, AeroWrench, ComponentId, ComponentState, ComponentTree, LocalSiteKinematics,
-    MassProperties, MbdError, compute_site_kinematics,
-};
-use sim_atmosphere::AtmosphereField;
 use std::sync::Arc;
 
+use glam::DVec3;
+use mbd_aero::AeroElement;
+use mbd_core::{
+    ComponentId, ComponentState, ComponentTree, LocalSiteKinematics, MassProperties, MbdError,
+    compute_site_kinematics,
+};
+use mbd_multibody::{ModelState, MultibodyModel, Workspace};
+use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
+use crate::flight_model::elements::VehicleElements;
+use crate::flight_model::integration::{Stepper, VehicleIntegrator};
+use crate::flight_model::loads::AeroLoad;
+use crate::flight_model::planet_frame::{RootMount, spin};
 use crate::{Block, BlockError, SimInstant, TickSpan, VehicleState};
 
-use dynamics::{BLOCK, Dynamics, Evaluation, RigidState};
+use motion::{BLOCK, Loads, block_error};
 
-mod dynamics;
-mod integrator;
+mod motion;
 
 #[cfg(test)]
 mod tests;
@@ -46,7 +51,8 @@ pub struct RigidBodyInput {
     pub thrusters: Vec<ThrusterWrench>,
     /// Tank mass flows.
     pub burns: Vec<PropellantBurn>,
-    /// Control-surface deflections passed to the aerodynamics model, rad.
+    /// Control channels the aerodynamic elements read, in the order they
+    /// name them: surface deflections, rad.
     pub control_surfaces_rad: [f64; 8],
 }
 
@@ -94,31 +100,11 @@ pub struct RigidBodyConfig {
     pub initial: VehicleState,
 }
 
-/// The state of the block's output instant that is derived from its forces,
-/// so a restored block answers [`RigidBody6DofBlock::site_kinematics`] exactly
-/// as the original did.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Loads {
-    specific_force_cg_body: DVec3,
-    alpha_body: DVec3,
-    aero: AeroWrench,
-}
-
-impl From<Evaluation> for Loads {
-    fn from(evaluation: Evaluation) -> Self {
-        Self {
-            specific_force_cg_body: evaluation.specific_force_cg_body,
-            alpha_body: evaluation.alpha_body,
-            aero: evaluation.aero,
-        }
-    }
-}
-
 /// Complete dynamic state of a [`RigidBody6DofBlock`], component states
 /// included, for exact replay and rollback.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RigidBodySnapshot {
-    state: RigidState,
+    state: ModelState,
     loads: Loads,
     mass: MassProperties,
     now: SimInstant,
@@ -135,36 +121,52 @@ impl RigidBodySnapshot {
 /// Six-degree-of-freedom rigid-body flight over any central body and
 /// atmosphere, with mass properties read live from a [`ComponentTree`].
 ///
-/// Integrates by RK4 in the rotating body-fixed frame, so gravity is joined by
-/// the Coriolis and centrifugal terms; Euler's equation runs on the inertial
-/// angular rate, and [`VehicleState::angular_rate_body`] reports the rate
-/// relative to the central body. Mass properties and thruster loads hold
-/// constant across a step: the rate of change of inertia and of the centre of
-/// gravity within a step, and jet damping, are not modelled.
+/// The vehicle is the multibody model of its tree with every joint held:
+/// one rigid body loaded by gravity at its centre of gravity, by the
+/// aerodynamic elements mounted on its components, and by the thruster
+/// wrenches of the step. It is integrated by one fourth-order Runge-Kutta
+/// step per period in inertial axes, and
+/// [`VehicleState::angular_rate_body`] reports the rate relative to the
+/// central body. Mass properties and thruster loads hold constant across a
+/// step: the rate of change of inertia and of the centre of gravity within a
+/// step, and jet damping, are not modelled.
 ///
-/// The translational state follows the centre of gravity. When a burn moves it
-/// within the airframe, the state transfers to the material point now at the
-/// centre of gravity, which leaves the airframe's own path undisturbed.
+/// The integrated state is the airframe's. The reported state follows the
+/// centre of gravity, so when a burn moves it within the airframe the
+/// report moves to the material point now there and the airframe's own path
+/// is undisturbed.
 pub struct RigidBody6DofBlock {
     config: RigidBodyConfig,
     tree: ComponentTree,
-    aero: Box<dyn AeroModel>,
     atmosphere: Box<dyn AtmosphereField>,
     gravity: Arc<dyn GravityField>,
-    state: RigidState,
+    model: MultibodyModel,
+    mount: RootMount,
+    elements: VehicleElements,
+    stepper: Stepper,
+    work: Workspace,
+    rates: Vec<f64>,
+    /// Root link state, its base in the central body's fixed axes.
+    state: ModelState,
     loads: Loads,
     mass: MassProperties,
     now: SimInstant,
 }
 
 impl RigidBody6DofBlock {
-    /// A block at `config.initial`, with loads evaluated for no thrust. Fails
-    /// if the period is zero or the tree or environment cannot be evaluated.
+    /// A block at `config.initial` carrying the aerodynamic elements `aero`
+    /// on the components they name, with loads evaluated for no thrust.
+    /// `gravity` is the truth gravity of `config.body`: the instance the
+    /// body's catalog entry holds, which every sensor that senses gravity
+    /// on this vehicle is handed too, so they read the field it flies
+    /// through. Fails if the period is zero or the tree or environment
+    /// cannot be evaluated.
     pub fn new(
         config: RigidBodyConfig,
         tree: ComponentTree,
-        aero: Box<dyn AeroModel>,
+        aero: Vec<AeroElement>,
         atmosphere: Box<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
     ) -> Result<Self, BlockError> {
         if config.period == TickSpan::ZERO {
             return Err(BlockError::InputOutOfRange {
@@ -174,37 +176,41 @@ impl RigidBody6DofBlock {
             });
         }
         let mass = tree.mass_properties().map_err(block_error)?;
-        let state = RigidState::from_vehicle(&config.initial, &config.body);
-        let gravity: Arc<dyn GravityField> = Arc::new(config.body);
-        let dynamics = Dynamics::of(
-            config.body,
-            gravity.as_ref(),
-            atmosphere.as_ref(),
-            aero.as_ref(),
-            &mass,
-            &RigidBodyInput::default(),
-        )?;
-        let loads = dynamics.evaluate(&state, config.epoch)?.into();
-        Ok(Self {
+        motion::check_inertia(&mass)?;
+        let mount = RootMount::of(&tree).map_err(block_error)?;
+        let model = motion::model_of(&tree, &config)?;
+        let elements = VehicleElements {
+            aero,
+            ..VehicleElements::default()
+        };
+        let state = motion::initial_state(&motion::Start {
+            config: &config,
+            tree: &tree,
+            model: &model,
+            mount: &mount,
+            elements: &elements,
+            atmosphere: atmosphere.as_ref(),
+            gravity: gravity.as_ref(),
+            cg_body_m: mass.cg_body_m,
+        })?;
+        let mut block = Self {
             config,
             tree,
-            aero,
             atmosphere,
             gravity,
+            model,
+            mount,
+            elements,
+            stepper: Stepper::new(VehicleIntegrator::REAL_TIME),
+            work: Workspace::new(),
+            rates: Vec::new(),
             state,
-            loads,
+            loads: Loads::NONE,
             mass,
             now: SimInstant::START,
-        })
-    }
-
-    /// The block in a world whose truth gravity is `gravity` instead of the
-    /// reference field of `config.body`. Hand the same instance to every
-    /// sensor that senses gravity, so they read the field the vehicle flies
-    /// through.
-    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
-        self.gravity = gravity;
-        self
+        };
+        block.loads = block.loads_at_output(&RigidBodyInput::default(), &mass, block.now)?;
+        Ok(block)
     }
 
     /// The truth gravity the block integrates.
@@ -229,7 +235,8 @@ impl RigidBody6DofBlock {
 
     /// Inertial angular rate, body axes, rad/s.
     pub fn omega_inertial_body(&self) -> DVec3 {
-        self.state.omega_inertial_body
+        let state = self.output();
+        state.angular_rate_body + state.attitude.inverse() * spin(&self.config.body)
     }
 
     /// Inertial angular acceleration, body axes, rad/s².
@@ -244,7 +251,7 @@ impl RigidBody6DofBlock {
     }
 
     /// The aerodynamic load at the output instant.
-    pub fn aero_wrench(&self) -> &AeroWrench {
+    pub fn aero_wrench(&self) -> &AeroLoad {
         &self.loads.aero
     }
 
@@ -257,7 +264,7 @@ impl RigidBody6DofBlock {
         }
         Ok(compute_site_kinematics(
             self.loads.specific_force_cg_body,
-            self.state.omega_inertial_body,
+            self.omega_inertial_body(),
             self.loads.alpha_body,
             self.tree.world_transform_in_root(site)?,
             self.mass.cg_body_m,
@@ -267,12 +274,12 @@ impl RigidBody6DofBlock {
     /// Separates `stage` and its subtree at the output instant, as a staging
     /// event does.
     ///
-    /// The state transfers to the material point at the remaining vehicle's
-    /// new centre of gravity, and the inertial angular rate carries over: with
-    /// no separation impulse each part keeps its rigid motion. Loads are
-    /// re-evaluated with no thrust until the next step supplies some. A stage
-    /// already separated, or one that would leave nothing attached, is an
-    /// error and leaves the block unchanged.
+    /// The airframe keeps its motion and the report moves to the remaining
+    /// vehicle's new centre of gravity: with no separation impulse each part
+    /// keeps its rigid motion. Loads are re-evaluated with no thrust until
+    /// the next step supplies some. A stage already separated, or one that
+    /// would leave nothing attached, is an error and leaves the block
+    /// unchanged.
     pub fn separate_stage(&mut self, stage: ComponentId) -> Result<(), BlockError> {
         if !self.tree.is_attached(stage).map_err(block_error)? {
             return Err(block_error(MbdError::DetachedComponent { id: stage }));
@@ -280,9 +287,7 @@ impl RigidBody6DofBlock {
         let saved_states = self.tree.states().to_vec();
         let result = self.detach(stage);
         if result.is_err() {
-            self.tree
-                .restore_states(&saved_states)
-                .map_err(block_error)?;
+            self.put_tree_back(&saved_states)?;
         }
         result
     }
@@ -290,8 +295,21 @@ impl RigidBody6DofBlock {
     /// Restores `snapshot`, or reports that it came from a differently built
     /// tree and leaves the block unchanged.
     pub fn try_restore(&mut self, snapshot: &RigidBodySnapshot) -> Result<(), MbdError> {
+        let saved_states = self.tree.states().to_vec();
         self.tree.restore_states(&snapshot.component_states)?;
-        self.state = snapshot.state;
+        match motion::model_of(&self.tree, &self.config) {
+            Ok(model) if motion::fits(&model, &self.elements, &snapshot.state) => {
+                self.model = model;
+            }
+            _ => {
+                self.tree.restore_states(&saved_states)?;
+                return Err(MbdError::StateCountMismatch {
+                    expected: self.state.as_slice().len(),
+                    actual: snapshot.state.as_slice().len(),
+                });
+            }
+        }
+        self.state = snapshot.state.clone();
         self.loads = snapshot.loads;
         self.mass = snapshot.mass;
         self.now = snapshot.now;
@@ -301,92 +319,6 @@ impl RigidBody6DofBlock {
     fn utc_at(&self, instant: SimInstant) -> UtcTime {
         let elapsed = instant.duration_since(SimInstant::START).as_seconds();
         self.config.epoch.advanced_by(elapsed)
-    }
-
-    fn dynamics<'a>(
-        &'a self,
-        mass: &'a MassProperties,
-        input: &RigidBodyInput,
-    ) -> Result<Dynamics<'a>, BlockError> {
-        Dynamics::of(
-            self.config.body,
-            self.gravity.as_ref(),
-            self.atmosphere.as_ref(),
-            self.aero.as_ref(),
-            mass,
-            input,
-        )
-    }
-
-    fn apply_burns(&mut self, burns: &[PropellantBurn], dt_s: f64) -> Result<(), MbdError> {
-        for burn in burns {
-            let mut tank = *self.tree.state(burn.tank)?;
-            tank.fluid_mass_kg = (tank.fluid_mass_kg + burn.dm_dt_kg_s * dt_s).max(0.0);
-            self.tree.set_state(burn.tank, tank)?;
-        }
-        Ok(())
-    }
-
-    /// Everything that can fail in a separation, with the same contract as
-    /// [`Self::advance`].
-    fn detach(&mut self, stage: ComponentId) -> Result<(), BlockError> {
-        let mut detached = *self.tree.state(stage).map_err(block_error)?;
-        detached.attached = false;
-        self.tree.set_state(stage, detached).map_err(block_error)?;
-        let mass = self.tree.mass_properties().map_err(block_error)?;
-        let body = self.config.body;
-        let state = self
-            .state
-            .transported(&body, mass.cg_body_m - self.mass.cg_body_m);
-        let loads = self
-            .dynamics(&mass, &RigidBodyInput::default())?
-            .evaluate(&state, self.utc_at(self.now))?
-            .into();
-        self.state = state;
-        self.loads = loads;
-        self.mass = mass;
-        Ok(())
-    }
-
-    /// Everything that can fail in a step. The state fields are assigned only
-    /// on success; the tree is put back by the caller on failure.
-    fn advance(&mut self, input: &RigidBodyInput) -> Result<(), BlockError> {
-        let period = self.config.period;
-        let dt_s = period.as_seconds();
-        let body = self.config.body;
-        let start_utc = self.utc_at(self.now);
-        let mass_at_start = self.mass;
-        let dynamics = self.dynamics(&mass_at_start, input)?;
-        let integrated = integrator::rk4(&self.state, start_utc, dt_s, |state, utc| {
-            dynamics.evaluate(state, utc).map(|e| e.derivative)
-        })?;
-
-        self.apply_burns(&input.burns, dt_s).map_err(block_error)?;
-        let mass = self.tree.mass_properties().map_err(block_error)?;
-        let state = integrated.transported(&body, mass.cg_body_m - mass_at_start.cg_body_m);
-        let now = self.now.advanced(period);
-        let loads = self
-            .dynamics(&mass, input)?
-            .evaluate(&state, self.utc_at(now))?
-            .into();
-        if !state.is_finite() {
-            return Err(BlockError::NonFiniteState {
-                block: BLOCK,
-                detail: format!("{state:?}"),
-            });
-        }
-        self.state = state;
-        self.loads = loads;
-        self.mass = mass;
-        self.now = now;
-        Ok(())
-    }
-}
-
-fn block_error(source: MbdError) -> BlockError {
-    BlockError::Mbd {
-        block: BLOCK,
-        source,
     }
 }
 
@@ -406,20 +338,19 @@ impl Block for RigidBody6DofBlock {
         let saved_states = self.tree.states().to_vec();
         let result = self.advance(input);
         if result.is_err() {
-            self.tree
-                .restore_states(&saved_states)
-                .map_err(block_error)?;
+            self.put_tree_back(&saved_states)?;
         }
         result
     }
 
     fn output(&self) -> VehicleState {
-        self.state.vehicle(&self.config.body)
+        self.mount
+            .vehicle_of(&self.state.base(), self.mass.cg_body_m)
     }
 
     fn snapshot(&self) -> RigidBodySnapshot {
         RigidBodySnapshot {
-            state: self.state,
+            state: self.state.clone(),
             loads: self.loads,
             mass: self.mass,
             now: self.now,

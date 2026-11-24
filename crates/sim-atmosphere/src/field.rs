@@ -1,4 +1,5 @@
 use glam::DVec3;
+use mbd_core::{AmbientGas, GasComposition};
 use sim_geo::{Geodetic, UtcTime};
 
 use crate::{geometric_to_geopotential_m, isa_at_geopotential};
@@ -36,6 +37,34 @@ pub struct AtmosphereSample {
     pub speed_of_sound_m_s: f64,
     /// Wind velocity (where the air moves toward), north-east-down, m/s.
     pub wind_ned_m_s: DVec3,
+    /// Chemical species mole fractions of the sampled gas mixture.
+    pub composition: GasComposition,
+}
+
+impl AtmosphereSample {
+    /// Builds the multi-species [`AmbientGas`] matching this sample, delegating
+    /// kinetic viscosity and mean free path to `mbd-core` so gas kinetics live
+    /// in a single place across the simulator and subsystem models.
+    #[must_use]
+    pub fn ambient_gas(&self) -> AmbientGas {
+        if self.density_kg_m3 <= 0.0
+            || self.pressure_pa <= 0.0
+            || self.temperature_k <= 0.0
+            || self.composition.is_empty()
+        {
+            return AmbientGas::VACUUM;
+        }
+        let Ok(mut gas) = AmbientGas::from_state_and_composition(
+            self.pressure_pa,
+            self.temperature_k,
+            self.composition,
+        ) else {
+            return AmbientGas::VACUUM;
+        };
+        gas.density_kg_m3 = self.density_kg_m3;
+        gas.sound_speed_m_s = self.speed_of_sound_m_s;
+        gas
+    }
 }
 
 /// A 4D atmosphere: the one place the flight model and the renderer read air
@@ -69,6 +98,7 @@ impl AtmosphereField for StandardAtmosphere {
             density_kg_m3: state.density_kg_m3,
             speed_of_sound_m_s: state.speed_of_sound_m_s,
             wind_ned_m_s: DVec3::ZERO,
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }
@@ -113,6 +143,7 @@ impl AtmosphereField for GeoidStandardAtmosphere {
             density_kg_m3: state.density_kg_m3,
             speed_of_sound_m_s: state.speed_of_sound_m_s,
             wind_ned_m_s: self.wind_ned_m_s,
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }

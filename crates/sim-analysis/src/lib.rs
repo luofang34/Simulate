@@ -12,6 +12,7 @@ mod contract;
 mod geometry;
 mod models;
 mod relay;
+mod signal;
 mod terrain;
 
 pub use access::{
@@ -40,6 +41,17 @@ pub use relay::{
     RelayAccessSample, RelayHopKind, RelayRestrictionEntry, SharedTrajectoryAccessSuite,
     VerificationScope, evaluate_endpoint_link_access, evaluate_geometric_relay_access,
     evaluate_shared_trajectory_access_suite,
+};
+pub use signal::{
+    AntennaPattern, LinkBudgetInputs, LinkBudgetModels, MediumQueryLoss, PathGeometry,
+    PropagationLoss, PropagationLossError, compute_link_budget, db_from_ratio, doppler_shift_hz,
+    evaluate_endpoint_link_budget, free_space_path_loss_db, ratio_from_db,
+};
+pub use sim_analysis_contract::{
+    AntennaPointing, AntennaSpec, BOLTZMANN_CONSTANT_J_K, BudgetUnavailableReason,
+    CosinePowerPatchSpec, LinkBudget, LinkBudgetReport, LinkBudgetSample, LinkDirection, LinkEnd,
+    ParabolicDishSpec, PropagationLossTerm, PropagationModelSpec, ReceiverNoise, RfLinkSpec,
+    RfReceiverSpec, RfTransmitterSpec,
 };
 pub use terrain::{
     AltitudeSpec, DEFAULT_MAX_TERRAIN_RAY_SAMPLES, DemElevationGrid,

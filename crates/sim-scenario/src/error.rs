@@ -18,6 +18,9 @@ pub enum ScenarioError {
     /// The vehicle's component tree could not be evaluated.
     #[error("the scenario vehicle model failed")]
     Mbd(#[from] MbdError),
+    /// The catalog entry of the scenario's body could not be built.
+    #[error("the scenario body's truth fields could not be built")]
+    Body(#[from] sim_bodies::FieldBuildError),
     /// A vehicle package failed verification.
     #[error("the scenario vehicle package failed to load")]
     Package(#[source] Box<PackError>),

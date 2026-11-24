@@ -12,7 +12,7 @@ use sim_orbital::BuiltinSolarSystem2026_2028;
 use sim_spacetime::{NaifId, TdbEpoch};
 
 const VALID_REQ_JSON: &str = r#"{
-  "schema_version": 2,
+  "schema_version": 3,
   "request_id": "req-valley-relay-rev2",
   "design_revision": {
     "design_id": "design-valley-relay-001",

@@ -1,6 +1,6 @@
 //! Celestial reference for the simulator: WGS84, lunar, and Martian ellipsoids
 //! with their gravity, the J2000 inertial frame and Apollo navigation stars,
-//! the truth gravity field of a world, local tangent frames, vertical datums with the EGM96 geoid, a floating
+//! the truth gravity and magnetic fields of a world, local tangent frames, vertical datums with the EGM96 geoid, a floating
 //! origin for camera-relative `f32` rendering,
 //! pinhole camera intrinsics, and UTC time.
 //!
@@ -14,6 +14,7 @@ mod frame;
 mod geoid;
 mod gravity;
 mod inertial;
+mod magnetic;
 mod origin;
 mod pinhole;
 mod stars;
@@ -31,6 +32,7 @@ pub use frame::LocalFrame;
 pub use geoid::egm96_undulation_m;
 pub use gravity::GravityField;
 pub use inertial::InertialTransform;
+pub use magnetic::{MagneticField, MagneticFieldError};
 pub use origin::FloatingOrigin;
 pub use pinhole::SensorIntrinsics;
 pub use stars::{APOLLO_NAV_STARS, NavStar, nav_star_by_octal_id, stars_in_cone};

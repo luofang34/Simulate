@@ -2,7 +2,6 @@
 //! abort sensors carry on, and guidance fails over to them.
 
 use glam::{DQuat, DVec3};
-use mbd_core::VacuumAero;
 use sim_apollo::{
     GIMBAL_LOCK_CAPTURE_DEG, GIMBAL_LOCK_LAMP, GIMBAL_LOCK_WARNING_DEG, GuidanceHandover,
     GuidanceSource, InertialSiteSample, LM_ASA, LM_IMU, StrapdownAsaBlock, StrapdownAsaConfig,
@@ -43,8 +42,9 @@ fn lm_turning(rate_body: DVec3) -> RigidBody6DofBlock {
             initial,
         },
         build_apollo_lm_tree().unwrap(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }

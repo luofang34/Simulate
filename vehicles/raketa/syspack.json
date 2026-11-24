@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "raketa-v4-test-rocket",
   "name": "Raketa V4 Interplanetary Test Rocket",
   "version": "4.0.0",
@@ -96,6 +96,6 @@
       "nominal_power_w": 0.0
     }
   ],
-  "dynamics": "RigidBodyVacuum",
+  "dynamics": { "MultibodyComposed": { "aero_elements": [] } },
   "devices": []
 }

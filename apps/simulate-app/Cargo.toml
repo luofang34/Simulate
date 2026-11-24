@@ -26,6 +26,7 @@ sim-apollo = { workspace = true }
 sim-analysis = { workspace = true }
 sim-atmosphere = { workspace = true }
 sim-aviate = { workspace = true }
+sim-bodies = { workspace = true }
 sim-core = { workspace = true }
 sim-geo = { workspace = true }
 sim-spacetime = { workspace = true }

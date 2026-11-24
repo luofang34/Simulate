@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "c172p",
   "name": "Cessna 172P Skyhawk II",
   "version": "0.1.0",
@@ -198,6 +198,6 @@
   "instrument_pack": {
     "id": "ga-analog-six-pack",
     "version": "1.0.0",
-    "manifest_sha256": "13f26b928e861734ca25b30ebc5eb039192f98aef4639a979d5705d94aa5f7ea"
+    "manifest_sha256": "c49a4adc42f56b0f99db2bedcda6b309c8af3bfd61da9a0bfff284a5682121b3"
   }
 }

@@ -115,6 +115,7 @@ impl OrbitalUniverse {
             return Err(SchedulerError::DuplicateVessel(vid));
         }
         checkpoint.instant = self.committed_instant;
+        mutations::refuse_unapplied_loads(&checkpoint, &checkpoint.external.loads)?;
         if checkpoint.integrator_hint.propagator == PropagatorKind::PinnedSurfaceRest {
             checkpoint = checkpoint
                 .at_pinned_surface_instant(

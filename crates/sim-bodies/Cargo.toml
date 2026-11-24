@@ -1,0 +1,21 @@
+[package]
+name = "sim-bodies"
+description = "The bodies a vehicle can be near: their gravity and magnetic truth fields, and the catalog every tier reads them from"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+glam = { workspace = true }
+sim-atmosphere = { workspace = true }
+sim-geo = { workspace = true }
+sim-spacetime = { workspace = true }
+thiserror = { workspace = true }
+world-core = { workspace = true }
+world-potential = { workspace = true }
+
+[dev-dependencies]
+world-geomag = { workspace = true }

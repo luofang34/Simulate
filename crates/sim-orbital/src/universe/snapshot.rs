@@ -14,7 +14,13 @@ use crate::{
     },
 };
 
-/// Saved per-vessel configuration and committed checkpoint in a [`UniverseSnapshot`].
+/// Saved per-vessel configuration, committed checkpoint and speculative lookahead in a
+/// [`UniverseSnapshot`].
+///
+/// A proposal integrates from its frontier to its horizon and clips its last step there, so
+/// where later steps begin depends on where the buffered lookahead ends. The record keeps the
+/// whole buffer and its frontier, which makes a restored vessel continue on exactly the step
+/// boundaries the saved one would have.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VesselSnapshotRecord {
     /// Authoritative vessel identifier.
@@ -23,9 +29,12 @@ pub struct VesselSnapshotRecord {
     pub config: VesselConfig,
     /// Last completed step-boundary checkpoint at or before `committed_instant`.
     pub committed_checkpoint: VesselCheckpoint,
-    /// Active canonical integration step spanning `committed_instant` (`start < committed < end`),
-    /// preserving frame-rate-independent step boundaries across mid-step save/restore.
-    pub spanning_segment: Option<SpeculativeSegmentEntry>,
+    /// Buffered speculative integration steps in time order, the first spanning
+    /// `committed_instant` when the vessel is mid-step.
+    pub speculative_segments: Vec<SpeculativeSegmentEntry>,
+    /// Checkpoint the next speculative proposal starts from: the end of the last buffered
+    /// segment, or further on for regimes that advance without dense segments.
+    pub frontier_checkpoint: VesselCheckpoint,
 }
 
 /// Complete, serializable authoritative state of [`crate::OrbitalUniverse`] at `committed_instant`.
@@ -33,7 +42,8 @@ pub struct VesselSnapshotRecord {
 /// Identity boundaries:
 /// - [`Self::physics_state_hash`]: instantaneous physical and actuator state of all vessels at `committed_instant`.
 /// - [`Self::snapshot_hash`]: full replay identity covering `manifest`, `committed_instant`, `horizon_quantum_ticks`,
-///   every vessel's `VesselConfig`, full `VesselCheckpoint`, spanning `PlantTrajectorySegment` polynomial coefficients,
+///   every vessel's `VesselConfig`, full `VesselCheckpoint`, every buffered speculative segment (bounds, checkpoints and
+///   `PlantTrajectorySegment` polynomial coefficients) and frontier checkpoint,
 ///   all `pending_events` (keys, generation guards, and payloads), and the full `AuthoritativeCommandLog`.
 ///   Pure display/UI state (`active_camera_vessel`) is excluded from [`Self::snapshot_hash`].
 /// - [`Self::display_state_hash`]: non-authoritative camera/view selection state.
@@ -72,11 +82,13 @@ impl UniverseSnapshot {
     }
 
     /// Canonical SHA-256 full replay snapshot identity covering all state, configuration,
-    /// spanning dense segments, pending events (including guards and payloads), and command logs
-    /// that can affect future deterministic evolution. Excludes pure display state (`active_camera_vessel`).
+    /// buffered speculative segments and frontier, pending events (including guards and payloads),
+    /// and command logs that can affect future deterministic evolution. Equal hashes mean equal
+    /// futures; two universes that buffered different lookahead hash differently even where
+    /// their futures happen to agree. Excludes pure display state (`active_camera_vessel`).
     #[must_use]
     pub fn snapshot_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:universe-snapshot:v2");
+        let mut h = DomainHasher::new(b"sim-orbital:universe-snapshot:v3");
         h.write_hash(self.manifest.root_hash);
         h.write_u128(self.committed_instant.ticks_u128());
         h.write_u128(self.horizon_quantum_ticks);
@@ -85,17 +97,15 @@ impl UniverseSnapshot {
             h.write_u64(v.vessel_id.0);
             v.config.write_to_hasher(&mut h);
             h.write_hash(v.committed_checkpoint.checkpoint_hash());
-            match &v.spanning_segment {
-                Some(seg) => {
-                    h.write_u8(1);
-                    h.write_u128(seg.start_instant.ticks_u128());
-                    h.write_u128(seg.end_instant.ticks_u128());
-                    h.write_hash(seg.start_checkpoint.checkpoint_hash());
-                    h.write_hash(seg.end_checkpoint.checkpoint_hash());
-                    h.write_hash(seg.segment.content_hash());
-                }
-                None => h.write_u8(0),
+            h.write_u64(v.speculative_segments.len() as u64);
+            for seg in &v.speculative_segments {
+                h.write_u128(seg.start_instant.ticks_u128());
+                h.write_u128(seg.end_instant.ticks_u128());
+                h.write_hash(seg.start_checkpoint.checkpoint_hash());
+                h.write_hash(seg.end_checkpoint.checkpoint_hash());
+                h.write_hash(seg.segment.content_hash());
             }
+            h.write_hash(v.frontier_checkpoint.checkpoint_hash());
         }
         h.write_u64(self.pending_events.len() as u64);
         for ev in &self.pending_events {
@@ -127,7 +137,7 @@ impl OrbitalUniverse {
         let vessels = self
             .vessels
             .values()
-            .map(|tl| tl.to_snapshot_record(self.committed_instant))
+            .map(VesselTimeline::to_snapshot_record)
             .collect();
         let pending_events = self.event_queue.values().copied().collect();
         UniverseSnapshot {

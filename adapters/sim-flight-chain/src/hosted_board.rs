@@ -12,6 +12,7 @@ pub use snapshot::BoardSnapshot;
 use aviate_core::control::{ControlMode, VehicleController};
 use aviate_core::kernel::DefaultAviateKernel;
 use aviate_core::mixer::Mixer;
+use aviate_core::sensor::ActuatorAuthority;
 use aviate_hal_io::SystemCommand;
 use sim_aviate::{AviateDirectConfig, AviateDirectRunner, DirectActuatorCmd};
 use sim_core::{SimInstant, VehicleState};
@@ -74,9 +75,11 @@ where
         controller
             .board_mut()
             .set_geoid_separation(egm96_undulation_m(origin.lat_rad, origin.lon_rad));
+        let suite = SensorSuite::new(suite, airframe.fields().magnetic.clone())
+            .map_err(ChainError::Devices)?;
         Ok(Self {
             airframe,
-            suite: SensorSuite::new(suite).map_err(ChainError::Devices)?,
+            suite,
             controller: Box::new(controller),
             origin,
             now: SimInstant::START,
@@ -101,6 +104,16 @@ where
         if self.outages.air_data {
             self.samples.air_data = None;
         }
+        // The clutch is a discrete the installation wires to the flight controller: a
+        // law that is not told keeps the error of a vehicle that cannot answer it.
+        let authority = if self.airframe.actuators_connected() {
+            ActuatorAuthority::Available
+        } else {
+            ActuatorAuthority::Absent
+        };
+        self.controller
+            .board_mut()
+            .set_actuator_authority(authority);
         let at_s = self.now.duration_since(SimInstant::START).as_seconds();
         self.command = self
             .controller

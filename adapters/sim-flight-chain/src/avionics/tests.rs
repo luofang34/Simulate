@@ -43,6 +43,10 @@ impl Airframe for Perturbed {
         }
     }
 
+    fn fields(&self) -> &sim_bodies::BodyFields {
+        self.inner.fields()
+    }
+
     fn sensed(&self) -> Result<SensedTruth, ChainError> {
         self.inner.sensed()
     }

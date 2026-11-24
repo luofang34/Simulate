@@ -28,4 +28,4 @@ pub use alignment::{AlignmentFix, InitialAlignment};
 pub use ground_calibration::GroundCalibration;
 pub use navigator::{InertialNavigator, inertial_config};
 pub(crate) use synthesis::rotation_vector;
-pub use synthesis::{SimulatedImu, ideal_increment};
+pub use synthesis::{SimulatedImu, earth_gravity, ideal_increment};
