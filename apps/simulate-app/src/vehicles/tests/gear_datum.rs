@@ -9,11 +9,16 @@
 
 use glam::{DVec3, Vec3};
 use sim_core::ControlInputs;
-use sim_geo::Geodetic;
+use sim_geo::{Geodetic, UtcTime};
 use sim_maplibre::{PartRole, UsdAircraftAsset};
+use sim_scenario::ScenarioProfile;
 
 use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
 use crate::world_surface::WorldSurfaceHandle;
+
+fn test_utc() -> UtcTime {
+    UtcTime::from_unix_seconds(ScenarioProfile::CorridorNominalCruise.start_utc_unix_s())
+}
 
 const METRES_PER_INCH: f64 = 0.0254;
 /// How far a wheel bottom may sit from where the flight model puts the ground.
@@ -72,7 +77,7 @@ fn wheel_offsets(
         .origin_in(visual)
         .unwrap();
     let parked = Geodetic::from_degrees(40.5244, -74.5984, 30.0);
-    let mut plant = FreeFlightPlant::new_on_ground(vehicle, parked, 0.0, true).unwrap();
+    let mut plant = FreeFlightPlant::new_on_ground(vehicle, parked, 0.0, true, test_utc()).unwrap();
     let world = WorldSurfaceHandle::new();
     for _ in 0..((4.0 / plant.period().as_seconds()) as usize) {
         plant.step(ControlInputs::default(), &world).unwrap();
@@ -179,8 +184,14 @@ fn p38g_propeller_discs_sit_on_the_fdm_thrusters() {
 #[test]
 fn p38g_parked_height_matches_the_flight_models_loaded_cg() {
     let parked = Geodetic::from_degrees(40.5244, -74.5984, 30.0);
-    let plant =
-        FreeFlightPlant::new_on_ground(FreeFlightVehicle::JsbsimP38g, parked, 0.0, true).unwrap();
+    let plant = FreeFlightPlant::new_on_ground(
+        FreeFlightVehicle::JsbsimP38g,
+        parked,
+        0.0,
+        true,
+        test_utc(),
+    )
+    .unwrap();
     let cg = plant.cg_structural_in().unwrap();
     assert!(
         (cg.z - crate::vehicles::P38G_LOADED_CG_ABOVE_FRL_IN).abs() < 0.05
@@ -194,8 +205,14 @@ fn p38g_parked_height_matches_the_flight_models_loaded_cg() {
 #[test]
 fn p38g_stands_nose_up_on_the_drawn_static_ground_line() {
     let parked = Geodetic::from_degrees(40.5244, -74.5984, 30.0);
-    let mut plant =
-        FreeFlightPlant::new_on_ground(FreeFlightVehicle::JsbsimP38g, parked, 0.0, true).unwrap();
+    let mut plant = FreeFlightPlant::new_on_ground(
+        FreeFlightVehicle::JsbsimP38g,
+        parked,
+        0.0,
+        true,
+        test_utc(),
+    )
+    .unwrap();
     let world = WorldSurfaceHandle::new();
     let pitch_deg = |plant: &FreeFlightPlant| {
         let state = plant.state();

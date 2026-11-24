@@ -4,7 +4,7 @@
 use glam::{DMat3, DVec3};
 use sim_core::{
     Block, ControlInputs, EngineStartMode, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock, JsbsimFdmConfig,
-    KinematicInput, SystemControls,
+    KinematicInput, SystemControls, TickSpan,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, ecef_to_geodetic};
 use sim_pack::LoadedSyspack;
@@ -13,12 +13,16 @@ use super::FreeFlightPlant;
 use crate::error::AppSimError;
 use crate::world_surface::WorldSurfaceHandle;
 
+/// A JSBSim aircraft in flight at `initial` over a field at `field_elev_m`, stepping
+/// every `period`, trimmed for level flight where its trim converges, and the specific
+/// force of that unaccelerated flight.
 pub(super) fn build_jsbsim_fdm(
     pkg: &LoadedSyspack,
     initial: Geodetic,
     heading_rad: f64,
     speed_m_s: f64,
     field_elev_m: f64,
+    period: TickSpan,
 ) -> Result<(JsbsimFdmBlock, DVec3), AppSimError> {
     let resolver = pkg
         .build_jsbsim_resolver()
@@ -33,7 +37,7 @@ pub(super) fn build_jsbsim_fdm(
             resolver: &resolver,
             aircraft_path,
             model,
-            period: JSBSIM_DEFAULT_PERIOD,
+            period,
             initial,
             heading_rad,
             speed_m_s,
@@ -69,18 +73,62 @@ pub(super) fn build_jsbsim_parked(
     gear_height_m: f64,
     pitch_rad: f64,
 ) -> Result<FreeFlightPlant, AppSimError> {
+    let stance = ParkedStance {
+        ground,
+        heading_rad,
+        engine_start,
+        gear_height_m,
+        pitch_rad,
+    };
+    let fdm = build_parked_fdm(pkg, &stance, JSBSIM_DEFAULT_PERIOD)?;
+    let state = fdm.output();
+    let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(state.position_ecef);
+    Ok(FreeFlightPlant::Jsbsim {
+        fdm: Box::new(fdm),
+        specific_force_frd_m_s2: -(DMat3::from_quat(state.attitude.inverse()) * g_ecef),
+    })
+}
+
+/// How an aircraft stands on its gear.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ParkedStance {
+    /// Where it stands; the height is the terrain's under it.
+    pub ground: Geodetic,
+    /// Heading from true north, radians.
+    pub heading_rad: f64,
+    /// Engine running or cold.
+    pub engine_start: EngineStartMode,
+    /// Static height of the reference point over the ground, metres.
+    pub gear_height_m: f64,
+    /// Static nose-up pitch, radians.
+    pub pitch_rad: f64,
+}
+
+/// The flight model of an aircraft standing as `stance` says, stepping every `period`.
+pub(super) fn build_parked_fdm(
+    pkg: &LoadedSyspack,
+    stance: &ParkedStance,
+    period: TickSpan,
+) -> Result<JsbsimFdmBlock, AppSimError> {
+    let ParkedStance {
+        ground,
+        heading_rad,
+        engine_start,
+        gear_height_m,
+        pitch_rad,
+    } = *stance;
     let resolver = pkg
         .build_jsbsim_resolver()
         .map_err(sim_scenario::ScenarioError::from)?;
     let (aircraft_path, model) = pkg
         .jsbsim_model()
         .map_err(sim_scenario::ScenarioError::from)?;
-    let fdm = JsbsimFdmBlock::new_on_terrain(
+    JsbsimFdmBlock::new_on_terrain(
         &JsbsimFdmConfig {
             resolver: &resolver,
             aircraft_path,
             model,
-            period: JSBSIM_DEFAULT_PERIOD,
+            period,
             initial: Geodetic {
                 height_m: ground.height_m + gear_height_m,
                 ..ground
@@ -92,13 +140,7 @@ pub(super) fn build_jsbsim_parked(
         },
         ground.height_m,
     )
-    .map_err(sim_scenario::ScenarioError::from)?;
-    let state = fdm.output();
-    let g_ecef = BodyEllipsoid::WGS84.gravity_fixed(state.position_ecef);
-    Ok(FreeFlightPlant::Jsbsim {
-        fdm: Box::new(fdm),
-        specific_force_frd_m_s2: -(DMat3::from_quat(state.attitude.inverse()) * g_ecef),
-    })
+    .map_err(|e| sim_scenario::ScenarioError::from(e).into())
 }
 
 pub(super) fn build_jsbsim_plant(
@@ -108,12 +150,27 @@ pub(super) fn build_jsbsim_plant(
     speed_m_s: f64,
     field_elev_m: f64,
 ) -> Result<FreeFlightPlant, AppSimError> {
-    let (fdm, specific_force_frd_m_s2) =
-        build_jsbsim_fdm(pkg, initial, heading_rad, speed_m_s, field_elev_m)?;
+    let (fdm, specific_force_frd_m_s2) = build_jsbsim_fdm(
+        pkg,
+        initial,
+        heading_rad,
+        speed_m_s,
+        field_elev_m,
+        JSBSIM_DEFAULT_PERIOD,
+    )?;
     Ok(FreeFlightPlant::Jsbsim {
         fdm: Box::new(fdm),
         specific_force_frd_m_s2,
     })
+}
+
+/// The ground `surface` has under `position_ecef`, metres above the ellipsoid, and the
+/// version of the surface that states it; `None` where the surface has no ground yet.
+pub(super) fn ground_under(
+    surface: &WorldSurfaceHandle,
+    position_ecef: DVec3,
+) -> Option<(f64, u64)> {
+    surface.ellipsoidal_ground_and_version(&ecef_to_geodetic(position_ecef))
 }
 
 pub(super) fn step_jsbsim_with_force(
@@ -122,8 +179,7 @@ pub(super) fn step_jsbsim_with_force(
     controls: ControlInputs,
     surface: &WorldSurfaceHandle,
 ) -> Result<(), AppSimError> {
-    let probe_geo = ecef_to_geodetic(fdm.output().position_ecef);
-    if let Some((ground_m, version)) = surface.ellipsoidal_ground_and_version(&probe_geo) {
+    if let Some((ground_m, version)) = ground_under(surface, fdm.output().position_ecef) {
         fdm.sync_ground_versioned_m(ground_m, version)
             .map_err(sim_scenario::ScenarioError::from)?;
     }
