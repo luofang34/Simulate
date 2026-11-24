@@ -159,7 +159,7 @@ pub(super) fn extract_relay_windows(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn scan_interior_dropouts<FE, FB>(
+pub(crate) fn scan_interior_dropouts<E, FE, FB>(
     prev_ep: TdbEpoch,
     next_ep: TdbEpoch,
     tolerance_s: f64,
@@ -167,12 +167,12 @@ fn scan_interior_dropouts<FE, FB>(
     active_start: &mut Option<TdbEpoch>,
     max_el: &mut f64,
     min_range: &mut f64,
-    eval_at: FE,
-    bisect_at: FB,
-) -> Result<(), AccessAnalysisError>
+    mut eval_at: FE,
+    mut bisect_at: FB,
+) -> Result<(), E>
 where
-    FE: Fn(TdbEpoch) -> Result<(bool, f64, f64), AccessAnalysisError>,
-    FB: Fn(TdbEpoch, TdbEpoch, bool) -> Result<TdbEpoch, AccessAnalysisError>,
+    FE: FnMut(TdbEpoch) -> Result<(bool, f64, f64), E>,
+    FB: FnMut(TdbEpoch, TdbEpoch, bool) -> Result<TdbEpoch, E>,
 {
     let substeps = WindowSearchCompleteness::INTERIOR_DROPOUT_SUBSTEPS;
     let span_s = next_ep.signed_offset_seconds_from(prev_ep);
@@ -222,16 +222,17 @@ where
     Ok(())
 }
 
-fn bisect_pair_epoch(
-    ctx: &EndpointPairCtx<'_>,
+pub(crate) fn bisect_epoch_condition<E, F>(
     mut t_lo: TdbEpoch,
     mut t_hi: TdbEpoch,
     lo_is_accessible: bool,
-) -> Result<TdbEpoch, AccessAnalysisError> {
-    let tol_s = ctx
-        .query
-        .boundary_time_tolerance_s
-        .max(1.0 / (TICKS_PER_SECOND as f64));
+    boundary_time_tolerance_s: f64,
+    mut is_accessible_at: F,
+) -> Result<TdbEpoch, E>
+where
+    F: FnMut(TdbEpoch) -> Result<bool, E>,
+{
+    let tol_s = boundary_time_tolerance_s.max(1.0 / (TICKS_PER_SECOND as f64));
     for _ in 0..48 {
         let span_s = t_hi.signed_offset_seconds_from(t_lo);
         if span_s <= tol_s {
@@ -242,7 +243,7 @@ fn bisect_pair_epoch(
             break;
         }
         let t_mid = t_lo.add_span(TickSpan::from_ticks_u128(mid_ticks));
-        let mid_acc = evaluate_pair_at_epoch(ctx, t_mid)?.accessible;
+        let mid_acc = is_accessible_at(t_mid)?;
         if mid_acc == lo_is_accessible {
             t_lo = t_mid;
         } else {
@@ -252,32 +253,32 @@ fn bisect_pair_epoch(
     Ok(if lo_is_accessible { t_lo } else { t_hi })
 }
 
-fn bisect_relay_epoch(
-    ctx: &RelayEvalCtx<'_>,
-    mut t_lo: TdbEpoch,
-    mut t_hi: TdbEpoch,
+fn bisect_pair_epoch(
+    ctx: &EndpointPairCtx<'_>,
+    t_lo: TdbEpoch,
+    t_hi: TdbEpoch,
     lo_is_accessible: bool,
 ) -> Result<TdbEpoch, AccessAnalysisError> {
-    let tol_s = ctx
-        .query
-        .boundary_time_tolerance_s
-        .max(1.0 / (TICKS_PER_SECOND as f64));
-    for _ in 0..48 {
-        let span_s = t_hi.signed_offset_seconds_from(t_lo);
-        if span_s <= tol_s {
-            break;
-        }
-        let mid_ticks = ((span_s * 0.5) * (TICKS_PER_SECOND as f64)).round() as u128;
-        if mid_ticks == 0 {
-            break;
-        }
-        let t_mid = t_lo.add_span(TickSpan::from_ticks_u128(mid_ticks));
-        let mid_acc = evaluate_relay_at_epoch(ctx, t_mid)?.relay_accessible;
-        if mid_acc == lo_is_accessible {
-            t_lo = t_mid;
-        } else {
-            t_hi = t_mid;
-        }
-    }
-    Ok(if lo_is_accessible { t_lo } else { t_hi })
+    bisect_epoch_condition(
+        t_lo,
+        t_hi,
+        lo_is_accessible,
+        ctx.query.boundary_time_tolerance_s,
+        |ep| Ok(evaluate_pair_at_epoch(ctx, ep)?.accessible),
+    )
+}
+
+fn bisect_relay_epoch(
+    ctx: &RelayEvalCtx<'_>,
+    t_lo: TdbEpoch,
+    t_hi: TdbEpoch,
+    lo_is_accessible: bool,
+) -> Result<TdbEpoch, AccessAnalysisError> {
+    bisect_epoch_condition(
+        t_lo,
+        t_hi,
+        lo_is_accessible,
+        ctx.query.boundary_time_tolerance_s,
+        |ep| Ok(evaluate_relay_at_epoch(ctx, ep)?.relay_accessible),
+    )
 }

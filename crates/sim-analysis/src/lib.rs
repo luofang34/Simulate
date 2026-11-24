@@ -8,7 +8,9 @@
 //! share an identical analysis contract.
 
 mod access;
+mod chain;
 mod contract;
+mod coverage;
 mod geometry;
 mod models;
 mod relay;
@@ -20,6 +22,11 @@ pub use access::{
     MAX_ACCESS_GRID_STEPS, ModelNotApplicableReason, StationAccessReport, StationAccessSample,
     WindowSearchCompleteness, evaluate_station_access,
 };
+pub use chain::{
+    ChainAssetNode, ChainEvaluationError, ChainEvaluationReport, ChainHopRfSpec, ChainNodeSpec,
+    ChainPropagationDirection, ChainQuerySpec, ChainWindowReport, HopEvaluation,
+    evaluate_chain_at_epoch, evaluate_chain_windows,
+};
 pub use contract::{
     ANALYSIS_CONTRACT_SCHEMA_VERSION, AnalysisJobStatus, AnalysisOutcomePayload,
     AnalysisRequestArtifact, AnalysisResultArtifact, AnalysisWorkloadSpec, ArtifactBindingError,
@@ -27,6 +34,10 @@ pub use contract::{
     ReproducibilityStamp, SerializableGroundStationSpec, SerializablePlatformSpec,
     TimeScaleContract, TimeScaleKind, TrajectoryNodesFrame, evaluate_analysis_request_artifact,
     sample_platform_trajectory,
+};
+pub use coverage::{
+    CellCoverageSummary, CoverageAssetSpec, CoverageGridError, CoverageGridReport,
+    CoverageQuerySpec, CoverageRegionSpec, MAX_GLOBAL_H3_RESOLUTION, evaluate_coverage_grid,
 };
 pub use geometry::{
     LinkGeometryEvalError, LinkGeometrySample, MediumIntegratedSample, PropagationMediumQuery,

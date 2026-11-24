@@ -212,14 +212,17 @@ impl ForceModel {
     ///
     /// A position the series has no value at (a non-finite one, or the centre) adds
     /// nothing here: the point-mass term reports that singularity.
-    pub(crate) fn harmonic_sample(
+    pub(crate) fn harmonic_sample_with_gradient(
         &self,
         index: usize,
         offset_icrf_m: DVec3,
         r_icrf_to_fixed: glam::DMat3,
+        with_gradient: bool,
     ) -> Option<GravitySample> {
         let field = self.harmonic_fields.get(index)?.as_ref()?;
-        field.sample(r_icrf_to_fixed * offset_icrf_m, false).ok()
+        field
+            .sample(r_icrf_to_fixed * offset_icrf_m, with_gradient)
+            .ok()
     }
 
     /// Whether the harmonic body at `index` has a field that reaches `offset_m`.
@@ -437,7 +440,12 @@ impl ForceModel {
                 continue;
             }
             let rot = orientation.body_rotation(hb, epoch)?;
-            if let Some(sample) = self.harmonic_sample(index, rel_to_hb_icrf, rot.r_icrf_to_fixed) {
+            if let Some(sample) = self.harmonic_sample_with_gradient(
+                index,
+                rel_to_hb_icrf,
+                rot.r_icrf_to_fixed,
+                false,
+            ) {
                 acc += rot.r_icrf_to_fixed.transpose() * sample.acceleration_m_s2;
             }
         }
