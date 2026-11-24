@@ -165,6 +165,7 @@ js-sys = "0.3.106"
 libm = "0.2"
 memory-stats = "1.2"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
+num-dual = "0.16"
 openusd = { version = "0.8.0", default-features = false }
 openusd-schemas = { version = "0.8.0", default-features = false, features = ["geom", "shade", "physics", "lux"] }
 pollster = "0.4"
