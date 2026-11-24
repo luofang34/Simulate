@@ -8,7 +8,9 @@
 //! share an identical analysis contract.
 
 mod access;
+mod chain;
 mod contract;
+mod coverage;
 mod geometry;
 mod models;
 mod relay;
@@ -20,6 +22,11 @@ pub use access::{
     MAX_ACCESS_GRID_STEPS, ModelNotApplicableReason, StationAccessReport, StationAccessSample,
     WindowSearchCompleteness, evaluate_station_access,
 };
+pub use chain::{
+    ChainAssetNode, ChainEvaluationError, ChainEvaluationReport, ChainHopRfSpec, ChainNodeSpec,
+    ChainPropagationDirection, ChainQuerySpec, ChainWindowReport, HopEvaluation,
+    evaluate_chain_at_epoch, evaluate_chain_windows,
+};
 pub use contract::{
     ANALYSIS_CONTRACT_SCHEMA_VERSION, AnalysisJobStatus, AnalysisOutcomePayload,
     AnalysisRequestArtifact, AnalysisResultArtifact, AnalysisWorkloadSpec, ArtifactBindingError,
@@ -27,6 +34,10 @@ pub use contract::{
     ReproducibilityStamp, SerializableGroundStationSpec, SerializablePlatformSpec,
     TimeScaleContract, TimeScaleKind, TrajectoryNodesFrame, evaluate_analysis_request_artifact,
     sample_platform_trajectory,
+};
+pub use coverage::{
+    CellCoverageSummary, CoverageAssetSpec, CoverageGridError, CoverageGridReport,
+    CoverageQuerySpec, CoverageRegionSpec, MAX_GLOBAL_H3_RESOLUTION, evaluate_coverage_grid,
 };
 pub use geometry::{
     LinkGeometryEvalError, LinkGeometrySample, MediumIntegratedSample, PropagationMediumQuery,
@@ -43,9 +54,12 @@ pub use relay::{
     evaluate_shared_trajectory_access_suite,
 };
 pub use signal::{
-    AntennaPattern, LinkBudgetInputs, LinkBudgetModels, MediumQueryLoss, PathGeometry,
-    PropagationLoss, PropagationLossError, compute_link_budget, db_from_ratio, doppler_shift_hz,
-    evaluate_endpoint_link_budget, free_space_path_loss_db, ratio_from_db,
+    AntennaPattern, DeltaBullingtonPropagationLoss, ExceedancePercentages, F1245Pattern,
+    ItmPropagationLoss, KnifeEdgePropagationLoss, KnifeEdgeSource, LinkBudgetInputs,
+    LinkBudgetModels, MainBeamPolicy, MediumQueryLoss, PathGeometry, PropagationLoss,
+    PropagationLossError, S465Pattern, S580Pattern, SmoothEarthPropagationLoss,
+    compute_link_budget, db_from_ratio, doppler_shift_hz, evaluate_endpoint_link_budget,
+    free_space_path_loss_db, ratio_from_db,
 };
 pub use sim_analysis_contract::{
     AntennaPointing, AntennaSpec, BOLTZMANN_CONSTANT_J_K, BudgetUnavailableReason,
@@ -59,3 +73,9 @@ pub use terrain::{
     TerrainElevationSource, TerrainLosConfig, VerticalDatumKind, VerticalDatumSpec,
     check_terrain_line_of_sight_fixed, resolve_altitude_ellipsoidal_height_m,
 };
+pub use world_propagation::itm::{Climate, ItmLoss, ItmWarnings, PropagationMode, VariabilityMode};
+pub use world_propagation::p526::{
+    DEFAULT_EFFECTIVE_EARTH_RADIUS_M, DeltaBullingtonLoss, KnifeEdgeGeometry, KnifeEdgeLoss,
+    KnifeEdgeMethod, SmoothEarthLoss,
+};
+pub use world_propagation::{Ground, Percentage, Polarisation, ProfilePoint, PropagationError};

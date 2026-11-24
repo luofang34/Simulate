@@ -12,27 +12,27 @@ use crate::{
         AccessAnalysisError, AccessRestrictionReason, DataCoverageError, ModelNotApplicableReason,
     },
     models::SensorFovModel,
-    relay::{AnalysisEndpoint, evaluator::EndpointPairCtx},
+    relay::AnalysisEndpoint,
     terrain::{
-        TerrainElevationSource, check_terrain_line_of_sight_fixed,
+        TerrainElevationSource, TerrainLosConfig, check_terrain_line_of_sight_fixed,
         resolve_altitude_ellipsoidal_height_m,
     },
 };
 
-pub(super) struct EndpointWorldState {
-    pub(super) endpoint_id: u32,
-    pub(super) is_surface_station: bool,
-    pub(super) host_body: NaifId,
-    pub(super) ellipsoid: BodyEllipsoid,
-    pub(super) pos_ssb_m: DVec3,
-    pub(super) vel_ssb_m_s: DVec3,
-    pub(super) r_enu_to_icrf: DMat3,
-    pub(super) r_icrf_to_mount: Option<DMat3>,
-    pub(super) fov: SensorFovModel,
-    pub(super) min_elevation_rad: Option<f64>,
+pub(crate) struct EndpointWorldState {
+    pub(crate) endpoint_id: u32,
+    pub(crate) is_surface_station: bool,
+    pub(crate) host_body: NaifId,
+    pub(crate) ellipsoid: BodyEllipsoid,
+    pub(crate) pos_ssb_m: DVec3,
+    pub(crate) vel_ssb_m_s: DVec3,
+    pub(crate) r_enu_to_icrf: DMat3,
+    pub(crate) r_icrf_to_mount: Option<DMat3>,
+    pub(crate) fov: SensorFovModel,
+    pub(crate) min_elevation_rad: Option<f64>,
 }
 
-pub(super) fn evaluate_endpoint_world_state(
+pub(crate) fn evaluate_endpoint_world_state(
     endpoint: &AnalysisEndpoint<'_>,
     epoch: TdbEpoch,
     dem: Option<&dyn TerrainElevationSource>,
@@ -138,6 +138,37 @@ fn evaluate_surface_station_world_state(
     })
 }
 
+pub(crate) fn sample_platform_cg_ssb_icrf(
+    trajectory: &dyn sim_spacetime::TranslationalTrajectorySource,
+    epoch: TdbEpoch,
+    ephemeris: &dyn EphemerisCatalog,
+) -> Result<(DVec3, DVec3), AccessAnalysisError> {
+    let framed = trajectory.sample_translational_icrf(epoch).map_err(|_| {
+        AccessAnalysisError::DataCoverage(DataCoverageError::TrajectoryOutOfCoverage {
+            requested_epoch: epoch,
+            valid_interval: trajectory.valid_interval(),
+        })
+    })?;
+    if framed.spec.units != UnitSemantics::SiMetric {
+        return Err(ModelNotApplicableReason::NonSiTrajectoryUnits {
+            actual: framed.spec.units,
+        }
+        .into());
+    }
+    match framed.spec.origin {
+        NaifId::SSB => Ok((framed.pos, framed.vel)),
+        body => {
+            let c = ephemeris
+                .geometric_state_icrf(body, NaifId::SSB, epoch, DerivativeOrder::Velocity)
+                .map_err(|_| DataCoverageError::EphemerisOutOfCoverage {
+                    body,
+                    requested_epoch: epoch,
+                })?;
+            Ok((c.pos_m + framed.pos, c.vel_m_s + framed.vel))
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn evaluate_moving_platform_world_state(
     endpoint_id: u32,
@@ -151,30 +182,7 @@ fn evaluate_moving_platform_world_state(
     ephemeris: &dyn EphemerisCatalog,
     orientation: &dyn BodyOrientationCatalog,
 ) -> Result<EndpointWorldState, AccessAnalysisError> {
-    let framed = trajectory.sample_translational_icrf(epoch).map_err(|_| {
-        AccessAnalysisError::DataCoverage(DataCoverageError::TrajectoryOutOfCoverage {
-            requested_epoch: epoch,
-            valid_interval: trajectory.valid_interval(),
-        })
-    })?;
-    if framed.spec.units != UnitSemantics::SiMetric {
-        return Err(ModelNotApplicableReason::NonSiTrajectoryUnits {
-            actual: framed.spec.units,
-        }
-        .into());
-    }
-    let (cg_pos_ssb, cg_vel_ssb) = match framed.spec.origin {
-        NaifId::SSB => (framed.pos, framed.vel),
-        body => {
-            let c = ephemeris
-                .geometric_state_icrf(body, NaifId::SSB, epoch, DerivativeOrder::Velocity)
-                .map_err(|_| DataCoverageError::EphemerisOutOfCoverage {
-                    body,
-                    requested_epoch: epoch,
-                })?;
-            (c.pos_m + framed.pos, c.vel_m_s + framed.vel)
-        }
-    };
+    let (cg_pos_ssb, cg_vel_ssb) = sample_platform_cg_ssb_icrf(trajectory, epoch, ephemeris)?;
     let (pos_ssb_m, vel_ssb_m_s, r_icrf_to_mount) =
         resolve_platform_mount_kinematics(cg_pos_ssb, cg_vel_ssb, attitude, sensor, epoch)?;
     let host_ssb = ephemeris
@@ -208,7 +216,7 @@ fn evaluate_moving_platform_world_state(
     })
 }
 
-fn resolve_platform_mount_kinematics(
+pub(crate) fn resolve_platform_mount_kinematics(
     cg_pos_ssb: DVec3,
     cg_vel_ssb: DVec3,
     attitude: Option<&dyn sim_spacetime::AttitudeTrajectorySource>,
@@ -245,8 +253,11 @@ fn resolve_platform_mount_kinematics(
 
 /// Checks the path against the DEM, in the fixed frame of the DEM's body at the instant
 /// the end standing on that body is evaluated.
-pub(super) fn append_terrain_occultation(
-    ctx: &EndpointPairCtx<'_>,
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn append_terrain_occultation(
+    terrain_dem: Option<(&dyn TerrainElevationSource, &TerrainLosConfig)>,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
     emit_epoch: TdbEpoch,
     epoch: TdbEpoch,
     src: &EndpointWorldState,
@@ -254,7 +265,7 @@ pub(super) fn append_terrain_occultation(
     below_dem_horizon: impl FnOnce(NaifId) -> bool,
     restrictions: &mut Vec<AccessRestrictionReason>,
 ) -> Result<(), AccessAnalysisError> {
-    if let Some((dem, cfg)) = ctx.terrain_dem {
+    if let Some((dem, cfg)) = terrain_dem {
         let body = dem.body();
         let body_blocked = restrictions.iter().any(
             |r| matches!(r, AccessRestrictionReason::OccultedByBody { body: b, .. } if *b == body),
@@ -267,15 +278,14 @@ pub(super) fn append_terrain_occultation(
         } else {
             epoch
         };
-        let body_ssb = ctx
-            .ephemeris
+        let body_ssb = ephemeris
             .geometric_state_icrf(body, NaifId::SSB, at, DerivativeOrder::Position)
             .map_err(|_| DataCoverageError::EphemerisOutOfCoverage {
                 body,
                 requested_epoch: at,
             })?
             .pos_m;
-        let rot = ctx.orientation.body_rotation(body, at).map_err(|_| {
+        let rot = orientation.body_rotation(body, at).map_err(|_| {
             DataCoverageError::OrientationOutOfCoverage {
                 body,
                 requested_epoch: at,

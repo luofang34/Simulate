@@ -9,15 +9,21 @@ mod budget;
 mod evaluator;
 mod path;
 mod units;
+mod world_prop;
 
 #[cfg(test)]
 mod tests;
 
 pub use antenna::AntennaPattern;
 pub use budget::{LinkBudgetInputs, compute_link_budget};
+pub(crate) use evaluator::budget_sample;
 pub use evaluator::{LinkBudgetModels, evaluate_endpoint_link_budget};
 pub use path::{
-    MediumQueryLoss, PathGeometry, PropagationLoss, PropagationLossError, doppler_shift_hz,
-    free_space_path_loss_db,
+    ExceedancePercentages, MediumQueryLoss, PathGeometry, PropagationLoss, PropagationLossError,
+    doppler_shift_hz, free_space_path_loss_db,
 };
 pub use units::{db_from_ratio, ratio_from_db};
+pub use world_prop::{
+    DeltaBullingtonPropagationLoss, F1245Pattern, ItmPropagationLoss, KnifeEdgePropagationLoss,
+    KnifeEdgeSource, MainBeamPolicy, S465Pattern, S580Pattern, SmoothEarthPropagationLoss,
+};

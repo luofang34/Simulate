@@ -89,6 +89,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "airmass-core"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Airmass?rev=fbfec00b07b8bb34d44c951b0f98a33543487537#fbfec00b07b8bb34d44c951b0f98a33543487537"
+dependencies = [
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,7 +297,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "aviate-airframe-fixed-wing"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 dependencies = [
  "aviate-core",
 ]
@@ -296,7 +305,7 @@ dependencies = [
 [[package]]
 name = "aviate-core"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 dependencies = [
  "bitflags 2.13.2",
  "libm",
@@ -305,7 +314,7 @@ dependencies = [
 [[package]]
 name = "aviate-hal-io"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 dependencies = [
  "aviate-core",
  "embedded-hal",
@@ -315,7 +324,7 @@ dependencies = [
 [[package]]
 name = "aviate-link"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -325,12 +334,12 @@ dependencies = [
 [[package]]
 name = "aviate-xil-contract"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 
 [[package]]
 name = "aviate-xil-direct"
 version = "0.1.3"
-source = "git+https://github.com/luofang34/Aviate?rev=e5b4d5d21d9ed23c948fbb43653131c9330de5c8#e5b4d5d21d9ed23c948fbb43653131c9330de5c8"
+source = "git+https://github.com/luofang34/Aviate?rev=bb49e146d4c9a2db07287467b255102229c4965c#bb49e146d4c9a2db07287467b255102229c4965c"
 dependencies = [
  "aviate-core",
  "aviate-hal-io",
@@ -1098,7 +1107,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1180,7 +1189,7 @@ dependencies = [
 [[package]]
 name = "flightbag"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Flightbag?rev=237d02c6618cc345ee07acbc87d257ab06cd38f1#237d02c6618cc345ee07acbc87d257ab06cd38f1"
+source = "git+https://github.com/luofang34/Flightbag?rev=649ce8a66dc62802bfc3c78824a50f8aeb2b0436#649ce8a66dc62802bfc3c78824a50f8aeb2b0436"
 dependencies = [
  "flightbag-core",
 ]
@@ -1188,10 +1197,16 @@ dependencies = [
 [[package]]
 name = "flightbag-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Flightbag?rev=237d02c6618cc345ee07acbc87d257ab06cd38f1#237d02c6618cc345ee07acbc87d257ab06cd38f1"
+source = "git+https://github.com/luofang34/Flightbag?rev=649ce8a66dc62802bfc3c78824a50f8aeb2b0436#649ce8a66dc62802bfc3c78824a50f8aeb2b0436"
 dependencies = [
  "world-core",
 ]
+
+[[package]]
+name = "float_eq"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28a80e3145d8ad11ba0995949bbcf48b9df2be62772b3d351ef017dff6ecb853"
 
 [[package]]
 name = "float_next_after"
@@ -1400,7 +1415,7 @@ version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "777d18aa0f12f8b285331cd867133ee14422b3f023f6d388034c47d43e28786a"
 dependencies = [
- "approx 0.5.1",
+ "approx 0.4.0",
  "num-traits",
  "rstar 0.10.0",
  "rstar 0.11.0",
@@ -1615,6 +1630,25 @@ dependencies = [
  "thiserror 2.0.21",
  "windows",
 ]
+
+[[package]]
+name = "h3o"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e09e90732a210d62fb37ce0452cac2b999aeff4ebd1998b53cf45290175b39b5"
+dependencies = [
+ "either",
+ "float_eq",
+ "h3o-bit",
+ "libm",
+ "ordered-float",
+]
+
+[[package]]
+name = "h3o-bit"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b42eb4efef1f96510ae1a33b2682562a677d504641e9903a77bf5c666b9013e"
 
 [[package]]
 name = "half"
@@ -3351,11 +3385,23 @@ dependencies = [
  "glam 0.32.1",
  "glam 0.33.12",
  "matrixmultiply",
+ "nalgebra-macros",
  "num-complex",
  "num-rational",
  "num-traits",
  "simba",
  "typenum",
+]
+
+[[package]]
+name = "nalgebra-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "973e7178a678cfd059ccec50887658d482ce16b0aa9da3888ddeab5cd5eb4889"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3629,6 +3675,18 @@ name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
+
+[[package]]
+name = "num-dual"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3277bc2cc02ea62cff7a33b0a0498e4d1a0745b2e448456c9cdb382848655f9"
+dependencies = [
+ "approx 0.5.1",
+ "nalgebra",
+ "num-traits",
+ "simba",
+]
 
 [[package]]
 name = "num-integer"
@@ -4174,7 +4232,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-api"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "indicate-frames",
  "pilotage-calibration-id",
@@ -4191,7 +4249,7 @@ dependencies = [
 [[package]]
 name = "pilotage-adapter-aviate"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-control-feel",
@@ -4208,7 +4266,7 @@ dependencies = [
 [[package]]
 name = "pilotage-aircraft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "serde",
  "serde_json",
@@ -4219,7 +4277,7 @@ dependencies = [
 [[package]]
 name = "pilotage-authority"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-protocol",
  "pilotage-timing",
@@ -4229,12 +4287,12 @@ dependencies = [
 [[package]]
 name = "pilotage-calibration-id"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 
 [[package]]
 name = "pilotage-camera-calibration"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -4246,7 +4304,7 @@ dependencies = [
 [[package]]
 name = "pilotage-control-feel"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "serde",
  "serde_json",
@@ -4257,7 +4315,7 @@ dependencies = [
 [[package]]
 name = "pilotage-flight-uplink"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-control-feel",
  "pilotage-mavlink",
@@ -4267,7 +4325,7 @@ dependencies = [
 [[package]]
 name = "pilotage-geo"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "indicate-frames",
  "libm",
@@ -4279,7 +4337,7 @@ dependencies = [
 [[package]]
 name = "pilotage-host-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "aerocontext-core",
  "navigate-contract",
@@ -4302,12 +4360,12 @@ dependencies = [
 [[package]]
 name = "pilotage-ingress"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 
 [[package]]
 name = "pilotage-mavlink"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-geo",
@@ -4324,12 +4382,12 @@ dependencies = [
 [[package]]
 name = "pilotage-mavlink-framing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 
 [[package]]
 name = "pilotage-mission"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "aerocontext-core",
  "aerocontext-navdata",
@@ -4352,7 +4410,7 @@ dependencies = [
 [[package]]
 name = "pilotage-mission-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "serde",
  "serde_json",
@@ -4363,7 +4421,7 @@ dependencies = [
 [[package]]
 name = "pilotage-protocol"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-timing",
  "prost",
@@ -4376,7 +4434,7 @@ dependencies = [
 [[package]]
 name = "pilotage-session"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "pilotage-adapter-api",
  "pilotage-authority",
@@ -4387,12 +4445,12 @@ dependencies = [
 [[package]]
 name = "pilotage-timing"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 
 [[package]]
 name = "pilotage-world"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/Pilotage?rev=a9b322238256c66ed5ab9215297a142152422319#a9b322238256c66ed5ab9215297a142152422319"
+source = "git+https://github.com/luofang34/Pilotage?rev=1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c#1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c"
 dependencies = [
  "libm",
  "pilotage-geo",
@@ -4522,6 +4580,15 @@ name = "powerfmt"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
+
+[[package]]
+name = "ppv-lite86"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+dependencies = [
+ "zerocopy",
+]
 
 [[package]]
 name = "presser"
@@ -4698,7 +4765,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4730,6 +4797,16 @@ checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "chacha20",
  "getrandom 0.4.3",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
+dependencies = [
+ "ppv-lite86",
  "rand_core",
 ]
 
@@ -5121,7 +5198,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5425,6 +5502,7 @@ name = "sim-analysis"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "h3o",
  "libm",
  "serde",
  "serde_json",
@@ -5435,6 +5513,8 @@ dependencies = [
  "sim-spacetime",
  "spicekit",
  "thiserror 2.0.21",
+ "world-core",
+ "world-propagation",
 ]
 
 [[package]]
@@ -5469,12 +5549,14 @@ name = "sim-atmosphere"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "libm",
  "mbd-core",
  "sim-geo",
  "thiserror 2.0.21",
- "world-airmass",
+ "world-aloft",
  "world-atmosphere",
  "world-core",
+ "world-thermosphere",
 ]
 
 [[package]]
@@ -5555,7 +5637,10 @@ name = "sim-devices"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "libm",
  "mbd-core",
+ "serde",
+ "serde_json",
  "sim-atmosphere",
  "sim-bodies",
  "sim-core",
@@ -5614,10 +5699,10 @@ dependencies = [
  "sim-indicate",
  "sim-scenery",
  "thiserror 2.0.21",
+ "world",
  "world-core",
  "world-geomag",
  "world-notices",
- "world-surveillance",
 ]
 
 [[package]]
@@ -5771,6 +5856,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "image",
+ "mbd-core",
  "memory-stats",
  "nalgebra",
  "navigate-camera",
@@ -5813,6 +5899,7 @@ dependencies = [
  "libm",
  "mbd-core",
  "navigate-astrodynamics",
+ "num-dual",
  "serde",
  "serde_json",
  "sgp4",
@@ -5969,6 +6056,7 @@ dependencies = [
  "glam 0.33.12",
  "libm",
  "mbd-core",
+ "rand_chacha",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6319,6 +6407,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "surveillance-core"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/Surveillance?rev=513b8493451c6913fa34eb7614cc887bff3092fe#513b8493451c6913fa34eb7614cc887bff3092fe"
+dependencies = [
+ "libm",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6385,10 +6483,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.6",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7370,7 +7468,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7635,20 +7733,24 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "world"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
- "world-airmass",
+ "airmass-core",
+ "surveillance-core",
+ "thiserror 2.0.21",
+ "world-aloft",
  "world-atmosphere",
  "world-core",
  "world-geomag",
  "world-notices",
- "world-surveillance",
+ "world-traffic",
+ "world-weather",
 ]
 
 [[package]]
-name = "world-airmass"
+name = "world-aloft"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -7658,7 +7760,7 @@ dependencies = [
 [[package]]
 name = "world-atmosphere"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
  "world-core",
@@ -7667,7 +7769,7 @@ dependencies = [
 [[package]]
 name = "world-core"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
 ]
@@ -7675,7 +7777,7 @@ dependencies = [
 [[package]]
 name = "world-geomag"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
  "world-core",
@@ -7684,7 +7786,7 @@ dependencies = [
 [[package]]
 name = "world-notices"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
  "world-atmosphere",
@@ -7694,17 +7796,47 @@ dependencies = [
 [[package]]
 name = "world-potential"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
  "libm",
  "world-core",
 ]
 
 [[package]]
-name = "world-surveillance"
+name = "world-propagation"
 version = "0.1.0"
-source = "git+https://github.com/luofang34/world?rev=df649f71aa2c07666cdbade4882f5eb601512381#df649f71aa2c07666cdbade4882f5eb601512381"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
 dependencies = [
+ "libm",
+ "world-core",
+]
+
+[[package]]
+name = "world-thermosphere"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
+dependencies = [
+ "libm",
+ "world-core",
+]
+
+[[package]]
+name = "world-traffic"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
+dependencies = [
+ "libm",
+ "surveillance-core",
+ "thiserror 2.0.21",
+ "world-core",
+]
+
+[[package]]
+name = "world-weather"
+version = "0.1.0"
+source = "git+https://github.com/luofang34/world?rev=8f09edf87317bc4981d19d9a5258c9d863d1fb2c#8f09edf87317bc4981d19d9a5258c9d863d1fb2c"
+dependencies = [
+ "airmass-core",
  "libm",
  "world-core",
 ]

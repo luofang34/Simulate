@@ -6,7 +6,7 @@ use crate::gdl90::{
     crc16_gdl90,
 };
 use crate::telemetry::FEET_TO_METRES;
-use world_surveillance::{AddressNamespace, EmitterCategory};
+use world::surveillance::{AddressNamespace, EmitterCategory};
 
 /// Wraps an unescaped GDL-90 message payload with its LSB-first CRC-16 and `0x7E` flags.
 #[must_use]
@@ -33,9 +33,9 @@ pub fn encode_participant_frame(msg_id: u8, report: &Gdl90ParticipantReport) -> 
     let mut p = Vec::with_capacity(28);
     p.push(msg_id);
     let addr_type: u8 = match report.namespace {
-        AddressNamespace::Icao24 => 0,
-        AddressNamespace::AdsbNonIcao => 1,
-        AddressNamespace::TisbTrackFile => 3,
+        AddressNamespace::Icao => 0,
+        AddressNamespace::AdsbNonIcao | AddressNamespace::SelfAssigned => 1,
+        AddressNamespace::TisbTrackFile | AddressNamespace::TisbModeATrackFile => 3,
         AddressNamespace::SurfaceVehicle => 4,
         AddressNamespace::FixedBeacon => 5,
         _ => 0,
@@ -187,12 +187,12 @@ fn decode_participant(p: &[u8]) -> Result<Gdl90ParticipantReport, FlightDeckErro
     }
     let b1 = *p.get(1).unwrap_or(&0);
     let namespace = match b1 & 0x0f {
-        0 | 2 => AddressNamespace::Icao24,
+        0 | 2 => AddressNamespace::Icao,
         1 => AddressNamespace::AdsbNonIcao,
         3 => AddressNamespace::TisbTrackFile,
         4 => AddressNamespace::SurfaceVehicle,
         5 => AddressNamespace::FixedBeacon,
-        _ => AddressNamespace::Icao24,
+        _ => AddressNamespace::Icao,
     };
     let address = (u32::from(*p.get(2).unwrap_or(&0)) << 16)
         | (u32::from(*p.get(3).unwrap_or(&0)) << 8)
@@ -284,46 +284,46 @@ fn i24_be(bytes: &[u8], offset: usize) -> i32 {
     val
 }
 
-fn decode_emitter_category(code: u8) -> EmitterCategory {
+fn decode_emitter_category(code: u8) -> Option<EmitterCategory> {
     match code {
-        1 => EmitterCategory::Light,
-        2 => EmitterCategory::Small,
-        3 => EmitterCategory::Large,
-        4 => EmitterCategory::HighVortexLarge,
-        5 => EmitterCategory::Heavy,
-        6 => EmitterCategory::HighPerformance,
-        7 => EmitterCategory::Rotorcraft,
-        9 => EmitterCategory::Glider,
-        10 => EmitterCategory::LighterThanAir,
-        11 => EmitterCategory::Parachutist,
-        12 => EmitterCategory::Ultralight,
-        14 => EmitterCategory::Uav,
-        15 => EmitterCategory::SpaceTransatmospheric,
-        17 => EmitterCategory::SurfaceEmergency,
-        18 => EmitterCategory::SurfaceService,
-        19 => EmitterCategory::PointObstacle,
-        _ => EmitterCategory::Unknown,
+        1 => Some(EmitterCategory::LightAircraft),
+        2 => Some(EmitterCategory::SmallAircraft),
+        3 => Some(EmitterCategory::LargeAircraft),
+        4 => Some(EmitterCategory::HighVortexAircraft),
+        5 => Some(EmitterCategory::HeavyAircraft),
+        6 => Some(EmitterCategory::HighPerformanceAircraft),
+        7 => Some(EmitterCategory::Rotorcraft),
+        9 => Some(EmitterCategory::Glider),
+        10 => Some(EmitterCategory::LighterThanAir),
+        11 => Some(EmitterCategory::Parachutist),
+        12 => Some(EmitterCategory::Ultralight),
+        14 => Some(EmitterCategory::UncrewedAircraft),
+        15 => Some(EmitterCategory::SpaceVehicle),
+        17 => Some(EmitterCategory::SurfaceEmergencyVehicle),
+        18 => Some(EmitterCategory::SurfaceServiceVehicle),
+        19 => Some(EmitterCategory::PointObstacle),
+        _ => None,
     }
 }
 
-fn encode_emitter_category(cat: EmitterCategory) -> u8 {
+fn encode_emitter_category(cat: Option<EmitterCategory>) -> u8 {
     match cat {
-        EmitterCategory::Light => 1,
-        EmitterCategory::Small => 2,
-        EmitterCategory::Large => 3,
-        EmitterCategory::HighVortexLarge => 4,
-        EmitterCategory::Heavy => 5,
-        EmitterCategory::HighPerformance => 6,
-        EmitterCategory::Rotorcraft => 7,
-        EmitterCategory::Glider => 9,
-        EmitterCategory::LighterThanAir => 10,
-        EmitterCategory::Parachutist => 11,
-        EmitterCategory::Ultralight => 12,
-        EmitterCategory::Uav => 14,
-        EmitterCategory::SpaceTransatmospheric => 15,
-        EmitterCategory::SurfaceEmergency => 17,
-        EmitterCategory::SurfaceService => 18,
-        EmitterCategory::PointObstacle => 19,
+        Some(EmitterCategory::LightAircraft) => 1,
+        Some(EmitterCategory::SmallAircraft) => 2,
+        Some(EmitterCategory::LargeAircraft) => 3,
+        Some(EmitterCategory::HighVortexAircraft) => 4,
+        Some(EmitterCategory::HeavyAircraft) => 5,
+        Some(EmitterCategory::HighPerformanceAircraft) => 6,
+        Some(EmitterCategory::Rotorcraft) => 7,
+        Some(EmitterCategory::Glider) => 9,
+        Some(EmitterCategory::LighterThanAir) => 10,
+        Some(EmitterCategory::Parachutist) => 11,
+        Some(EmitterCategory::Ultralight) => 12,
+        Some(EmitterCategory::UncrewedAircraft) => 14,
+        Some(EmitterCategory::SpaceVehicle) => 15,
+        Some(EmitterCategory::SurfaceEmergencyVehicle) => 17,
+        Some(EmitterCategory::SurfaceServiceVehicle) => 18,
+        Some(EmitterCategory::PointObstacle) => 19,
         _ => 0,
     }
 }

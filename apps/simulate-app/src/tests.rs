@@ -66,7 +66,7 @@ fn free_flight_vehicles_cycle_step_and_accept_system_controls() -> Result<(), Ap
 
 #[test]
 fn supervisor_isolates_truth_traffic_from_operator_belief() -> Result<(), AppSimError> {
-    let mut sup = SupervisorRig::new();
+    let mut sup = SupervisorRig::new()?;
     let flight = Flight::new()?;
     sup.sync(
         flight.vehicle_state().position_ecef,
@@ -92,8 +92,8 @@ fn supervisor_isolates_truth_traffic_from_operator_belief() -> Result<(), AppSim
         .operator_view()
         .belief_world
         .surveillance
-        .tracks()
-        .first()
+        .snapshots()
+        .next()
         .map(|t| t.key.address);
     assert_eq!(belief_address, Some(0xA1_B2_C3));
 

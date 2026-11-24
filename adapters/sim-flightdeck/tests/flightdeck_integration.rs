@@ -13,7 +13,7 @@ use sim_flightdeck::{
     TelemetrySourceMode, TrafficThreat, build_aircraft_state, decode_frame_header,
     encode_frame_snapshot, encode_glyph_pack, verified_glyph_pack,
 };
-use world_surveillance::{AddressNamespace, EmitterCategory};
+use world::surveillance::{AddressNamespace, EmitterCategory};
 
 #[test]
 fn digital_crown_blend_always_preserves_real_world_passthrough_floor() {
@@ -95,7 +95,7 @@ fn gdl90_crc_and_live_ownship_traffic_ahrs_roundtrip() -> Result<(), Box<dyn Err
     assert_eq!(crc16_gdl90(&icd_heartbeat), 0x8BB3);
 
     let own = Gdl90ParticipantReport {
-        namespace: AddressNamespace::Icao24,
+        namespace: AddressNamespace::Icao,
         address: 0xAD_1234,
         latitude_deg: 40.5800,
         longitude_deg: -74.4600,
@@ -106,12 +106,12 @@ fn gdl90_crc_and_live_ownship_traffic_ahrs_roundtrip() -> Result<(), Box<dyn Err
         airborne: true,
         nic: 9,
         nac_p: 9,
-        emitter_category: EmitterCategory::Light,
+        emitter_category: Some(EmitterCategory::LightAircraft),
         callsign: Some("N123SV".to_owned()),
         traffic_alert: false,
     };
     let traffic = Gdl90ParticipantReport {
-        namespace: AddressNamespace::Icao24,
+        namespace: AddressNamespace::Icao,
         address: 0xA8_FCAA,
         latitude_deg: 40.5920,
         longitude_deg: -74.4350,
@@ -122,7 +122,7 @@ fn gdl90_crc_and_live_ownship_traffic_ahrs_roundtrip() -> Result<(), Box<dyn Err
         airborne: true,
         nic: 8,
         nac_p: 8,
-        emitter_category: EmitterCategory::Large,
+        emitter_category: Some(EmitterCategory::LargeAircraft),
         callsign: Some("JBU1990".to_owned()),
         traffic_alert: true,
     };

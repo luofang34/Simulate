@@ -24,6 +24,9 @@ pub enum ScenarioError {
     /// A vehicle package failed verification.
     #[error("the scenario vehicle package failed to load")]
     Package(#[source] Box<PackError>),
+    /// The moving-world engine rejected configuration or an advance step.
+    #[error("the scenario moving world failed")]
+    World(#[source] Box<world::MovingWorldError>),
     /// The visual-navigation harness refused a frame.
     #[error("the visual harness refused a frame")]
     Visual(#[source] Box<VisualHarnessError>),
@@ -75,6 +78,12 @@ impl From<BlockError> for ScenarioError {
 impl From<PackError> for ScenarioError {
     fn from(error: PackError) -> Self {
         Self::Package(Box::new(error))
+    }
+}
+
+impl From<world::MovingWorldError> for ScenarioError {
+    fn from(error: world::MovingWorldError) -> Self {
+        Self::World(Box::new(error))
     }
 }
 

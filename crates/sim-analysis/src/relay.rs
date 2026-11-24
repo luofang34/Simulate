@@ -5,6 +5,7 @@
 mod evaluator;
 mod kinematics;
 mod light_time;
+mod validate;
 mod windows;
 
 use sim_geo::BodyEllipsoid;
@@ -29,10 +30,18 @@ use crate::{
     terrain::{AltitudeSpec, TerrainElevationSource, TerrainLosConfig},
 };
 
-use evaluator::{
-    EndpointPairCtx, RelayEvalCtx, collect_endpoint_provenance, evaluate_pair_at_epoch,
-    evaluate_relay_at_epoch, validate_endpoint, validate_query_and_terrain,
+use evaluator::{EndpointPairCtx, RelayEvalCtx, evaluate_pair_at_epoch, evaluate_relay_at_epoch};
+pub(crate) use evaluator::{PairConstraintEnv, evaluate_resolved_pair};
+pub(crate) use kinematics::{
+    EndpointWorldState, evaluate_endpoint_world_state, resolve_platform_mount_kinematics,
+    sample_platform_cg_ssb_icrf,
 };
+pub(crate) use validate::{
+    collect_endpoint_provenance, validate_endpoint_static, validate_moving_platform_interval,
+    validate_terrain_config,
+};
+use validate::{validate_endpoint, validate_query_and_terrain};
+pub(crate) use windows::{bisect_epoch_condition, scan_interior_dropouts};
 use windows::{extract_pair_windows, extract_relay_windows};
 
 /// General endpoint in a two-endpoint or multi-hop geometric link analysis.

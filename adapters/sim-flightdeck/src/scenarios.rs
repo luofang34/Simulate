@@ -17,8 +17,8 @@ use crate::telemetry::{
 };
 use crate::traffic::TrafficCoordinator;
 use glam::DVec3;
+use world::surveillance::DeliveryPath;
 use world_core::DecimalYear;
-use world_surveillance::DeliveryPath;
 
 /// Built-in deterministic synthetic-vision scenarios over the NY/NJ corridor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

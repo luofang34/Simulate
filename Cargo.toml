@@ -87,21 +87,22 @@ sim-universe = { path = "crates/sim-universe" }
 sim-core = { path = "crates/sim-core" }
 sim-xil = { path = "crates/sim-xil" }
 
-aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
-aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8", default-features = false, features = ["mc", "fw"] }
-aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
-aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
-aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
-flightbag = { git = "https://github.com/luofang34/Flightbag", rev = "237d02c6618cc345ee07acbc87d257ab06cd38f1" }
-flightbag-core = { git = "https://github.com/luofang34/Flightbag", rev = "237d02c6618cc345ee07acbc87d257ab06cd38f1" }
-world = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381", features = ["moving"] }
-world-airmass = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-atmosphere = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-core = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-geomag = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-notices = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-potential = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
-world-surveillance = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
+aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "bb49e146d4c9a2db07287467b255102229c4965c" }
+aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "bb49e146d4c9a2db07287467b255102229c4965c", default-features = false, features = ["mc", "fw"] }
+aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "bb49e146d4c9a2db07287467b255102229c4965c" }
+aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "bb49e146d4c9a2db07287467b255102229c4965c" }
+aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "bb49e146d4c9a2db07287467b255102229c4965c" }
+flightbag = { git = "https://github.com/luofang34/Flightbag", rev = "649ce8a66dc62802bfc3c78824a50f8aeb2b0436" }
+flightbag-core = { git = "https://github.com/luofang34/Flightbag", rev = "649ce8a66dc62802bfc3c78824a50f8aeb2b0436" }
+world = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c", features = ["moving"] }
+world-aloft = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-atmosphere = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-core = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-geomag = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-notices = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-potential = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-propagation = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c" }
+world-thermosphere = { git = "https://github.com/luofang34/world", rev = "8f09edf87317bc4981d19d9a5258c9d863d1fb2c", features = ["alloc"] }
 indicate-alerts = { git = "https://github.com/luofang34/Indicate", rev = "c70fdefc6f89b935b6ce956d4478aff1a44d783c" }
 indicate-frames = { git = "https://github.com/luofang34/Indicate", rev = "c70fdefc6f89b935b6ce956d4478aff1a44d783c" }
 indicate-instrument-analog = { git = "https://github.com/luofang34/Indicate", rev = "c70fdefc6f89b935b6ce956d4478aff1a44d783c" }
@@ -137,17 +138,17 @@ navigate-onboard = { git = "https://github.com/luofang34/Navigate", rev = "92644
 navigate-route = { git = "https://github.com/luofang34/Navigate", rev = "926442f7309679b9e148fdc4143215376cc8e9a4" }
 navigate-startrack = { git = "https://github.com/luofang34/Navigate", rev = "926442f7309679b9e148fdc4143215376cc8e9a4" }
 navigate-visual = { git = "https://github.com/luofang34/Navigate", rev = "926442f7309679b9e148fdc4143215376cc8e9a4" }
-pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-adapter-aviate = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319", default-features = false }
-pilotage-control-feel = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-host-core = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-aircraft = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-calibration-id = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-camera-calibration = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-mission = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-mavlink = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319", default-features = false }
-pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
-pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "a9b322238256c66ed5ab9215297a142152422319" }
+pilotage-adapter-api = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-adapter-aviate = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c", default-features = false }
+pilotage-control-feel = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-host-core = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-aircraft = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-calibration-id = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-camera-calibration = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-mission = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-mavlink = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c", default-features = false }
+pilotage-protocol = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
+pilotage-timing = { git = "https://github.com/luofang34/Pilotage", rev = "1f7ad8db9fe4a2946125ceaccd755a5f4d73ea2c" }
 syspack = { git = "https://github.com/luofang34/mbd", rev = "7fb208911c10d54c91932f1111195d90a0c6de65" }
 maplibre = { git = "https://github.com/luofang34/maplibre-rs-experimental", rev = "7c421867a59eeba6cac3c644e944573e85385cd2", default-features = false, features = ["headless", "raster", "geojson", "experimental", "webgpu"] }
 
@@ -158,15 +159,18 @@ console_error_panic_hook = "0.1.7"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 gilrs = "0.11.2"
 glam = "0.33"
+h3o = { version = "0.11", default-features = false }
 hifitime = "4.3.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 js-sys = "0.3.106"
 libm = "0.2"
 memory-stats = "1.2"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
+num-dual = "0.16"
 openusd = { version = "0.8.0", default-features = false }
 openusd-schemas = { version = "0.8.0", default-features = false, features = ["geom", "shade", "physics", "lux"] }
 pollster = "0.4"
+rand_chacha = { version = "0.10", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sgp4 = { version = "2.4", default-features = false, features = ["alloc", "serde", "libm"] }

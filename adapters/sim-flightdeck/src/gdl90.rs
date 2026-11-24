@@ -11,7 +11,7 @@ pub use codec::{encode_ahrs_frame, encode_gdl90_frame, encode_participant_frame}
 use crate::error::FlightDeckError;
 use crate::gdl90::codec::decode_unescaped_message;
 use crate::telemetry::{OwnshipIdentity, OwnshipState, TelemetryGroup};
-use world_surveillance::{AddressNamespace, EmitterCategory};
+use world::surveillance::{AddressNamespace, EmitterCategory};
 
 pub(crate) const FLAG_BYTE: u8 = 0x7E;
 pub(crate) const ESCAPE_BYTE: u8 = 0x7D;
@@ -20,7 +20,7 @@ pub(crate) const ESCAPE_XOR: u8 = 0x20;
 /// Participant report shared by GDL-90 `0x0A` (Ownship) and `0x14` (Traffic).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gdl90ParticipantReport {
-    /// Address namespace (`Icao24`, `AdsbNonIcao`, `TisbTrackFile`, `SurfaceVehicle`, etc.).
+    /// Address namespace (`Icao`, `AdsbNonIcao`, `TisbTrackFile`, `SurfaceVehicle`, etc.).
     pub namespace: AddressNamespace,
     /// 24-bit participant address.
     pub address: u32,
@@ -42,8 +42,8 @@ pub struct Gdl90ParticipantReport {
     pub nic: u8,
     /// Navigation Accuracy Category for Position (`0..=11`).
     pub nac_p: u8,
-    /// DO-260B / GDL-90 emitter category.
-    pub emitter_category: EmitterCategory,
+    /// DO-260B / GDL-90 emitter category, absent when unreported or reserved.
+    pub emitter_category: Option<EmitterCategory>,
     /// Trimmed ASCII callsign / flight ID when non-empty.
     pub callsign: Option<String>,
     /// Traffic alert flag (`1` when receiver declares an alert).

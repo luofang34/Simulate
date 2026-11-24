@@ -2,15 +2,11 @@
 
 use glam::DVec3;
 use sim_spacetime::{
-    BodyOrientationCatalog, DataProvenance, EphemerisCatalog, NaifId, TICKS_PER_SECOND, TdbEpoch,
-    asin_clamped, sqrt,
+    BodyOrientationCatalog, EphemerisCatalog, NaifId, TdbEpoch, asin_clamped, sqrt,
 };
 
 use crate::{
-    access::{
-        AccessAnalysisError, AccessRestrictionReason, DataCoverageError, ModelNotApplicableReason,
-        validate_query_grid_step_count,
-    },
+    access::{AccessAnalysisError, AccessRestrictionReason, DataCoverageError},
     geometry::{
         LinkGeometryEvalError, check_line_of_sight_occultation, check_signal_path_occultation,
     },
@@ -24,6 +20,16 @@ use crate::{
     terrain::{TerrainElevationSource, TerrainLosConfig},
 };
 
+pub(crate) struct PairConstraintEnv<'a> {
+    pub(crate) occultation_env: &'a OccultationEnvironmentModel,
+    pub(crate) terrain_dem: Option<(&'a dyn TerrainElevationSource, &'a TerrainLosConfig)>,
+    pub(crate) min_range_m: Option<f64>,
+    pub(crate) max_range_m: Option<f64>,
+    pub(crate) signal_time: SignalTimeModel,
+    pub(crate) ephemeris: &'a dyn EphemerisCatalog,
+    pub(crate) orientation: &'a dyn BodyOrientationCatalog,
+}
+
 pub(super) struct EndpointPairCtx<'a> {
     pub(super) source: AnalysisEndpoint<'a>,
     pub(super) target: AnalysisEndpoint<'a>,
@@ -34,6 +40,20 @@ pub(super) struct EndpointPairCtx<'a> {
     pub(super) orientation: &'a dyn BodyOrientationCatalog,
 }
 
+impl<'a> EndpointPairCtx<'a> {
+    const fn pair_env(&self) -> PairConstraintEnv<'a> {
+        PairConstraintEnv {
+            occultation_env: self.occultation_env,
+            terrain_dem: self.terrain_dem,
+            min_range_m: self.query.min_range_m,
+            max_range_m: self.query.max_range_m,
+            signal_time: self.query.signal_time,
+            ephemeris: self.ephemeris,
+            orientation: self.orientation,
+        }
+    }
+}
+
 pub(super) struct RelayEvalCtx<'a> {
     pub(super) hop1_ctx: &'a EndpointPairCtx<'a>,
     pub(super) hop2_ctx: &'a EndpointPairCtx<'a>,
@@ -41,136 +61,30 @@ pub(super) struct RelayEvalCtx<'a> {
     pub(super) query: &'a AccessQuerySpec,
 }
 
-pub(super) fn validate_query_and_terrain(
-    query: &AccessQuerySpec,
-    terrain_dem: Option<(&dyn TerrainElevationSource, &TerrainLosConfig)>,
-) -> Result<(), AccessAnalysisError> {
-    let min_step_s = 1.0 / (TICKS_PER_SECOND as f64);
-    if !query.sample_step_s.is_finite()
-        || query.sample_step_s < min_step_s
-        || !query.boundary_time_tolerance_s.is_finite()
-        || query.boundary_time_tolerance_s <= 0.0
-    {
-        return Err(ModelNotApplicableReason::InvalidQueryParameters {
-            sample_step_s: query.sample_step_s,
-            boundary_time_tolerance_s: query.boundary_time_tolerance_s,
-        }
-        .into());
-    }
-    validate_query_grid_step_count(query.query_interval, query.sample_step_s)?;
-    if let Some((_, cfg)) = terrain_dem
-        && (!cfg.sample_step_m.is_finite()
-            || cfg.sample_step_m <= 0.0
-            || !cfg.min_clearance_m.is_finite()
-            || !cfg.max_terrain_interaction_altitude_m.is_finite()
-            || cfg.max_ray_samples == 0)
-    {
-        return Err(ModelNotApplicableReason::InvalidTerrainParameters {
-            reason: "non-finite, non-positive, or zero-budget TerrainLosConfig parameters"
-                .to_owned(),
-        }
-        .into());
-    }
-    Ok(())
-}
-
-pub(super) fn validate_endpoint(
-    endpoint: &AnalysisEndpoint<'_>,
-    query: &AccessQuerySpec,
-) -> Result<(), AccessAnalysisError> {
-    match *endpoint {
-        AnalysisEndpoint::SurfaceStation { station, .. } => {
-            if !station.min_elevation_rad.is_finite()
-                || station.min_elevation_rad < -core::f64::consts::FRAC_PI_2
-                || station.min_elevation_rad > core::f64::consts::FRAC_PI_2
-            {
-                return Err(ModelNotApplicableReason::InvalidStationParameters {
-                    min_elevation_rad: station.min_elevation_rad,
-                }
-                .into());
-            }
-            Ok(())
-        }
-        AnalysisEndpoint::MovingPlatform {
-            trajectory,
-            attitude,
-            sensor,
-            min_local_elevation_rad,
-            ..
-        } => {
-            let model = trajectory.model_identity();
-            if !model.supports_physical_ephemeris_analysis() {
-                return Err(ModelNotApplicableReason::UnsupportedDynamicalModel { model }.into());
-            }
-            if let Some(min_el) = min_local_elevation_rad
-                && (!min_el.is_finite()
-                    || min_el < -core::f64::consts::FRAC_PI_2
-                    || min_el > core::f64::consts::FRAC_PI_2)
-            {
-                return Err(ModelNotApplicableReason::InvalidStationParameters {
-                    min_elevation_rad: min_el,
-                }
-                .into());
-            }
-            let traj_cov = trajectory.valid_interval();
-            for ep in [
-                query.query_interval.start_epoch,
-                query.query_interval.end_epoch,
-            ] {
-                if !traj_cov.contains(ep) {
-                    return Err(DataCoverageError::TrajectoryOutOfCoverage {
-                        requested_epoch: ep,
-                        valid_interval: traj_cov,
-                    }
-                    .into());
-                }
-            }
-            if sensor.require_attitude {
-                let Some(att) = attitude else {
-                    return Err(DataCoverageError::AttitudeOutOfCoverage {
-                        requested_epoch: query.query_interval.start_epoch,
-                        valid_interval: None,
-                    }
-                    .into());
-                };
-                let att_cov = att.attitude_valid_interval();
-                for ep in [
-                    query.query_interval.start_epoch,
-                    query.query_interval.end_epoch,
-                ] {
-                    if !att_cov.contains(ep) {
-                        return Err(DataCoverageError::AttitudeOutOfCoverage {
-                            requested_epoch: ep,
-                            valid_interval: Some(att_cov),
-                        }
-                        .into());
-                    }
-                }
-            }
-            Ok(())
-        }
-    }
-}
-
-pub(super) fn collect_endpoint_provenance(
-    endpoint: &AnalysisEndpoint<'_>,
-    out: &mut Vec<DataProvenance>,
-) {
-    if let AnalysisEndpoint::MovingPlatform { trajectory, .. } = *endpoint {
-        let p = trajectory.provenance();
-        if !out.iter().any(|existing| existing == p) {
-            out.push(p.clone());
-        }
-    }
-}
-
 pub(super) fn evaluate_pair_at_epoch(
     ctx: &EndpointPairCtx<'_>,
     epoch: TdbEpoch,
 ) -> Result<EndpointLinkSample, AccessAnalysisError> {
     let events = resolve_signal_events(ctx, epoch)?;
-    let (src, dst) = (events.source, events.target);
+    let env = ctx.pair_env();
+    evaluate_resolved_pair(
+        &env,
+        events.emit_epoch,
+        epoch,
+        &events.source,
+        &events.target,
+        events.light_time_s,
+    )
+}
 
+pub(crate) fn evaluate_resolved_pair(
+    env: &PairConstraintEnv<'_>,
+    emit_epoch: TdbEpoch,
+    rx_epoch: TdbEpoch,
+    src: &EndpointWorldState,
+    dst: &EndpointWorldState,
+    light_time_s: Option<f64>,
+) -> Result<EndpointLinkSample, AccessAnalysisError> {
     let rho_icrf = dst.pos_ssb_m - src.pos_ssb_m;
     let drho_icrf = dst.vel_ssb_m_s - src.vel_ssb_m_s;
     let slant_range_m = sqrt(rho_icrf.length_squared());
@@ -188,11 +102,11 @@ pub(super) fn evaluate_pair_at_epoch(
     let target_off_boresight_rad = dst_los_mount.map(SensorFovModel::off_boresight_angle_rad);
 
     let restrictions = collect_pair_restrictions(
-        ctx,
-        events.emit_epoch,
-        epoch,
-        &src,
-        &dst,
+        env,
+        emit_epoch,
+        rx_epoch,
+        src,
+        dst,
         slant_range_m,
         el_from_src_rad,
         el_from_dst_rad,
@@ -205,7 +119,7 @@ pub(super) fn evaluate_pair_at_epoch(
 
     let unit = |v: DVec3| v.try_normalize();
     Ok(EndpointLinkSample {
-        epoch,
+        epoch: rx_epoch,
         source_look_direction_mount: src_los_mount.and_then(unit),
         target_look_direction_mount: dst_los_mount.and_then(unit),
         source_pos_icrf_m: src.pos_ssb_m,
@@ -216,7 +130,7 @@ pub(super) fn evaluate_pair_at_epoch(
         elevation_from_target_rad: el_from_dst_rad,
         source_off_boresight_rad,
         target_off_boresight_rad,
-        light_time_s: events.light_time_s,
+        light_time_s,
         active_restrictions: restrictions,
         accessible,
     })
@@ -224,7 +138,7 @@ pub(super) fn evaluate_pair_at_epoch(
 
 #[allow(clippy::too_many_arguments)]
 fn collect_pair_restrictions(
-    ctx: &EndpointPairCtx<'_>,
+    env: &PairConstraintEnv<'_>,
     emit_epoch: TdbEpoch,
     epoch: TdbEpoch,
     src: &EndpointWorldState,
@@ -257,7 +171,7 @@ fn collect_pair_restrictions(
         );
     }
     append_fov_and_range_restrictions(
-        ctx,
+        env,
         src,
         dst,
         slant_range_m,
@@ -272,7 +186,7 @@ fn collect_pair_restrictions(
             || (dst.is_surface_station && dst.host_body == dem_body && el_from_dst_rad < 0.0)
     };
     append_body_and_terrain_occultation(
-        ctx,
+        env,
         emit_epoch,
         epoch,
         src,
@@ -285,7 +199,7 @@ fn collect_pair_restrictions(
 
 #[allow(clippy::too_many_arguments)]
 fn append_fov_and_range_restrictions(
-    ctx: &EndpointPairCtx<'_>,
+    env: &PairConstraintEnv<'_>,
     src: &EndpointWorldState,
     dst: &EndpointWorldState,
     slant_range_m: f64,
@@ -322,7 +236,7 @@ fn append_fov_and_range_restrictions(
             }
         });
     }
-    if let Some(min_r) = ctx.query.min_range_m
+    if let Some(min_r) = env.min_range_m
         && slant_range_m < min_r
     {
         restrictions.push(AccessRestrictionReason::RangeBelowMinimum {
@@ -330,7 +244,7 @@ fn append_fov_and_range_restrictions(
             min_range_m: min_r,
         });
     }
-    if let Some(max_r) = ctx.query.max_range_m
+    if let Some(max_r) = env.max_range_m
         && slant_range_m > max_r
     {
         restrictions.push(AccessRestrictionReason::RangeAboveMaximum {
@@ -341,7 +255,7 @@ fn append_fov_and_range_restrictions(
 }
 
 fn append_body_and_terrain_occultation(
-    ctx: &EndpointPairCtx<'_>,
+    env: &PairConstraintEnv<'_>,
     emit_epoch: TdbEpoch,
     epoch: TdbEpoch,
     src: &EndpointWorldState,
@@ -349,7 +263,29 @@ fn append_body_and_terrain_occultation(
     below_dem_horizon: impl FnOnce(NaifId) -> bool,
     restrictions: &mut Vec<AccessRestrictionReason>,
 ) -> Result<(), AccessAnalysisError> {
-    if ctx.query.signal_time == SignalTimeModel::LightTime {
+    append_planetary_body_occultation(env, emit_epoch, epoch, src, dst, restrictions)?;
+    append_terrain_occultation(
+        env.terrain_dem,
+        env.ephemeris,
+        env.orientation,
+        emit_epoch,
+        epoch,
+        src,
+        dst,
+        below_dem_horizon,
+        restrictions,
+    )
+}
+
+fn append_planetary_body_occultation(
+    env: &PairConstraintEnv<'_>,
+    emit_epoch: TdbEpoch,
+    epoch: TdbEpoch,
+    src: &EndpointWorldState,
+    dst: &EndpointWorldState,
+    restrictions: &mut Vec<AccessRestrictionReason>,
+) -> Result<(), AccessAnalysisError> {
+    if env.signal_time == SignalTimeModel::LightTime {
         let host = |end: &EndpointWorldState| end.is_surface_station.then_some(end.host_body);
         if let Some((body, min_altitude_above_surface_m)) = check_signal_path_occultation(
             emit_epoch,
@@ -358,9 +294,9 @@ fn append_body_and_terrain_occultation(
             host(dst),
             src.pos_ssb_m,
             dst.pos_ssb_m,
-            ctx.occultation_env,
-            ctx.ephemeris,
-            ctx.orientation,
+            env.occultation_env,
+            env.ephemeris,
+            env.orientation,
         )
         .map_err(|e| map_geom_err(e, epoch))?
         {
@@ -369,15 +305,7 @@ fn append_body_and_terrain_occultation(
                 min_altitude_above_surface_m,
             });
         }
-        return append_terrain_occultation(
-            ctx,
-            emit_epoch,
-            epoch,
-            src,
-            dst,
-            below_dem_horizon,
-            restrictions,
-        );
+        return Ok(());
     }
     let station_host = if src.is_surface_station {
         src.host_body
@@ -396,9 +324,9 @@ fn append_body_and_terrain_occultation(
         station_host,
         p0,
         p1,
-        ctx.occultation_env,
-        ctx.ephemeris,
-        ctx.orientation,
+        env.occultation_env,
+        env.ephemeris,
+        env.orientation,
     )
     .map_err(|e| map_geom_err(e, epoch))?
     {
@@ -407,15 +335,7 @@ fn append_body_and_terrain_occultation(
             min_altitude_above_surface_m: min_alt,
         });
     }
-    append_terrain_occultation(
-        ctx,
-        emit_epoch,
-        epoch,
-        src,
-        dst,
-        below_dem_horizon,
-        restrictions,
-    )
+    Ok(())
 }
 
 pub(super) fn evaluate_relay_at_epoch(

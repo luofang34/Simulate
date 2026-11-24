@@ -7,8 +7,9 @@ use world::notices::{
     ClosureStatus, FacilityKey, NoticeId, RunwayKey, SurfaceClosureNotice, SurfaceElement,
 };
 use world::surveillance::{
-    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-    TrackKey, TrackObservation,
+    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, ObservationOrigin, ObservationTime,
+    PositionObservation, SourceRef, TimeBasis, TrackKey, TrafficObservation, VelocityObservation,
+    Wgs84Position,
 };
 use world::{DecimalYear, GeodeticPosition, LocalTangentPlane, Ned, ValidityWindow};
 
@@ -43,7 +44,7 @@ fn sample_airport() -> AirportSurfaceGraph {
 
 #[test]
 fn radio_belief_filters_out_of_range_traffic_while_preserving_truth() {
-    let mut sup = SimSupervisor::new();
+    let mut sup = SimSupervisor::new().unwrap();
     sup.set_time_scale(SimTimeScale::Warp(4.0));
     assert_eq!(sup.time_scale().factor(), 4.0);
     sup.set_viewport_mode(OperatorViewportMode::VolumetricScene);
@@ -68,32 +69,31 @@ fn radio_belief_filters_out_of_range_traffic_while_preserving_truth() {
         east_m: 0.0,
         down_m: 0.0,
     });
-    for (addr, pos) in [(1u64, near_pos), (2u64, far_pos)] {
+    for (addr, pos) in [(1u32, near_pos), (2u32, far_pos)] {
+        let mut vel = VelocityObservation::default();
+        vel.ground_speed_kt = Some(19.4);
+        vel.track_angle_deg_true = Some(180.0);
+        let mut obs = TrafficObservation::new(
+            ObservationTime {
+                received_at_micros: 0,
+                observed_at_micros: 0,
+                basis: TimeBasis::LocalIngress,
+            },
+            SourceRef::new(1, 0, DeliveryPath::Simulator),
+            ObservationOrigin::Unknown,
+            TrackKey::new(AddressNamespace::SelfAssigned, addr),
+        );
+        obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+            latitude_deg: pos.latitude_deg,
+            longitude_deg: pos.longitude_deg,
+        }));
+        obs.geometric_altitude_ft = Some((pos.ellipsoidal_height_m / 0.3048).round() as i32);
+        obs.velocity = Some(vel);
+        obs.callsign = Some(Callsign::new("UAS1"));
+        obs.emitter_category = Some(EmitterCategory::UncrewedAircraft);
         sup.truth_world_mut()
             .surveillance
-            .ingest(
-                TrackObservation {
-                    key: TrackKey {
-                        namespace: AddressNamespace::RemoteId,
-                        address: addr,
-                    },
-                    source: ObservationSource::RemoteId,
-                    delivery: DeliveryPath::Simulator,
-                    observed_at_us: 0,
-                    position: pos,
-                    velocity_ned_m_s: Ned {
-                        north_m: -10.0,
-                        east_m: 0.0,
-                        down_m: 0.0,
-                    },
-                    heading_rad: None,
-                    callsign: Callsign::parse("UAS1"),
-                    category: EmitterCategory::Uav,
-                    on_ground: false,
-                    quality: IntegrityQuality::default(),
-                },
-                0,
-            )
+            .ingest(obs, |_| {})
             .unwrap();
     }
 
@@ -105,16 +105,17 @@ fn radio_belief_filters_out_of_range_traffic_while_preserving_truth() {
     );
 
     // Truth sees both targets; single-copy operator belief sees only the in-range target.
-    assert_eq!(sup.truth_world().surveillance.tracks().len(), 2);
+    assert_eq!(sup.truth_world().surveillance.snapshots().count(), 2);
     let op = sup.operator_view();
     assert_eq!(op.viewport_mode, OperatorViewportMode::VolumetricScene);
-    assert_eq!(op.belief_world.surveillance.tracks().len(), 1);
-    assert_eq!(op.belief_world.surveillance.tracks()[0].key.address, 1);
+    let belief_tracks: Vec<_> = op.belief_world.surveillance.snapshots().collect();
+    assert_eq!(belief_tracks.len(), 1);
+    assert_eq!(belief_tracks[0].key.address, 1);
 }
 
 #[test]
 fn flightbag_runway_and_parking_spawn_respect_closure_notices() {
-    let mut sup = SimSupervisor::new();
+    let mut sup = SimSupervisor::new().unwrap();
     let airport = sample_airport();
     let rwy01 = RunwayDesignator::parse("01").unwrap();
     let at = DecimalYear(2026.5);

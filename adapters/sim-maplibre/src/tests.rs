@@ -1,4 +1,5 @@
 pub(crate) mod gpu;
+mod planetary;
 
 use flightbag::{RunwayDesignator, RunwayEndSpec};
 use glam::{DMat3, DQuat, DVec3};
@@ -17,10 +18,11 @@ use sim_core::{Block, CameraMount, CameraPoseEcef, SimInstant, VehicleState};
 use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, SensorIntrinsics};
 use sim_indicate::{VOLUME_SCENE_BYTES, VolumeInstrument};
 use world::{
-    GeodeticPosition, Ned,
+    GeodeticPosition,
     surveillance::{
-        AddressNamespace, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-        SurveillanceStore, TrackKey, TrackObservation,
+        AddressNamespace, Band, DeliveryPath, EmitterCategory, EngineConfig, ObservationOrigin,
+        ObservationTime, PositionObservation, ProducerInstanceId, SourceRef, SurveillanceEngine,
+        TimeBasis, TrackKey, TrafficObservation, VelocityObservation, Wgs84Position,
     },
 };
 
@@ -169,35 +171,43 @@ fn ned_body_quaternion_and_surveillance_belief_mapping_preserve_6dof_and_masks()
     assert!(!own.placement.view_mask.includes(otw_slot));
     assert!(own.placement.view_mask.includes(chase_slot));
 
-    let mut store = SurveillanceStore::default();
+    let mut store = SurveillanceEngine::new(EngineConfig::default(), ProducerInstanceId::new(1))
+        .expect("engine");
     let own_key = TrackKey {
-        namespace: AddressNamespace::Icao24,
+        namespace: AddressNamespace::Icao,
         address: 0xABCDEF,
     };
     let traffic_key = TrackKey {
-        namespace: AddressNamespace::Icao24,
+        namespace: AddressNamespace::Icao,
         address: 0x123456,
     };
-    store.set_ownship_keys(&[own_key]);
+    store
+        .set_ownship_identities(&[own_key], |_| {})
+        .expect("ownship key");
     for (key, lon_deg) in [(own_key, -75.50), (traffic_key, -75.48)] {
-        let obs = TrackObservation {
-            key,
-            source: ObservationSource::Adsb1090,
-            delivery: DeliveryPath::LocalReceiver,
-            observed_at_us: 1_000_000,
-            position: GeodeticPosition::wgs84(39.02, lon_deg, 500.0),
-            velocity_ned_m_s: Ned {
-                north_m: 55.0,
-                east_m: 5.0,
-                down_m: 0.0,
+        let mut vel = VelocityObservation::default();
+        vel.ground_speed_kt = Some(107.0);
+        vel.track_angle_deg_true = Some(5.2);
+        let mut obs = TrafficObservation::new(
+            ObservationTime {
+                received_at_micros: 1_000_000,
+                observed_at_micros: 1_000_000,
+                basis: TimeBasis::LocalIngress,
             },
-            heading_rad: Some(0.1),
-            callsign: None,
-            category: EmitterCategory::Light,
-            on_ground: false,
-            quality: IntegrityQuality::default(),
-        };
-        store.ingest(obs, 1_000_000).expect("ingest");
+            SourceRef::new(1, 0, DeliveryPath::LocalReceiver),
+            ObservationOrigin::AdsbDirect {
+                band: Band::Adsb1090,
+            },
+            key,
+        );
+        obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+            latitude_deg: 39.02,
+            longitude_deg: lon_deg,
+        }));
+        obs.geometric_altitude_ft = Some((500.0 / 0.3048_f64).round() as i32);
+        obs.velocity = Some(vel);
+        obs.emitter_category = Some(EmitterCategory::LightAircraft);
+        store.ingest(obs, |_| {}).expect("ingest");
     }
     assert_eq!(entities_from_surveillance_belief(&store, 0.0).len(), 1);
 }
@@ -421,73 +431,4 @@ fn companion_stream_session_roundtrips_outbound_and_inbound_gestures() {
         .expect("apply tap")
         .expect("accepted tap");
     assert_eq!(tap_res.activated_target, Some(TargetId(42)));
-}
-
-#[test]
-fn real_world_imagery_stops_at_esri_served_zoom() {
-    let endpoints = crate::SceneryEndpoints::real_world();
-    assert_eq!(endpoints.ortho_maxzoom, 18);
-    assert!(
-        endpoints
-            .ortho_tiles
-            .starts_with("https://services.arcgisonline.com/")
-    );
-    assert!(!endpoints.ortho_tiles.contains("blankTile"));
-}
-
-#[test]
-fn non_earth_stamps_and_globe_ned_scale_with_moon_and_mars_bodies() {
-    use crate::{
-        LUNAR_RENDER_BODY, MARS_RENDER_BODY, conformal_stamp_from_pose_on, default_render_body,
-        globe_ned_between_geodetic, project_geodetic_to_screen,
-    };
-    use sim_core::CameraPoseEcef;
-    use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
-
-    assert_eq!(
-        default_render_body(BodyEllipsoid::MOON_IAU),
-        LUNAR_RENDER_BODY
-    );
-    assert_eq!(
-        default_render_body(BodyEllipsoid::MARS_IAU),
-        MARS_RENDER_BODY
-    );
-
-    let frustum = symmetric_frustum(50.0_f64.to_radians(), 800, 600, 0.5, 250_000.0).expect("f");
-    // Hellas Planitia sits ~7.1 km below the Martian datum; Earth's -450 m floor would reject it,
-    // whereas `MARS_RENDER_BODY` (-8,200 m floor) admits it cleanly.
-    let hellas_eye = Geodetic::from_degrees(-42.4, 70.5, -7_100.0);
-    let local = LocalFrame::at(&hellas_eye);
-    let cam_pose = CameraPoseEcef {
-        position_ecef: BodyEllipsoid::MARS_IAU.geodetic_to_fixed(&hellas_eye),
-        orientation: DQuat::from_mat3(&DMat3::from_cols(local.east(), local.up(), -local.north())),
-    };
-    assert!(external_view_from_pose(&cam_pose, frustum, 0.0).is_err());
-    let mars_stamp = conformal_stamp_from_pose_on(
-        SimInstant::START,
-        BodyEllipsoid::MARS_IAU,
-        MARS_RENDER_BODY,
-        &cam_pose,
-        frustum,
-        0.0,
-    )
-    .expect("Mars Hellas stamp");
-    assert!((mars_stamp.anchor.altitude_msl_m + 7_100.0).abs() < 1e-6);
-
-    let ahead = Geodetic::from_degrees(-42.39, 70.5, -7_100.0);
-    assert!(project_geodetic_to_screen(&mars_stamp, &ahead, 0.0, [800, 600]).is_some());
-
-    // 0.01 deg north on the Moon (~303.2 m) vs Earth (~1,111.9 m): ratio equals R_moon / R_earth.
-    let moon_a = Geodetic::from_degrees(0.0, 23.47, 0.0);
-    let moon_b = Geodetic::from_degrees(0.01, 23.47, 0.0);
-    let ned_moon = globe_ned_between_geodetic(LUNAR_RENDER_BODY, &moon_a, 0.0, &moon_b, 0.0)
-        .expect("moon ned");
-    let ned_earth =
-        globe_ned_between_geodetic(crate::RenderBody::EARTH, &moon_a, 0.0, &moon_b, 0.0)
-            .expect("earth ned");
-    let ratio = ned_moon.x / ned_earth.x;
-    assert!(
-        (ratio - LUNAR_RENDER_BODY.radius_meters / crate::RenderBody::EARTH.radius_meters).abs()
-            < 1e-9
-    );
 }

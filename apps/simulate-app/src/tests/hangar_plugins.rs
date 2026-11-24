@@ -186,7 +186,7 @@ fn npc_fleet_spawns_apron_flies_routes_and_feeds_adsb() -> Result<(), AppSimErro
         "orbit NPC must advance across time"
     );
 
-    let mut sup = SupervisorRig::new();
+    let mut sup = SupervisorRig::new()?;
     sup.ingest_npc_transponders(&t1, SimInstant::START);
     let truth_entities = sup.truth_entities(sim_maplibre::ViewSlotMask::ALL);
     assert!(

@@ -2,16 +2,17 @@
 
 use crate::error::FlightDeckError;
 use crate::planet::PlanetaryReference;
-use crate::telemetry::{FEET_TO_METRES, FPM_TO_MPS, OwnshipState};
+use crate::telemetry::{FEET_TO_METRES, FPM_TO_MPS, KNOTS_TO_MPS, OwnshipState};
 use crate::traffic::TrafficCoordinator;
-use world_core::{LocalTangentPlane, Ned};
-use world_surveillance::{
-    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-    TrackKey, TrackObservation,
+use world::surveillance::{
+    AddressNamespace, AirGroundState, Band, Callsign, DeliveryPath, EmitterCategory, FieldQuality,
+    ObservationOrigin, ObservationTime, PositionObservation, SourceRef, TimeBasis, TrackKey,
+    TrafficObservation, VelocityObservation, VerticalRateSource, Wgs84Position,
 };
+use world_core::{LocalTangentPlane, Ned};
 
 pub(super) struct ScriptedTargetSpec {
-    pub icao: u64,
+    pub icao: u32,
     pub callsign: &'static str,
     pub east0_m: f64,
     pub north0_m: f64,
@@ -51,41 +52,63 @@ pub(super) fn ingest_scripted_targets(
         let north_m = spec.north0_m + spec.vn_mps * t_s;
         let vd_mps = -spec.climb_fpm * FPM_TO_MPS;
         let alt_m = own_alt_m + spec.rel_alt_ft * FEET_TO_METRES - vd_mps * t_s;
-        let mut pos = plane.to_geodetic(Ned {
+        let pos = plane.to_geodetic(Ned {
             north_m,
             east_m,
             down_m: 0.0,
         });
-        pos.ellipsoidal_height_m = alt_m.max(20.0);
-        let hdg_rad = libm::atan2(spec.ve_mps, spec.vn_mps).rem_euclid(core::f64::consts::TAU);
-        let obs = TrackObservation {
-            key: TrackKey {
-                namespace: AddressNamespace::Icao24,
-                address: spec.icao,
-            },
-            source: ObservationSource::Adsb1090,
-            delivery: DeliveryPath::Simulator,
-            observed_at_us: now_us,
-            position: pos,
-            velocity_ned_m_s: Ned {
-                north_m: spec.vn_mps,
-                east_m: spec.ve_mps,
-                down_m: vd_mps,
-            },
-            heading_rad: Some(hdg_rad),
-            callsign: Callsign::parse(spec.callsign),
-            category: spec.category,
-            on_ground: false,
-            quality: IntegrityQuality {
-                nic: 9,
-                nac_p: 9,
-                sil: 3,
-                horizontal_1sigma_m: None,
-            },
-        };
-        traffic.ingest_observation(obs, now_ms)?;
+        let obs =
+            build_scripted_observation(spec, pos.latitude_deg, pos.longitude_deg, alt_m, now_us);
+        traffic.ingest_observation(obs)?;
     }
     Ok(())
+}
+
+fn build_scripted_observation(
+    spec: &ScriptedTargetSpec,
+    latitude_deg: f64,
+    longitude_deg: f64,
+    alt_m: f64,
+    now_us: u64,
+) -> TrafficObservation {
+    let ground_speed_kt = libm::hypot(spec.ve_mps, spec.vn_mps) / KNOTS_TO_MPS;
+    let raw_deg = libm::atan2(spec.ve_mps, spec.vn_mps)
+        .to_degrees()
+        .rem_euclid(360.0);
+    let track_deg = if (0.0..360.0).contains(&raw_deg) {
+        raw_deg
+    } else {
+        0.0
+    };
+    let mut velocity = VelocityObservation::default();
+    velocity.ground_speed_kt = Some(ground_speed_kt);
+    velocity.track_angle_deg_true = Some(track_deg);
+    velocity.vertical_rate_fpm = Some(spec.climb_fpm.round() as i32);
+    velocity.vertical_rate_source = Some(VerticalRateSource::Barometric);
+
+    let mut obs = TrafficObservation::new(
+        ObservationTime {
+            received_at_micros: now_us,
+            observed_at_micros: now_us,
+            basis: TimeBasis::LocalIngress,
+        },
+        SourceRef::new(1, 0, DeliveryPath::Simulator),
+        ObservationOrigin::AdsbDirect {
+            band: Band::Adsb1090,
+        },
+        TrackKey::new(AddressNamespace::Icao, spec.icao),
+    );
+    obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+        latitude_deg,
+        longitude_deg,
+    }));
+    obs.geometric_altitude_ft = Some((alt_m.max(20.0) / FEET_TO_METRES).round() as i32);
+    obs.velocity = Some(velocity);
+    obs.callsign = Some(Callsign::new(spec.callsign));
+    obs.emitter_category = Some(spec.category);
+    obs.air_ground = Some(AirGroundState::Airborne);
+    obs.quality = FieldQuality::new(Some(9), Some(9), None, Some(3));
+    obs
 }
 
 pub(super) const CRUISE_TARGETS: [ScriptedTargetSpec; 4] = [
@@ -98,7 +121,7 @@ pub(super) const CRUISE_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -42.0,
         vn_mps: -35.0,
         climb_fpm: -450.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xAA_430C,
@@ -109,7 +132,7 @@ pub(super) const CRUISE_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -25.0,
         vn_mps: 38.0,
         climb_fpm: 550.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xA4_E211,
@@ -120,7 +143,7 @@ pub(super) const CRUISE_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: 34.0,
         vn_mps: -18.0,
         climb_fpm: 0.0,
-        category: EmitterCategory::Light,
+        category: EmitterCategory::LightAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xEA_60A3,
@@ -131,7 +154,7 @@ pub(super) const CRUISE_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -55.0,
         vn_mps: -48.0,
         climb_fpm: -600.0,
-        category: EmitterCategory::Heavy,
+        category: EmitterCategory::HeavyAircraft,
     },
 ];
 
@@ -145,7 +168,7 @@ pub(super) const CPA_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -78.0,
         vn_mps: -54.0,
         climb_fpm: -350.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xA9_7390,
@@ -156,7 +179,7 @@ pub(super) const CPA_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -36.0,
         vn_mps: 34.0,
         climb_fpm: 320.0,
-        category: EmitterCategory::Light,
+        category: EmitterCategory::LightAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xA3_1184,
@@ -167,7 +190,7 @@ pub(super) const CPA_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: -60.0,
         vn_mps: -30.0,
         climb_fpm: 800.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xA8_FCAA,
@@ -178,7 +201,7 @@ pub(super) const CPA_TARGETS: [ScriptedTargetSpec; 4] = [
         ve_mps: 52.0,
         vn_mps: -22.0,
         climb_fpm: 0.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
 ];
 
@@ -192,7 +215,7 @@ pub(super) const APPROACH_TARGETS: [ScriptedTargetSpec; 3] = [
         ve_mps: -32.0,
         vn_mps: -56.0,
         climb_fpm: -650.0,
-        category: EmitterCategory::Large,
+        category: EmitterCategory::LargeAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xAC_3812,
@@ -203,7 +226,7 @@ pub(super) const APPROACH_TARGETS: [ScriptedTargetSpec; 3] = [
         ve_mps: -30.0,
         vn_mps: -52.0,
         climb_fpm: -500.0,
-        category: EmitterCategory::Small,
+        category: EmitterCategory::SmallAircraft,
     },
     ScriptedTargetSpec {
         icao: 0xA1_5520,

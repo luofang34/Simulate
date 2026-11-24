@@ -1,18 +1,23 @@
 //! ADS-B / TIS-B multi-source traffic fusion, callsign labeling, CPA threat classification,
-//! and `Indicate` HUD `TargetPicture` projection (`world-surveillance`).
+//! and `Indicate` HUD `TargetPicture` projection (`world::surveillance` + `world::traffic`).
+
+mod projection;
 
 use crate::connext::nmea::ConnextTrafficTarget;
 use crate::error::FlightDeckError;
 use crate::gdl90::Gdl90ParticipantReport;
 use crate::planet::PlanetaryReference;
 use crate::telemetry::{FEET_TO_METRES, FPM_TO_MPS, KNOTS_TO_MPS, OwnshipState};
-use indicate_instrument_hud::{Contact, Domain, Identity, MAX_CONTACTS, TargetPicture};
-use indicate_instrument_state::SignalStatus;
-use world_core::{GeodeticPosition, Ned};
-use world_surveillance::{
-    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-    SurveillanceStore, TrackKey, TrackObservation, TrackPhase,
+use indicate_instrument_hud::{MAX_CONTACTS, TargetPicture};
+use projection::{build_display_target, to_hud_contact};
+use world::surveillance::{
+    AddressNamespace, AirGroundState, Band, Callsign, DeliveryPath, EngineConfig, FieldQuality,
+    ObservationOrigin, ObservationTime, PositionObservation, ProducerInstanceId, SourceRef,
+    SurveillanceEngine, TimeBasis, TrackKey, TrafficObservation, VelocityObservation,
+    VerticalRateSource, Wgs84Position,
 };
+use world::traffic::{Ownship, relative_to_ownship};
+use world_core::{GeodeticPosition, LocalTangentPlane, Ned};
 
 const METRES_PER_NM: f64 = 1_852.0;
 
@@ -32,7 +37,7 @@ pub enum TrafficThreat {
 /// 3D traffic contact with resolved callsign and relative-altitude placard for XR rendering.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrafficDisplayTarget {
-    /// Stable track ID assigned by [`SurveillanceStore`].
+    /// Stable track ID assigned by [`SurveillanceEngine`].
     pub track_id: u64,
     /// 24-bit ICAO or track address formatted as 6 uppercase hex digits (e.g. `"A8FCAA"`).
     pub address_hex: String,
@@ -64,42 +69,60 @@ pub struct TrafficDisplayTarget {
     pub active: bool,
 }
 
-/// Stateful coordinator wrapping [`SurveillanceStore`] for Connext, GDL-90, and simulated traffic.
-#[derive(Clone, Debug, Default)]
+/// Stateful coordinator wrapping [`SurveillanceEngine`] for Connext, GDL-90, and simulated traffic.
+#[derive(Debug)]
 pub struct TrafficCoordinator {
-    store: SurveillanceStore,
+    engine: SurveillanceEngine,
+    producer_seq: u64,
 }
 
 impl TrafficCoordinator {
     /// Creates an empty [`TrafficCoordinator`].
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            store: SurveillanceStore::default(),
-        }
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FlightDeckError::Surveillance`] if engine configuration validation fails.
+    pub fn new() -> Result<Self, FlightDeckError> {
+        let producer_seq = 1;
+        let engine = SurveillanceEngine::new(
+            EngineConfig::default(),
+            ProducerInstanceId::new(producer_seq),
+        )
+        .map_err(|e| FlightDeckError::Surveillance {
+            reason: e.to_string(),
+        })?;
+        Ok(Self {
+            engine,
+            producer_seq,
+        })
     }
 
     /// Resets all tracked traffic (used when switching telemetry sources).
     pub fn clear(&mut self) {
-        self.store = SurveillanceStore::default();
+        let next_seq = self.producer_seq.wrapping_add(1);
+        if let Ok(fresh) =
+            SurveillanceEngine::new(EngineConfig::default(), ProducerInstanceId::new(next_seq))
+        {
+            self.producer_seq = next_seq;
+            self.engine = fresh;
+        }
     }
 
-    /// Underlying [`SurveillanceStore`] reference.
+    /// Underlying [`SurveillanceEngine`] reference.
     #[must_use]
-    pub const fn store(&self) -> &SurveillanceStore {
-        &self.store
+    pub const fn engine(&self) -> &SurveillanceEngine {
+        &self.engine
     }
 
     /// Updates ownship Mode-S address so ownship ADS-B/TIS-B echoes are tagged `ownship_shadow`.
     pub fn set_ownship_mode_s(&mut self, mode_s_code: Option<u32>) {
         if let Some(code) = mode_s_code {
-            let key = TrackKey {
-                namespace: AddressNamespace::Icao24,
-                address: u64::from(code & 0x00FF_FFFF),
-            };
-            self.store.set_ownship_keys(&[key]);
+            let key = TrackKey::new(AddressNamespace::Icao, code & 0x00FF_FFFF);
+            let _res = self
+                .engine
+                .set_ownship_identities(core::slice::from_ref(&key), |_| {});
         } else {
-            self.store.set_ownship_keys(&[]);
+            let _res = self.engine.set_ownship_identities(&[], |_| {});
         }
     }
 
@@ -119,45 +142,34 @@ impl TrafficCoordinator {
         now_ms: u64,
     ) -> Result<(), FlightDeckError> {
         let now_us = now_ms.saturating_mul(1_000);
-        let key = TrackKey {
-            namespace: AddressNamespace::Icao24,
-            address: u64::from(target.raw_id & 0x00FF_FFFF),
-        };
+        let key = TrackKey::new(AddressNamespace::Icao, target.raw_id & 0x00FF_FFFF);
         let alt_m = target
             .pressure_altitude_ft
             .map_or(0.0, |ft| f64::from(ft) * FEET_TO_METRES);
-        let position = GeodeticPosition::wgs84(target.latitude_deg, target.longitude_deg, alt_m);
+        let new_pos = GeodeticPosition::wgs84(target.latitude_deg, target.longitude_deg, alt_m);
+        let velocity = self.estimate_connext_velocity(key, new_pos, now_us);
 
-        let (vel_ned, heading_rad) = self
-            .estimate_connext_velocity(key, position, now_us)
-            .unwrap_or((
-                Ned {
-                    north_m: 0.0,
-                    east_m: 0.0,
-                    down_m: 0.0,
-                },
-                None,
-            ));
-
-        let obs = TrackObservation {
+        let mut obs = TrafficObservation::new(
+            ObservationTime {
+                received_at_micros: now_us,
+                observed_at_micros: now_us,
+                basis: TimeBasis::LocalIngress,
+            },
+            SourceRef::new(1, 0, delivery),
+            ObservationOrigin::AdsbDirect {
+                band: Band::Adsb1090,
+            },
             key,
-            source: ObservationSource::Adsb1090,
-            delivery,
-            observed_at_us: now_us,
-            position,
-            velocity_ned_m_s: vel_ned,
-            heading_rad,
-            callsign: target.callsign.as_deref().and_then(sanitize_callsign),
-            category: EmitterCategory::Unknown,
-            on_ground: false,
-            quality: IntegrityQuality::default(),
-        };
-        self.store
-            .ingest(obs, now_us)
-            .map(|_| ())
-            .map_err(|e| FlightDeckError::Surveillance {
-                reason: e.to_string(),
-            })
+        );
+        obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+            latitude_deg: target.latitude_deg,
+            longitude_deg: target.longitude_deg,
+        }));
+        obs.pressure_altitude_ft = target.pressure_altitude_ft;
+        obs.velocity = velocity;
+        obs.callsign = target.callsign.as_deref().and_then(sanitize_callsign);
+        obs.air_ground = Some(AirGroundState::Airborne);
+        self.ingest_observation(obs)
     }
 
     /// Ingests one GDL-90 `0x14` traffic participant report at monotonic `now_ms`.
@@ -171,62 +183,48 @@ impl TrafficCoordinator {
         now_ms: u64,
     ) -> Result<(), FlightDeckError> {
         let now_us = now_ms.saturating_mul(1_000);
-        let alt_m = report
-            .pressure_altitude_ft
-            .map_or(0.0, |ft| f64::from(ft) * FEET_TO_METRES);
-        let position = GeodeticPosition::wgs84(report.latitude_deg, report.longitude_deg, alt_m);
-        let trk_rad = report.track_or_heading_deg.map(f64::to_radians);
-        let spd_mps = report.horizontal_speed_kt.unwrap_or(0.0) * KNOTS_TO_MPS;
-        let (vn, ve) = trk_rad.map_or((0.0, 0.0), |r| {
-            (spd_mps * libm::cos(r), spd_mps * libm::sin(r))
+        let mut obs = TrafficObservation::new(
+            ObservationTime {
+                received_at_micros: now_us,
+                observed_at_micros: now_us,
+                basis: TimeBasis::LocalIngress,
+            },
+            SourceRef::new(1, 0, DeliveryPath::LocalReceiver),
+            ObservationOrigin::AdsbDirect {
+                band: Band::Adsb1090,
+            },
+            TrackKey::new(report.namespace, report.address),
+        );
+        obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+            latitude_deg: report.latitude_deg,
+            longitude_deg: report.longitude_deg,
+        }));
+        obs.pressure_altitude_ft = report.pressure_altitude_ft;
+        obs.velocity = build_gdl90_velocity(report);
+        obs.callsign = report.callsign.as_deref().and_then(sanitize_callsign);
+        obs.emitter_category = report.emitter_category;
+        obs.air_ground = Some(if report.airborne {
+            AirGroundState::Airborne
+        } else {
+            AirGroundState::Ground
         });
-        let vd = -report.vertical_speed_fpm.unwrap_or(0.0) * FPM_TO_MPS;
-
-        let obs = TrackObservation {
-            key: TrackKey {
-                namespace: report.namespace,
-                address: u64::from(report.address),
-            },
-            source: ObservationSource::Adsb1090,
-            delivery: DeliveryPath::LocalReceiver,
-            observed_at_us: now_us,
-            position,
-            velocity_ned_m_s: Ned {
-                north_m: vn,
-                east_m: ve,
-                down_m: vd,
-            },
-            heading_rad: trk_rad,
-            callsign: report.callsign.as_deref().and_then(sanitize_callsign),
-            category: report.emitter_category,
-            on_ground: !report.airborne,
-            quality: IntegrityQuality {
-                nic: report.nic,
-                nac_p: report.nac_p,
-                sil: 0,
-                horizontal_1sigma_m: None,
-            },
-        };
-        self.store
-            .ingest(obs, now_us)
-            .map(|_| ())
-            .map_err(|e| FlightDeckError::Surveillance {
-                reason: e.to_string(),
-            })
+        obs.quality = FieldQuality::new(
+            (report.nic <= 11).then_some(report.nic),
+            (report.nac_p <= 11).then_some(report.nac_p),
+            None,
+            None,
+        );
+        self.ingest_observation(obs)
     }
 
-    /// Ingests a direct [`TrackObservation`] (used by deterministic traffic/CPA scenarios).
+    /// Ingests a direct [`TrafficObservation`] (used by deterministic traffic/CPA scenarios).
     ///
     /// # Errors
     ///
-    /// Returns [`FlightDeckError::Surveillance`] if rejected by [`SurveillanceStore`].
-    pub fn ingest_observation(
-        &mut self,
-        obs: TrackObservation,
-        now_ms: u64,
-    ) -> Result<(), FlightDeckError> {
-        self.store
-            .ingest(obs, now_ms.saturating_mul(1_000))
+    /// Returns [`FlightDeckError::Surveillance`] if rejected by [`SurveillanceEngine`].
+    pub fn ingest_observation(&mut self, obs: TrafficObservation) -> Result<(), FlightDeckError> {
+        self.engine
+            .ingest(obs, |_| {})
             .map(|_| ())
             .map_err(|e| FlightDeckError::Surveillance {
                 reason: e.to_string(),
@@ -244,7 +242,7 @@ impl TrafficCoordinator {
         now_ms: u64,
     ) -> (Vec<TrafficDisplayTarget>, TargetPicture) {
         let now_us = now_ms.saturating_mul(1_000);
-        self.store.advance_time(now_us);
+        let _adv = self.engine.advance_time(now_us, |_| {});
         self.set_ownship_mode_s(ownship.identity.as_ref().map(|id| id.mode_s_code));
 
         let Some(mut own_geo) = ownship.valid_earth_wgs84_position(planet) else {
@@ -254,14 +252,19 @@ impl TrafficCoordinator {
             own_geo.ellipsoidal_height_m = best_alt_m;
         }
         let own_vel_ned = ownship_velocity_ned(ownship);
-        let relatives = self.store.relative_to_ownship(own_geo, own_vel_ned, now_us);
+        let own_world = Ownship {
+            position: own_geo,
+            velocity_ned_m_s: own_vel_ned,
+            pressure_altitude_ft: ownship.pressure_altitude_ft,
+        };
 
-        let mut display_targets = Vec::with_capacity(relatives.len());
+        let mut display_targets = Vec::with_capacity(self.engine.track_count());
         let mut picture = TargetPicture::default();
         let mut designated_hud_idx: Option<usize> = None;
 
-        for rel in relatives {
-            let Some(track) = self.store.track(rel.id) else {
+        for handle in self.engine.snapshots() {
+            let track = handle.snapshot();
+            let Ok(rel) = relative_to_ownship(&own_world, track, now_us) else {
                 continue;
             };
             let target = build_display_target(track, &rel);
@@ -286,30 +289,70 @@ impl TrafficCoordinator {
         key: TrackKey,
         new_pos: GeodeticPosition,
         now_us: u64,
-    ) -> Option<(Ned, Option<f64>)> {
-        let prev = self.store.track_by_key(key)?;
-        let dt_us = now_us.saturating_sub(prev.observed_at_us);
+    ) -> Option<VelocityObservation> {
+        let prev = self.engine.snapshot(key)?;
+        let prev_pos = prev.position.as_ref()?;
+        let dt_us = now_us.saturating_sub(prev.last_observed_at_micros);
         if !(200_000..=15_000_000).contains(&dt_us) {
-            return Some((prev.velocity_ned_m_s, prev.heading_rad));
+            return prev.velocity.map(|v| v.value);
         }
-        let plane = world_core::LocalTangentPlane::new(prev.position).ok()?;
+        let prev_alt_m = prev
+            .pressure_altitude_ft
+            .or(prev.geometric_altitude_ft)
+            .map_or(0.0, |a| f64::from(a.value) * FEET_TO_METRES);
+        let prev_geo = GeodeticPosition::wgs84(
+            prev_pos.value.latitude_deg,
+            prev_pos.value.longitude_deg,
+            prev_alt_m,
+        );
+        let plane = LocalTangentPlane::new(prev_geo).ok()?;
         let delta = plane.to_ned(new_pos).ok()?;
         let dt_s = dt_us as f64 * 1e-6;
         let vn = (delta.north_m / dt_s).clamp(-400.0, 400.0);
         let ve = (delta.east_m / dt_s).clamp(-400.0, 400.0);
         let vd = (delta.down_m / dt_s).clamp(-80.0, 80.0);
-        let horiz = libm::hypot(vn, ve);
-        let heading = (horiz > 2.0)
-            .then(|| libm::atan2(ve, vn).rem_euclid(core::f64::consts::TAU))
-            .or(prev.heading_rad);
-        Some((
-            Ned {
-                north_m: vn,
-                east_m: ve,
-                down_m: vd,
-            },
-            heading,
-        ))
+        let gs_mps = libm::hypot(vn, ve);
+        let mut vel = VelocityObservation::default();
+        vel.ground_speed_kt = Some(gs_mps / KNOTS_TO_MPS);
+        if gs_mps > 2.0 {
+            vel.track_angle_deg_true = normalize_deg_360(libm::atan2(ve, vn).to_degrees());
+        } else {
+            vel.track_angle_deg_true = prev.velocity.and_then(|v| v.value.track_angle_deg_true);
+        }
+        vel.vertical_rate_fpm = Some(((-vd) / FPM_TO_MPS).round() as i32);
+        vel.vertical_rate_source = Some(VerticalRateSource::Barometric);
+        Some(vel)
+    }
+}
+
+fn build_gdl90_velocity(report: &Gdl90ParticipantReport) -> Option<VelocityObservation> {
+    if report.horizontal_speed_kt.is_none()
+        && report.track_or_heading_deg.is_none()
+        && report.vertical_speed_fpm.is_none()
+    {
+        return None;
+    }
+    let mut vel = VelocityObservation::default();
+    vel.ground_speed_kt = report
+        .horizontal_speed_kt
+        .filter(|v| v.is_finite() && *v >= 0.0);
+    vel.track_angle_deg_true = report.track_or_heading_deg.and_then(normalize_deg_360);
+    vel.vertical_rate_fpm = report.vertical_speed_fpm.map(|f| f.round() as i32);
+    vel.vertical_rate_source = vel
+        .vertical_rate_fpm
+        .map(|_| VerticalRateSource::Barometric);
+    Some(vel)
+}
+
+fn normalize_deg_360(deg: f64) -> Option<f64> {
+    if !deg.is_finite() {
+        return None;
+    }
+    let wrapped = deg.rem_euclid(360.0);
+    if !(0.0..360.0).contains(&wrapped) {
+        Some(0.0)
+    } else {
+        Some(wrapped)
     }
 }
 
@@ -335,124 +378,6 @@ fn ownship_velocity_ned(ownship: &OwnshipState) -> Ned {
     }
 }
 
-fn build_display_target(
-    track: &world_surveillance::TrackSnapshot,
-    rel: &world_surveillance::RelativeTarget,
-) -> TrafficDisplayTarget {
-    let address_hex = format!("{:06X}", track.key.address & 0x00FF_FFFF);
-    let callsign = track
-        .callsign
-        .map_or_else(|| address_hex.clone(), |cs| cs.as_str().to_owned());
-    let slant_range_nm = (rel.slant_range_m / METRES_PER_NM) as f32;
-    let rel_alt_ft = rel.relative_altitude_m / FEET_TO_METRES;
-    let rel_altitude_hundreds_ft = (rel_alt_ft / 100.0).round() as i32;
-    let climb_fpm = (-track.velocity_ned_m_s.down_m) / FPM_TO_MPS;
-    let vertical_trend = if climb_fpm >= 300.0 {
-        1
-    } else if climb_fpm <= -300.0 {
-        -1
-    } else {
-        0
-    };
-    let trend_arrow = match vertical_trend {
-        1 => "↑",
-        -1 => "↓",
-        _ => "",
-    };
-    let placard = format!(
-        "{callsign} {:+03}{trend_arrow} {:.1}NM",
-        rel_altitude_hundreds_ft, slant_range_nm
-    );
-    let threat = classify_threat(rel);
-    TrafficDisplayTarget {
-        track_id: track.id.0,
-        address_hex,
-        callsign,
-        placard,
-        offset_enu_m: [
-            rel.offset_ned_m.east_m as f32,
-            rel.offset_ned_m.north_m as f32,
-            (-rel.offset_ned_m.down_m) as f32,
-        ],
-        velocity_enu_mps: [
-            track.velocity_ned_m_s.east_m as f32,
-            track.velocity_ned_m_s.north_m as f32,
-            (-track.velocity_ned_m_s.down_m) as f32,
-        ],
-        track_true_deg: track
-            .heading_rad
-            .map(|r| (r.to_degrees().rem_euclid(360.0)) as f32),
-        slant_range_nm,
-        rel_altitude_hundreds_ft,
-        vertical_trend,
-        time_to_cpa_s: rel.time_to_cpa_s as f32,
-        cpa_horizontal_m: rel.cpa_horizontal_m as f32,
-        threat,
-        on_ground: track.on_ground,
-        active: track.phase == TrackPhase::Active,
-    }
-}
-
-fn classify_threat(rel: &world_surveillance::RelativeTarget) -> TrafficThreat {
-    let horiz_nm = rel.horizontal_range_m / METRES_PER_NM;
-    let abs_alt_ft = (rel.relative_altitude_m / FEET_TO_METRES).abs();
-    let cpa_nm = rel.cpa_horizontal_m / METRES_PER_NM;
-
-    if (horiz_nm <= 0.45 && abs_alt_ft <= 600.0)
-        || (rel.time_to_cpa_s > 0.0
-            && rel.time_to_cpa_s <= 25.0
-            && cpa_nm <= 0.45
-            && abs_alt_ft <= 600.0)
-    {
-        TrafficThreat::ResolutionAdvisory
-    } else if (horiz_nm <= 0.80 && abs_alt_ft <= 850.0)
-        || (rel.time_to_cpa_s > 0.0
-            && rel.time_to_cpa_s <= 45.0
-            && cpa_nm <= 1.20
-            && abs_alt_ft <= 850.0)
-    {
-        TrafficThreat::TrafficAdvisory
-    } else if horiz_nm <= 6.0 && abs_alt_ft <= 1_200.0 {
-        TrafficThreat::Proximate
-    } else {
-        TrafficThreat::Other
-    }
-}
-
-fn to_hud_contact(
-    track: &world_surveillance::TrackSnapshot,
-    rel: &world_surveillance::RelativeTarget,
-    own_vel_ned: &Ned,
-) -> Contact {
-    let threat = classify_threat(rel);
-    Contact {
-        relative_position_m: [
-            rel.offset_ned_m.north_m as f32,
-            rel.offset_ned_m.east_m as f32,
-            rel.offset_ned_m.down_m as f32,
-        ],
-        relative_velocity_mps: [
-            (track.velocity_ned_m_s.north_m - own_vel_ned.north_m) as f32,
-            (track.velocity_ned_m_s.east_m - own_vel_ned.east_m) as f32,
-            (track.velocity_ned_m_s.down_m - own_vel_ned.down_m) as f32,
-        ],
-        identity: if threat >= TrafficThreat::TrafficAdvisory {
-            Identity::Hostile
-        } else {
-            Identity::Friendly
-        },
-        domain: if track.on_ground {
-            Domain::Surface
-        } else {
-            Domain::Air
-        },
-        status: match track.phase {
-            TrackPhase::Active => SignalStatus::Valid,
-            TrackPhase::Coasting => SignalStatus::Stale,
-        },
-    }
-}
-
 fn sanitize_callsign(raw: &str) -> Option<Callsign> {
     let cleaned: String = raw
         .trim()
@@ -460,5 +385,5 @@ fn sanitize_callsign(raw: &str) -> Option<Callsign> {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
         .take(8)
         .collect();
-    Callsign::parse(&cleaned)
+    (!cleaned.is_empty()).then(|| Callsign::new(cleaned))
 }
