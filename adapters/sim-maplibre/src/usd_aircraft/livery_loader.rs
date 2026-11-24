@@ -3,7 +3,7 @@
 
 use openusd::ar::AssetBuffer;
 
-use super::{EMBEDDED_C172_USDC, UsdAircraftAsset, livery_compose};
+use super::{BuiltinAirframe, UsdAircraftAsset, builtin::EMBEDDED_C172_USDC, livery_compose};
 use crate::MapAdapterError;
 
 impl UsdAircraftAsset {
@@ -52,7 +52,7 @@ impl UsdAircraftAsset {
         let livery_usda = match &bundle.usda_overlay {
             Some(text) => text.clone(),
             None => {
-                let base = Self::embedded_c172()?;
+                let base = Self::builtin(BuiltinAirframe::C172)?;
                 livery_compose::compose_c172_livery_usda(&base, &bundle.spec)?
             }
         };

@@ -349,7 +349,7 @@ impl ApplicationHandler<AppEvent> for FlightApp {
             Ok(window) => {
                 let window = Arc::new(window);
                 self.window = Some(Arc::clone(&window));
-                platform::spawn_renderer(window, self.proxy.clone());
+                platform::spawn_renderer(window, self.proxy.clone(), &self.host);
             }
             Err(err) => self.fail(event_loop, "creating the window failed", &err),
         }

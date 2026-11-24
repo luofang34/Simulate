@@ -1,6 +1,6 @@
 use glam::{DMat4, Vec3};
 
-use super::{bake, bounding_radius};
+use super::{bake, bake_across, baked_table, bounding_radius};
 use crate::{PartRole, PbrMaterial, UsdMeshPart, UsdMeshVertex};
 
 fn part_from(triangles: &[[Vec3; 3]], normal: Vec3) -> UsdMeshPart {
@@ -141,4 +141,24 @@ fn the_p38_bakes_dark_junctions_and_open_tops() {
             median(bay)
         );
     }
+}
+
+#[test]
+fn a_bake_is_the_same_however_many_cores_share_it() {
+    let asset = crate::UsdAircraftAsset::fixed_wing_uav().expect("fixed-wing UAV");
+    let table = |workers: Option<usize>| {
+        let mut parts = asset.parts().to_vec();
+        match workers {
+            Some(workers) => bake_across(&mut parts, workers),
+            None => bake(&mut parts),
+        }
+        baked_table(&parts)
+    };
+    let alone = table(Some(1));
+    // Enough probes that three workers each take a share of their own.
+    assert!(alone.len() > 4 * 3 * 256, "{} bytes", alone.len());
+    assert!(alone.chunks(4).any(|v| v != 1.0_f32.to_le_bytes()));
+    assert_eq!(table(Some(3)), alone);
+    assert_eq!(table(Some(7)), alone);
+    assert_eq!(table(None), alone);
 }

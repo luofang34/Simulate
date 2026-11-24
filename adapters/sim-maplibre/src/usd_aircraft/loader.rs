@@ -18,9 +18,12 @@ use crate::MapAdapterError;
 
 mod implicit;
 
+/// Composes the stage rooted at `identifier`; `baked_occlusion` stands in for the bake
+/// when the stage has one made ahead of time.
 pub(super) fn load_aircraft(
     identifier: &str,
     resolver: EmbeddedUsdResolver,
+    baked_occlusion: Option<&[u8]>,
 ) -> Result<UsdAircraftAsset, MapAdapterError> {
     let stage = Stage::builder()
         .schema_registry(openusd_schemas::schema_registry())
@@ -51,7 +54,11 @@ pub(super) fn load_aircraft(
             detail: format!("OpenUSD stage '{identifier}' contained zero UsdGeomMesh prims"),
         });
     }
-    Ok(UsdAircraftAsset::airframe(identifier, parts))
+    Ok(UsdAircraftAsset::airframe_with_occlusion(
+        identifier,
+        parts,
+        baked_occlusion,
+    ))
 }
 
 fn decode_mesh_prim(

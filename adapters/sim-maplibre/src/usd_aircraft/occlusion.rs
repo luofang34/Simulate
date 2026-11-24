@@ -23,6 +23,11 @@ const ORIGIN_LIFT_M: f32 = 0.01;
 
 /// Writes [`crate::UsdMeshVertex::occlusion`] for every vertex of `parts`.
 pub(super) fn bake(parts: &mut [UsdMeshPart]) {
+    bake_across(parts, cores());
+}
+
+/// [`bake`] with the probes shared among `workers` threads where the target has threads.
+fn bake_across(parts: &mut [UsdMeshPart], workers: usize) {
     let bvh = Bvh::new(occluders(parts));
     let radius = bounding_radius(parts);
     let reach = (radius * RADIUS_FRACTION).clamp(0.25, 2.5);
@@ -39,13 +44,46 @@ pub(super) fn bake(parts: &mut [UsdMeshPart]) {
         })
         .collect();
     let mut open = vec![1.0_f32; probes.len()];
-    sample_parallel(&bvh, &probes, &mut open, reach);
+    sample_parallel(&bvh, &probes, &mut open, reach, workers);
     let mut values = open.into_iter();
     for part in parts.iter_mut().filter(|part| receives(part)) {
         for vertex in &mut part.vertices {
             vertex.occlusion = values.next().unwrap_or(1.0);
         }
     }
+}
+
+/// Writes the occlusion of a table baked ahead of time, one little-endian `f32` per
+/// receiving vertex in [`bake`]'s order. `false`, leaving `parts` untouched, when the
+/// table is not this airframe's size.
+pub(super) fn apply_baked(parts: &mut [UsdMeshPart], table: &[u8]) -> bool {
+    let receiving: usize = parts
+        .iter()
+        .filter(|part| receives(part))
+        .map(|part| part.vertices.len())
+        .sum();
+    let (values, rest) = table.as_chunks::<4>();
+    if !rest.is_empty() || values.len() != receiving {
+        return false;
+    }
+    let mut values = values.iter();
+    for part in parts.iter_mut().filter(|part| receives(part)) {
+        for (vertex, value) in part.vertices.iter_mut().zip(values.by_ref()) {
+            vertex.occlusion = f32::from_le_bytes(*value);
+        }
+    }
+    true
+}
+
+/// The table [`apply_baked`] reads, from `parts` whose occlusion is already baked.
+#[cfg(test)]
+pub(super) fn baked_table(parts: &[UsdMeshPart]) -> Vec<u8> {
+    parts
+        .iter()
+        .filter(|part| receives(part))
+        .flat_map(|part| &part.vertices)
+        .flat_map(|vertex| vertex.occlusion.to_le_bytes())
+        .collect()
 }
 
 /// Largest distance of any rest-pose vertex from the aircraft origin.
@@ -111,16 +149,37 @@ fn occluders(parts: &[UsdMeshPart]) -> Vec<Triangle> {
     triangles
 }
 
-/// Splits the probes across the machine's cores.
+/// The machine's cores.
 #[cfg(not(target_arch = "wasm32"))]
-fn sample_parallel(bvh: &Bvh, probes: &[(Vec3, Vec3)], open: &mut [f32], reach: f32) {
-    let workers = std::thread::available_parallelism().map_or(1, usize::from);
-    let chunk = probes.len().div_ceil(workers).max(256);
+fn cores() -> usize {
+    std::thread::available_parallelism().map_or(1, usize::from)
+}
+
+/// Browsers give this crate no threads.
+#[cfg(target_arch = "wasm32")]
+fn cores() -> usize {
+    1
+}
+
+/// Splits the probes across `workers` threads.
+#[cfg(not(target_arch = "wasm32"))]
+fn sample_parallel(
+    bvh: &Bvh,
+    probes: &[(Vec3, Vec3)],
+    open: &mut [f32],
+    reach: f32,
+    workers: usize,
+) {
+    let chunk = probes.len().div_ceil(workers.max(1)).max(256);
     std::thread::scope(|scope| {
-        for (inputs, outputs) in probes.chunks(chunk).zip(open.chunks_mut(chunk)) {
+        let shares = probes.chunks(chunk).zip(open.chunks_mut(chunk));
+        for (share, (inputs, outputs)) in shares.enumerate() {
+            let first = share * chunk;
             let spawned = std::thread::Builder::new()
                 .name("usd-ao-bake".to_owned())
-                .spawn_scoped(scope, move || sample_all(bvh, inputs, outputs, reach));
+                .spawn_scoped(scope, move || {
+                    sample_all(bvh, inputs, outputs, reach, first)
+                });
             if let Err(error) = spawned {
                 tracing::warn!(%error, "ambient occlusion worker failed to start; chunk left open");
             }
@@ -128,15 +187,24 @@ fn sample_parallel(bvh: &Bvh, probes: &[(Vec3, Vec3)], open: &mut [f32], reach: 
     });
 }
 
-/// Browsers give this crate no threads; the bake runs on the caller.
+/// Without threads the bake runs on the caller, whatever `_workers` asks for.
 #[cfg(target_arch = "wasm32")]
-fn sample_parallel(bvh: &Bvh, probes: &[(Vec3, Vec3)], open: &mut [f32], reach: f32) {
-    sample_all(bvh, probes, open, reach);
+fn sample_parallel(
+    bvh: &Bvh,
+    probes: &[(Vec3, Vec3)],
+    open: &mut [f32],
+    reach: f32,
+    _workers: usize,
+) {
+    sample_all(bvh, probes, open, reach, 0);
 }
 
-fn sample_all(bvh: &Bvh, probes: &[(Vec3, Vec3)], open: &mut [f32], reach: f32) {
+/// Samples a share of the airframe's probes that starts at probe `first`. A probe's ray
+/// pattern is seeded by its place in the airframe, not in the share, so a bake is the
+/// same on any number of cores and matches a table baked elsewhere.
+fn sample_all(bvh: &Bvh, probes: &[(Vec3, Vec3)], open: &mut [f32], reach: f32, first: usize) {
     for (index, ((position, normal), out)) in probes.iter().zip(open.iter_mut()).enumerate() {
-        *out = sky_visibility(bvh, *position, *normal, reach, index);
+        *out = sky_visibility(bvh, *position, *normal, reach, first + index);
     }
 }
 

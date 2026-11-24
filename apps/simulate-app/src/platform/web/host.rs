@@ -49,6 +49,18 @@ impl Host {
         }
     }
 
+    /// Says on the page what the start-up is doing next. `false` in a view, whose page
+    /// is not the app's to write on.
+    pub fn startup_phase(&self, text: &str) -> bool {
+        match self {
+            Self::Page => {
+                ProgressSurface::of_page().phase(text);
+                true
+            }
+            Self::View(_) => false,
+        }
+    }
+
     /// Puts a failure where a visitor without the console sees it: on the
     /// page, or on the view's own line.
     pub fn report_failure(&self, what: &str, err: &dyn std::error::Error) {

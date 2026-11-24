@@ -9,6 +9,7 @@ use sim_core::AirframeArticulation;
 
 use crate::MapAdapterError;
 
+mod builtin;
 mod controls;
 mod dials;
 mod export;
@@ -25,6 +26,9 @@ mod skin;
 #[cfg(test)]
 mod tests;
 
+pub use builtin::BuiltinAirframe;
+#[cfg(test)]
+use builtin::EMBEDDED_C172_USDC;
 pub use controls::{ControlChannel, ControlJoint};
 pub use dials::DisplayAtlas;
 pub use export::{UsdCameraSample, UsdRunwaySample, UsdSceneExportInput, export_scene_usda};
@@ -151,38 +155,6 @@ pub struct UsdPartDraw {
     pub is_prop_disc: bool,
 }
 
-/// Embedded BSD-3-Clause Cessna 172 Skyhawk binary OpenUSD Crate (`c172.usdc`).
-pub const EMBEDDED_C172_USDC: &[u8] = include_bytes!("../../../vehicles/c172s/usd/c172.usdc");
-/// Shared Cessna 172S Skyhawk SP equipment & bare-gear airframe layer (`c172s_airframe.usda`).
-pub const EMBEDDED_C172S_AIRFRAME_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172s/usd/c172s_airframe.usda");
-/// Default C-172S tail `N642SP` root layer (`n642sp.usda`).
-pub const EMBEDDED_N642SP_USDA: &[u8] = include_bytes!("../../../vehicles/c172s/usd/n642sp.usda");
-/// Default C-172S tail `N642SP` livery layer (`n642sp_livery.usda`).
-pub const EMBEDDED_N642SP_LIVERY_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.usda");
-/// Selectable C-172S tail `N172SP` root layer (`n172sp.usda`).
-pub const EMBEDDED_N172SP_USDA: &[u8] = include_bytes!("../../../vehicles/c172s/usd/n172sp.usda");
-/// Selectable C-172S tail `N172SP` livery layer (`n172sp_livery.usda`).
-pub const EMBEDDED_N172SP_LIVERY_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.usda");
-/// Shared Cessna 172P Skyhawk II / Reims F172P equipment & bare-gear layer (`c172p_airframe.usda`).
-pub const EMBEDDED_C172P_AIRFRAME_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172p/usd/c172p_airframe.usda");
-/// Default C-172P tail `D-ECJB` root layer (`d_ecjb.usda`).
-pub const EMBEDDED_D_ECJB_USDA: &[u8] = include_bytes!("../../../vehicles/c172p/usd/d_ecjb.usda");
-/// Default C-172P tail `D-ECJB` livery layer (`d_ecjb_livery.usda`).
-pub const EMBEDDED_D_ECJB_LIVERY_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.usda");
-/// Selectable C-172P tail `N53295` root layer (`n53295.usda`).
-pub const EMBEDDED_N53295_USDA: &[u8] = include_bytes!("../../../vehicles/c172p/usd/n53295.usda");
-/// Selectable C-172P tail `N53295` livery layer (`n53295_livery.usda`).
-pub const EMBEDDED_N53295_LIVERY_USDA: &[u8] =
-    include_bytes!("../../../vehicles/c172p/usd/n53295_livery.usda");
-/// Embedded `Raketa` single-stage test rocket OpenUSD stage (`retro_rocket_v4.usd`).
-pub const EMBEDDED_RAKETA_USD: &[u8] =
-    include_bytes!("../../../vehicles/raketa/assets/retro_rocket_v4.usd");
-
 /// Composed OpenUSD aircraft model ready for GPU upload and kinematic evaluation.
 #[derive(Clone, Debug)]
 pub struct UsdAircraftAsset {
@@ -195,68 +167,6 @@ pub struct UsdAircraftAsset {
 }
 
 impl UsdAircraftAsset {
-    /// Decodes and composes the generic BSD-3-Clause Cessna 172 (`c172.usdc`) traffic stage.
-    pub fn embedded_c172() -> Result<Self, MapAdapterError> {
-        Self::from_usd_bytes("c172.usdc", EMBEDDED_C172_USDC)
-    }
-
-    /// Composes `N642SP`, the default Cessna 172S Skyhawk SP ownship stage.
-    pub fn embedded_n642sp() -> Result<Self, MapAdapterError> {
-        Self::from_usd_layers(
-            "n642sp.usda",
-            [
-                ("c172.usdc", EMBEDDED_C172_USDC.into()),
-                ("c172s_airframe.usda", EMBEDDED_C172S_AIRFRAME_USDA.into()),
-                ("n642sp.usda", EMBEDDED_N642SP_USDA.into()),
-                ("n642sp_livery.usda", EMBEDDED_N642SP_LIVERY_USDA.into()),
-            ],
-        )
-    }
-
-    /// Composes `N172SP`, the selectable Cessna 172S Skyhawk SP factory demonstrator stage.
-    pub fn embedded_c172s_n172sp() -> Result<Self, MapAdapterError> {
-        Self::from_usd_layers(
-            "n172sp.usda",
-            [
-                ("c172.usdc", EMBEDDED_C172_USDC.into()),
-                ("c172s_airframe.usda", EMBEDDED_C172S_AIRFRAME_USDA.into()),
-                ("n172sp.usda", EMBEDDED_N172SP_USDA.into()),
-                ("n172sp_livery.usda", EMBEDDED_N172SP_LIVERY_USDA.into()),
-            ],
-        )
-    }
-
-    /// Composes `D-ECJB`, Mathias Rust's 1987 Reims F172P default Cessna 172P ownship stage.
-    pub fn embedded_c172p_d_ecjb() -> Result<Self, MapAdapterError> {
-        Self::from_usd_layers(
-            "d_ecjb.usda",
-            [
-                ("c172.usdc", EMBEDDED_C172_USDC.into()),
-                ("c172p_airframe.usda", EMBEDDED_C172P_AIRFRAME_USDA.into()),
-                ("d_ecjb.usda", EMBEDDED_D_ECJB_USDA.into()),
-                ("d_ecjb_livery.usda", EMBEDDED_D_ECJB_LIVERY_USDA.into()),
-            ],
-        )
-    }
-
-    /// Composes `N53295`, the selectable 1982 Cessna 172P Skyhawk II per-tail stage.
-    pub fn embedded_c172p_n53295() -> Result<Self, MapAdapterError> {
-        Self::from_usd_layers(
-            "n53295.usda",
-            [
-                ("c172.usdc", EMBEDDED_C172_USDC.into()),
-                ("c172p_airframe.usda", EMBEDDED_C172P_AIRFRAME_USDA.into()),
-                ("n53295.usda", EMBEDDED_N53295_USDA.into()),
-                ("n53295_livery.usda", EMBEDDED_N53295_LIVERY_USDA.into()),
-            ],
-        )
-    }
-
-    /// Decodes and composes the embedded `Raketa` (`retro_rocket_v4.usd`) OpenUSD stage.
-    pub fn embedded_raketa() -> Result<Self, MapAdapterError> {
-        Self::from_usd_bytes("retro_rocket_v4.usd", EMBEDDED_RAKETA_USD)
-    }
-
     /// Decodes and composes an OpenUSD aircraft stage from in-memory `.usdc` or `.usda` bytes.
     pub fn from_usd_bytes(
         identifier: &str,
@@ -265,6 +175,7 @@ impl UsdAircraftAsset {
         loader::load_aircraft(
             identifier,
             EmbeddedUsdResolver::single(identifier, bytes.into()),
+            None,
         )
     }
 
@@ -285,7 +196,7 @@ impl UsdAircraftAsset {
         for (name, bytes) in layers {
             resolver.insert(&name, bytes);
         }
-        loader::load_aircraft(&resolver::normalize_asset_key(root), resolver)
+        loader::load_aircraft(&resolver::normalize_asset_key(root), resolver, None)
     }
 
     pub(crate) fn from_parts(parts: Vec<UsdMeshPart>) -> Self {
@@ -331,6 +242,26 @@ impl UsdAircraftAsset {
             "baked airframe ambient occlusion"
         );
         Self::from_parts(parts)
+    }
+
+    /// An airframe whose occlusion comes from `baked`, a table baked ahead of time, or
+    /// from a bake here when there is none or it does not fit the parts.
+    pub(crate) fn airframe_with_occlusion(
+        name: &str,
+        mut parts: Vec<UsdMeshPart>,
+        baked: Option<&[u8]>,
+    ) -> Self {
+        if let Some(table) = baked {
+            if occlusion::apply_baked(&mut parts, table) {
+                return Self::from_parts(parts);
+            }
+            tracing::error!(
+                name,
+                bytes = table.len(),
+                "baked ambient occlusion does not fit the airframe; baking it now"
+            );
+        }
+        Self::airframe(name, parts)
     }
 
     /// Height of the lowest rest-pose vertex on the aircraft `+Z` axis, in metres.

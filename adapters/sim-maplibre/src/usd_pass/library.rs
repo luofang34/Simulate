@@ -7,7 +7,7 @@
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
-use crate::{MapAdapterError, UsdAircraftAsset};
+use crate::{BuiltinAirframe, MapAdapterError, UsdAircraftAsset};
 
 mod structural;
 
@@ -84,6 +84,30 @@ impl OwnshipVisualKind {
     }
 }
 
+/// Builds `kind`'s airframe, or takes the process's shared copy of a built-in one; `None`
+/// for a selection that draws no airframe of its own.
+fn ownship_airframe(
+    kind: OwnshipVisualKind,
+) -> Result<Option<Arc<UsdAircraftAsset>>, MapAdapterError> {
+    let built = match kind {
+        OwnshipVisualKind::P38g => UsdAircraftAsset::p38g()?,
+        OwnshipVisualKind::FixedWingUav => UsdAircraftAsset::fixed_wing_uav()?,
+        OwnshipVisualKind::QuadrotorX500 => UsdAircraftAsset::x500_quadrotor()?,
+        OwnshipVisualKind::LunarLander => UsdAircraftAsset::lunar_lander()?,
+        OwnshipVisualKind::Raketa => {
+            return UsdAircraftAsset::builtin(BuiltinAirframe::Raketa).map(Some);
+        }
+        OwnshipVisualKind::C172 => {
+            return UsdAircraftAsset::builtin(BuiltinAirframe::N642sp).map(Some);
+        }
+        OwnshipVisualKind::C172p => {
+            return UsdAircraftAsset::builtin(BuiltinAirframe::DEcjb).map(Some);
+        }
+        OwnshipVisualKind::Hidden | OwnshipVisualKind::External(_) => return Ok(None),
+    };
+    Ok(Some(Arc::new(built)))
+}
+
 /// Every airframe built so far and the current ownship selection.
 pub(crate) struct AircraftLibrary {
     scene: Arc<UsdAircraftAsset>,
@@ -121,20 +145,11 @@ impl AircraftLibrary {
         &mut self,
         kind: OwnshipVisualKind,
     ) -> Result<(), MapAdapterError> {
-        let build: Option<fn() -> Result<UsdAircraftAsset, MapAdapterError>> = match kind {
-            OwnshipVisualKind::P38g => Some(UsdAircraftAsset::p38g),
-            OwnshipVisualKind::FixedWingUav => Some(UsdAircraftAsset::fixed_wing_uav),
-            OwnshipVisualKind::QuadrotorX500 => Some(UsdAircraftAsset::x500_quadrotor),
-            OwnshipVisualKind::LunarLander => Some(UsdAircraftAsset::lunar_lander),
-            OwnshipVisualKind::Raketa => Some(UsdAircraftAsset::embedded_raketa),
-            OwnshipVisualKind::C172 => Some(UsdAircraftAsset::embedded_n642sp),
-            OwnshipVisualKind::C172p => Some(UsdAircraftAsset::embedded_c172p_d_ecjb),
-            OwnshipVisualKind::Hidden | OwnshipVisualKind::External(_) => None,
-        };
-        if let (Some(key), Some(build)) = (kind.asset_key(), build)
+        if let Some(key) = kind.asset_key()
             && !self.procedural.contains_key(&key)
+            && let Some(asset) = ownship_airframe(kind)?
         {
-            self.procedural.insert(key, Arc::new(build()?));
+            self.procedural.insert(key, asset);
         }
         self.ownship = kind;
         self.custom_ownship_key = None;

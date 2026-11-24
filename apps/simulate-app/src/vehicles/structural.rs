@@ -2,10 +2,10 @@
 //! frame: fitted once per model to the sourced landmarks its package ships, measured on
 //! the mesh the renderer draws.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use glam::DVec3;
-use sim_maplibre::{OwnshipVisualKind, StructuralDatum, UsdAircraftAsset};
+use sim_maplibre::{BuiltinAirframe, OwnshipVisualKind, StructuralDatum, UsdAircraftAsset};
 use sim_pack::{LoadedSyspack, builtin_c172p_package, builtin_c172s_package, builtin_p38g_package};
 use tracing::{info, warn};
 
@@ -39,13 +39,14 @@ impl ModelOrigins {
 
 /// Fits `visual`'s drawn model to its package's landmarks.
 fn fit(visual: OwnshipVisualKind) -> Option<StructuralDatum> {
-    let loaded: Result<(LoadedSyspack, UsdAircraftAsset), String> = match visual {
+    let loaded: Result<(LoadedSyspack, Arc<UsdAircraftAsset>), String> = match visual {
         OwnshipVisualKind::C172 => builtin_c172s_package()
             .map_err(|error| error.to_string())
             .and_then(|p| {
                 Ok((
                     p,
-                    UsdAircraftAsset::embedded_n642sp().map_err(|e| e.to_string())?,
+                    UsdAircraftAsset::builtin(BuiltinAirframe::N642sp)
+                        .map_err(|e| e.to_string())?,
                 ))
             }),
         OwnshipVisualKind::C172p => builtin_c172p_package()
@@ -53,12 +54,15 @@ fn fit(visual: OwnshipVisualKind) -> Option<StructuralDatum> {
             .and_then(|p| {
                 Ok((
                     p,
-                    UsdAircraftAsset::embedded_c172p_d_ecjb().map_err(|e| e.to_string())?,
+                    UsdAircraftAsset::builtin(BuiltinAirframe::DEcjb).map_err(|e| e.to_string())?,
                 ))
             }),
         OwnshipVisualKind::P38g => builtin_p38g_package()
             .map_err(|error| error.to_string())
-            .and_then(|p| Ok((p, UsdAircraftAsset::p38g().map_err(|e| e.to_string())?))),
+            .and_then(|p| {
+                let model = UsdAircraftAsset::p38g().map_err(|e| e.to_string())?;
+                Ok((p, Arc::new(model)))
+            }),
         _ => return None,
     };
     let (package, asset) = match loaded {

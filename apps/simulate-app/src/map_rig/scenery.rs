@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use sim_geo::Geodetic;
 use sim_maplibre::{
-    ChartAssetStore, CockpitDeviceTier, HybridTileLoader, SceneryEndpoints, SharedLoader,
-    SharedMapRuntime, TruthSceneConfig, TruthSceneMap, UsdAircraftAsset, ViewSlotId,
+    BuiltinAirframe, ChartAssetStore, CockpitDeviceTier, HybridTileLoader, SceneryEndpoints,
+    SharedLoader, SharedMapRuntime, TruthSceneConfig, TruthSceneMap, UsdAircraftAsset, ViewSlotId,
     truth_real_world_style,
 };
 use sim_scenery::{CatalogScenery, LiveDemBridge, RunwayDatum, TileId};
@@ -171,7 +171,7 @@ pub(super) fn build_truth_scene(
 ) -> Result<(TruthSceneMap, Option<ViewSlotId>), AppSimError> {
     let handheld = runtime.device_tier() == CockpitDeviceTier::Handheld;
     let otw_size = crate::app::surface_scale::capped_otw_size(window_px, handheld);
-    let asset = Arc::new(UsdAircraftAsset::embedded_c172()?);
+    let asset = UsdAircraftAsset::builtin(BuiltinAirframe::C172)?;
     let mut truth = TruthSceneMap::new(
         runtime,
         truth_real_world_style(endpoints)?,
