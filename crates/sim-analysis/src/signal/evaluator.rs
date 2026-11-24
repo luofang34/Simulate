@@ -110,7 +110,7 @@ pub fn evaluate_endpoint_link_budget(
     })
 }
 
-fn budget_sample(
+pub(crate) fn budget_sample(
     sample: &EndpointLinkSample,
     link: &RfLinkSpec,
     models: &LinkBudgetModels<'_>,
