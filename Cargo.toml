@@ -168,6 +168,7 @@ nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 openusd = { version = "0.8.0", default-features = false }
 openusd-schemas = { version = "0.8.0", default-features = false, features = ["geom", "shade", "physics", "lux"] }
 pollster = "0.4"
+rand_chacha = { version = "0.10", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sgp4 = { version = "2.4", default-features = false, features = ["alloc", "serde", "libm"] }
