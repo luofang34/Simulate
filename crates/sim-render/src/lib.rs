@@ -40,8 +40,8 @@ pub use aperture::{
 pub use aperture::{THERMAL_KELVIN_FORMAT, ThermalSceneTarget};
 pub use camera::{Camera, CameraPose};
 pub use compositor::{
-    ColorTransfer, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS, OverlayQuad, QuadFilter,
-    RgbaPanelTexture, ViewportRect,
+    ColorTransfer, CompositorLayers, CompositorPass, CompositorTarget, MAX_COMPOSITE_QUADS,
+    OverlayQuad, QuadFilter, RgbaPanelTexture, ViewportRect,
 };
 pub use environment::{
     Atmosphere, CloudLayerHandle, EnvironmentFrame, Fog, SOLAR_ILLUMINANCE_1AU_LUX, Sunlight,
