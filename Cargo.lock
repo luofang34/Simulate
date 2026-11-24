@@ -5624,7 +5624,10 @@ name = "sim-devices"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
+ "libm",
  "mbd-core",
+ "serde",
+ "serde_json",
  "sim-atmosphere",
  "sim-bodies",
  "sim-core",

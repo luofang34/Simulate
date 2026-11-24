@@ -12,6 +12,7 @@ mod error;
 mod geomagnetic;
 mod gnss_receiver;
 mod gravimeter;
+mod ground_tracker;
 mod icm42688;
 mod inertial_error;
 mod magnetometer;
@@ -31,6 +32,10 @@ pub use error::DeviceError;
 pub use geomagnetic::MagneticEnvironment;
 pub use gnss_receiver::{GnssErrorSpec, GnssReading, GnssReceiver, GnssSpoof};
 pub use gravimeter::{GravimeterTruth, gravimeter_truth};
+pub use ground_tracker::{
+    GroundTracker, GroundTrackerError, GroundTrackerStationSpec, TrackingErrorSpec,
+    TrackingLinkMode, TrackingMeasurement, TrackingTruthMeasurement,
+};
 pub use icm42688::{Icm42688Block, Icm42688Config, Icm42688Sample, Icm42688Snapshot};
 pub use inertial_error::{
     GaussMarkov, ImuErrorModel, ImuErrorSpec, ImuGrade, InertialIncrement, TriadErrorSpec,
