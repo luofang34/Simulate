@@ -33,6 +33,7 @@ mod warp;
 
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
 pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4TemeState, teme_to_icrf_rotation};
+pub use checkpoint::MomentumRamp;
 pub use checkpoint::{ActuatorState, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
 pub use checkpoint::{DiscreteGncState, EventGenerationState, ExternalInputs, VesselCheckpoint};
@@ -96,4 +97,3 @@ pub use {dop853::propagate_plant_until_step, kpl::KplError, universe::MAX_SAME_T
 pub use {ephemeris::EphemerisCatalog, gnc::AutolandGuidanceOutput, warp::SmoothSteeringProfile};
 pub use {events::AuthoritativeCommandLog, events::EventOrderKey, manifest::ManifestMismatchField};
 pub use {manifest::SimulationManifestDigest, time::Ut1Sample, universe::SpeculativeSegmentEntry};
-pub use checkpoint::MomentumRamp;
