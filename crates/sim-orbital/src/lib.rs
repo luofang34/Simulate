@@ -31,7 +31,6 @@ mod universe;
 mod warp;
 
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
-pub use catalog_sgp4::teme_to_icrf_rotation;
 pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4Mode, Sgp4TemeState};
 pub use checkpoint::{ActuatorState, DiscreteGncState, EventGenerationState, VesselCheckpoint};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
@@ -95,5 +94,6 @@ pub use warp::{ReducedThrustGateConfig, ReducedThrustGateRejection, SmoothSteeri
 pub use warp::{VesselWarpConstraintInput, WarpBottleneckReason, check_reduced_manifold_gate};
 pub use warp::{conservative_hazard_time_to_go_s, evaluate_global_warp_status};
 pub use {builtin_solar::apollo_1969_spk_bytes, orientation::SurfaceNavGrade};
+pub use {catalog_sgp4::teme_to_icrf_rotation, checkpoint::MomentumRamp};
 pub use {constants::validate_disjoint_hierarchy_ids, docking::vessel_momenta_icrf};
 pub use {kpl::KplAtom, kpl::KplError, kpl::KplPool, time::TimeScaleCatalog, time::Ut1Sample};

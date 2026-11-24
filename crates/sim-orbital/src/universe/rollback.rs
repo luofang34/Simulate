@@ -54,6 +54,7 @@ pub(crate) struct VesselTimeline {
     pub(crate) committed_checkpoint: VesselCheckpoint,
     pub(crate) speculative: Vec<SpeculativeSegmentEntry>,
     pub(crate) frontier_checkpoint: VesselCheckpoint,
+    pub(crate) pending_horizon: Option<SimInstant>,
 }
 
 impl VesselTimeline {
@@ -63,6 +64,7 @@ impl VesselTimeline {
             frontier_checkpoint: initial.clone(),
             committed_checkpoint: initial,
             speculative: Vec::new(),
+            pending_horizon: None,
         }
     }
 
@@ -72,6 +74,7 @@ impl VesselTimeline {
             committed_checkpoint: rec.committed_checkpoint,
             speculative: rec.speculative_segments,
             frontier_checkpoint: rec.frontier_checkpoint,
+            pending_horizon: None,
         }
     }
 
@@ -203,6 +206,7 @@ impl VesselTimeline {
         ephemeris: &dyn EphemerisCatalog,
         orientation: &dyn BodyOrientationCatalog,
     ) -> Result<RollbackMetrics, SchedulerError> {
+        self.pending_horizon = None;
         if target >= self.frontier_checkpoint.instant && self.speculative.is_empty() {
             return Ok(RollbackMetrics::default());
         }
@@ -312,6 +316,7 @@ impl VesselTimeline {
             force_model,
             ephemeris,
             orientation,
+            None,
         )?;
         let cp = containing.start_checkpoint.advanced_continuous(
             target,

@@ -17,7 +17,7 @@ use sim_orbital::{
 use sim_spacetime::SimEpoch;
 use sim_universe::{MultibodyLocalPlant, OrbitalContext, Universe, UniverseError, to_body_fixed};
 
-use super::spacecraft::{ANTENNA, BUS, TANK, plant};
+use super::spacecraft::{ANTENNA, BUS, TANK, plant_with_integrator};
 
 pub const PROBE: VesselId = VesselId(11);
 /// `2026-10-18T00:00:00Z`, inside the 2026 Earth-to-Mars window.
@@ -97,6 +97,19 @@ impl Voyage {
         tolerances: Dop853Tolerances,
         place: impl FnOnce(&dyn EphemerisCatalog, TdbEpoch, f64, f64) -> Placed,
     ) -> Self {
+        Self::placed_with_integrator(
+            tolerances,
+            sim_core::VehicleIntegrator::FixedRk4 { substeps: 6 },
+            place,
+        )
+    }
+
+    #[cfg(test)]
+    pub fn placed_with_integrator(
+        tolerances: Dop853Tolerances,
+        integrator: sim_core::VehicleIntegrator,
+        place: impl FnOnce(&dyn EphemerisCatalog, TdbEpoch, f64, f64) -> Placed,
+    ) -> Self {
         let solar = BuiltinSolarSystem2026_2028::load_verified().unwrap();
         let force_model = ForceModel::standard_solar_system(solar.constants.clone()).unwrap();
         let mu = |body| force_model.constants().require_mu(body).unwrap();
@@ -129,7 +142,8 @@ impl Voyage {
             .unwrap()
             .0;
         let earth = universe.bodies().get(NaifId::EARTH).unwrap().clone();
-        let ship = plant(&earth, &state, SimInstant::START, &epoch).unwrap();
+        let ship =
+            plant_with_integrator(&earth, &state, SimInstant::START, &epoch, integrator).unwrap();
         let rebuilds = Rc::new(Cell::new(0_u32));
         let counted = Rc::clone(&rebuilds);
         universe

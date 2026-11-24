@@ -56,6 +56,47 @@ impl ExternalMassProperties {
     }
 }
 
+/// Smooth linear ramp of internal angular momentum over `[start_epoch, end_epoch]`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MomentumRamp {
+    /// Rate of change of internal angular momentum in body axes, N·m.
+    pub rate_body_nm: [f64; 3],
+    /// Epoch where the ramp starts (`internal_momentum_body_nms`).
+    pub start_epoch: TdbEpoch,
+    /// Epoch where the ramp ends.
+    pub end_epoch: TdbEpoch,
+}
+
+impl MomentumRamp {
+    fn is_valid(&self) -> bool {
+        self.rate_body_nm.iter().all(|v| v.is_finite()) && self.end_epoch >= self.start_epoch
+    }
+
+    fn is_nonzero(&self) -> bool {
+        self.end_epoch > self.start_epoch && self.rate_body_nm.iter().any(|&v| v != 0.0)
+    }
+
+    fn write_bits(&self, bits: &mut Vec<u64>) {
+        bits.push(1);
+        bits.extend(self.rate_body_nm.iter().map(|v| v.to_bits()));
+        bits.push(self.start_epoch.j2000_seconds() as u64);
+        bits.push(self.start_epoch.subsec_ticks());
+        bits.push(self.end_epoch.j2000_seconds() as u64);
+        bits.push(self.end_epoch.subsec_ticks());
+    }
+
+    fn write_to_hasher(&self, h: &mut DomainHasher) {
+        h.write_u8(1);
+        for v in self.rate_body_nm {
+            h.write_f64_canonical(v);
+        }
+        h.write_i64(self.start_epoch.j2000_seconds());
+        h.write_u64(self.start_epoch.subsec_ticks());
+        h.write_i64(self.end_epoch.j2000_seconds());
+        h.write_u64(self.end_epoch.subsec_ticks());
+    }
+}
+
 /// The force, torque and mass an external owner holds on a vessel until it reports again.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExternalLoads {
@@ -72,6 +113,11 @@ pub struct ExternalLoads {
     /// `I ω` plus this, and it enters the gyroscopic coupling at every integrator stage.
     #[serde(default)]
     pub internal_momentum_body_nms: [f64; 3],
+    /// Optional linear ramp applied to [`Self::internal_momentum_body_nms`] over an
+    /// exchange interval so continuous internal angular momentum transfer reacts cleanly
+    /// against rigid-body nutation.
+    #[serde(default)]
+    pub momentum_ramp: Option<MomentumRamp>,
     /// Mass properties replacing the configured dry mass and dry inertia, or `None` to
     /// fly the vessel's configured mass model.
     pub mass: Option<ExternalMassProperties>,
@@ -86,6 +132,7 @@ impl ExternalLoads {
             torque_body_nm: torque_body_nm.to_array(),
             dipole_body_a_m2: [0.0; 3],
             internal_momentum_body_nms: [0.0; 3],
+            momentum_ramp: None,
             mass: Some(mass),
         }
     }
@@ -118,11 +165,44 @@ impl ExternalLoads {
         DVec3::from_array(self.internal_momentum_body_nms)
     }
 
+    /// These loads with a linear ramp `rate_body_nm` on internal momentum
+    /// from `start_epoch` to `end_epoch`.
+    #[must_use]
+    pub fn with_momentum_ramp(
+        mut self,
+        rate_body_nm: DVec3,
+        start_epoch: TdbEpoch,
+        end_epoch: TdbEpoch,
+    ) -> Self {
+        self.momentum_ramp = Some(MomentumRamp {
+            rate_body_nm: rate_body_nm.to_array(),
+            start_epoch,
+            end_epoch,
+        });
+        self
+    }
+
+    /// Held internal angular momentum at `epoch`, body axes, N·m·s.
+    #[must_use]
+    pub fn internal_momentum_at(&self, epoch: TdbEpoch) -> DVec3 {
+        let mut held = self.internal_momentum_body_nms();
+        if let Some(ramp) = self.momentum_ramp {
+            let duration_s = ramp.end_epoch.signed_offset_seconds_from(ramp.start_epoch);
+            if duration_s > 0.0 {
+                let elapsed_s = epoch
+                    .signed_offset_seconds_from(ramp.start_epoch)
+                    .clamp(0.0, duration_s);
+                held += DVec3::from_array(ramp.rate_body_nm) * elapsed_s;
+            }
+        }
+        held
+    }
+
     /// Whether anything held acts on the vessel's motion: a force, a torque, a dipole or
     /// internal momentum. Held mass alone does not.
     #[must_use]
     pub fn acts_on_motion(&self) -> bool {
-        self.held_vectors().any(|&v| v != 0.0)
+        self.held_vectors().any(|&v| v != 0.0) || self.momentum_ramp.is_some_and(|r| r.is_nonzero())
     }
 
     fn held_vectors(&self) -> impl Iterator<Item = &f64> {
@@ -136,7 +216,9 @@ impl ExternalLoads {
     /// Whether every component is finite and any mass positive.
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        self.held_vectors().all(|v| v.is_finite()) && self.mass.is_none_or(|mass| mass.is_valid())
+        self.held_vectors().all(|v| v.is_finite())
+            && self.mass.is_none_or(|mass| mass.is_valid())
+            && self.momentum_ramp.is_none_or(|r| r.is_valid())
     }
 
     /// Whether `other` holds the same bits, so replacing one with the other changes no
@@ -148,15 +230,22 @@ impl ExternalLoads {
 
     fn bit_pattern(&self) -> Vec<u64> {
         let mut bits: Vec<u64> = self.held_vectors().map(|v| v.to_bits()).collect();
-        if let Some(mass) = self.mass {
-            bits.push(1);
-            bits.push(mass.mass_kg.to_bits());
-            bits.extend(
-                mass.inertia_cg_body_cols
-                    .iter()
-                    .flatten()
-                    .map(|v| v.to_bits()),
-            );
+        match self.mass {
+            Some(mass) => {
+                bits.push(1);
+                bits.push(mass.mass_kg.to_bits());
+                bits.extend(
+                    mass.inertia_cg_body_cols
+                        .iter()
+                        .flatten()
+                        .map(|v| v.to_bits()),
+                );
+            }
+            None => bits.push(0),
+        }
+        match self.momentum_ramp {
+            Some(ramp) => ramp.write_bits(&mut bits),
+            None => bits.push(0),
         }
         bits
     }
@@ -173,6 +262,10 @@ impl ExternalLoads {
                     h.write_f64_canonical(v);
                 }
             }
+            None => h.write_u8(0),
+        }
+        match self.momentum_ramp {
+            Some(ramp) => ramp.write_to_hasher(h),
             None => h.write_u8(0),
         }
     }
@@ -219,17 +312,25 @@ pub(crate) struct ExternalWrenchLaw<'a> {
 impl ExternalWrenchLaw<'_> {
     /// Leaves the wrench untouched when nothing is held, so a vessel with no external owner
     /// keeps the exact bits it would have without this law.
-    fn add_to(&self, state: &ContinuousPlantState, wrench: &mut PlantStageWrench) {
+    fn add_to(&self, epoch: TdbEpoch, state: &ContinuousPlantState, wrench: &mut PlantStageWrench) {
         if self.loads.has_wrench() {
             wrench.env_force_body_n += DVec3::from_array(self.loads.force_body_n);
             wrench.ext_torque_body_nm += DVec3::from_array(self.loads.torque_body_nm);
         }
         // In body axes the held momentum `h` turns with the vessel: the rate of
-        // `I ω + h` is the applied torque less `ω × (I ω + h)`, and the plant forms only
-        // the part without `h`.
-        let held = self.loads.internal_momentum_body_nms();
+        // `I ω + h(t)` is the applied torque less `ω × (I ω + h(t)) + dh/dt`.
+        let held = self.loads.internal_momentum_at(epoch);
         if held != DVec3::ZERO {
             wrench.ext_torque_body_nm -= state.omega_body_rad_s.cross(held);
+        }
+        if let Some(ramp) = self.loads.momentum_ramp {
+            let duration_s = ramp.end_epoch.signed_offset_seconds_from(ramp.start_epoch);
+            if duration_s > 0.0 {
+                let elapsed_s = epoch.signed_offset_seconds_from(ramp.start_epoch);
+                if elapsed_s >= -1.0e-4 && elapsed_s <= duration_s + 1.0e-4 {
+                    wrench.ext_torque_body_nm -= DVec3::from_array(ramp.rate_body_nm);
+                }
+            }
         }
     }
 }
@@ -242,7 +343,7 @@ impl ContinuousControlLaw for ExternalWrenchLaw<'_> {
         state: &ContinuousPlantState,
     ) -> PlantStageWrench {
         let mut wrench = self.inner.evaluate_stage(tau_s, epoch, state);
-        self.add_to(state, &mut wrench);
+        self.add_to(epoch, state, &mut wrench);
         wrench
     }
 
@@ -253,7 +354,7 @@ impl ContinuousControlLaw for ExternalWrenchLaw<'_> {
         state: &ContinuousPlantState,
     ) -> Result<PlantStageWrench, GravityError> {
         let mut wrench = self.inner.evaluate_stage_checked(tau_s, epoch, state)?;
-        self.add_to(state, &mut wrench);
+        self.add_to(epoch, state, &mut wrench);
         Ok(wrench)
     }
 }

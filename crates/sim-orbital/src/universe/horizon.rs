@@ -48,6 +48,11 @@ impl OrbitalUniverse {
     /// [`MAX_PROPOSAL_CHUNK_SECONDS`] (or the sphere-of-influence lead).
     pub(crate) fn speculation_horizon(&self, timeline: &VesselTimeline) -> SimInstant {
         let from = timeline.frontier_instant();
+        if let Some(pending) = timeline.pending_horizon
+            && pending > from
+        {
+            return pending;
+        }
         let next_grid = self.next_canonical_horizon(from);
         let frontier = &timeline.frontier_checkpoint;
         if frontier.integrator_hint.propagator != PropagatorKind::FullCoupled6Dof

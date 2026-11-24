@@ -173,10 +173,7 @@ fn subsystems() -> Result<MultibodySubsystems, UniverseError> {
     subsystems.propulsion.electric_thrusters.push((
         ElectricThrusterSpec {
             site: BUS,
-            // On the line through the centre of gravity with the tank
-            // full, so the thrust does not spin the spacecraft up.
-            mount_offset_local_m: DVec3::Z * ANTENNA_Z_M * ANTENNA_KG
-                / (BUS_KG + ANTENNA_KG + XENON_KG),
+            mount_offset_local_m: DVec3::ZERO,
             thrust_axis_local: DVec3::X,
             propellant_tank: TANK,
             isp_s: 2_000.0,
@@ -219,12 +216,14 @@ pub fn gimbal_effort_nm(command_rad: f64, angle_rad: f64, rate_rad_s: f64, sampl
     stiffness * (command_rad - angle_rad) - damping * rate_rad_s
 }
 
-/// The spacecraft at `state`, fixed to `earth`, on that entry's gravity.
-pub fn plant(
+/// The spacecraft at `state`, fixed to `earth`, on that entry's gravity,
+/// using `integrator` (for example [`VehicleIntegrator::FixedRk4`]).
+pub fn plant_with_integrator(
     earth: &BodyDescriptor,
     state: &VehicleState,
     start: SimInstant,
     epoch: &SimEpoch,
+    integrator: VehicleIntegrator,
 ) -> Result<MultibodyLocalPlant, UniverseError> {
     let block = MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
@@ -232,7 +231,7 @@ pub fn plant(
             period: BLOCK_PERIOD,
             epoch: epoch.utc_at(start)?,
             initial: *state,
-            integrator: VehicleIntegrator::FixedRk4 { substeps: 6 },
+            integrator,
             time_scale: MotionTimeScale::SurfaceGravity,
         },
         tree()?,

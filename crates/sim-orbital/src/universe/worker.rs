@@ -13,7 +13,7 @@ use crate::{
         sim_instant_serde,
     },
     dense_segment::PlantTrajectorySegment,
-    dop853::{Dop853Stats, propagate_plant_interval},
+    dop853::{Dop853Stats, propagate_plant_until_step},
     ephemeris::{DerivativeOrder, EphemerisCatalog},
     events::{EventOrderKey, ScheduledEvent, UniverseEventPayload, phase_ranks},
     gravity::ForceModel,
@@ -105,7 +105,7 @@ pub fn propose_vessel_horizon(
         });
     }
 
-    let capped_end = clamp_proposal_end(base_checkpoint, horizon_target);
+    let capped_end = clamp_proposal_end(base_checkpoint, horizon_target, clock);
     refuse_unapplied_loads(base_checkpoint, &base_checkpoint.external.loads)?;
     if base_checkpoint.integrator_hint.propagator == PropagatorKind::PinnedSurfaceRest {
         return build_pinned_rest_proposal(base_checkpoint, capped_end, clock, orientation);
@@ -138,6 +138,7 @@ pub fn propose_vessel_horizon(
         force_model,
         ephemeris,
         orientation,
+        Some(remaining_slots),
     )?;
 
     package_segments_and_events(
@@ -163,6 +164,7 @@ pub(crate) fn propagate_checkpoint_interval(
     force_model: &ForceModel,
     ephemeris: &dyn EphemerisCatalog,
     orientation: &dyn BodyOrientationCatalog,
+    max_segments: Option<usize>,
 ) -> Result<crate::dop853::PlantPropagationOutput, SchedulerError> {
     let mass_model = checkpoint.mass_model(config);
     let environment = EnvironmentLaw {
@@ -182,7 +184,12 @@ pub(crate) fn propagate_checkpoint_interval(
         inner: guidance,
         loads: &checkpoint.external.loads,
     };
-    propagate_plant_interval(
+    let mut accepted = 0_usize;
+    let mut stop_after_step = |_: &PlantTrajectorySegment| -> bool {
+        accepted = accepted.wrapping_add(1);
+        max_segments.is_some_and(|limit| accepted >= limit)
+    };
+    propagate_plant_until_step(
         &checkpoint.plant,
         start_epoch,
         end_epoch,
@@ -195,6 +202,8 @@ pub(crate) fn propagate_checkpoint_interval(
         ephemeris,
         orientation,
         &control,
+        false,
+        &mut stop_after_step,
     )
     .map_err(|source| SchedulerError::Propagation {
         vessel_id: checkpoint.vessel_id,
@@ -202,7 +211,11 @@ pub(crate) fn propagate_checkpoint_interval(
     })
 }
 
-fn clamp_proposal_end(base: &VesselCheckpoint, horizon_target: SimInstant) -> SimInstant {
+pub(crate) fn clamp_proposal_end(
+    base: &VesselCheckpoint,
+    horizon_target: SimInstant,
+    clock: &SimClockAdapter,
+) -> SimInstant {
     let max_chunk = base
         .instant
         .advanced(TickSpan::from_seconds_and_subsec_ticks(
@@ -210,6 +223,16 @@ fn clamp_proposal_end(base: &VesselCheckpoint, horizon_target: SimInstant) -> Si
             0,
         ));
     let mut end = horizon_target.min(max_chunk);
+    if let Some(ramp) = base.external.loads.momentum_ramp {
+        let now_epoch = clock.instant_to_tdb(base.instant);
+        let ticks_left = ramp.end_epoch.ticks_since(now_epoch);
+        if ticks_left > 0 {
+            let ramp_end = base.instant.advanced(TickSpan::from_ticks_u128(ticks_left));
+            if ramp_end < end {
+                end = ramp_end;
+            }
+        }
+    }
     if let Some(gnc_ticks) = base.gnc.next_gnc_ticks {
         let gnc_inst = SimInstant::START.advanced(TickSpan::from_ticks_u128(gnc_ticks));
         if gnc_inst > base.instant && gnc_inst < end {

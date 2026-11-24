@@ -12,7 +12,7 @@ use super::telemetry::{build_telemetry, merge_dynamic_masses};
 use super::{MultibodyVehicleBlock, element_state};
 use crate::BlockError;
 use crate::flight_model::environment::CgGravity;
-use crate::flight_model::integration::{StepSetup, step_error};
+use crate::flight_model::integration::{StepSetup, Stepper, step_error};
 use crate::flight_model::loads::LoadReadout;
 
 pub(super) const BLOCK_NAME: &str = "multibody_vehicle";
@@ -228,6 +228,7 @@ impl MultibodyVehicleBlock {
         &mut self,
         state: &mut ModelState,
         input: &MultibodyVehicleInput,
+        override_stepper: Option<&mut Stepper>,
     ) -> Result<LoadReadout, BlockError> {
         // A far end is carried on with the acceleration this vehicle has
         // as the step starts: the field at its root and the specific force
@@ -251,14 +252,9 @@ impl MultibodyVehicleBlock {
             environment: &environment,
             dt_s: self.config.period.as_seconds(),
         };
+        let stepper = override_stepper.unwrap_or(&mut self.stepper);
         setup
-            .advance_and_read(
-                &self.mount,
-                &mut self.stepper,
-                state,
-                &mut self.work,
-                &mut self.rates,
-            )
+            .advance_and_read(&self.mount, stepper, state, &mut self.work, &mut self.rates)
             .map_err(|source| step_error(BLOCK_NAME, source))
     }
 
@@ -271,8 +267,17 @@ impl MultibodyVehicleBlock {
         sub: &SubsystemStepOut,
         input: &MultibodyVehicleInput,
     ) -> Result<LoadReadout, BlockError> {
+        self.integrate_held_with(sub, input, None)
+    }
+
+    pub(super) fn integrate_held_with(
+        &mut self,
+        sub: &SubsystemStepOut,
+        input: &MultibodyVehicleInput,
+        override_stepper: Option<&mut Stepper>,
+    ) -> Result<LoadReadout, BlockError> {
         let mut state = self.step_state(input)?;
-        let readout = self.integrate(&mut state, input)?;
+        let readout = self.integrate(&mut state, input, override_stepper)?;
         self.model
             .write_joints(&state, &mut self.tree)
             .map_err(block_multi)?;

@@ -92,6 +92,12 @@ pub trait LocalPlant {
     fn carry_period(&self) -> Option<TickSpan> {
         None
     }
+    /// Whether this plant has moving internal degrees of freedom whose
+    /// momentum coupling uses effective-inertia Schur decoupling and continuous
+    /// orbital ramping across exchange intervals.
+    fn has_moving_joints(&self) -> bool {
+        false
+    }
     /// Advances the plant's internals by whole periods to `context.at` with
     /// the base motion prescribed by `context`, and returns what the orbital
     /// tier holds from that instant: the mean loads the internals generated

@@ -119,7 +119,9 @@ impl Universe {
         for (&id, vessel) in &self.vessels {
             let view = match &vessel.flight {
                 Flight::Local(plant) => self.local_policy_view(plant.as_ref()),
-                Flight::Orbital { carried } => self.orbital_policy_view(id, carried.as_deref())?,
+                Flight::Orbital { carried, .. } => {
+                    self.orbital_policy_view(id, carried.as_deref())?
+                }
             };
             let Some(view) = view else {
                 continue;
@@ -173,7 +175,10 @@ impl Universe {
         if let (None, Some(surface)) = (environment.srp_surface(), bus_srp) {
             environment = environment.with(EnvironmentLoadSpec::SolarRadiationPressure(surface));
         }
-        let aloft = Flight::Orbital { carried: None };
+        let aloft = Flight::Orbital {
+            carried: None,
+            samples: Vec::new(),
+        };
         let Flight::Local(mut plant) = std::mem::replace(&mut self.vessel_mut(id)?.flight, aloft)
         else {
             return Err(UniverseError::AlreadyInTier(id));
@@ -182,6 +187,7 @@ impl Universe {
             Ok(carryable) => {
                 self.vessel_mut(id)?.flight = Flight::Orbital {
                     carried: carryable.then_some(plant),
+                    samples: Vec::new(),
                 };
                 Ok(())
             }
@@ -244,7 +250,7 @@ impl Universe {
     /// instants. A vessel without one, or whose plant cannot adopt the
     /// state, is built by its factory.
     pub fn demote_to_local(&mut self, id: VesselId) -> Result<(), UniverseError> {
-        let Flight::Orbital { carried } = &self.vessel(id)?.flight else {
+        let Flight::Orbital { carried, .. } = &self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
         };
         if carried
