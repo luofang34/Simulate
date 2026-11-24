@@ -18,6 +18,7 @@ mbd-core.workspace = true
 navigate-astrodynamics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sgp4.workspace = true
 sha2.workspace = true
 sim-atmosphere.workspace = true
 sim-bodies.workspace = true

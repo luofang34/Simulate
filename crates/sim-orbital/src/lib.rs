@@ -2,6 +2,7 @@
 //! multi-vessel scheduling, swept collision detection, and pure-memory spaceflight `GNC`.
 
 mod builtin_solar;
+mod catalog_sgp4;
 mod chebyshev;
 mod checkpoint;
 mod collision;
@@ -29,8 +30,9 @@ mod trajectory_product;
 mod universe;
 mod warp;
 
-pub use builtin_solar::apollo_1969_spk_bytes;
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
+pub use catalog_sgp4::teme_to_icrf_rotation;
+pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4Mode, Sgp4TemeState};
 pub use checkpoint::{ActuatorState, DiscreteGncState, EventGenerationState, VesselCheckpoint};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
 pub use checkpoint::{ExternalInputs, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
@@ -40,14 +42,12 @@ pub use collision::{SweptReachabilityTube, TubeUncertaintyBudget, certified_hull
 pub use collision::{detect_swept_obb_contacts, detect_terrain_contacts, eval_bernstein_scalar};
 pub use collision::{eval_bernstein_vec3, form_rendezvous_groups, isolate_scalar_bernstein_roots};
 pub use collision::{monomial_to_bernstein, obb_signed_separation_m};
-pub use constants::validate_disjoint_hierarchy_ids;
 pub use constants::{BodyGravitySpec, ConstantsError, GravityConstantsCatalog};
 pub use contact::{BristleFootState, CONTACT_PROXIMITY_THRESHOLD_M, CONTACT_SUBSTEP_SECONDS};
 pub use contact::{ContactFootSpec, ContactStepOutput, PinnedSurfaceState, VesselContactState};
 pub use contact::{integrate_contact_interval, verify_pinned_static_equilibrium};
 pub use daf::{BpcFile, BpcSegment, DafEndian, DafError, SpkDataType, SpkFile, SpkSegment};
 pub use dense_segment::{DenseSegment, PlantTrajectorySegment, evaluate_bernstein_8};
-pub use docking::vessel_momenta_icrf;
 pub use docking::{Apas95PortSpec, DockedAssemblyRecord, DockingError, check_apas95_capture_gate};
 pub use docking::{dock_vessels_conserving_momentum, undock_assembly_conserving_momentum};
 pub use dop853::{Dop853Error, Dop853GenericConfig, Dop853Stats, Dop853Tolerances};
@@ -66,14 +66,12 @@ pub use gravity::{DynamicalMode, ForceModel, GravityError, InertialPotentialSamp
 pub use gravity::{HARMONIC_FAR_FIELD_ACCEL_M_S2, harmonic_reach_m, third_body_tidal_accel_icrf};
 pub use kepler::{EnckeConfig, EnckePropagationOutput, propagate_encke_interval};
 pub use kepler::{propagate_kepler_universal, stumpff_c2_c3};
-pub use kpl::{KplAtom, KplError, KplPool};
 pub use lagrange::{ApproximateL2LibrationSeed, CollinearLagrangePoint, L2BoundedArcTargetReport};
 pub use lagrange::{HoldingBurnSearch, L2HoldingDynamics, L2HoldingTarget, l2_holding_tolerances};
 pub use lagrange::{L2BoundedArcTargetSpec, L2OrbitRegimeKind, L2SingleShootingFailureReason};
 pub use lagrange::{L2SingleShootingStatus, LagrangeError, approximate_l2_libration_seed};
 pub use lagrange::{SynodicFrame, solve_collinear_lagrange_gamma, target_l2_terminal_x_arc_dop853};
 pub use manifest::{ManifestMismatchField, SimulationManifestDigest};
-pub use orientation::SurfaceNavGrade;
 pub use orientation::{BodyOrientationCatalog, BodyRotationState, IauPckCatalog, LunarTargetFrame};
 pub use orientation::{OrientationError, OrientationPolicy, StackedOrientationCatalog};
 pub use plant::{BodyFixedState, DragSurface, EnvironmentLaw, ResidualDipole, serde_dvec3};
@@ -86,7 +84,6 @@ pub use plant::{quat_geodesic_angle_rad, quat_normalize_portable, quat_rotate_ve
 pub use sim_spacetime::{ContentHash, DomainHasher, FrameCode, HashParseError, NaifId, VesselId};
 pub use time::{CoverageSet, EarthEopEntry, EarthEopTable, FutureUtcPolicy, LeapSecondEntry};
 pub use time::{LeapSecondTable, OutOfEopPolicy, SimClockAdapter, TdbEpoch, TdbSpanNs, TimeError};
-pub use time::{TimeScaleCatalog, Ut1Sample};
 pub use trajectory_product::{OrbitalTrajectoryProduct, PlanningInputFingerprint};
 pub use universe::{DEFAULT_HORIZON_QUANTUM_SECONDS, FleetScaleBenchmarkReport, FleetTierMetrics};
 pub use universe::{HardwareProfile, MAX_PROPOSAL_CHUNK_SECONDS, MAX_SAME_TICK_TRANSITIONS};
@@ -97,3 +94,6 @@ pub use warp::{FullCoupledPidFeedForwardSasLaw, ReducedManifoldSteeringLaw, Warp
 pub use warp::{ReducedThrustGateConfig, ReducedThrustGateRejection, SmoothSteeringProfile};
 pub use warp::{VesselWarpConstraintInput, WarpBottleneckReason, check_reduced_manifold_gate};
 pub use warp::{conservative_hazard_time_to_go_s, evaluate_global_warp_status};
+pub use {builtin_solar::apollo_1969_spk_bytes, orientation::SurfaceNavGrade};
+pub use {constants::validate_disjoint_hierarchy_ids, docking::vessel_momenta_icrf};
+pub use {kpl::KplAtom, kpl::KplError, kpl::KplPool, time::TimeScaleCatalog, time::Ut1Sample};

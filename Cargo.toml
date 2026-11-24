@@ -169,6 +169,7 @@ openusd-schemas = { version = "0.8.0", default-features = false, features = ["ge
 pollster = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+sgp4 = { version = "2.4", default-features = false, features = ["alloc", "serde", "libm"] }
 sha2 = "0.11"
 spicekit = "0.2.3"
 tempfile = "3"
