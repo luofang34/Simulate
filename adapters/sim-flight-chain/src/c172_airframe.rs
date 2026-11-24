@@ -161,9 +161,9 @@ impl C172Airframe {
     }
 
     /// Clutches the autopilot's servos to the controls, or releases them. A flight
-    /// controller keeps flying its laws while released, as an autopilot computer does
-    /// with its servos out; it refuses to disarm in the air, so the clutch and not the
-    /// arming state is what hands the aeroplane to the pilot.
+    /// controller stays armed while released and keeps computing its targets, as an
+    /// autopilot computer does with its servos out; it refuses to disarm in the air, so
+    /// the clutch and not the arming state is what hands the aeroplane to the pilot.
     pub const fn set_servos_engaged(&mut self, engaged: bool) {
         self.servos_engaged = engaged;
     }
@@ -256,6 +256,10 @@ impl Airframe for C172Airframe {
                 .sample(&position, self.utc)
                 .map_err(ChainError::Air)?,
         })
+    }
+
+    fn actuators_connected(&self) -> bool {
+        self.servos_engaged
     }
 
     fn fly(&mut self, command: &DirectActuatorCmd) -> Result<(), ChainError> {

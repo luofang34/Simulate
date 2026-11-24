@@ -85,13 +85,13 @@ sim-universe = { path = "crates/sim-universe" }
 sim-core = { path = "crates/sim-core" }
 sim-xil = { path = "crates/sim-xil" }
 
-aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "10779e8f60604d98803d2a7cd016bc802b071a71" }
-aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "10779e8f60604d98803d2a7cd016bc802b071a71", default-features = false, features = ["mc", "fw"] }
-aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "10779e8f60604d98803d2a7cd016bc802b071a71" }
-aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "10779e8f60604d98803d2a7cd016bc802b071a71" }
-aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "10779e8f60604d98803d2a7cd016bc802b071a71" }
-flightbag = { git = "https://github.com/luofang34/Flightbag", rev = "f163a34ba5112e82647c978675a53566d1b7f74d" }
-flightbag-core = { git = "https://github.com/luofang34/Flightbag", rev = "f163a34ba5112e82647c978675a53566d1b7f74d" }
+aviate-airframe-fixed-wing = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
+aviate-core = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8", default-features = false, features = ["mc", "fw"] }
+aviate-hal-io = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
+aviate-xil-contract = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
+aviate-xil-direct = { git = "https://github.com/luofang34/Aviate", rev = "e5b4d5d21d9ed23c948fbb43653131c9330de5c8" }
+flightbag = { git = "https://github.com/luofang34/Flightbag", rev = "237d02c6618cc345ee07acbc87d257ab06cd38f1" }
+flightbag-core = { git = "https://github.com/luofang34/Flightbag", rev = "237d02c6618cc345ee07acbc87d257ab06cd38f1" }
 world = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381", features = ["moving"] }
 world-airmass = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
 world-atmosphere = { git = "https://github.com/luofang34/world", rev = "df649f71aa2c07666cdbade4882f5eb601512381" }
