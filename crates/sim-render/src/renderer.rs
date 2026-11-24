@@ -1,7 +1,10 @@
-use crate::compositor::{CompositorPass, CompositorTarget, OverlayQuad};
+use crate::compositor::{CompositorPass, OverlayQuad};
 use crate::vector_pass::{DirectVectorDraw, DirectVectorPass, DirectVectorTarget};
 
+mod layers;
 mod panel;
+#[cfg(test)]
+mod tests;
 
 use crate::frame::FrameParams;
 use crate::gpu::SurfaceGpu;
@@ -167,43 +170,23 @@ impl Renderer {
             });
         let clear_compositor = self.encode_optional_globe(&mut encoder, &view, globe);
         let size_px = self.surface_size();
-        self.compositor.encode(
-            &self.gpu.device,
-            &self.gpu.queue,
+        layers::encode_frame_layers(
+            &self.compositor,
+            &mut self.direct_vector,
+            (&self.gpu.device, &self.gpu.queue),
             &mut encoder,
-            CompositorTarget {
-                view: &view,
-                clear: clear_compositor,
+            DirectVectorTarget {
+                color_view: &view,
+                depth_view: &self.gpu.depth_view,
                 size_px,
             },
-            under_quads,
-        );
-        if !direct_vectors.is_empty() {
-            self.direct_vector.encode(
-                &self.gpu.device,
-                &self.gpu.queue,
-                &mut encoder,
-                DirectVectorTarget {
-                    color_view: &view,
-                    depth_view: &self.gpu.depth_view,
-                    size_px,
-                },
+            &layers::FrameLayers {
+                clear: clear_compositor,
+                under_quads,
                 direct_vectors,
-            )?;
-        }
-        if !over_quads.is_empty() {
-            self.compositor.encode(
-                &self.gpu.device,
-                &self.gpu.queue,
-                &mut encoder,
-                CompositorTarget {
-                    view: &view,
-                    clear: None,
-                    size_px,
-                },
                 over_quads,
-            );
-        }
+            },
+        )?;
         self.gpu.queue.submit([encoder.finish()]);
         self.gpu.queue.present(surface_texture);
         Ok(FrameOutcome::Presented)
