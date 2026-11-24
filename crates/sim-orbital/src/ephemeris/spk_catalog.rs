@@ -131,10 +131,7 @@ impl SpkEphemerisCatalog {
             };
             if seg.contains(epoch) {
                 let (t_whole_s, t_sub_s) = epoch.split_j2000_seconds();
-                let (p, v, a) = seg
-                    .inner()
-                    .evaluate_pva_split_j2000(t_whole_s, t_sub_s)
-                    .map_err(crate::daf::DafError::from)?;
+                let (p, v, a) = seg.evaluate_pva_split_j2000(t_whole_s, t_sub_s)?;
                 let raw = KinematicStateIcrf {
                     pos_m: DVec3::from_array(p),
                     vel_m_s: DVec3::from_array(v),

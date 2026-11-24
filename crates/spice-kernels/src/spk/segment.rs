@@ -4,6 +4,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use super::chebyshev::ChebyshevPositions;
+use super::chebyshev_states::ChebyshevStates;
 use super::sampled::SampledStates;
 use super::{MAX_HERMITE_WINDOW, MAX_LAGRANGE_WINDOW};
 use crate::daf::{self, DafArray};
@@ -12,6 +14,8 @@ use crate::error::Error;
 /// Characters an SPK segment name holds.
 const NAME_CHARS: usize = 40;
 
+const TYPE_CHEBYSHEV_POS: i32 = 2;
+const TYPE_CHEBYSHEV_POS_VEL: i32 = 3;
 const TYPE_LAGRANGE: i32 = 9;
 const TYPE_HERMITE: i32 = 13;
 
@@ -19,6 +23,10 @@ const TYPE_HERMITE: i32 = 13;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum SpkData {
+    /// SPK type 2: equal-interval Chebyshev polynomials for position (analytic velocity).
+    Type2(ChebyshevPositions),
+    /// SPK type 3: equal-interval Chebyshev polynomials for position and velocity.
+    Type3(ChebyshevStates),
     /// SPK type 9: Lagrange interpolation of states at unequal time steps.
     Lagrange(SampledStates),
     /// SPK type 13: Hermite interpolation of states at unequal time steps.
@@ -38,6 +46,8 @@ impl SpkData {
     #[must_use]
     pub const fn data_type(&self) -> i32 {
         match self {
+            Self::Type2(_) => TYPE_CHEBYSHEV_POS,
+            Self::Type3(_) => TYPE_CHEBYSHEV_POS_VEL,
             Self::Lagrange(_) => TYPE_LAGRANGE,
             Self::Hermite(_) => TYPE_HERMITE,
             Self::Raw { data_type, .. } => *data_type,
@@ -58,6 +68,28 @@ pub struct SpkSegment {
 }
 
 impl SpkSegment {
+    /// A type 2 segment covering the full Chebyshev interval span.
+    pub fn type2(
+        name: &str,
+        target: i32,
+        center: i32,
+        frame: i32,
+        chebyshev: ChebyshevPositions,
+    ) -> Result<Self, Error> {
+        Self::sampled(name, [target, center, frame], SpkData::Type2(chebyshev))
+    }
+
+    /// A type 3 segment covering the full Chebyshev interval span.
+    pub fn type3(
+        name: &str,
+        target: i32,
+        center: i32,
+        frame: i32,
+        chebyshev: ChebyshevStates,
+    ) -> Result<Self, Error> {
+        Self::sampled(name, [target, center, frame], SpkData::Type3(chebyshev))
+    }
+
     /// A type 9 segment covering every sample. `window` of the samples must
     /// be 2 to [`MAX_LAGRANGE_WINDOW`].
     pub fn lagrange(
@@ -91,6 +123,8 @@ impl SpkSegment {
     ) -> Result<Self, Error> {
         daf::check_text("segment name", name, NAME_CHARS)?;
         let coverage = match &data {
+            SpkData::Type2(c) => c.span(),
+            SpkData::Type3(c) => c.span(),
             SpkData::Lagrange(samples) | SpkData::Hermite(samples) => samples.span(),
             SpkData::Raw { .. } => [f64::NAN; 2],
         };
@@ -106,7 +140,7 @@ impl SpkSegment {
     }
 
     /// A segment from its stored form: the descriptor fields and the words of
-    /// its array. Types 9 and 13 are decoded and checked; any other type is
+    /// its array. Types 2, 3, 9 and 13 are decoded and checked; any other type is
     /// kept as [`SpkData::Raw`].
     pub fn from_stored(
         name: &str,
@@ -124,6 +158,12 @@ impl SpkSegment {
             reason,
         };
         let data = match data_type {
+            TYPE_CHEBYSHEV_POS => {
+                SpkData::Type2(ChebyshevPositions::from_words(&words).map_err(malformed)??)
+            }
+            TYPE_CHEBYSHEV_POS_VEL => {
+                SpkData::Type3(ChebyshevStates::from_words(&words).map_err(malformed)??)
+            }
             TYPE_LAGRANGE => {
                 let samples = SampledStates::from_words(&words).map_err(malformed)??;
                 check_window(data_type, samples.window(), 2, MAX_LAGRANGE_WINDOW)?;
@@ -137,34 +177,67 @@ impl SpkSegment {
             _ if words.is_empty() => return Err(malformed("no words")),
             _ => SpkData::Raw { data_type, words },
         };
-        Self {
+        let segment = Self {
             name: name.into(),
             target,
             center,
             frame,
             coverage,
             data,
+        };
+        match &segment.data {
+            SpkData::Type2(c) => {
+                let [data_start, data_end] = c.span();
+                let [start, end] = coverage;
+                if !(start.is_finite() && end.is_finite() && start <= end) {
+                    return Err(Error::InvalidCoverage {
+                        start,
+                        end,
+                        data_start,
+                        data_end,
+                    });
+                }
+                Ok(segment)
+            }
+            SpkData::Type3(c) => {
+                let [data_start, data_end] = c.span();
+                let [start, end] = coverage;
+                if !(start.is_finite() && end.is_finite() && start <= end) {
+                    return Err(Error::InvalidCoverage {
+                        start,
+                        end,
+                        data_start,
+                        data_end,
+                    });
+                }
+                Ok(segment)
+            }
+            _ => segment.with_coverage(coverage),
         }
-        .with_coverage(coverage)
     }
 
     /// Narrows or restates the coverage interval `[start, end]`.
     ///
-    /// For sampled data the interval must be non-empty and lie within the
-    /// samples, as SPICE requires. A verbatim segment's interval is taken as
-    /// given, because its data is not interpreted.
+    /// For sampled or Chebyshev data the interval must be non-empty and lie
+    /// within the data span, as SPICE requires. A verbatim segment's interval
+    /// is taken as given, because its data is not interpreted.
     pub fn with_coverage(mut self, coverage: [f64; 2]) -> Result<Self, Error> {
         let [start, end] = coverage;
-        if let SpkData::Lagrange(samples) | SpkData::Hermite(samples) = &self.data {
-            let [data_start, data_end] = samples.span();
-            if !(start < end && data_start <= start && end <= data_end) {
-                return Err(Error::InvalidCoverage {
-                    start,
-                    end,
-                    data_start,
-                    data_end,
-                });
-            }
+        let data_span = match &self.data {
+            SpkData::Type2(c) => Some(c.span()),
+            SpkData::Type3(c) => Some(c.span()),
+            SpkData::Lagrange(samples) | SpkData::Hermite(samples) => Some(samples.span()),
+            SpkData::Raw { .. } => None,
+        };
+        if let Some([data_start, data_end]) = data_span
+            && !(start < end && data_start <= start && end <= data_end)
+        {
+            return Err(Error::InvalidCoverage {
+                start,
+                end,
+                data_start,
+                data_end,
+            });
         }
         self.coverage = coverage;
         Ok(self)
@@ -195,6 +268,8 @@ impl SpkSegment {
 
     pub(super) fn to_array(&self) -> Result<DafArray, Error> {
         let words = match &self.data {
+            SpkData::Type2(c) => c.to_words(),
+            SpkData::Type3(c) => c.to_words(),
             SpkData::Lagrange(samples) | SpkData::Hermite(samples) => samples.to_words(),
             SpkData::Raw { words, .. } => words.clone(),
         };
@@ -257,6 +332,8 @@ impl SpkSegment {
             return Err(Error::OutOfCoverage { et, start, end });
         }
         let state = match &self.data {
+            SpkData::Type2(c) => c.evaluate(et),
+            SpkData::Type3(c) => c.evaluate(et),
             SpkData::Lagrange(samples) => samples.lagrange(et),
             SpkData::Hermite(samples) => samples.hermite(et),
             SpkData::Raw { data_type, .. } => {

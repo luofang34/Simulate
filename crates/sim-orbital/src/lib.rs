@@ -1,6 +1,4 @@
-//! Multi-body solar-system orbital dynamics, NAIF SPK/PCK ephemerides, transactional
-//! multi-vessel scheduling, swept collision detection, and pure-memory spaceflight `GNC`.
-
+//! Multi-body solar-system orbital dynamics, NAIF SPK/PCK/CK kernels, scheduling, and pure-memory GNC.
 mod builtin_solar;
 mod catalog_sgp4;
 mod chebyshev;
@@ -25,15 +23,14 @@ mod manifest;
 mod orientation;
 mod plant;
 mod scalar_math;
+mod spice_export;
 mod time;
 mod trajectory_product;
 mod universe;
 mod variational;
 mod warp;
-
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
 pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4TemeState, teme_to_icrf_rotation};
-pub use checkpoint::MomentumRamp;
 pub use checkpoint::{ActuatorState, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
 pub use checkpoint::{DiscreteGncState, EventGenerationState, ExternalInputs, VesselCheckpoint};
@@ -75,6 +72,9 @@ pub use plant::{ContinuousPlantState, EnvironmentWrench, GravityGradient, MassPr
 pub use plant::{EnvironmentStage, clamp_vec_norm, quat_normalize_portable, quat_omega_derivative};
 pub use plant::{PLANT_ODE_DIM, PropagationAudit, evaluate_plant_ode_rhs, quat_geodesic_angle_rad};
 pub use sim_spacetime::{ContentHash, DomainHasher, FrameCode, HashParseError, NaifId, VesselId};
+pub use spice_export::{CkExportConfig, CkExportKind, SpiceExportError, SpkExportConfig};
+pub use spice_export::{LinearSclkMapping, export_sampled_attitude_ck, export_translational_spk};
+pub use spice_export::{SpkExportKind, export_attitude_ck, export_sampled_states_spk};
 pub use time::{CoverageSet, EarthEopTable, FutureUtcPolicy, LeapSecondEntry, TdbEpoch, TimeError};
 pub use time::{LeapSecondTable, OutOfEopPolicy, SimClockAdapter, TdbSpanNs, TimeScaleCatalog};
 pub use trajectory_product::{OrbitalTrajectoryProduct, PlanningInputFingerprint};
@@ -88,12 +88,12 @@ pub use variational::{StmPropagationResult, compute_bplane_collision_probability
 pub use warp::{FullCoupledPidFeedForwardSasLaw, WarpStatus, conservative_hazard_time_to_go_s};
 pub use warp::{ReducedManifoldSteeringLaw, ReducedThrustGateRejection, VesselWarpConstraintInput};
 pub use warp::{ReducedThrustGateConfig, check_reduced_manifold_gate, evaluate_global_warp_status};
-pub use {builtin_solar::apollo_1969_spk_bytes, contact::CONTACT_PROXIMITY_THRESHOLD_M};
-pub use {catalog_sgp4::Sgp4Mode, events::ScheduledEvent, kpl::KplAtom, kpl::KplPool};
-pub use {collision::eval_bernstein_vec3, docking::Apas95PortSpec, ephemeris::SpkEphemerisCatalog};
-pub use {constants::ConstantsError, orientation::IauPckCatalog, warp::WarpBottleneckReason};
-pub use {contact::CONTACT_SUBSTEP_SECONDS, kepler::propagate_encke_interval, time::EarthEopEntry};
-pub use {dop853::propagate_plant_until_step, kpl::KplError, universe::MAX_SAME_TICK_TRANSITIONS};
-pub use {ephemeris::EphemerisCatalog, gnc::AutolandGuidanceOutput, warp::SmoothSteeringProfile};
-pub use {events::AuthoritativeCommandLog, events::EventOrderKey, manifest::ManifestMismatchField};
-pub use {manifest::SimulationManifestDigest, time::Ut1Sample, universe::SpeculativeSegmentEntry};
+pub use {builtin_solar::apollo_1969_spk_bytes, gnc::AutolandGuidanceOutput, time::EarthEopEntry};
+pub use {catalog_sgp4::Sgp4Mode, contact::CONTACT_PROXIMITY_THRESHOLD_M, docking::Apas95PortSpec};
+pub use {checkpoint::MomentumRamp, contact::CONTACT_SUBSTEP_SECONDS, kpl::KplAtom, kpl::KplError};
+pub use {collision::eval_bernstein_vec3, events::AuthoritativeCommandLog, events::EventOrderKey};
+pub use {constants::ConstantsError, kepler::propagate_encke_interval, orientation::IauPckCatalog};
+pub use {dop853::propagate_plant_until_step, kpl::KplPool, universe::SpeculativeSegmentEntry};
+pub use {ephemeris::EphemerisCatalog, events::ScheduledEvent, manifest::SimulationManifestDigest};
+pub use {ephemeris::SpkEphemerisCatalog, warp::SmoothSteeringProfile, warp::WarpBottleneckReason};
+pub use {manifest::ManifestMismatchField, time::Ut1Sample, universe::MAX_SAME_TICK_TRANSITIONS};
