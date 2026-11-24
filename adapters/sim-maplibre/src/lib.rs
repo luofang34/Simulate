@@ -69,7 +69,7 @@ pub use runtime::{
     AircraftInstance, AvionicsMapSet, CelestialDisc, CelestialEarthShadow, CelestialSkyInput,
     CelestialStar, CelestialTwilight, ChartCameraSpec, ChartFrameOutcome, ConformalMapFrame,
     InstrumentMapMode, InstrumentMapSpec, InstrumentMapSurface, SharedMapRuntime, TruthSceneConfig,
-    TruthSceneFrame, TruthSceneMap, TruthSlotMask,
+    TruthSceneFrame, TruthSceneMap, TruthSlotMask, cache_tile_json, prefetch_tile_json,
 };
 pub use scenery_loader::{
     CATALOG_DEM_URL_TEMPLATE, CATALOG_ORTHO_URL_TEMPLATE, CatalogTileLoader,

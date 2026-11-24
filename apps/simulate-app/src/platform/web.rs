@@ -5,6 +5,7 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_wasm::{WASMLayer, WASMLayerConfigBuilder};
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use winit::event_loop::{EventLoop, EventLoopProxy};
 use winit::platform::web::EventLoopExtWebSys;
 use winit::window::Window;
@@ -102,6 +103,37 @@ pub fn is_handheld_browser() -> bool {
     crate::map_rig::device_tier::browser_is_handheld()
 }
 
+/// Maximum browser boot budget spent waiting for OpenFreeMap TileJSON alongside GPU init.
+const TILE_JSON_PREFETCH_TIMEOUT_MS: i32 = 2_500;
+
+fn prefetch_openfreemap_tile_json_promise() -> js_sys::Promise {
+    let fetch = wasm_bindgen_futures::future_to_promise(async {
+        let _ok =
+            sim_maplibre::prefetch_tile_json(sim_maplibre::OPENFREEMAP_PLANET_TILEJSON_URL).await;
+        Ok(JsValue::UNDEFINED)
+    });
+    let timeout = js_sys::Promise::new(&mut |resolve, _reject| {
+        if let Some(window) = web_sys::window() {
+            let resolve_timeout = resolve.clone();
+            let cb = Closure::once_into_js(move || {
+                resolve_timeout.call0(&JsValue::UNDEFINED).ok();
+            });
+            if window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                    cb.unchecked_ref(),
+                    TILE_JSON_PREFETCH_TIMEOUT_MS,
+                )
+                .is_err()
+            {
+                resolve.call0(&JsValue::UNDEFINED).ok();
+            }
+        } else {
+            resolve.call0(&JsValue::UNDEFINED).ok();
+        }
+    });
+    js_sys::Promise::race(&js_sys::Array::of2(&fetch, &timeout))
+}
+
 /// Starts creating the renderer for `window`; it is posted back to the event
 /// loop when the browser has granted a GPU device, after `host` has said what follows.
 pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, host: &Host) {
@@ -113,7 +145,11 @@ pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, host
     );
     let host = host.clone();
     wasm_bindgen_futures::spawn_local(async move {
+        let tile_json_race = prefetch_openfreemap_tile_json_promise();
         let gpu = GpuReady::new(window, width, height).await;
+        wasm_bindgen_futures::JsFuture::from(tile_json_race)
+            .await
+            .ok();
         // Building the cockpit holds the page's only thread until the first frame, so
         // the words for it have to be on screen before the renderer is handed over.
         if gpu.is_ok() && host.startup_phase("Loading the aircraft and maps") {
