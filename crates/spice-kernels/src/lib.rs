@@ -60,13 +60,19 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+mod ck;
 mod daf;
 mod error;
 mod spk;
 
+pub use ck::{
+    CkData, CkFile, CkInterval, CkPointing, CkPointingInstance, CkSegment, CkType2, CkType3,
+    matrix_to_quaternion, quaternion_to_matrix,
+};
 pub use daf::{Daf, DafArray, Endian};
 pub use error::Error;
 pub use spk::{
+    ChebyshevPositionRecord, ChebyshevPositions, ChebyshevStateRecord, ChebyshevStates,
     FRAME_J2000, MAX_HERMITE_WINDOW, MAX_LAGRANGE_WINDOW, SampledStates, SpkData, SpkFile,
     SpkSegment,
 };

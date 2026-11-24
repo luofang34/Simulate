@@ -5908,6 +5908,7 @@ dependencies = [
  "sim-bodies",
  "sim-geo",
  "sim-spacetime",
+ "spice-kernels",
  "spicekit",
  "thiserror 2.0.21",
  "world-core",

@@ -4,7 +4,9 @@
 #[path = "support/kepler.rs"]
 mod kepler;
 
-use spice_kernels::{Error, FRAME_J2000, SampledStates, SpkFile, SpkSegment};
+use spice_kernels::{
+    ChebyshevPositions, ChebyshevStates, Error, FRAME_J2000, SampledStates, SpkFile, SpkSegment,
+};
 
 const SAMPLES: usize = 195;
 
@@ -83,6 +85,64 @@ fn halving_the_step_shrinks_the_error_at_the_expected_order() -> Result<(), Erro
     for (coarse, fine) in [(coarse_l, fine_l), (coarse_h, fine_h)] {
         let ratio = coarse / fine;
         assert!((12.0..20.0).contains(&ratio), "order-four ratio {ratio}");
+    }
+    Ok(())
+}
+
+#[test]
+fn chebyshev_type2_and_type3_hold_low_orbit_to_micrometres() -> Result<(), Error> {
+    let orbit = kepler::low_earth_orbit();
+    let init = orbit.epoch + 50.0;
+    let intlen = 600.0;
+    let n_records = 10_usize;
+    let c2_nodes = ChebyshevPositions::fit_nodes(init, intlen, n_records, 15, |et| {
+        let s = orbit.state(et);
+        [s[0], s[1], s[2]]
+    })?;
+    let c3_nodes = ChebyshevStates::fit_nodes(init, intlen, n_records, 15, |et| orbit.state(et))?;
+
+    let sample_epochs: Vec<f64> = (0..=400).map(|k| init + f64::from(k) * 15.0).collect();
+    let sample_pos: Vec<[f64; 3]> = sample_epochs
+        .iter()
+        .map(|&et| {
+            let s = orbit.state(et);
+            [s[0], s[1], s[2]]
+        })
+        .collect();
+    let sample_states: Vec<[f64; 6]> = sample_epochs.iter().map(|&et| orbit.state(et)).collect();
+    let c2_ls =
+        ChebyshevPositions::fit_samples(init, intlen, n_records, 15, &sample_epochs, &sample_pos)?;
+    let c3_ls =
+        ChebyshevStates::fit_samples(init, intlen, n_records, 15, &sample_epochs, &sample_states)?;
+
+    let mut file = SpkFile::new("chebyshev accuracy")?;
+    file.push(SpkSegment::type2(
+        "t2_nodes",
+        -10,
+        399,
+        FRAME_J2000,
+        c2_nodes,
+    )?);
+    file.push(SpkSegment::type3(
+        "t3_nodes",
+        -11,
+        399,
+        FRAME_J2000,
+        c3_nodes,
+    )?);
+    file.push(SpkSegment::type2("t2_ls", -12, 399, FRAME_J2000, c2_ls)?);
+    file.push(SpkSegment::type3("t3_ls", -13, 399, FRAME_J2000, c3_ls)?);
+    let read = SpkFile::parse(&file.to_bytes()?)?;
+
+    for target in [-10, -11, -12, -13] {
+        let mut worst = (0.0_f64, 0.0_f64);
+        for k in 0..=600 {
+            let et = init + f64::from(k) * 10.0;
+            let (pos, vel) = kepler::difference(&read.state(target, 399, et)?, &orbit.state(et));
+            worst = (worst.0.max(pos), worst.1.max(vel));
+        }
+        assert!(worst.0 < 1.0e-7, "target {target} pos err {}", worst.0);
+        assert!(worst.1 < 1.0e-9, "target {target} vel err {}", worst.1);
     }
     Ok(())
 }

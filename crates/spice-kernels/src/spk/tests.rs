@@ -2,7 +2,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::interpolation::{hermite, lagrange};
-use super::{FRAME_J2000, SampledStates, SpkData, SpkFile, SpkSegment};
+use super::{
+    ChebyshevPositionRecord, ChebyshevPositions, ChebyshevStateRecord, ChebyshevStates,
+    FRAME_J2000, SampledStates, SpkData, SpkFile, SpkSegment,
+};
 use crate::error::Error;
 
 /// A degree-seven polynomial and its derivative.
@@ -257,21 +260,21 @@ fn evaluation_respects_coverage_and_precedence() {
 #[test]
 fn unmodelled_types_are_kept_verbatim_and_not_evaluated() {
     let words = vec![1.0, 2.0, 3.0, 4.0];
-    let raw = SpkSegment::from_stored("raw", 3, 0, 1, [0.0, 1.0], 2, words.clone()).unwrap();
+    let raw = SpkSegment::from_stored("raw", 3, 0, 1, [0.0, 1.0], 5, words.clone()).unwrap();
     assert_eq!(
         raw.data(),
         &SpkData::Raw {
-            data_type: 2,
+            data_type: 5,
             words
         }
     );
-    assert_eq!(raw.data().data_type(), 2);
+    assert_eq!(raw.data().data_type(), 5);
     assert!(matches!(
         raw.state(0.5),
-        Err(Error::UnsupportedDataType { data_type: 2 })
+        Err(Error::UnsupportedDataType { data_type: 5 })
     ));
     assert!(matches!(
-        SpkSegment::from_stored("raw", 3, 0, 1, [0.0, 1.0], 2, vec![]),
+        SpkSegment::from_stored("raw", 3, 0, 1, [0.0, 1.0], 5, vec![]),
         Err(Error::MalformedSegment { .. })
     ));
 }
@@ -287,5 +290,122 @@ fn only_spk_shaped_dafs_are_accepted() {
     assert!(matches!(
         SpkFile::from_daf(&odd),
         Err(Error::InvalidSummaryFormat { nd: 3, ni: 6 })
+    ));
+}
+
+#[test]
+fn clenshaw_type2_matches_polynomial_value_and_derivative() {
+    // x(s) = 1.0 + 2.0*T1(s) - 0.5*T2(s) + 0.25*T3(s), on [100, 300] (mid=200, radius=100).
+    let rec = ChebyshevPositionRecord {
+        mid: 200.0,
+        radius: 100.0,
+        coeffs: [
+            vec![1.0, 2.0, -0.5, 0.25],
+            vec![-3.0, 0.5, 0.0, 0.0],
+            vec![4.0, 0.0, 1.0, 0.0],
+        ],
+    };
+    let pos = ChebyshevPositions::from_records(100.0, 200.0, &[rec]).unwrap();
+    let seg = SpkSegment::type2("cheb2", -10, 399, FRAME_J2000, pos).unwrap();
+    let mut file = SpkFile::new("cheb2").unwrap();
+    file.push(seg);
+    let parsed = SpkFile::parse(&file.to_bytes().unwrap()).unwrap();
+
+    for s in [-1.0, -0.5, 0.0, 0.4, 1.0] {
+        let et = 200.0 + 100.0 * s;
+        let state = parsed.state(-10, 399, et).unwrap();
+        let want_x = 1.0 + 2.0 * s - 0.5 * (2.0 * s * s - 1.0) + 0.25 * (4.0 * s * s * s - 3.0 * s);
+        let want_vx = (2.0 - 2.0 * s + 0.25 * (12.0 * s * s - 3.0)) / 100.0;
+        let want_z = 4.0 + (2.0 * s * s - 1.0);
+        let want_vz = (4.0 * s) / 100.0;
+        assert!((state[0] - want_x).abs() < 1e-13);
+        assert!((state[3] - want_vx).abs() < 1e-15);
+        assert!((state[2] - want_z).abs() < 1e-13);
+        assert!((state[5] - want_vz).abs() < 1e-15);
+    }
+}
+
+#[test]
+fn chebyshev_node_and_sample_fitting_round_trip_type2_and_type3() {
+    let init = 1000.0;
+    let intlen = 40.0;
+    let n_records = 4;
+    let pos_fn = |t: f64| {
+        let x = 7000.0 * libm::cos(0.01 * (t - init));
+        let y = 7000.0 * libm::sin(0.01 * (t - init));
+        let z = 100.0 + 0.25 * (t - init);
+        [x, y, z]
+    };
+    let state_fn = |t: f64| {
+        let [x, y, z] = pos_fn(t);
+        let vx = -70.0 * libm::sin(0.01 * (t - init));
+        let vy = 70.0 * libm::cos(0.01 * (t - init));
+        [x, y, z, vx, vy, 0.25]
+    };
+
+    let c2_nodes = ChebyshevPositions::fit_nodes(init, intlen, n_records, 10, pos_fn).unwrap();
+    let c3_nodes = ChebyshevStates::fit_nodes(init, intlen, n_records, 10, state_fn).unwrap();
+
+    let epochs: Vec<f64> = (0..=160).map(|k| init + f64::from(k)).collect();
+    let positions: Vec<[f64; 3]> = epochs.iter().map(|&t| pos_fn(t)).collect();
+    let states: Vec<[f64; 6]> = epochs.iter().map(|&t| state_fn(t)).collect();
+    let c2_ls =
+        ChebyshevPositions::fit_samples(init, intlen, n_records, 10, &epochs, &positions).unwrap();
+    let c3_ls =
+        ChebyshevStates::fit_samples(init, intlen, n_records, 10, &epochs, &states).unwrap();
+
+    let mut file = SpkFile::new("fit test").unwrap();
+    file.push(SpkSegment::type2("t2_nodes", -2, 399, FRAME_J2000, c2_nodes).unwrap());
+    file.push(SpkSegment::type3("t3_nodes", -3, 399, FRAME_J2000, c3_nodes).unwrap());
+    file.push(SpkSegment::type2("t2_ls", -4, 399, FRAME_J2000, c2_ls).unwrap());
+    file.push(SpkSegment::type3("t3_ls", -5, 399, FRAME_J2000, c3_ls).unwrap());
+    let parsed = SpkFile::parse(&file.to_bytes().unwrap()).unwrap();
+
+    for target in [-2, -3, -4, -5] {
+        for &et in &[1000.0, 1023.7, 1040.0, 1089.3, 1160.0] {
+            let got = parsed.state(target, 399, et).unwrap();
+            let want = state_fn(et);
+            for k in 0..3 {
+                assert!((got[k] - want[k]).abs() < 1e-9, "target={target} et={et}");
+                assert!(
+                    (got[k + 3] - want[k + 3]).abs() < 1e-10,
+                    "vel target={target} et={et}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn chebyshev_raw_and_validation_errors_are_checked() {
+    let rec3 = ChebyshevStateRecord {
+        mid: 5.0,
+        radius: 5.0,
+        pos: [vec![1.0, 2.0], vec![0.0, 0.0], vec![0.0, 0.0]],
+        vel: [vec![0.2, 0.0], vec![0.0, 0.0], vec![0.0, 0.0]],
+    };
+    let s3 = ChebyshevStates::from_records(0.0, 10.0, &[rec3]).unwrap();
+    assert_eq!(s3.degree(), 1);
+    assert_eq!(s3.records().len(), 1);
+
+    assert!(matches!(
+        ChebyshevPositions::from_uniform(0.0, -1.0, &[[vec![1.0], vec![1.0], vec![1.0]]]),
+        Err(Error::InvalidChebyshev { .. })
+    ));
+    assert!(matches!(
+        ChebyshevPositions::fit_samples(0.0, 10.0, 1, 5, &[0.0, 5.0], &[[0.0; 3]; 2]),
+        Err(Error::InsufficientFitSamples {
+            granule: 0,
+            required: 6,
+            found: 2
+        })
+    ));
+    assert!(matches!(
+        SpkSegment::from_stored("bad2", 1, 0, 1, [0.0, 10.0], 2, vec![1.0, 2.0]),
+        Err(Error::MalformedSegment { data_type: 2, .. })
+    ));
+    assert!(matches!(
+        SpkSegment::from_stored("bad3", 1, 0, 1, [0.0, 10.0], 3, vec![0.0, 10.0, 7.0, 1.0]),
+        Err(Error::MalformedSegment { data_type: 3, .. })
     ));
 }

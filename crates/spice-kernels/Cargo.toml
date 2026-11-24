@@ -15,12 +15,16 @@ default = ["std"]
 std = ["thiserror/std"]
 
 [dependencies]
+libm = { version = "0.2", default-features = false }
 thiserror = { version = "2", default-features = false }
 
 [dev-dependencies]
-libm = "0.2"
 spicekit = "0.2.3"
 tempfile = "3"
+
+[[test]]
+name = "spicekit_cross_check"
+required-features = ["std"]
 
 [lints.rust]
 unsafe_code = "forbid"

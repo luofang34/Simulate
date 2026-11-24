@@ -1,7 +1,10 @@
 //! Written kernels read back unchanged, writing is byte-deterministic, and a
 //! kernel of segment types the crate does not model passes through intact.
 
-use spice_kernels::{Daf, Error, FRAME_J2000, SampledStates, SpkData, SpkFile, SpkSegment};
+use spice_kernels::{
+    CkFile, CkInterval, CkPointingInstance, CkSegment, CkType2, CkType3, Daf, Error, FRAME_J2000,
+    SampledStates, SpkData, SpkFile, SpkSegment,
+};
 
 /// A DE440s excerpt (type 2 segments) written by Simulate's kernel tooling.
 const EXCERPT: &[u8] = include_bytes!("data/de440s_excerpt_1969.bsp");
@@ -116,6 +119,7 @@ fn narrowed_coverage_survives_the_round_trip() -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn file_helpers_write_and_read_the_same_kernel() -> Result<(), Box<dyn std::error::Error>> {
     let file = kernel(3)?;
@@ -153,16 +157,10 @@ fn excerpt_of_a_planetary_ephemeris_passes_through_unchanged() -> Result<(), Err
             before.coverage().map(f64::to_bits),
             after.coverage().map(f64::to_bits)
         );
-        let (SpkData::Raw { words: a, .. }, SpkData::Raw { words: b, .. }) =
-            (before.data(), after.data())
-        else {
-            panic!("type 2 segments are carried verbatim");
+        let (SpkData::Type2(a), SpkData::Type2(b)) = (before.data(), after.data()) else {
+            panic!("type 2 segments are decoded");
         };
-        assert!(
-            a.iter()
-                .map(|v| v.to_bits())
-                .eq(b.iter().map(|v| v.to_bits()))
-        );
+        assert_eq!(a, b);
     }
 
     // The container level agrees too: same arrays at the same addresses, so
@@ -177,5 +175,81 @@ fn excerpt_of_a_planetary_ephemeris_passes_through_unchanged() -> Result<(), Err
         differing.iter().all(|&i| (2048..3072).contains(&i)),
         "{differing:?}"
     );
+    assert!(original.state(301, 3, -960_910_900.0).is_ok());
+    Ok(())
+}
+
+#[test]
+fn ck_file_round_trips_and_is_byte_deterministic() -> Result<(), Error> {
+    let mut ck = CkFile::new("ck round trip")?;
+    ck.set_comment_lines(vec!["CK Type 2 and Type 3".into()])?;
+    for index in 0..30_i32 {
+        let inst = -1000 - index;
+        if index % 2 == 0 {
+            let t2 = CkType2::new(vec![CkInterval {
+                start_sclk: 100.0,
+                stop_sclk: 200.0,
+                seconds_per_tick: 0.01,
+                quaternion: [1.0, 0.0, 0.0, 0.0],
+                angular_velocity: [0.001, -0.002, 0.003],
+            }])?;
+            ck.push(CkSegment::type2(
+                &format!("ck2_{index}"),
+                inst,
+                FRAME_J2000,
+                t2,
+            )?);
+        } else {
+            let t3 = CkType3::single_interval(
+                vec![
+                    CkPointingInstance {
+                        sclk: 100.0,
+                        quaternion: [1.0, 0.0, 0.0, 0.0],
+                        angular_velocity: Some([0.0, 0.0, 0.01]),
+                    },
+                    CkPointingInstance {
+                        sclk: 200.0,
+                        quaternion: [0.0, 0.0, 0.0, 1.0],
+                        angular_velocity: Some([0.0, 0.0, 0.01]),
+                    },
+                ],
+                true,
+            )?;
+            ck.push(CkSegment::type3(
+                &format!("ck3_{index}"),
+                inst,
+                FRAME_J2000,
+                t3,
+            )?);
+        }
+    }
+    let bytes = ck.to_bytes()?;
+    assert_eq!(bytes, ck.to_bytes()?);
+    let read = CkFile::parse(&bytes)?;
+    assert_eq!(read, ck);
+    assert_eq!(read.to_bytes()?, bytes);
+    Ok(())
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn ck_file_helpers_write_and_read_the_same_kernel() -> Result<(), Box<dyn std::error::Error>> {
+    let mut ck = CkFile::new("ck file io")?;
+    ck.push(CkSegment::type2(
+        "seg0",
+        -77_000,
+        FRAME_J2000,
+        CkType2::new(vec![CkInterval {
+            start_sclk: 0.0,
+            stop_sclk: 100.0,
+            seconds_per_tick: 1.0,
+            quaternion: [1.0, 0.0, 0.0, 0.0],
+            angular_velocity: [0.0, 0.01, 0.0],
+        }])?,
+    )?);
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.bc");
+    ck.write_file_blocking(&path)?;
+    assert_eq!(CkFile::read_file_blocking(&path)?, ck);
     Ok(())
 }
