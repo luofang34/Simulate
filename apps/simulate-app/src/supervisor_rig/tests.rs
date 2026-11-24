@@ -16,7 +16,7 @@ fn idx(code: &str) -> sim_scenery::AirportIdx {
 
 #[test]
 fn six_presses_visit_every_camera_then_return_to_the_cockpit() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     rig.set_viewport_mode(OperatorViewportMode::Cockpit);
     let mut ids = Vec::new();
     for press in 1..=5 {
@@ -46,7 +46,7 @@ fn the_cycle_walks_the_p38s_own_views_after_the_suite_with_their_airframe_roles(
     use sim_core::AirframeVisibility;
 
     let own = &vehicle_camera_suite(FreeFlightVehicle::JsbsimP38g).cameras;
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     rig.set_vehicle_cameras(own);
     rig.set_viewport_mode(OperatorViewportMode::Cockpit);
     let mut seen = Vec::new();
@@ -74,7 +74,7 @@ fn the_cycle_walks_the_p38s_own_views_after_the_suite_with_their_airframe_roles(
 
 #[test]
 fn a_new_profile_starts_its_camera_suite_from_the_first_camera() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     let kewr = Some(ScenarioProfile::AirportKewrToweredPattern);
     for _ in 0..5 {
         rig.cycle_virtual_camera(Some(ScenarioProfile::Airport47NUncontrolledPattern));
@@ -86,7 +86,7 @@ fn a_new_profile_starts_its_camera_suite_from_the_first_camera() {
 
 #[test]
 fn lunar_landing_cameras_stand_on_the_moon() {
-    let rig = SupervisorRig::new();
+    let rig = SupervisorRig::new().unwrap();
     let profile = Some(ScenarioProfile::Apollo11LunarLanding);
     let (body, _) = rig.active_virtual_camera_on_body(profile);
     assert_eq!(body, BodyEllipsoid::MOON_IAU);
@@ -99,7 +99,7 @@ fn lunar_landing_cameras_stand_on_the_moon() {
         attitude: DQuat::from_mat3(&DMat3::from_cols(frame.up(), frame.east(), frame.north())),
         angular_rate_body: glam::DVec3::ZERO,
     };
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     for _ in 0..5 {
         let spec = rig.cycle_virtual_camera(profile);
         let (body, active) = rig.active_virtual_camera_on_body(profile);
@@ -119,7 +119,7 @@ fn lunar_landing_cameras_stand_on_the_moon() {
 
 #[test]
 fn global_airport_trackers_stand_at_that_airport() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     rig.set_free_airport(idx("EGLL"), 0);
     assert_eq!(rig.effective_airport_code(None), "EGLL");
     let record = rig.active_airport_record(None).unwrap();
@@ -156,7 +156,7 @@ fn global_airport_trackers_stand_at_that_airport() {
 
 #[test]
 fn runway_heights_follow_the_vertical_datum() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     let kewr = Some(ScenarioProfile::AirportKewrToweredPattern);
     assert_eq!(rig.effective_airport_code(kewr), "KEWR");
     let msl = rig
@@ -183,7 +183,7 @@ fn runway_heights_follow_the_vertical_datum() {
 
 #[test]
 fn picking_a_featured_aerodrome_selects_its_database_airport() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     assert_eq!(rig.effective_airport_code(None), "KDOV");
     rig.set_free_airport(idx("RJTT"), 1);
     assert_eq!(rig.selected_runway_end(), 1);
@@ -201,7 +201,7 @@ fn picking_a_featured_aerodrome_selects_its_database_airport() {
 /// `EllipsoidWgs84`, circulating around the airport at its true ellipsoidal height.
 #[test]
 fn traffic_entities_follow_the_vertical_datum_around_the_airport() {
-    let mut rig = SupervisorRig::new();
+    let mut rig = SupervisorRig::new().unwrap();
     let kewr = Some(ScenarioProfile::AirportKewrToweredPattern);
     let record = rig.active_airport_record(kewr).unwrap();
     let arp = record.arp_geodetic(rig.vertical_datum());
@@ -213,40 +213,40 @@ fn traffic_entities_follow_the_vertical_datum_around_the_airport() {
         kewr,
     );
     let truth = rig.supervisor().truth_world();
-    let tracks = truth.surveillance.tracks();
+    let tracks: Vec<_> = truth.surveillance.snapshots().collect();
     let entities = rig.truth_entities(ViewSlotMask::ALL);
     assert_eq!(entities.len(), tracks.len());
-    for (entity, track) in entities.iter().zip(tracks) {
+    for (entity, track) in entities.iter().zip(&tracks) {
+        let pos = track.position.as_ref().unwrap().value;
+        let track_alt_m = track
+            .geometric_altitude_ft
+            .or(track.pressure_altitude_ft)
+            .map_or(0.0, |a| f64::from(a.value) * 0.3048);
         let undulation = egm96_undulation_m(
-            track.position.latitude_deg.to_radians(),
-            track.position.longitude_deg.to_radians(),
+            pos.latitude_deg.to_radians(),
+            pos.longitude_deg.to_radians(),
         );
-        assert!(
-            ((entity.placement.altitude_meters + undulation) - track.position.ellipsoidal_height_m)
-                .abs()
-                < 1e-9
-        );
+        assert!(((entity.placement.altitude_meters + undulation) - track_alt_m).abs() < 1e-9);
     }
     rig.set_vertical_datum(CatalogVerticalDatum::EllipsoidWgs84);
-    for (entity, track) in rig
-        .truth_entities(ViewSlotMask::ALL)
-        .iter()
-        .zip(rig.supervisor().truth_world().surveillance.tracks())
-    {
-        assert_eq!(
-            entity.placement.altitude_meters,
-            track.position.ellipsoidal_height_m
-        );
+    for (entity, track) in rig.truth_entities(ViewSlotMask::ALL).iter().zip(&tracks) {
+        let track_alt_m = track
+            .geometric_altitude_ft
+            .or(track.pressure_altitude_ft)
+            .map_or(0.0, |a| f64::from(a.value) * 0.3048);
+        assert_eq!(entity.placement.altitude_meters, track_alt_m);
     }
     // The pattern traffic flies 420 m over the field a few kilometres out; the distant
     // drone is the lower track.
-    let pattern = rig
-        .supervisor()
-        .truth_world()
-        .surveillance
-        .tracks()
+    let pattern = tracks
         .iter()
-        .map(|track| track.position.ellipsoidal_height_m - arp.height_m)
+        .map(|track| {
+            let track_alt_m = track
+                .geometric_altitude_ft
+                .or(track.pressure_altitude_ft)
+                .map_or(0.0, |a| f64::from(a.value) * 0.3048);
+            track_alt_m - arp.height_m
+        })
         .fold(f64::NEG_INFINITY, f64::max);
     assert!(
         (pattern - 420.0).abs() < 5.0,

@@ -17,8 +17,8 @@ use crate::scenarios::{FlightDeckScenario, advance_connext_replay_stream, evalua
 use crate::telemetry::OwnshipState;
 use crate::terrain::{SyntheticTerrainGenerator, TerrainMesh};
 use crate::traffic::{TrafficCoordinator, TrafficDisplayTarget};
+use world::surveillance::DeliveryPath;
 use world_core::DecimalYear;
-use world_surveillance::DeliveryPath;
 
 /// Active telemetry feed driving the Synthetic Vision System.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,7 +156,7 @@ impl FlightDeckSession {
             kml_player: None,
             kml_raw_bytes: None,
             gdl90: Gdl90Decoder::new(),
-            traffic: TrafficCoordinator::new(),
+            traffic: TrafficCoordinator::new()?,
             airspace: AirspaceCoordinator::builtin_ny_nj()?,
             terrain: SyntheticTerrainGenerator::builtin_ny_nj()?,
             instruments: InstrumentSuite::new(),

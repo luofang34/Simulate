@@ -4,14 +4,56 @@ use core::f64::consts::PI;
 
 use glam::DVec3;
 use sim_analysis_contract::PropagationModelSpec;
+use sim_geo::Geodetic;
 use sim_spacetime::{SPEED_OF_LIGHT_M_S, TdbEpoch, sin};
 use thiserror::Error;
+use world_propagation::{Percentage, Polarisation, ProfilePoint, PropagationError};
 
 use super::units::db_from_ratio;
 use crate::geometry::PropagationMediumQuery;
 
-/// Geometry of one signal path, with the transmitter at emission and the receiver at reception.
+/// Statistical exceedance percentages `(time, location, situation)` strictly in `(0, 100)`.
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ExceedancePercentages {
+    /// Percentage of time the predicted loss is not exceeded (`(0, 100)`).
+    pub time: Percentage,
+    /// Percentage of locations the predicted loss is not exceeded (`(0, 100)`).
+    pub location: Percentage,
+    /// Percentage of situations / confidence (`(0, 100)`).
+    pub situation: Percentage,
+}
+
+impl ExceedancePercentages {
+    /// Builds validated exceedance percentages from raw percentage numbers strictly inside `(0, 100)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PropagationError::InvalidParameter`] if any value is outside `(0, 100)` or non-finite.
+    pub fn try_new(
+        time_percent: f64,
+        location_percent: f64,
+        situation_percent: f64,
+    ) -> Result<Self, PropagationError> {
+        Ok(Self {
+            time: Percentage::new(time_percent)?,
+            location: Percentage::new(location_percent)?,
+            situation: Percentage::new(situation_percent)?,
+        })
+    }
+
+    /// Constructs exceedance percentages directly from validated [`Percentage`] values.
+    #[must_use]
+    pub const fn new(time: Percentage, location: Percentage, situation: Percentage) -> Self {
+        Self {
+            time,
+            location,
+            situation,
+        }
+    }
+}
+
+/// Geometry of one signal path, with the transmitter at emission and the receiver at reception.
+#[derive(Clone, Debug, PartialEq)]
 pub struct PathGeometry {
     /// Reception epoch (`TDB`).
     pub epoch: TdbEpoch,
@@ -31,6 +73,79 @@ pub struct PathGeometry {
     pub source_surface_elevation_rad: Option<f64>,
     /// Elevation of the transmitter above the receiver's local horizon, when the receiver stands on a body (`rad`).
     pub target_surface_elevation_rad: Option<f64>,
+    /// Wave polarisation relative to the local ground plane, when specified.
+    pub polarisation: Option<Polarisation>,
+    /// Time/location/situation exceedance percentages for statistical terrestrial propagation models.
+    pub exceedance: Option<ExceedancePercentages>,
+    /// Transmitter antenna phase-center site in host-body fixed geodetic coordinates, when resolved.
+    pub source_geodetic: Option<Geodetic>,
+    /// Receiver antenna phase-center site in host-body fixed geodetic coordinates, when resolved.
+    pub target_geodetic: Option<Geodetic>,
+    /// Ordered great-circle ground elevation samples from transmitter to receiver (`m`).
+    pub terrain_profile: Option<Vec<ProfilePoint>>,
+}
+
+impl PathGeometry {
+    /// Builds a [`PathGeometry`] with core geometric fields and all optional terrestrial/statistical fields unset.
+    #[must_use]
+    pub const fn from_path(
+        epoch: TdbEpoch,
+        carrier_frequency_hz: f64,
+        source_position_icrf_m: DVec3,
+        target_position_icrf_m: DVec3,
+        slant_range_m: f64,
+        range_rate_m_s: f64,
+    ) -> Self {
+        Self {
+            epoch,
+            carrier_frequency_hz,
+            source_position_icrf_m,
+            target_position_icrf_m,
+            slant_range_m,
+            range_rate_m_s,
+            light_time_s: None,
+            source_surface_elevation_rad: None,
+            target_surface_elevation_rad: None,
+            polarisation: None,
+            exceedance: None,
+            source_geodetic: None,
+            target_geodetic: None,
+            terrain_profile: None,
+        }
+    }
+
+    /// Sets the wave polarisation.
+    #[must_use]
+    pub const fn with_polarisation(mut self, polarisation: Polarisation) -> Self {
+        self.polarisation = Some(polarisation);
+        self
+    }
+
+    /// Sets the statistical exceedance percentages.
+    #[must_use]
+    pub const fn with_exceedance(mut self, exceedance: ExceedancePercentages) -> Self {
+        self.exceedance = Some(exceedance);
+        self
+    }
+
+    /// Sets the body-fixed geodetic terminal sites.
+    #[must_use]
+    pub const fn with_geodetic_sites(
+        mut self,
+        source: Option<Geodetic>,
+        target: Option<Geodetic>,
+    ) -> Self {
+        self.source_geodetic = source;
+        self.target_geodetic = target;
+        self
+    }
+
+    /// Sets the ordered terrain profile samples from transmitter to receiver.
+    #[must_use]
+    pub fn with_terrain_profile(mut self, profile: Vec<ProfilePoint>) -> Self {
+        self.terrain_profile = Some(profile);
+        self
+    }
 }
 
 /// Free-space spreading loss $20\log_{10}(4\pi\rho f/c)$ (`dB`).
@@ -69,6 +184,23 @@ pub enum PropagationLossError {
         /// Reason reported by the environment model.
         reason: String,
     },
+    /// Required site coordinates, terrain profile, or statistical inputs were absent from [`PathGeometry`].
+    #[error("{model}: missing required path geometry field `{field}`")]
+    MissingPathData {
+        /// Model name.
+        model: String,
+        /// Name of the missing field or condition.
+        field: &'static str,
+    },
+    /// Underlying `world-propagation` model rejected the frequency, terrain profile, or terminal parameters.
+    #[error("{model}: {source}")]
+    Model {
+        /// Model name.
+        model: String,
+        /// Underlying propagation error.
+        #[source]
+        source: PropagationError,
+    },
 }
 
 /// An extra loss on a signal path beyond free-space spreading.
@@ -80,7 +212,7 @@ pub trait PropagationLoss: Send + Sync {
     /// Short stable name recorded in the budget.
     fn name(&self) -> String;
 
-    /// Loss on `path` (`dB`, `>= 0`).
+    /// Loss on `path` (`dB`, `>= 0` for pure attenuators).
     fn loss_db(&self, path: &PathGeometry) -> Result<f64, PropagationLossError>;
 }
 

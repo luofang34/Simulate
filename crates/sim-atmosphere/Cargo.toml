@@ -9,10 +9,12 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+libm = { workspace = true }
 mbd-core = { workspace = true }
 sim-geo = { workspace = true }
-world-airmass = { workspace = true }
+world-aloft = { workspace = true }
 world-atmosphere = { workspace = true }
 world-core = { workspace = true }
+world-thermosphere = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }

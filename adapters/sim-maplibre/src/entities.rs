@@ -15,7 +15,7 @@ use maplibre::{
 };
 use sim_geo::{Geodetic, LocalFrame};
 use sim_scenery::LandingRunwayGeometry;
-use world::surveillance::{EmitterCategory, SurveillanceStore, TrackPhase};
+use world::surveillance::{EmitterCategory, SurveillanceEngine, TrackPhase, TrackSnapshot};
 
 use crate::pose::{ConformalFrameStamp, project_geodetic_to_screen};
 
@@ -111,56 +111,81 @@ pub fn orientation_from_ned_body_quat(ned_from_body: DQuat) -> Orientation3d {
     Orientation3d::from_xyzw(q.x, q.y, q.z, q.w)
 }
 
-/// Extracts belief-state [`DynamicEntity3D`] targets from [`SurveillanceStore`],
+/// Extracts belief-state [`DynamicEntity3D`] targets from [`SurveillanceEngine`],
 /// excluding `ownship_shadow` tracks so ownship never ghosts on avionics underlays.
 #[must_use]
 pub fn entities_from_surveillance_belief(
-    store: &SurveillanceStore,
+    store: &SurveillanceEngine,
     geoid_undulation_m: f64,
 ) -> Vec<DynamicEntity3D> {
-    let mut out = Vec::with_capacity(store.tracks().len());
-    for track in store.tracks() {
+    const KNOTS_TO_MPS: f64 = 1_852.0 / 3_600.0;
+    const METRES_PER_FOOT: f64 = 0.3048;
+    const FPM_TO_MPS: f64 = METRES_PER_FOOT / 60.0;
+
+    let mut out = Vec::with_capacity(store.track_count());
+    for handle in store.snapshots() {
+        let track: &TrackSnapshot = handle.snapshot();
         if track.ownship_shadow {
             continue;
         }
-        let heading_deg = track.heading_rad.unwrap_or(0.0).to_degrees();
+        let Some(pos_field) = track.position.as_ref() else {
+            continue;
+        };
+        let vel = track.velocity.as_ref().map(|v| v.value);
+        let heading_deg = vel
+            .and_then(|v| v.heading_deg.or(v.track_angle_deg_true))
+            .unwrap_or(0.0);
         let orientation = Orientation3d::from_heading_pitch_roll_degrees(heading_deg, 0.0, 0.0);
-        let altitude_reference = if track.on_ground {
+        let on_ground = track.air_ground.and_then(|ag| ag.value.is_airborne()) == Some(false);
+        let altitude_reference = if on_ground {
             AltitudeReference::OnGroundSlopeAligned
         } else {
             AltitudeReference::AboveMsl
         };
-        let altitude_meters = if track.on_ground {
+        let track_alt_m = track
+            .geometric_altitude_ft
+            .or(track.pressure_altitude_ft)
+            .map_or(0.0, |a| f64::from(a.value) * METRES_PER_FOOT);
+        let altitude_meters = if on_ground {
             0.0
         } else {
-            track.position.ellipsoidal_height_m - geoid_undulation_m
+            track_alt_m - geoid_undulation_m
         };
-        let kind = match track.category {
-            EmitterCategory::Rotorcraft => DynamicEntityKind::Rotorcraft,
-            EmitterCategory::SurfaceEmergency
-            | EmitterCategory::SurfaceService
-            | EmitterCategory::PointObstacle => DynamicEntityKind::GroundVehicle,
+        let kind = match track.emitter_category.map(|c| c.value) {
+            Some(EmitterCategory::Rotorcraft) => DynamicEntityKind::Rotorcraft,
+            Some(
+                EmitterCategory::SurfaceEmergencyVehicle
+                | EmitterCategory::SurfaceServiceVehicle
+                | EmitterCategory::PointObstacle
+                | EmitterCategory::ClusterObstacle
+                | EmitterCategory::LineObstacle,
+            ) => DynamicEntityKind::GroundVehicle,
             _ => DynamicEntityKind::FixedWing,
         };
         let span = match track.phase {
             TrackPhase::Active => 12.0,
-            TrackPhase::Coasting => 9.0,
+            _ => 9.0,
         };
+        let speed_mps = vel.and_then(|v| v.ground_speed_kt).unwrap_or(0.0) * KNOTS_TO_MPS;
+        let track_rad = vel
+            .and_then(|v| v.track_angle_deg_true.or(v.heading_deg))
+            .unwrap_or(0.0)
+            .to_radians();
+        let (sin_trk, cos_trk) = track_rad.sin_cos();
+        let climb_mps = vel
+            .and_then(|v| v.vertical_rate_fpm)
+            .map_or(0.0, |fpm| f64::from(fpm) * FPM_TO_MPS);
         out.push(DynamicEntity3D {
-            id: track.id.0,
+            id: track.id.get(),
             kind,
             placement: Placement3d {
-                position: LatLon::new(track.position.latitude_deg, track.position.longitude_deg),
+                position: LatLon::new(pos_field.value.latitude_deg, pos_field.value.longitude_deg),
                 altitude_meters,
                 altitude_reference,
                 orientation,
                 view_mask: ViewSlotMask::ALL,
             },
-            velocity_enu_mps: DVec3::new(
-                track.velocity_ned_m_s.east_m,
-                track.velocity_ned_m_s.north_m,
-                -track.velocity_ned_m_s.down_m,
-            ),
+            velocity_enu_mps: DVec3::new(speed_mps * sin_trk, speed_mps * cos_trk, climb_mps),
             characteristic_span_m: span,
         });
     }

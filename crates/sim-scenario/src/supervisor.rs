@@ -9,18 +9,25 @@
 //! filtering and airport runway/gate repositioning — live exclusively on
 //! [`SimSupervisor`].
 
+use crate::error::ScenarioError;
 use flightbag::{AirportSurfaceGraph, EditionManifest, RunwayDesignator};
 use glam::DVec3;
-use sim_atmosphere::utc_to_decimal_year;
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
-use world::MovingWorld;
 use world::notices::{FacilityKey, RunwayKey};
-use world::surveillance::{DeliveryPath, ObservationSource, TrackObservation};
-use world::{DecimalYear, GeodeticPosition, LocalTangentPlane};
+use world::surveillance::{
+    AddressNamespace, DeliveryPath, EmitterCategory, ObservationOrigin, ObservationTime,
+    PositionObservation, ProducerInstanceId, SourceRef, TimeBasis, TrackSnapshot,
+    TrafficObservation,
+};
+use world::{
+    DecimalYear, GeodeticPosition, LocalTangentPlane, MovingWorld, MovingWorldConfig, WorldInstant,
+};
 
 #[cfg(test)]
 mod tests;
+
+const METRES_PER_FOOT: f64 = 0.3048;
 
 /// Shared central viewport mode across `sokoly.app` and `simulator.sokoly.app`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -111,27 +118,48 @@ pub enum RunwaySpawnError {
     /// Requested parking stand label does not exist in the airport surface graph.
     #[error("parking stand is not present in the airport surface graph")]
     UnknownParkingSpot,
-    /// Active NOTAM in `world-notices` marks the aerodrome or runway closed.
+    /// Active NOTAM in `world::notices` marks the aerodrome or runway closed.
     #[error("runway or aerodrome is closed by an active operational notice")]
     ClosedByNotice,
 }
 
 /// Simulator-only supervisor owning omniscient truth, time-warp pacing, airport
 /// repositioning and truth-to-belief radio projection.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug)]
 pub struct SimSupervisor {
     time_scale: SimTimeScale,
     viewport_mode: OperatorViewportMode,
     edition: Option<EditionManifest>,
     truth_world: MovingWorld,
     belief_world: MovingWorld,
+    belief_surveillance_revision: u64,
     radio_policy: RadioBeliefPolicy,
 }
 
 impl SimSupervisor {
     /// Creates a new supervisor with default `1x` real-time pacing and standard radio policy.
-    pub fn new() -> Self {
-        Self::default()
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScenarioError::World`] if either [`MovingWorld`] instance fails configuration.
+    pub fn new() -> Result<Self, ScenarioError> {
+        let truth_world = MovingWorld::new(MovingWorldConfig::new(
+            ProducerInstanceId::new(1),
+            world::airmass::ProducerInstanceId::new(1),
+        ))?;
+        let belief_world = MovingWorld::new(MovingWorldConfig::new(
+            ProducerInstanceId::new(2),
+            world::airmass::ProducerInstanceId::new(2),
+        ))?;
+        Ok(Self {
+            time_scale: SimTimeScale::default(),
+            viewport_mode: OperatorViewportMode::default(),
+            edition: None,
+            truth_world,
+            belief_world,
+            belief_surveillance_revision: 0,
+            radio_policy: RadioBeliefPolicy::default(),
+        })
     }
 
     /// Simulator time-warp / pause state.
@@ -174,6 +202,11 @@ impl SimSupervisor {
         &mut self.truth_world
     }
 
+    /// Monotonic counter incremented whenever operator `belief_world` traffic publishes a delta.
+    pub const fn belief_surveillance_revision(&self) -> u64 {
+        self.belief_surveillance_revision
+    }
+
     /// Single-copy avionics/operator view safe to pass to `Indicate` and `sokoly.app` UI.
     pub fn operator_view(&self) -> OperatorBeliefView<'_> {
         OperatorBeliefView {
@@ -186,14 +219,19 @@ impl SimSupervisor {
     /// Synchronizes `belief_world` from `truth_world` at `ownship_ecef` and `now`,
     /// applying radio reception ranges and expiring stale tracks/notices.
     pub fn sync_belief(&mut self, ownship_ecef: DVec3, now: SimInstant, start_utc: UtcTime) {
-        let elapsed_s = now.duration_since(SimInstant::START).as_seconds();
-        let now_us = (elapsed_s.max(0.0) * 1_000_000.0) as u64;
+        let elapsed_s = now.duration_since(SimInstant::START).as_seconds().max(0.0);
+        let raw_now_us = (elapsed_s * 1_000_000.0) as u64;
+        let now_us = self
+            .truth_world
+            .now()
+            .map_or(raw_now_us, |prev| raw_now_us.max(prev.monotonic_micros));
         let utc = start_utc.advanced_by(elapsed_s);
-        let epoch = utc_to_decimal_year(utc);
+        let utc_us = (utc.unix_seconds() * 1_000_000.0).round() as i64;
+        let world_now = WorldInstant::new(now_us, utc_us);
 
-        self.truth_world.advance(now_us, epoch);
+        let _truth_adv = self.truth_world.advance(world_now, |_| {});
         if self.radio_policy.receive_weather {
-            self.belief_world.airmass = self.truth_world.airmass.clone();
+            self.belief_world.aloft = self.truth_world.aloft.clone();
         }
         if self.radio_policy.receive_notices {
             self.belief_world.notices = self.truth_world.notices.clone();
@@ -206,7 +244,13 @@ impl SimSupervisor {
             own_geo.height_m,
         );
         self.project_surveillance_belief(own_world, now_us);
-        self.belief_world.advance(now_us, epoch);
+        let mut delta_seen = false;
+        let _belief_adv = self.belief_world.advance(world_now, |_| {
+            delta_seen = true;
+        });
+        if delta_seen {
+            self.belief_surveillance_revision = self.belief_surveillance_revision.wrapping_add(1);
+        }
     }
 
     /// Spawns a [`VehicleState`] aligned on a `Flightbag` runway threshold,
@@ -262,38 +306,85 @@ impl SimSupervisor {
         let Ok(plane) = LocalTangentPlane::new(ownship) else {
             return;
         };
-        for track in self.truth_world.surveillance.tracks() {
-            let max_range = match track.source {
-                ObservationSource::Flarm | ObservationSource::RemoteId => {
-                    self.radio_policy.short_range_radio_m
-                }
-                _ => self.radio_policy.adsb_range_m,
-            };
-            let Ok(ned) = plane.to_ned(track.position) else {
+        let mut changed = false;
+        for handle in self.truth_world.surveillance.snapshots() {
+            let track = handle.snapshot();
+            let Some(pos_field) = track.position.as_ref() else {
                 continue;
             };
-            let horiz_m = ned.north_m.hypot(ned.east_m);
-            if horiz_m <= max_range {
-                self.belief_world
-                    .surveillance
-                    .ingest(
-                        TrackObservation {
-                            key: track.key,
-                            source: track.source,
-                            delivery: DeliveryPath::Simulator,
-                            observed_at_us: track.observed_at_us,
-                            position: track.position,
-                            velocity_ned_m_s: track.velocity_ned_m_s,
-                            heading_rad: track.heading_rad,
-                            callsign: track.callsign,
-                            category: track.category,
-                            on_ground: track.on_ground,
-                            quality: track.quality,
-                        },
-                        now_us,
-                    )
-                    .ok();
+            let max_range = if is_short_range_track(track) {
+                self.radio_policy.short_range_radio_m
+            } else {
+                self.radio_policy.adsb_range_m
+            };
+            let alt_m = track
+                .geometric_altitude_ft
+                .or(track.pressure_altitude_ft)
+                .map_or(0.0, |a| f64::from(a.value) * METRES_PER_FOOT);
+            let track_geo = GeodeticPosition::wgs84(
+                pos_field.value.latitude_deg,
+                pos_field.value.longitude_deg,
+                alt_m,
+            );
+            let Ok(ned) = plane.to_ned(track_geo) else {
+                continue;
+            };
+            if ned.north_m.hypot(ned.east_m) <= max_range {
+                let obs = snapshot_to_observation(track, pos_field.provenance.origin, now_us);
+                let _res = self.belief_world.surveillance.ingest(obs, |_| {
+                    changed = true;
+                });
             }
         }
+        if changed {
+            self.belief_surveillance_revision = self.belief_surveillance_revision.wrapping_add(1);
+        }
     }
+}
+
+fn is_short_range_track(track: &TrackSnapshot) -> bool {
+    matches!(
+        track.key.namespace,
+        AddressNamespace::SelfAssigned | AddressNamespace::AdsbNonIcao
+    ) || track
+        .emitter_category
+        .is_some_and(|cat| cat.value == EmitterCategory::UncrewedAircraft)
+}
+
+fn snapshot_to_observation(
+    track: &TrackSnapshot,
+    origin: ObservationOrigin,
+    now_us: u64,
+) -> TrafficObservation {
+    let observed_at_micros = track.last_observed_at_micros.min(now_us);
+    let mut obs = TrafficObservation::new(
+        ObservationTime {
+            received_at_micros: now_us,
+            observed_at_micros,
+            basis: TimeBasis::Mapped {
+                uncertainty_micros: 0,
+            },
+        },
+        SourceRef::new(1, 0, DeliveryPath::Simulator),
+        origin,
+        track.key,
+    );
+    obs.position = track
+        .position
+        .as_ref()
+        .map(|p| PositionObservation::Decoded(p.value));
+    obs.pressure_altitude_ft = track.pressure_altitude_ft.map(|a| a.value);
+    obs.geometric_altitude_ft = track.geometric_altitude_ft.map(|a| a.value);
+    obs.velocity = track.velocity.map(|v| v.value);
+    obs.callsign = track.callsign.clone().map(|c| c.value);
+    obs.squawk = track.squawk.map(|s| s.value);
+    obs.air_ground = track.air_ground.map(|ag| ag.value);
+    obs.emergency = track.emergency.map(|em| em.value);
+    obs.emitter_category = track.emitter_category.map(|ec| ec.value);
+    obs.quality = track
+        .position
+        .as_ref()
+        .map(|p| p.quality)
+        .unwrap_or_default();
+    obs
 }

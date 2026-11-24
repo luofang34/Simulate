@@ -1,10 +1,10 @@
-//! Bridges `world` (`world-atmosphere` and `world-airmass`) into
+//! Bridges `world` (`world-atmosphere` and `world-aloft`) into
 //! [`AtmosphereField`] and [`CloudField`].
 
 use glam::DVec3;
 use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
-use world_airmass::{AirmassStore, CloudGenus, WindModel, dry_air_speed_of_sound_m_s};
+use world_aloft::{AloftModel, CloudGenus, WindModel, dry_air_speed_of_sound_m_s};
 use world_atmosphere::{
     Altitude, AtmosphereError as WorldAtmosphereError, AtmosphereModel, AtmospherePoint, Isa,
 };
@@ -91,7 +91,7 @@ impl AtmosphereField for Isa {
     }
 }
 
-impl AtmosphereField for AirmassStore {
+impl AtmosphereField for AloftModel {
     fn sample(
         &self,
         position: &Geodetic,
@@ -114,7 +114,7 @@ impl AtmosphereField for AirmassStore {
     }
 }
 
-impl CloudField for AirmassStore {
+impl CloudField for AloftModel {
     fn sample(&self, position: &Geodetic, utc: UtcTime) -> Option<CloudSample> {
         let pos = GeodeticPosition::wgs84(
             position.lat_rad.to_degrees(),

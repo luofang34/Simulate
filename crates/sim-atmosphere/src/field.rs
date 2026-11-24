@@ -22,6 +22,12 @@ pub enum AtmosphereError {
         /// Highest supported height, metres.
         ceiling_m: f64,
     },
+    /// A space-weather index table failed to resolve activity for the requested time.
+    #[error("space-weather index lookup failed: {0}")]
+    SpaceWeather(#[from] world_thermosphere::space_weather::SpaceWeatherError),
+    /// The NRLMSISE-00 thermosphere model rejected the query or failed numerically.
+    #[error("thermosphere model failed: {0}")]
+    Thermosphere(#[from] world_thermosphere::ThermosphereError),
 }
 
 /// Air state at one point and instant.

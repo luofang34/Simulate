@@ -19,6 +19,8 @@ sim-analysis-contract = { path = "../sim-analysis-contract", default-features = 
 sim-geo = { path = "../sim-geo" }
 sim-spacetime = { path = "../sim-spacetime", default-features = false }
 thiserror = "2"
+world-core = { workspace = true }
+world-propagation = { workspace = true }
 
 [dev-dependencies]
 sim-core = { path = "../sim-core" }

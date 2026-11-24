@@ -48,15 +48,12 @@ fn dish(diameter_m: f64, efficiency: f64) -> ParabolicDishSpec {
 }
 
 fn path(range_m: f64, frequency_hz: f64) -> PathGeometry {
-    PathGeometry {
-        epoch: TdbEpoch::J2000,
-        carrier_frequency_hz: frequency_hz,
-        source_position_icrf_m: glam::DVec3::ZERO,
-        target_position_icrf_m: glam::DVec3::new(range_m, 0.0, 0.0),
-        slant_range_m: range_m,
-        range_rate_m_s: 0.0,
-        light_time_s: None,
-        source_surface_elevation_rad: None,
-        target_surface_elevation_rad: None,
-    }
+    PathGeometry::from_path(
+        TdbEpoch::J2000,
+        frequency_hz,
+        glam::DVec3::ZERO,
+        glam::DVec3::new(range_m, 0.0, 0.0),
+        range_m,
+        0.0,
+    )
 }
