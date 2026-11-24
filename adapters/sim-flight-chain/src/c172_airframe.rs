@@ -160,11 +160,18 @@ impl C172Airframe {
     ) -> Result<Self, ChainError> {
         set_wind(&mut fdm, &air, utc)?;
         let state = fdm.output();
+        let fields = BodyDescriptor::earth().map_err(ChainError::Body)?.fields();
         // Unaccelerated, in flight or at rest: the specific force is the reaction to weight.
-        let steady = specific_force_body_m_s2(&state, &state, fdm.period().as_seconds());
+        let steady = specific_force_body_m_s2(
+            fields.gravity.as_ref(),
+            &state,
+            &state,
+            fdm.period().as_seconds(),
+        );
         Ok(Self {
             fdm,
             air,
+            fields,
             utc,
             trim: held,
             pilot: held,
