@@ -46,6 +46,7 @@ web-time = { workspace = true }
 memory-stats = { workspace = true }
 
 [dev-dependencies]
+mbd-core = { workspace = true }
 tempfile = { workspace = true }
 sim-orbital = { workspace = true }
 tracing-subscriber = { workspace = true }

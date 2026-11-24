@@ -5816,6 +5816,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.12",
  "image",
+ "mbd-core",
  "memory-stats",
  "nalgebra",
  "navigate-camera",

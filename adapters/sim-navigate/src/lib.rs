@@ -50,6 +50,7 @@ mod filter_loop;
 mod frame_link;
 mod image_nav;
 mod inertial;
+mod magnetic;
 pub mod trial;
 mod truth;
 mod visual_fix;
@@ -81,6 +82,7 @@ pub use inertial::{
     AlignmentFix, GroundCalibration, InertialNavigator, InitialAlignment, SimulatedImu,
     ideal_increment, inertial_config,
 };
+pub use magnetic::{MagneticAnomalyConfig, MagneticAnomalyMap, SimulatedMagnetometer};
 pub use truth::{
     AttitudeComparison, TruthComparison, compare_attitude_with_truth, compare_with_truth,
     solution_position_ecef,

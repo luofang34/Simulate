@@ -7,6 +7,7 @@ use navigate_visual::fusion_bridge::VisualFusionError;
 use navigate_visual::session::SessionError;
 use sim_core::SimInstant;
 use sim_devices::DeviceError;
+use sim_geo::MagneticFieldError;
 
 /// Why the bridge could not carry a value into Navigate.
 #[derive(Debug, thiserror::Error)]
@@ -153,5 +154,19 @@ pub enum NavigateBridgeError {
         /// The filter's reason.
         #[source]
         reason: RejectionReason,
+    },
+    /// The simulated magnetometer refused its statistics.
+    #[error("simulated magnetometer refused its statistics")]
+    MagnetometerModel(#[source] DeviceError),
+    /// The magnetic field had no value at the queried place or date.
+    #[error("magnetic field evaluation failed")]
+    MagneticField(#[source] MagneticFieldError),
+    /// A magnetic anomaly adapter configuration field was invalid.
+    #[error("magnetic anomaly config `{field}` has invalid value {value}")]
+    InvalidMagneticConfig {
+        /// The offending configuration field.
+        field: &'static str,
+        /// Its invalid value.
+        value: f64,
     },
 }
