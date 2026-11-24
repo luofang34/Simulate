@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use mbd_core::{ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_bodies::{BodyDescriptor, HarmonicGravity};
@@ -103,6 +101,7 @@ fn dynamics_and_sensors_share_the_bodys_field_instances() {
     let earth = BodyDescriptor::earth()
         .unwrap()
         .with_gravity(HarmonicGravity::egm96_degree_36().unwrap());
+    let fields = earth.fields();
     let at = Geodetic::from_degrees(39.0, -75.5, 3_000.0);
     let state = VehicleState::level_flight(&at, 0.3, 60.0);
     let block = RigidBody6DofBlock::new(
@@ -115,10 +114,10 @@ fn dynamics_and_sensors_share_the_bodys_field_instances() {
         point_mass(),
         Vec::new(),
         Box::new(VacuumAtmosphere),
+        fields.gravity.clone(),
     )
-    .unwrap()
-    .with_gravity(earth.gravity_field().clone());
-    let suite = SensorSuite::new(&SensorSuiteSpec {
+    .unwrap();
+    let spec = SensorSuiteSpec {
         imu: ImuErrorSpec::IDEAL,
         static_port: PressureErrorSpec::IDEAL,
         pitot: None,
@@ -129,11 +128,19 @@ fn dynamics_and_sensors_share_the_bodys_field_instances() {
         magnetometer_every: 1,
         gnss_every: 1,
         seed: 1,
-    })
-    .unwrap()
-    .with_magnetic_field(earth.magnetic_field().clone());
-    assert!(Arc::ptr_eq(block.gravity(), earth.gravity_field()));
-    assert!(Arc::ptr_eq(suite.magnetic_field(), earth.magnetic_field()));
+    };
+    let suite = SensorSuite::new(&spec, fields.magnetic.clone()).unwrap();
+    assert!(fields.are_instances(block.gravity(), suite.magnetic_field()));
+    assert!(
+        earth
+            .fields()
+            .are_instances(block.gravity(), suite.magnetic_field())
+    );
+    let elsewhere = BodyDescriptor::earth().unwrap().fields();
+    assert!(
+        !elsewhere.are_instances(block.gravity(), suite.magnetic_field()),
+        "a second descriptor's equal fields are other instances"
+    );
 
     // The gravimeter reads what the dynamics integrate, not the reference.
     let fixed = state.position_ecef;

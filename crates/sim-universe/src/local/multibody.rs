@@ -234,6 +234,7 @@ impl LocalPlant for MultibodyLocalPlant {
         Ok(CarriedLoads {
             force_body_n,
             torque_body_nm,
+            dipole_body_a_m2: DVec3::ZERO,
             body: self.body_properties(),
         })
     }

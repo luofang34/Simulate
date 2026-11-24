@@ -12,7 +12,8 @@ use sim_geo::{BodyEllipsoid, GravityField, MagneticField, MagneticFieldError};
 use sim_spacetime::DomainHasher;
 use world_core::{DecimalYear, Ellipsoid};
 use world_potential::{
-    AnomalyGrid, Derivatives, FieldError, GridGeometry, OutsideCoverage, VectorField,
+    AnomalyGrid, CanonicalContent, Derivatives, FieldError, GridGeometry, OutsideCoverage,
+    VectorField,
 };
 
 use crate::FieldBuildError;
@@ -135,6 +136,10 @@ impl GravityField for GravityWithAnomaly {
     }
 }
 
+/// Leads the content of a field with overlays; no `world-potential` model
+/// kind takes it.
+const OVERLAID_KIND: u8 = 0xA0;
+
 /// A magnetic field with local anomalies, nT, added to it.
 #[derive(Debug, Clone)]
 pub struct MagnetismWithAnomaly {
@@ -145,6 +150,16 @@ pub struct MagnetismWithAnomaly {
 }
 
 impl MagneticField for MagnetismWithAnomaly {
+    /// The global field's content, then each grid's in the order they add.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        f(&[OVERLAID_KIND]);
+        self.base.visit_content(f);
+        f(&(self.overlays.len() as u64).to_le_bytes());
+        for overlay in &self.overlays {
+            overlay.grid.visit_content(f);
+        }
+    }
+
     fn field_fixed_nt(&self, fixed: DVec3, decimal_year: f64) -> Result<DVec3, MagneticFieldError> {
         let mut field = self.base.field_fixed_nt(fixed, decimal_year)?;
         for overlay in &self.overlays {

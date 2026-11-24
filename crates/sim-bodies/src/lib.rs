@@ -18,6 +18,7 @@ mod anomaly;
 mod catalog;
 mod descriptor;
 mod error;
+mod fields;
 mod gravity;
 mod magnetic;
 mod scratch;
@@ -25,9 +26,11 @@ mod scratch;
 pub use anomaly::{AnomalyOverlay, GravityWithAnomaly, MagnetismWithAnomaly};
 pub use catalog::BodyCatalog;
 pub use descriptor::{
-    AtmosphereProvider, BodyDescriptor, RegimeLimits, RotationSource, SphereOfInfluence,
+    AtmosphereProvider, BodyAtmosphere, BodyDescriptor, RegimeLimits, RotationSource,
+    SphereOfInfluence,
 };
 pub use error::FieldBuildError;
+pub use fields::BodyFields;
 pub use gravity::{GravitySample, HarmonicGravity, HarmonicTerm};
 pub use magnetic::{HarmonicMagnetism, NoMagneticField};
 pub use world_potential::{GridGeometry, OutsideCoverage, TideSystem, Truncation};

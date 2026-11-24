@@ -55,9 +55,6 @@ pub enum DeviceError {
         #[source]
         source: sim_geo::MagneticFieldError,
     },
-    /// A magnetic model could not be built from its coefficients.
-    #[error("the magnetic model could not be built")]
-    MagneticModel(#[from] sim_bodies::FieldBuildError),
     /// An ideal inertial increment is not finite, or its interval is not
     /// finite and positive.
     #[error("inertial increment over {dt_s} s is not usable")]

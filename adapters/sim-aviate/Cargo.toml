@@ -24,4 +24,5 @@ web-time = { workspace = true }
 world-core = { workspace = true }
 
 [dev-dependencies]
+sim-bodies = { workspace = true }
 sim-atmosphere = { workspace = true }

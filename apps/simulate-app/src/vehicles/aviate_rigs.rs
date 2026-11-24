@@ -101,6 +101,10 @@ pub(super) fn build_aviate_x500(
         tree,
         Vec::new(),
         Box::new(FullColumnAtmosphere::new()),
+        sim_bodies::BodyDescriptor::earth()
+            .map_err(sim_scenario::ScenarioError::from)?
+            .fields()
+            .gravity,
     )
     .map_err(sim_scenario::ScenarioError::from)?;
     let kernel: DirectX500Kernel =

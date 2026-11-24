@@ -2,10 +2,11 @@ use glam::DVec3;
 use mbd_core::{GasComposition, GasSpecies};
 use sim_geo::{Geodetic, UtcTime};
 
+use crate::content::{feed_f64s, feed_kind};
 use crate::isa::{speed_of_sound_m_s, ussa76_at_geopotential};
 use crate::{
-    AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K, VacuumAtmosphere,
-    geometric_to_geopotential_m,
+    AtmosphereContent, AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K,
+    VacuumAtmosphere, geometric_to_geopotential_m,
 };
 
 #[cfg(test)]
@@ -69,6 +70,30 @@ const THERMOSPHERE: [Node; 17] = [
 /// a density already four decades below the 86 km value.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReentryAtmosphere;
+
+impl AtmosphereContent for ReentryAtmosphere {
+    /// The handover heights and both tables. The layered model below the
+    /// table is the 1976 standard's, which its tag names.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        feed_kind(f, "ussa76-with-thermosphere-table");
+        feed_f64s(f, &[LAYERS_TOP_M, FADE_START_M, VACUUM_FLOOR_M]);
+        for node in &THERMOSPHERE {
+            feed_f64s(
+                f,
+                &[
+                    node.height_m,
+                    node.temperature_k,
+                    node.pressure_pa,
+                    node.density_kg_m3,
+                ],
+            );
+        }
+        for (height_m, fractions) in &COMP_ANCHORS {
+            feed_f64s(f, &[*height_m]);
+            feed_f64s(f, fractions);
+        }
+    }
+}
 
 impl AtmosphereField for ReentryAtmosphere {
     fn sample(

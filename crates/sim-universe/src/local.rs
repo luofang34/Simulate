@@ -1,8 +1,10 @@
 //! Vessels flown by `sim-core` blocks in their central body's rotating frame.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use glam::DMat3;
+use sim_bodies::BodyDescriptor;
 use sim_core::{Block, RigidBody6DofBlock, RigidBodyInput, SimInstant, TickSpan, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_spacetime::SimEpoch;
@@ -128,12 +130,14 @@ pub trait LocalPlant {
 }
 
 /// Builds a vessel's local tier from a state handed down from orbit: the
-/// body it arrives at, its state in that body's fixed frame, and `start` on
-/// the universe's clock. The body is the one the vessel orbits when it
-/// comes down, which need not be the one it left.
+/// catalog entry of the body it arrives at, its state in that body's fixed
+/// frame, and `start` on the universe's clock. The body is the one the
+/// vessel orbits when it comes down, which need not be the one it left; its
+/// entry carries the gravity, magnetic field and air the new plant and its
+/// devices are built on, the instances the orbital tier flew the vessel in.
 pub type LocalFactory = Box<
     dyn Fn(
-        BodyEllipsoid,
+        &Arc<BodyDescriptor>,
         &VehicleState,
         SimInstant,
         &SimEpoch,

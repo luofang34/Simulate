@@ -219,6 +219,7 @@ fn composed_multibody_package_builds_and_steps_deterministically() {
                 time_scale: MotionTimeScale::SurfaceGravity,
             },
             Box::new(VacuumAtmosphere),
+            std::sync::Arc::new(BodyEllipsoid::WGS84),
         )
         .unwrap();
 

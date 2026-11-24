@@ -191,9 +191,14 @@ impl RaketaPlant {
     /// The factory a universe rebuilds the vessel's local tier with.
     pub fn factory(environment: RaketaEnvironment) -> LocalFactory {
         Box::new(move |body, state, start, epoch| {
-            let plant =
-                Self::from_body_fixed(environment.clone(), epoch.clone(), start, body, state)
-                    .map_err(local_error)?;
+            let plant = Self::from_body_fixed(
+                environment.clone(),
+                epoch.clone(),
+                start,
+                body.ellipsoid,
+                state,
+            )
+            .map_err(local_error)?;
             Ok(Box::new(plant))
         })
     }

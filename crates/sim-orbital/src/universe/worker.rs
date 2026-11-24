@@ -168,10 +168,12 @@ pub(crate) fn propagate_checkpoint_interval(
         inner: &checkpoint.gnc.latched_law,
         loads: &checkpoint.environment,
         context: EnvironmentContext::of(force_model, ephemeris, orientation, &mass_model),
+        held_dipole_body_a_m2: checkpoint.external.loads.dipole_body_a_m2(),
     };
     // A vessel that feels nothing but gravity keeps the bare law, and its bits.
-    let guidance: &dyn crate::plant::ContinuousControlLaw = match checkpoint.environment.is_empty()
-    {
+    let bare =
+        checkpoint.environment.is_empty() && environment.held_dipole_body_a_m2 == glam::DVec3::ZERO;
+    let guidance: &dyn crate::plant::ContinuousControlLaw = match bare {
         true => &checkpoint.gnc.latched_law,
         false => &environment,
     };

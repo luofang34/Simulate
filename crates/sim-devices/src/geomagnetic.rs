@@ -1,9 +1,6 @@
 //! The magnetic field a magnetometer sits in.
 
-use std::sync::Arc;
-
 use glam::DVec3;
-use sim_bodies::HarmonicMagnetism;
 use sim_geo::{LocalFrame, MagneticField, ecef_to_geodetic};
 
 use crate::DeviceError;
@@ -54,17 +51,6 @@ impl MagneticEnvironment {
         };
         Ok(main_nt / NANOTESLA_PER_MICROTESLA + anomaly)
     }
-}
-
-/// The Earth's main field: IGRF-14, valid from 1900 to 2030. Crustal and
-/// local fields are not in it. Share the returned field between every
-/// device and model that should see the same world.
-///
-/// # Errors
-///
-/// [`DeviceError::MagneticModel`] if the embedded coefficients do not parse.
-pub fn earth_main_field() -> Result<Arc<dyn MagneticField>, DeviceError> {
-    Ok(Arc::new(HarmonicMagnetism::igrf14()?))
 }
 
 #[cfg(test)]

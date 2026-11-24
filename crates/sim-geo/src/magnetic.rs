@@ -58,6 +58,15 @@ pub trait MagneticField: Send + Sync + core::fmt::Debug {
     /// [`MagneticFieldError`] outside the model's dates or domain.
     fn field_fixed_nt(&self, fixed: DVec3, decimal_year: f64) -> Result<DVec3, MagneticFieldError>;
 
+    /// Calls `f` with consecutive byte slices whose concatenation is the
+    /// field's canonical content: every number that shapes a sample, in a
+    /// fixed order and encoding, behind a tag naming the kind of model. How
+    /// the content is cut into slices carries no meaning. A run's
+    /// configuration hash covers a field by this content, so two fields
+    /// that can give different samples must give different content,
+    /// whatever they are called.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8]));
+
     /// The field's gradient `∂B_i/∂x_j` at `fixed`, nT/m, or `None` for a
     /// field that cannot state one.
     ///

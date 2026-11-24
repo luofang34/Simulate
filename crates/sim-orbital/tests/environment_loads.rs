@@ -96,6 +96,16 @@ impl AtmosphereField for ExponentialAir {
     }
 }
 
+#[cfg(test)]
+impl sim_atmosphere::AtmosphereContent for ExponentialAir {
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        f(b"exponential");
+        for value in [self.density_kg_m3, self.height_m, self.scale_height_m] {
+            f(&value.to_bits().to_le_bytes());
+        }
+    }
+}
+
 #[derive(Debug)]
 #[cfg(test)]
 struct UniformField(DVec3);
@@ -104,6 +114,13 @@ struct UniformField(DVec3);
 impl MagneticField for UniformField {
     fn field_fixed_nt(&self, _fixed: DVec3, _year: f64) -> Result<DVec3, MagneticFieldError> {
         Ok(self.0)
+    }
+
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        f(b"uniform");
+        for value in self.0.to_array() {
+            f(&value.to_bits().to_le_bytes());
+        }
     }
 }
 
@@ -151,6 +168,7 @@ impl Flight<'_> {
             inner,
             loads: &self.loads,
             context: EnvironmentContext::of(&self.model, &self.solar.ephemeris, &Still, &self.mass),
+            held_dipole_body_a_m2: glam::DVec3::ZERO,
         }
     }
 
@@ -263,6 +281,7 @@ fn fly_real_earth(
         inner: &CoastControlLaw,
         loads,
         context: EnvironmentContext::of(model, &solar.ephemeris, &solar.orientation, &mass),
+        held_dipole_body_a_m2: glam::DVec3::ZERO,
     };
     propagate_plant_interval(
         start,

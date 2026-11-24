@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use mbd_design::{DesignAuditReport, audit_verified_syspack};
 use mbd_multibody::WheelState;
 use mbd_systems::{
@@ -8,6 +10,7 @@ use sim_atmosphere::AtmosphereField;
 use sim_core::{
     MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, PropulsionAssembly,
 };
+use sim_geo::GravityField;
 
 use super::LoadedSyspack;
 use crate::PackError;
@@ -22,10 +25,13 @@ impl LoadedSyspack {
     /// Instantiates a complete [`MultibodyVehicleBlock`] wiring component tree,
     /// aerodynamic elements, fluids, propulsion, electrical bus, thermal network, TPS,
     /// atomic-oxygen coatings, robotic manipulators, and wheels from this verified package.
+    /// `gravity` is the truth gravity of `config.body`, the instance its catalog entry
+    /// holds and the vehicle's sensors are handed too.
     pub fn build_multibody_vehicle(
         &self,
         config: MultibodyVehicleConfig,
         atmosphere: Box<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
     ) -> Result<MultibodyVehicleBlock, PackError> {
         let aero = self.verified.build_aero_elements()?;
         let propulsion = self.build_propulsion_assembly()?;
@@ -38,6 +44,7 @@ impl LoadedSyspack {
             subsystems,
             atmosphere,
         )
+        .map(|block| block.with_gravity(gravity))
         .map_err(|err| PackError::DeviceBuild {
             device: "multibody_vehicle".to_owned(),
             source: Box::new(err),

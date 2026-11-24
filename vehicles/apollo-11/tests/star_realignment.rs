@@ -59,6 +59,7 @@ impl Lander {
             build_apollo_lm_tree().unwrap(),
             Vec::new(),
             Box::new(VacuumAtmosphere),
+            std::sync::Arc::new(body),
         )
         .unwrap();
         let start = sample(&vehicle).site_to_inertial;

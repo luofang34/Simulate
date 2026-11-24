@@ -82,7 +82,12 @@ fn dead_reckon(
     alignment: InitialAlignment,
 ) -> Drift {
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, seed).unwrap();
+    let mut imu = SimulatedImu::new(
+        spec,
+        seed,
+        std::sync::Arc::new(sim_geo::BodyEllipsoid::WGS84),
+    )
+    .unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = *truth[0].get();
     navigator

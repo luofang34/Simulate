@@ -79,6 +79,7 @@ fn sunlight_pushes_away_from_the_sun_and_not_at_all_in_earths_shadow() {
         inner: &CoastControlLaw,
         loads: &loads,
         context: context(&solar, &flux, &mass),
+        held_dipole_body_a_m2: glam::DVec3::ZERO,
     };
     let to_sun = sun_from_earth(&solar, epoch());
     let sun_distance = to_sun.length();
@@ -152,6 +153,7 @@ fn a_day_of_sunlight_moves_a_vessel_by_half_a_t_squared() {
         inner: &CoastControlLaw,
         loads: &loads,
         context: context(&solar, &flux, &mass),
+        held_dipole_body_a_m2: glam::DVec3::ZERO,
     });
 
     let drift = pushed.pos_rel_icrf_m - coasting.pos_rel_icrf_m;

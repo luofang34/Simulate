@@ -56,3 +56,35 @@ fn the_checkpoint_hash_covers_the_environment_loads() {
     let back: VesselCheckpoint = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back, drag(50.0));
 }
+
+/// A dipole an owner's torquers hold is state: it is in both hashes, bit for bit, and
+/// survives a save.
+#[test]
+fn the_checkpoint_hashes_cover_the_held_dipole() {
+    let state = ContinuousPlantState {
+        primary_body: NaifId::EARTH,
+        pos_rel_icrf_m: DVec3::new(7_000_000.0, 0.0, 0.0),
+        vel_rel_icrf_m_s: DVec3::new(0.0, 7_546.0, 0.0),
+        q_body_to_icrf: DQuat::IDENTITY,
+        omega_body_rad_s: DVec3::ZERO,
+        propellant_mass_kg: 0.0,
+        h_rw_body_nms: DVec3::ZERO,
+    };
+    let holding = |moment: DVec3| {
+        let mut checkpoint = VesselCheckpoint::new(VesselId(1), SimInstant::START, state, 0);
+        checkpoint.external.loads = checkpoint.external.loads.with_dipole(moment);
+        checkpoint
+    };
+    let (off, weak, strong) = (
+        holding(DVec3::ZERO),
+        holding(DVec3::new(0.1, 0.0, 0.0)),
+        holding(DVec3::new(0.1, 0.0, 1e-12)),
+    );
+    assert_ne!(off.physics_state_hash(), weak.physics_state_hash());
+    assert_ne!(weak.physics_state_hash(), strong.physics_state_hash());
+    assert_ne!(weak.checkpoint_hash(), strong.checkpoint_hash());
+    assert!(!weak.external.loads.same_bits(&strong.external.loads));
+    let json = serde_json::to_string(&strong).expect("serialize");
+    let back: VesselCheckpoint = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back.checkpoint_hash(), strong.checkpoint_hash());
+}

@@ -156,13 +156,17 @@ pub struct RigidBody6DofBlock {
 impl RigidBody6DofBlock {
     /// A block at `config.initial` carrying the aerodynamic elements `aero`
     /// on the components they name, with loads evaluated for no thrust.
-    /// Fails if the period is zero or the tree or environment cannot be
-    /// evaluated.
+    /// `gravity` is the truth gravity of `config.body`: the instance the
+    /// body's catalog entry holds, which every sensor that senses gravity
+    /// on this vehicle is handed too, so they read the field it flies
+    /// through. Fails if the period is zero or the tree or environment
+    /// cannot be evaluated.
     pub fn new(
         config: RigidBodyConfig,
         tree: ComponentTree,
         aero: Vec<AeroElement>,
         atmosphere: Box<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
     ) -> Result<Self, BlockError> {
         if config.period == TickSpan::ZERO {
             return Err(BlockError::InputOutOfRange {
@@ -179,7 +183,6 @@ impl RigidBody6DofBlock {
             aero,
             ..VehicleElements::default()
         };
-        let gravity: Arc<dyn GravityField> = Arc::new(config.body);
         let state = motion::initial_state(&motion::Start {
             config: &config,
             tree: &tree,
@@ -208,15 +211,6 @@ impl RigidBody6DofBlock {
         };
         block.loads = block.loads_at_output(&RigidBodyInput::default(), &mass, block.now)?;
         Ok(block)
-    }
-
-    /// The block in a world whose truth gravity is `gravity` instead of the
-    /// reference field of `config.body`. Hand the same instance to every
-    /// sensor that senses gravity, so they read the field the vehicle flies
-    /// through.
-    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
-        self.gravity = gravity;
-        self
     }
 
     /// The truth gravity the block integrates.

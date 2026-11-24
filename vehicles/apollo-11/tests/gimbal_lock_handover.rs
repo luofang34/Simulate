@@ -44,6 +44,7 @@ fn lm_turning(rate_body: DVec3) -> RigidBody6DofBlock {
         build_apollo_lm_tree().unwrap(),
         Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }

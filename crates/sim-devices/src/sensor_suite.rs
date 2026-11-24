@@ -13,7 +13,7 @@ use sim_geo::MagneticField;
 use crate::{
     AirDataSample, AirDataSystem, AirFlow, DeviceError, GnssErrorSpec, GnssReading, GnssReceiver,
     ImuErrorModel, ImuErrorSpec, InertialIncrement, MagneticEnvironment, Magnetometer,
-    MagnetometerSpec, PitotStatic, PressureErrorSpec, earth_main_field,
+    MagnetometerSpec, PitotStatic, PressureErrorSpec,
 };
 
 #[cfg(test)]
@@ -94,8 +94,13 @@ pub struct SensorSuite {
 }
 
 impl SensorSuite {
-    /// The devices of `spec` at turn-on.
-    pub fn new(spec: &SensorSuiteSpec) -> Result<Self, DeviceError> {
+    /// The devices of `spec` at turn-on, in the world whose magnetic field
+    /// is `magnetic_field`: the instance the catalog entry of the vehicle's
+    /// body holds, which its dynamics are built on too.
+    pub fn new(
+        spec: &SensorSuiteSpec,
+        magnetic_field: Arc<dyn MagneticField>,
+    ) -> Result<Self, DeviceError> {
         let rates = [
             ("air_data_every", spec.air_data_every),
             ("magnetometer_every", spec.magnetometer_every),
@@ -120,22 +125,13 @@ impl SensorSuite {
         };
         Ok(Self {
             spec: *spec,
-            magnetic_field: earth_main_field()?,
+            magnetic_field,
             imu: ImuErrorModel::new(spec.imu, stream(IMU_STREAM))?,
             air_data,
             magnetometer: Magnetometer::new(spec.magnetometer, stream(MAGNETOMETER_STREAM))?,
             receiver: GnssReceiver::new(spec.gnss, stream(RECEIVER_STREAM))?,
             cycle: 0,
         })
-    }
-
-    /// This suite in the world whose magnetic field is `field`, instead of
-    /// the Earth's main field alone. A world with a crustal anomaly map, or
-    /// another body, passes the one instance its other consumers hold.
-    #[must_use]
-    pub fn with_magnetic_field(mut self, field: Arc<dyn MagneticField>) -> Self {
-        self.magnetic_field = field;
-        self
     }
 
     /// The world magnetic field the magnetometer senses.

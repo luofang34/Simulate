@@ -89,6 +89,7 @@ fn x500(roll_rad: f64, offset_up_m: f64) -> RigidBody6DofBlock {
         x500_tree(),
         Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap()
 }

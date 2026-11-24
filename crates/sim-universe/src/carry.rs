@@ -35,6 +35,11 @@ pub struct CarryContext {
     /// Fraction of the solar disc in view, `0` in an umbra and `1` in full
     /// sunlight.
     pub solar_lit_fraction: f64,
+    /// The magnetic field of [`Self::body`] at the vessel, in that body's
+    /// fixed axes, nT: the catalog field the orbital tier's magnetic torques
+    /// act in, on the date that tier evaluates it for. `None` where the
+    /// field has no value, as on a date its model does not cover.
+    pub magnetic_field_fixed_nt: Option<DVec3>,
 }
 
 /// What the orbital tier holds for a carried plant until the next exchange.
@@ -44,6 +49,11 @@ pub struct CarriedLoads {
     pub force_body_n: DVec3,
     /// Its moment about the centre of gravity, body axes, N·m.
     pub torque_body_nm: DVec3,
+    /// The magnetic dipole moment its torquers hold, body axes, A·m². The
+    /// orbital tier turns it into a torque in the field where the vessel is
+    /// at every integration stage, so the moment is what a plant reports,
+    /// never the torque it would make at the exchange instant.
+    pub dipole_body_a_m2: DVec3,
     /// Mass properties at the exchange instant. The plant owns the mass: the
     /// orbital tier holds this constant and integrates no propellant flow.
     pub body: OrbitalBody,

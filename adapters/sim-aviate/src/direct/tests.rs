@@ -42,7 +42,14 @@ fn x500_rigid_body(origin: &Geodetic, period: TickSpan) -> RigidBody6DofBlock {
         epoch: UtcTime::from_unix_seconds(0.0),
         initial: VehicleState::level_flight(origin, 0.0, 0.0),
     };
-    RigidBody6DofBlock::new(cfg, tree, Vec::new(), Box::new(StandardAtmosphere)).unwrap()
+    RigidBody6DofBlock::new(
+        cfg,
+        tree,
+        Vec::new(),
+        Box::new(StandardAtmosphere),
+        std::sync::Arc::new(cfg.body),
+    )
+    .unwrap()
 }
 
 fn hold_cmd(sequence: u32, z_ned: f32) -> SystemCommand {

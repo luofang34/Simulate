@@ -11,6 +11,7 @@
 //! [`CloudField`] is the weather-map input a volumetric cloud raymarcher reads.
 
 mod cloud;
+mod content;
 mod field;
 mod full_column;
 mod isa;
@@ -22,6 +23,7 @@ mod vacuum;
 mod world_bridge;
 
 pub use cloud::{ClearSky, CloudField, CloudKind, CloudSample};
+pub use content::AtmosphereContent;
 pub use field::{
     AtmosphereError, AtmosphereField, AtmosphereSample, GeoidStandardAtmosphere, StandardAtmosphere,
 };

@@ -122,13 +122,14 @@ impl BodyCatalog {
         &self.sunlight
     }
 
-    /// SHA-256 of what the bodies contribute to a trajectory: shapes, gravity
-    /// coefficients and anomaly grids, spheres of influence, tier limits and
-    /// occulters by value; magnetic fields and atmospheres by the names their
-    /// descriptors give them, which must therefore differ when they do.
+    /// SHA-256 of what the bodies contribute to a trajectory, all of it by
+    /// value: shapes, gravity coefficients and anomaly grids, the content
+    /// each magnetic field and atmosphere states for itself, spheres of
+    /// influence, tier limits and occulters. The names a descriptor gives
+    /// its providers are not in it.
     #[must_use]
     pub fn content_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-bodies:catalog:v1");
+        let mut h = DomainHasher::new(b"sim-bodies:catalog:v2");
         h.write_u64(self.bodies.len() as u64);
         for body in self.iter() {
             body.write_to_hasher(&mut h);

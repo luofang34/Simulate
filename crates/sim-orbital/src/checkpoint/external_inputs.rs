@@ -3,7 +3,10 @@
 //! A vessel whose internals are integrated elsewhere (a carried plant with its own
 //! tanks, power bus and thrusters) reports the force and torque it generates and the
 //! mass it has at an instant, and the orbital tier holds them constant until the
-//! owner reports again. They live beside the guidance law rather than in it, so a
+//! owner reports again. A magnetic dipole the owner commands is held as the moment,
+//! not as a torque: the field it acts in turns with the vessel and changes along the
+//! orbit faster than an owner reports, so the orbital tier works the torque out from
+//! the held moment at every integrator stage. They live beside the guidance law rather than in it, so a
 //! mission plan's burn and the owner's loads act together.
 //!
 //! The mass model integrates about the centre of mass and has no offset for it, so an
@@ -57,6 +60,10 @@ pub struct ExternalLoads {
     pub force_body_n: [f64; 3],
     /// Torque about the centre of mass, body axes, N·m.
     pub torque_body_nm: [f64; 3],
+    /// Magnetic dipole moment the vessel's torquers hold, body axes, A·m². Its torque
+    /// in the origin body's field is evaluated at every integrator stage.
+    #[serde(default)]
+    pub dipole_body_a_m2: [f64; 3],
     /// Mass properties replacing the configured dry mass and dry inertia, or `None` to
     /// fly the vessel's configured mass model.
     pub mass: Option<ExternalMassProperties>,
@@ -69,8 +76,23 @@ impl ExternalLoads {
         Self {
             force_body_n: force_body_n.to_array(),
             torque_body_nm: torque_body_nm.to_array(),
+            dipole_body_a_m2: [0.0; 3],
             mass: Some(mass),
         }
+    }
+
+    /// These loads with the magnetic dipole `moment_body_a_m2` held by the vessel's
+    /// torquers.
+    #[must_use]
+    pub fn with_dipole(mut self, moment_body_a_m2: DVec3) -> Self {
+        self.dipole_body_a_m2 = moment_body_a_m2.to_array();
+        self
+    }
+
+    /// The held dipole moment, body axes, A·m².
+    #[must_use]
+    pub fn dipole_body_a_m2(&self) -> DVec3 {
+        DVec3::from_array(self.dipole_body_a_m2)
     }
 
     /// Whether every component is finite and any mass positive.
@@ -78,6 +100,7 @@ impl ExternalLoads {
     pub fn is_valid(&self) -> bool {
         self.force_body_n.iter().all(|v| v.is_finite())
             && self.torque_body_nm.iter().all(|v| v.is_finite())
+            && self.dipole_body_a_m2.iter().all(|v| v.is_finite())
             && self.mass.is_none_or(|mass| mass.is_valid())
     }
 
@@ -93,6 +116,7 @@ impl ExternalLoads {
             .force_body_n
             .iter()
             .chain(&self.torque_body_nm)
+            .chain(&self.dipole_body_a_m2)
             .map(|v| v.to_bits())
             .collect();
         if let Some(mass) = self.mass {
@@ -109,7 +133,12 @@ impl ExternalLoads {
     }
 
     pub(crate) fn write_to_hasher(&self, h: &mut DomainHasher) {
-        for &v in self.force_body_n.iter().chain(&self.torque_body_nm) {
+        let held = self
+            .force_body_n
+            .iter()
+            .chain(&self.torque_body_nm)
+            .chain(&self.dipole_body_a_m2);
+        for &v in held {
             h.write_f64_canonical(v);
         }
         match self.mass {

@@ -7,9 +7,10 @@ use glam::DVec3;
 use mbd_core::{AmbientGas, GasSpecies, UNIVERSAL_GAS_CONSTANT_J_MOL_K};
 use sim_geo::{Geodetic, UtcTime};
 
+use crate::content::{feed_f64s, feed_kind};
 use crate::{
-    AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K, ReentryAtmosphere,
-    VacuumAtmosphere,
+    AtmosphereContent, AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K,
+    ReentryAtmosphere, VacuumAtmosphere,
 };
 
 #[cfg(test)]
@@ -69,6 +70,30 @@ impl VleoThermosphereAtmosphere {
     #[must_use]
     pub const fn f107_sfu(self) -> f64 {
         self.f107_sfu
+    }
+}
+
+impl AtmosphereContent for VleoThermosphereAtmosphere {
+    /// The solar flux, the profile's constants and anchors, and the model
+    /// it hands over to below its floor and above its ceiling.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        feed_kind(f, "bates-walker-thermosphere");
+        feed_f64s(
+            f,
+            &[
+                self.f107_sfu,
+                LOWER_TOP_M,
+                FADE_START_M,
+                VACUUM_FLOOR_M,
+                T_120_K,
+                S_PER_M,
+                G_THERMO_M_S2,
+            ],
+        );
+        let anchors = SPECIES_ANCHORS_120KM.map(|(_, density)| density);
+        feed_f64s(f, &anchors);
+        ReentryAtmosphere.visit_content(f);
+        VacuumAtmosphere.visit_content(f);
     }
 }
 

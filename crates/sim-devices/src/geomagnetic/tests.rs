@@ -3,7 +3,10 @@ use sim_geo::{Geodetic, geodetic_to_ecef};
 use super::*;
 
 fn ned_ut(environment: &MagneticEnvironment, at: &Geodetic) -> Result<DVec3, DeviceError> {
-    let earth = earth_main_field().unwrap();
+    let earth = sim_bodies::BodyDescriptor::earth()
+        .unwrap()
+        .fields()
+        .magnetic;
     let fixed = environment.field_fixed_ut(earth.as_ref(), geodetic_to_ecef(at))?;
     Ok(LocalFrame::at(at).ecef_to_ned_vector(fixed))
 }

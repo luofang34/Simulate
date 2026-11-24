@@ -4,8 +4,8 @@ use glam::{DMat3, DVec3};
 use sim_geo::{MagneticField, MagneticFieldError};
 use world_core::{DecimalYear, ValidityWindow};
 use world_potential::{
-    Derivatives, FieldError, FieldSample, MagneticModel, MagneticSeries, VectorField, igrf14,
-    read_cof,
+    CanonicalContent, Derivatives, FieldError, FieldSample, MagneticModel, MagneticSeries,
+    VectorField, igrf14, read_cof,
 };
 
 use crate::FieldBuildError;
@@ -35,6 +35,11 @@ impl MagneticField for NoMagneticField {
         _decimal_year: f64,
     ) -> Result<Option<DMat3>, MagneticFieldError> {
         Ok(Some(DMat3::ZERO))
+    }
+
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        // A kind no harmonic model's leading tag byte takes.
+        f(&[0]);
     }
 }
 
@@ -170,6 +175,13 @@ impl HarmonicMagnetism {
 }
 
 impl MagneticField for HarmonicMagnetism {
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        match &self.source {
+            Source::Model(model) => model.visit_content(f),
+            Source::Series(series) => series.visit_content(f),
+        }
+    }
+
     fn field_fixed_nt(&self, fixed: DVec3, decimal_year: f64) -> Result<DVec3, MagneticFieldError> {
         let sample = self.sample(fixed, decimal_year, Derivatives::Gradient)?;
         Ok(DVec3::from_array(sample.vector))

@@ -253,10 +253,12 @@ impl Universe {
             return Err(UniverseError::BetweenSteps { vessel: id });
         }
         let primary = self.inertial_state(id)?.primary_body;
-        let body = self
+        let described = self
             .bodies()
-            .ellipsoid_of(primary)
+            .get(primary)
+            .cloned()
             .ok_or(UniverseError::UnmodelledBody)?;
+        let body = described.ellipsoid;
         let (naif, rotation) = self.rotation(body, self.now)?;
         self.bring_carried_to_now(id)?;
         let (_config, checkpoint) = self
@@ -272,7 +274,7 @@ impl Universe {
         }
         let plant = match kept {
             Some(plant) => plant,
-            None => (self.vessel(id)?.rebuild)(body, &state, self.now, &self.epoch)?,
+            None => (self.vessel(id)?.rebuild)(&described, &state, self.now, &self.epoch)?,
         };
         self.vessel_mut(id)?.flight = Flight::Local(plant);
         Ok(())

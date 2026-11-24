@@ -3,14 +3,15 @@
 use std::sync::Arc;
 
 use sim_atmosphere::{
-    AtmosphereField, MarsAtmosphere, VacuumAtmosphere, VleoThermosphereAtmosphere,
+    AtmosphereContent, AtmosphereField, MarsAtmosphere, VacuumAtmosphere,
+    VleoThermosphereAtmosphere,
 };
 use sim_geo::{BodyEllipsoid, GravityField, MagneticField};
-use sim_spacetime::{CollisionTerrain, DomainHasher, NaifId};
+use sim_spacetime::{CollisionTerrain, ContentHash, DomainHasher, NaifId};
 
 use crate::{
-    AnomalyOverlay, FieldBuildError, GravityWithAnomaly, HarmonicGravity, HarmonicMagnetism,
-    NoMagneticField,
+    AnomalyOverlay, BodyFields, FieldBuildError, GravityWithAnomaly, HarmonicGravity,
+    HarmonicMagnetism, NoMagneticField,
 };
 
 /// Where a body's orientation in inertial space comes from.
@@ -46,8 +47,14 @@ pub struct RegimeLimits {
     pub demote_below_m: f64,
 }
 
-/// An atmosphere any thread may sample.
-pub type AtmosphereProvider = Arc<dyn AtmosphereField + Send + Sync>;
+/// What the air about a catalog body must be: sampled from any thread, and
+/// able to state its content for the run's configuration hash.
+pub trait BodyAtmosphere: AtmosphereField + AtmosphereContent + Send + Sync {}
+
+impl<T: AtmosphereField + AtmosphereContent + Send + Sync> BodyAtmosphere for T {}
+
+/// The air about a body, shared by everything that samples it.
+pub type AtmosphereProvider = Arc<dyn BodyAtmosphere>;
 
 /// One body: its identity, shape, rotation, fields, air, ground and the
 /// limits the tiers and the Sun's light read. Every consumer asks the same
@@ -222,8 +229,8 @@ impl BodyDescriptor {
         self
     }
 
-    /// This body with the magnetic field `field`, named `id` in the
-    /// catalog's hash: two fields that differ must be given different names.
+    /// This body with the magnetic field `field`, called `id` in reports.
+    /// The catalog's hash covers the field's content, not the name.
     #[must_use]
     pub fn with_magnetic_field(
         mut self,
@@ -235,9 +242,8 @@ impl BodyDescriptor {
         self
     }
 
-    /// This body with the atmosphere `atmosphere`, named `id` in the
-    /// catalog's hash: two atmospheres that differ must be given different
-    /// names.
+    /// This body with the atmosphere `atmosphere`, called `id` in reports.
+    /// The catalog's hash covers the atmosphere's content, not the name.
     #[must_use]
     pub fn with_atmosphere(
         mut self,
@@ -301,6 +307,16 @@ impl BodyDescriptor {
         &self.magnetic_field
     }
 
+    /// Both truth fields, for a host that builds a vehicle's dynamics and
+    /// its devices on this body.
+    #[must_use]
+    pub fn fields(&self) -> BodyFields {
+        BodyFields {
+            gravity: Arc::clone(&self.gravity_field),
+            magnetic: Arc::clone(&self.magnetic_field),
+        }
+    }
+
     /// The air about this body; vacuum where it has none.
     #[must_use]
     pub fn atmosphere(&self) -> &AtmosphereProvider {
@@ -328,10 +344,12 @@ impl BodyDescriptor {
         for overlay in &self.gravity_anomalies {
             overlay.write_to_hasher(h);
         }
-        for id in [&self.magnetic_id, &self.atmosphere_id] {
-            h.write_u64(id.len() as u64);
-            h.write_bytes(id.as_bytes());
-        }
+        h.write_hash(content_hash(b"sim-bodies:magnetic-content:v1", |f| {
+            self.magnetic_field.visit_content(f);
+        }));
+        h.write_hash(content_hash(b"sim-bodies:atmosphere-content:v1", |f| {
+            self.atmosphere.visit_content(f);
+        }));
         h.write_u8(u8::from(self.terrain.is_some()));
         h.write_opt_f64_canonical(self.sphere_of_influence.map(|soi| soi.radius_m));
         h.write_i32(
@@ -342,4 +360,12 @@ impl BodyDescriptor {
         h.write_opt_f64_canonical(self.regime.map(|regime| regime.demote_below_m));
         h.write_opt_f64_canonical(self.occulter_radius_m);
     }
+}
+
+/// The digest of a provider's content feed under `domain`. The feed's
+/// slices are hashed unframed, so only their concatenation counts.
+fn content_hash(domain: &[u8], feed: impl FnOnce(&mut dyn FnMut(&[u8]))) -> ContentHash {
+    let mut h = DomainHasher::new(domain);
+    feed(&mut |bytes| h.write_unframed(bytes));
+    h.finish()
 }

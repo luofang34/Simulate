@@ -223,6 +223,9 @@ pub struct EnvironmentLaw<'a> {
     pub loads: &'a EnvironmentLoads,
     /// What the loads read.
     pub context: EnvironmentContext<'a>,
+    /// The dipole moment the vessel's torquers hold, body axes, A·m²: a command its
+    /// owner latched, evaluated in the origin body's field like a residual dipole.
+    pub held_dipole_body_a_m2: DVec3,
 }
 
 impl EnvironmentLaw<'_> {
@@ -232,7 +235,8 @@ impl EnvironmentLaw<'_> {
         epoch: TdbEpoch,
         state: &ContinuousPlantState,
     ) -> Result<Option<BodyFixedState<'_>>, GravityError> {
-        let reads_body = self.loads.specs().iter().any(|l| l.load().reads_body());
+        let reads_body = self.held_dipole_body_a_m2 != DVec3::ZERO
+            || self.loads.specs().iter().any(|l| l.load().reads_body());
         let Some(body) = self.context.bodies.get(state.primary_body) else {
             return Ok(None);
         };
@@ -278,6 +282,15 @@ impl EnvironmentLaw<'_> {
             if added.force_body_n != DVec3::ZERO {
                 wrench.env_force_body_n += added.force_body_n;
             }
+            if added.torque_body_nm != DVec3::ZERO {
+                wrench.ext_torque_body_nm += added.torque_body_nm;
+            }
+        }
+        if self.held_dipole_body_a_m2 != DVec3::ZERO {
+            let torquers = ResidualDipole {
+                moment_body_a_m2: self.held_dipole_body_a_m2.to_array(),
+            };
+            let added = torquers.wrench(&stage)?;
             if added.torque_body_nm != DVec3::ZERO {
                 wrench.ext_torque_body_nm += added.torque_body_nm;
             }

@@ -176,14 +176,20 @@ spherical-harmonic core, reached only through `sim-bodies`:
 - `AnomalyOverlay` adds a surveyed grid to either field near the ground.
 
 One instance of each field is the truth of one world, and a host hands it
-to everything that reads that world: `RigidBody6DofBlock::with_gravity` and
-`MultibodyVehicleBlock::with_gravity` for the dynamics, the simulated
-inertial unit's `with_gravity`, `sim_devices::gravimeter_truth`, and
-`SensorSuite::with_magnetic_field` for the magnetometer. A block or a suite
-built without one flies the reference field of its body and the Earth's
-IGRF-14. A navigator's reference model is a different instance: the
-difference between the two is the model error a gravity-map or
-magnetic-anomaly navigator steers by.
+to everything that reads that world. `BodyDescriptor::fields` gives both
+handles of a body: `RigidBody6DofBlock::new`, the simulated inertial unit
+and `sim_devices::gravimeter_truth` take its gravity,
+`MultibodyVehicleBlock::with_gravity` sets it on a multibody vehicle, and
+`SensorSuite::new` takes its magnetic field for the magnetometer. None of
+them builds a field for itself. A universe's local-plant factory is handed
+the catalog entry of the body a vessel comes down to, and a carried plant is
+told the catalog field at each exchange. A navigator's reference model is a
+different instance: the difference between the two is the model error a
+gravity-map or magnetic-anomaly navigator steers by.
+
+The catalog's hash, and with it the orbital configuration hash, covers each
+magnetic field and atmosphere by the content it states for itself
+(`MagneticField::visit_content`, `AtmosphereContent`), not by its name.
 
 ## Environment loads in orbit
 
@@ -196,7 +202,9 @@ stage from the body it is integrated about:
   body. The catalog's Earth has a thermosphere, so a vessel at 300 km decays
   in orbital propagation without the flight tier;
 - gravity-gradient torque from the gradient tensor of the body's field;
-- the torque `m × B` on a residual magnetic dipole.
+- the torque `m × B` on a residual magnetic dipole, and on the dipole a
+  carried plant's torquers hold: the plant latches the moment at each
+  exchange and the torque follows the field between them.
 
 A load is immutable data and a pure function of the stage, so a proposal is
 the same bits on whichever worker computes it. A plant names its loads with

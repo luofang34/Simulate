@@ -145,6 +145,7 @@ fn a_downloaded_capsule_flies_in_the_rigid_body_block() {
             package.tree().clone(),
             package.build_aero_elements().unwrap(),
             Box::new(ReentryAtmosphere),
+            std::sync::Arc::new(BodyEllipsoid::WGS84),
         )
         .unwrap();
         for _ in 0..200 {

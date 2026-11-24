@@ -148,6 +148,7 @@ fn a_capsule_trimming_in_uniform_air_ends_where_it_was_recorded() {
             density_kg_m3: 2e-4,
             wind_ned_m_s: DVec3::ZERO,
         }),
+        std::sync::Arc::new(body),
     )
     .unwrap();
     run(&mut block, 3_000, &RigidBodyInput::default());

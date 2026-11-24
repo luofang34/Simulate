@@ -60,6 +60,7 @@ fn command_module(initial: VehicleState) -> RigidBody6DofBlock {
         build_apollo_csm_tree().unwrap(),
         apollo_cm_aero().unwrap(),
         Box::new(ReentryAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap();
     vehicle.separate_stage(CSM_SERVICE_MODULE).unwrap();

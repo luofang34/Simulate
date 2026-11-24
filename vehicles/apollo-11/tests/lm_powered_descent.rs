@@ -53,6 +53,7 @@ fn lander(body: BodyEllipsoid) -> RigidBody6DofBlock {
         build_apollo_lm_tree().unwrap(),
         Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }

@@ -141,6 +141,7 @@ fn capsule_pair() -> (RigidBody6DofBlock, MultibodyVehicleBlock) {
         tree,
         aero,
         Box::new(ReentryAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap();
     (rigid, capsule_block(VehicleIntegrator::REAL_TIME))

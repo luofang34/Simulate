@@ -28,7 +28,7 @@ pub use air_data::{
 pub use arinc429_bus::{ARINC429_WORD_BITS, Arinc429Bus, Arinc429Delivery, Arinc429Speed};
 pub use bmp390::{BMP390_ADDRESS, Bmp390Block, Bmp390Config, Bmp390Input, Bmp390Sample};
 pub use error::DeviceError;
-pub use geomagnetic::{MagneticEnvironment, earth_main_field};
+pub use geomagnetic::MagneticEnvironment;
 pub use gnss_receiver::{GnssErrorSpec, GnssReading, GnssReceiver, GnssSpoof};
 pub use gravimeter::{GravimeterTruth, gravimeter_truth};
 pub use icm42688::{Icm42688Block, Icm42688Config, Icm42688Sample, Icm42688Snapshot};

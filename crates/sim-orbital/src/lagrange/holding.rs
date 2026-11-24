@@ -164,6 +164,7 @@ impl L2HoldingDynamics<'_> {
                         orientation: self.orientation,
                         mass_model: self.mass_model,
                     },
+                    held_dipole_body_a_m2: glam::DVec3::ZERO,
                 })
             }
             None => fly(&CoastControlLaw),

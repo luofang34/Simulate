@@ -27,6 +27,7 @@ pub(super) fn external_loads(loads: &CarriedLoads) -> ExternalLoads {
         loads.torque_body_nm,
         ExternalMassProperties::new(loads.body.mass_kg, loads.body.inertia_cg_body),
     )
+    .with_dipole(loads.dipole_body_a_m2)
 }
 
 /// `body` as a mass the orbital tier holds constant: all of it dry, because
@@ -85,8 +86,11 @@ impl Universe {
     }
 
     fn commit_orbital_to(&mut self, at: SimInstant) -> Result<(), UniverseError> {
-        self.orbital
-            .advance_committed_to(at)
+        let advanced = match self.orbital_workers {
+            0 | 1 => self.orbital.advance_committed_to(at),
+            workers => self.orbital.advance_committed_to_parallel(at, workers),
+        };
+        advanced
             .map(|_metrics| ())
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))
     }
@@ -242,10 +246,19 @@ impl Universe {
             tdb,
             self.ephemeris.as_ref(),
         )?;
+        // The date the orbital tier's magnetic torque is evaluated for, so a
+        // plant's magnetometer and its torquers meet one field.
+        let magnetic_field_fixed_nt = self.bodies().get(naif).and_then(|described| {
+            described
+                .magnetic_field()
+                .field_fixed_nt(state.position_ecef, tdb.approximate_decimal_year())
+                .ok()
+        });
         Ok(CarryContext {
             at,
             body,
             state,
+            magnetic_field_fixed_nt,
             sun_direction_fixed: rotation.r_icrf_to_fixed * sunlight.to_sun_icrf,
             solar_irradiance_w_m2: sunlight.unobstructed_w_m2,
             solar_lit_fraction: sunlight.lit_fraction,

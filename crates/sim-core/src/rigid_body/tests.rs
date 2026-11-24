@@ -89,7 +89,22 @@ fn config(body: BodyEllipsoid, period: TickSpan, initial: VehicleState) -> Rigid
 }
 
 fn vacuum_block(config: RigidBodyConfig, tree: ComponentTree) -> RigidBody6DofBlock {
-    RigidBody6DofBlock::new(config, tree, Vec::new(), Box::new(VacuumAtmosphere)).unwrap()
+    vacuum_block_in(config, tree, Arc::new(config.body))
+}
+
+fn vacuum_block_in(
+    config: RigidBodyConfig,
+    tree: ComponentTree,
+    gravity: Arc<dyn GravityField>,
+) -> RigidBody6DofBlock {
+    RigidBody6DofBlock::new(
+        config,
+        tree,
+        Vec::new(),
+        Box::new(VacuumAtmosphere),
+        gravity,
+    )
+    .unwrap()
 }
 
 fn run(block: &mut RigidBody6DofBlock, steps: usize, input: &RigidBodyInput) {
@@ -154,7 +169,7 @@ fn the_block_integrates_the_gravity_field_it_is_given() {
     let extra_m_s2 = DVec3::new(0.0, 1e-3, 0.0);
     let field = Arc::new(Anomalous { body, extra_m_s2 });
     let mut reference = vacuum_block(config(body, TEN_MS, start), vehicle(0.0));
-    let mut anomalous = vacuum_block(config(body, TEN_MS, start), vehicle(0.0)).with_gravity(field);
+    let mut anomalous = vacuum_block_in(config(body, TEN_MS, start), vehicle(0.0), field);
     run(&mut reference, 100, &RigidBodyInput::default());
     run(&mut anomalous, 100, &RigidBodyInput::default());
 

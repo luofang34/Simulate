@@ -2,7 +2,8 @@ use glam::DVec3;
 use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
 
-use crate::{AtmosphereError, AtmosphereField, AtmosphereSample};
+use crate::content::{feed_f64s, feed_kind};
+use crate::{AtmosphereContent, AtmosphereError, AtmosphereField, AtmosphereSample};
 
 #[cfg(test)]
 mod tests;
@@ -27,6 +28,13 @@ impl VacuumAtmosphere {
         wind_ned_m_s: DVec3::ZERO,
         composition: GasComposition::VACUUM,
     };
+}
+
+impl AtmosphereContent for VacuumAtmosphere {
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        feed_kind(f, "vacuum");
+        feed_f64s(f, &[COSMIC_BACKGROUND_K]);
+    }
 }
 
 impl AtmosphereField for VacuumAtmosphere {

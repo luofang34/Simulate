@@ -87,6 +87,7 @@ fn capsule_block(cg: DVec3, density_kg_m3: f64) -> RigidBody6DofBlock {
             density_kg_m3,
             wind_ned_m_s: DVec3::ZERO,
         }),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }
@@ -135,6 +136,7 @@ fn wind_reaches_the_aerodynamics_model_in_body_axes() {
             density_kg_m3: 0.4,
             wind_ned_m_s: DVec3::new(0.0, 0.0, -50.0),
         }),
+        std::sync::Arc::new(body),
     )
     .unwrap();
     // At 0°N 0°E, ECEF +x is up and body axes match ECEF here, so rising air
@@ -160,6 +162,7 @@ fn the_block_accepts_every_atmosphere_on_its_own_body() {
             capsule_tree(DVec3::ZERO),
             capsule_aero(DVec3::ZERO),
             atmosphere,
+            std::sync::Arc::new(body),
         )
         .unwrap();
         run(&mut block, 10, &RigidBodyInput::default());

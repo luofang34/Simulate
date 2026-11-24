@@ -298,7 +298,7 @@ pub fn plant(
 pub fn counting_factory(calls: Rc<Cell<u32>>, sun_fixed: DVec3, carried: bool) -> LocalFactory {
     Box::new(move |body, state, start, epoch| {
         calls.set(calls.get().wrapping_add(1));
-        plant(body, state, start, epoch, sun_fixed, carried)
+        plant(body.ellipsoid, state, start, epoch, sun_fixed, carried)
     })
 }
 

@@ -4,7 +4,12 @@ use sim_geo::{Geodetic, UtcTime};
 use super::*;
 use sim_geo::{LocalFrame, geodetic_to_ecef};
 
-use crate::earth_main_field;
+use sim_bodies::BodyDescriptor;
+
+/// The Earth's catalog magnetic field.
+fn earth_main_field() -> Arc<dyn MagneticField> {
+    BodyDescriptor::earth().unwrap().magnetic_field().clone()
+}
 
 const CYCLE_S: f64 = 1.0 / 480.0;
 const GRAVITY_M_S2: f64 = 9.801;
@@ -41,7 +46,7 @@ fn at_rest(heading_rad: f64) -> (Geodetic, SensedTruth) {
 #[test]
 fn each_device_samples_at_its_own_rate() {
     let (_, truth) = at_rest(0.0);
-    let mut suite = SensorSuite::new(&spec(1)).unwrap();
+    let mut suite = SensorSuite::new(&spec(1), earth_main_field()).unwrap();
     let (mut imu, mut air, mut magnetometer, mut gnss) = (0, 0, 0, 0);
     for _ in 0..480 {
         let samples = suite.sense(&truth, CYCLE_S).unwrap();
@@ -57,7 +62,7 @@ fn each_device_samples_at_its_own_rate() {
 fn ideal_devices_at_rest_report_the_pad_reaction_the_air_and_the_field() {
     let heading = std::f64::consts::FRAC_PI_2;
     let (at, truth) = at_rest(heading);
-    let samples = SensorSuite::new(&spec(1))
+    let samples = SensorSuite::new(&spec(1), earth_main_field())
         .unwrap()
         .sense(&truth, CYCLE_S)
         .unwrap();
@@ -71,7 +76,7 @@ fn ideal_devices_at_rest_report_the_pad_reaction_the_air_and_the_field() {
     // Nose east: the field's east part lies along the nose, its north part
     // out of the left wing.
     let field_fixed = MagneticEnvironment::main_field(2026.5)
-        .field_fixed_ut(earth_main_field().unwrap().as_ref(), geodetic_to_ecef(&at))
+        .field_fixed_ut(earth_main_field().as_ref(), geodetic_to_ecef(&at))
         .unwrap();
     let field = LocalFrame::at(&at).ecef_to_ned_vector(field_fixed);
     let sensed = samples.magnetic_field_body_ut.unwrap();
@@ -86,7 +91,7 @@ fn ideal_devices_at_rest_report_the_pad_reaction_the_air_and_the_field() {
 fn a_seed_replays_the_suite_and_the_receiver_can_lose_the_sky() {
     let (_, truth) = at_rest(0.3);
     let run = |seed: u64| {
-        let mut suite = SensorSuite::new(&spec(seed)).unwrap();
+        let mut suite = SensorSuite::new(&spec(seed), earth_main_field()).unwrap();
         (0..96)
             .map(|_| suite.sense(&truth, CYCLE_S).unwrap())
             .collect::<Vec<_>>()
@@ -94,7 +99,7 @@ fn a_seed_replays_the_suite_and_the_receiver_can_lose_the_sky() {
     assert_eq!(run(5), run(5));
     assert_ne!(run(5), run(6));
 
-    let mut suite = SensorSuite::new(&spec(5)).unwrap();
+    let mut suite = SensorSuite::new(&spec(5), earth_main_field()).unwrap();
     suite.receiver_mut().set_tracking(false);
     let fixes = (0..96)
         .filter(|_| suite.sense(&truth, CYCLE_S).unwrap().gnss.is_some())
@@ -108,5 +113,5 @@ fn a_device_that_never_samples_is_refused() {
         gnss_every: 0,
         ..spec(1)
     };
-    assert!(SensorSuite::new(&never).is_err());
+    assert!(SensorSuite::new(&never, earth_main_field()).is_err());
 }

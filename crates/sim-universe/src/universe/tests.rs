@@ -92,12 +92,13 @@ fn coaster(
         satellite_tree(),
         Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )?;
     Ok(Box::new(CoastingRigidBody::new(block, body, start, 2.0)))
 }
 
 fn factory() -> LocalFactory {
-    Box::new(coaster)
+    Box::new(|body, state, start, epoch| coaster(body.ellipsoid, state, start, epoch))
 }
 
 /// A 400 km circular orbit's state in the rotating frame, inclined 51.6°.
@@ -424,7 +425,9 @@ fn multibody_local_plant_promotes_and_demotes_cleanly() {
     assert!(plant_check.orbital_body().is_some());
     assert!(!plant_check.holds_local_tier());
 
-    let mb_factory = || -> LocalFactory { Box::new(multibody_coaster) };
+    let mb_factory = || -> LocalFactory {
+        Box::new(|body, state, start, epoch| multibody_coaster(body.ellipsoid, state, start, epoch))
+    };
     let mut local_only = Universe::new(epoch.clone(), solar_system_context());
     let mut promoted = Universe::new(epoch.clone(), solar_system_context());
     local_only

@@ -89,6 +89,7 @@ pub struct Universe {
     tier_changes: Vec<TierChange>,
     state_reinitializations: u64,
     planner: Planner,
+    orbital_workers: usize,
 }
 
 impl Universe {
@@ -128,6 +129,7 @@ impl Universe {
             tier_changes: Vec::new(),
             state_reinitializations: 0,
             planner: Planner::new(),
+            orbital_workers: 1,
         }
     }
 
@@ -135,6 +137,14 @@ impl Universe {
     #[must_use]
     pub const fn state_reinitializations(&self) -> u64 {
         self.state_reinitializations
+    }
+
+    /// Speculates orbital vessels on `workers` threads. The committed states
+    /// are the same bits for any count; one thread is the default.
+    #[must_use]
+    pub fn with_orbital_workers(mut self, workers: usize) -> Self {
+        self.orbital_workers = workers.max(1);
+        self
     }
 
     /// Moves vessels between tiers by `policy` as the universe advances.

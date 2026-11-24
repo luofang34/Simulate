@@ -6,9 +6,10 @@ use std::sync::Arc;
 use glam::DVec3;
 use sim_atmosphere::{AtmosphereError, AtmosphereField, AtmosphereSample};
 use sim_aviate::DirectActuatorCmd;
+use sim_bodies::BodyFields;
 use sim_core::{TickSpan, VehicleState};
 use sim_devices::SensedTruth;
-use sim_geo::{BodyEllipsoid, Geodetic, UtcTime};
+use sim_geo::{Geodetic, GravityField, UtcTime};
 
 use crate::ChainError;
 
@@ -25,6 +26,11 @@ pub trait Airframe {
 
     /// The true state.
     fn state(&self) -> VehicleState;
+
+    /// The truth fields of the body the vehicle flies about: the instances
+    /// its sensed specific force is worked out in, which the board's devices
+    /// are built on too.
+    fn fields(&self) -> &BodyFields;
 
     /// What the vehicle's motion and the air present to its sensors now.
     fn sensed(&self) -> Result<SensedTruth, ChainError>;
@@ -64,8 +70,9 @@ impl AtmosphereField for SharedAir {
 /// Specific force in body axes of a vehicle whose Earth-fixed velocity went
 /// from `before` to `after` over `dt_s`: its acceleration in inertial space,
 /// which adds the rotating frame's Coriolis and centrifugal terms, less the
-/// mass attraction.
+/// mass attraction of `gravity`.
 pub(crate) fn specific_force_body_m_s2(
+    gravity: &dyn GravityField,
     before: &VehicleState,
     after: &VehicleState,
     dt_s: f64,
@@ -74,6 +81,6 @@ pub(crate) fn specific_force_body_m_s2(
     let acceleration = (after.velocity_ecef - before.velocity_ecef) / dt_s
         + 2.0 * earth_rate.cross(after.velocity_ecef)
         + earth_rate.cross(earth_rate.cross(after.position_ecef));
-    let attraction = BodyEllipsoid::WGS84.gravity_fixed(after.position_ecef);
+    let attraction = gravity.attraction_fixed(after.position_ecef);
     after.attitude.inverse() * (acceleration - attraction)
 }
