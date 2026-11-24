@@ -41,6 +41,7 @@ members = [
 ]
 exclude = [
     "apps/flightdeck/ffi",
+    "adapters/sim-py",
 ]
 
 [workspace.package]

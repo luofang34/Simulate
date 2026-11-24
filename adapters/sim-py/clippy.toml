@@ -1,0 +1,18 @@
+allow-dbg-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-unwrap-in-tests = true
+
+disallowed-types = [
+    { path = "anyhow::Error", reason = "typed errors only in this workspace; use thiserror enums" },
+]
+
+disallowed-macros = [
+    { path = "std::println", reason = "use tracing for diagnostics" },
+    { path = "std::print", reason = "use tracing for diagnostics" },
+    { path = "std::eprintln", reason = "use tracing for diagnostics" },
+    { path = "std::eprint", reason = "use tracing for diagnostics" },
+    { path = "std::dbg", reason = "use tracing for diagnostics" },
+]
