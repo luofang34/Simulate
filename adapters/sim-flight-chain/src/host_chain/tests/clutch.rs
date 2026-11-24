@@ -110,7 +110,9 @@ fn engaged_servos_bring_a_hand_flown_aeroplane_back_to_the_plan() {
 const RATE_LIMIT_MARGIN: f64 = 1.1;
 
 #[test]
-#[ignore = "the pinned Aviate winds its integrators up while the servos are out, and its C172             feedforward was fitted to a plant weaker than this one: roll reaches about twice             the envelope's limit"]
+#[ignore = "rolling out of the turn the flight controller holds a quarter of its rudder, \
+            and the roll that the rudder and the sideslip add takes the aeroplane a tenth \
+            past the roll-rate limit: its yaw feedforward and turn coordination have no source"]
 fn re_engagement_stays_within_the_flight_controllers_rate_limits() {
     let limits = sim_aviate::c172_airframe().limits;
     let (mut chain, _, _) = hand_flown_upset();
