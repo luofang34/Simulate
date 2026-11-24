@@ -15,6 +15,7 @@ members = [
     "apps/link-replay",
     "apps/nav-trial",
     "apps/simulate-app",
+    "crates/ccsds-ndm",
     "crates/sim-analysis",
     "crates/sim-analysis-contract",
     "crates/sim-atmosphere",

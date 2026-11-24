@@ -551,6 +551,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ccsds-ndm"
+version = "0.1.0"
+dependencies = [
+ "quick-xml",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

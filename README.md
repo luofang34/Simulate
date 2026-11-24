@@ -45,6 +45,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-analysis-contract` | `crates/sim-analysis-contract` | Versioned analysis request and result types |
 | `sim-analysis` | `crates/sim-analysis` | Geometric relations, constraints, and access windows |
 | `sim-mission` | `crates/sim-mission` | Spaceflight mission plans and segment propagation |
+| `ccsds-ndm` | `crates/ccsds-ndm` | Standalone CCSDS Navigation Data Message reader and writer (OEM, OPM, OMM in KVN, XML, and JSON OMM) |
 | `sim-universe` | `crates/sim-universe` | Vessels on one clock across flight and orbital tiers, and the handoff between them |
 | `spice-kernels` | `crates/spice-kernels` | Standalone NAIF SPICE binary kernel writer, reader, and evaluator; depends on no other workspace crate |
 | `sim-geo` | `crates/sim-geo` | WGS84 and lunar geodesy, local frames, floating origin, pinhole intrinsics |

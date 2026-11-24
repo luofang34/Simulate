@@ -1,0 +1,42 @@
+[package]
+name = "ccsds-ndm"
+description = "Typed, lossless reader and writer for CCSDS Navigation Data Messages (OEM, OPM, OMM) in KVN, XML and JSON"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+keywords = ["ccsds", "ephemeris", "orbit", "omm", "oem"]
+categories = ["aerospace", "parser-implementations", "science"]
+publish = false
+
+# No path or workspace dependencies: the crate stays extractable from this
+# repository as it is.
+[dependencies]
+quick-xml = { version = "0.41", default-features = false }
+serde_json = { version = "1", default-features = false, features = ["std", "float_roundtrip"], optional = true }
+thiserror = "2"
+
+[features]
+default = ["json"]
+# OMM in the flat JSON layout CelesTrak and Space-Track serve.
+json = ["dep:serde_json"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "forbid"
+expect_used = "forbid"
+panic = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+get_unwrap = "forbid"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"

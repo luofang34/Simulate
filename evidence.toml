@@ -10,6 +10,7 @@ exclude_paths = ["target/**", "**/dist/**", "book/build/**", ".claude/**"]
 
 [architecture]
 in_scope = [
+    "ccsds-ndm",
     "spice-kernels",
     "sim-geo", "sim-link", "sim-spacetime", "sim-atmosphere", "sim-core", "sim-analysis-contract",
     "sim-scenery", "sim-orbital", "sim-analysis", "sim-devices", "sim-xil", "sim-input",
@@ -31,7 +32,7 @@ world-potential = "read gravity and magnetic fields through sim-bodies, the only
 
 [[architecture.layers]]
 name = "interchange"
-crates = ["spice-kernels"]
+crates = ["spice-kernels", "ccsds-ndm"]
 allow_same_layer = false
 
 [[architecture.layers]]
