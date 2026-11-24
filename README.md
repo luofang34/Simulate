@@ -46,6 +46,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-analysis` | `crates/sim-analysis` | Geometric relations, constraints, and access windows |
 | `sim-mission` | `crates/sim-mission` | Spaceflight mission plans and segment propagation |
 | `sim-universe` | `crates/sim-universe` | Vessels on one clock across flight and orbital tiers, and the handoff between them |
+| `spice-kernels` | `crates/spice-kernels` | Standalone NAIF SPICE binary kernel writer, reader, and evaluator; depends on no other workspace crate |
 | `sim-geo` | `crates/sim-geo` | WGS84 and lunar geodesy, local frames, floating origin, pinhole intrinsics |
 | `sim-atmosphere` | `crates/sim-atmosphere` | Atmosphere and cloud fields |
 | `sim-bodies` | `crates/sim-bodies` | Body catalog and the gravity and magnetic truth fields every tier reads |

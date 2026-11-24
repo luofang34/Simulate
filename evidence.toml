@@ -10,6 +10,7 @@ exclude_paths = ["target/**", "**/dist/**", "book/build/**", ".claude/**"]
 
 [architecture]
 in_scope = [
+    "spice-kernels",
     "sim-geo", "sim-link", "sim-spacetime", "sim-atmosphere", "sim-core", "sim-analysis-contract",
     "sim-scenery", "sim-orbital", "sim-analysis", "sim-devices", "sim-xil", "sim-input",
     "sim-render", "sim-mission", "sim-universe", "sim-pack", "sim-scenario",
@@ -27,6 +28,11 @@ export_hygiene_crates = ["sim-analysis-contract", "sim-spacetime", "sim-orbital"
 # Only sim-bodies links world-potential (in_scope above omits it on purpose).
 [architecture.forbidden_external]
 world-potential = "read gravity and magnetic fields through sim-bodies, the only adapter onto world-potential"
+
+[[architecture.layers]]
+name = "interchange"
+crates = ["spice-kernels"]
+allow_same_layer = false
 
 [[architecture.layers]]
 name = "foundation"
