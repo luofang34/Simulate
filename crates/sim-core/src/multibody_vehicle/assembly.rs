@@ -1,18 +1,23 @@
 //! Building a vehicle's model, elements and state from its tree and
 //! subsystems, and rebuilding them when the tree changes shape.
 
+use std::sync::Arc;
+
 use mbd_core::{ComponentState, ComponentTree};
 use mbd_multibody::{
     FloatingBaseState, ForceElement, ModelState, MultibodyModel, PinnedSurfaceRest, Wheel,
     Workspace,
 };
+use sim_atmosphere::AtmosphereField;
+use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
 use super::element_state::{read_own, write_own};
 use super::step::{block_mbd, block_multi, collect_dynamic_masses, invalid_input, sample_env};
 use super::subsystems::MultibodySubsystems;
 use super::{
-    MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
-    MultibodyVehicleTelemetry, VehicleAero, VehicleWorld,
+    MultibodyStructuralSnapshot, MultibodyVehicleBlock, MultibodyVehicleConfig,
+    MultibodyVehicleInput, MultibodyVehicleSnapshot, MultibodyVehicleTelemetry,
+    SurfaceContactProvider, VehicleAero, VehicleWorld,
 };
 use crate::BlockError;
 use crate::flight_model::elements::{VehicleElements, wheel_spin_inertia_estimate};
@@ -326,5 +331,111 @@ impl MultibodyVehicleBlock {
         child.state.set_base(&base_fixed);
         child.now = self.now;
         Ok(child)
+    }
+
+    /// Captures a full topology-preserving snapshot of this block for checkpointing
+    /// across staging, undocking, and hard-mating transitions.
+    #[must_use]
+    pub fn structural_snapshot(&self) -> MultibodyStructuralSnapshot {
+        MultibodyStructuralSnapshot {
+            inner: crate::Block::snapshot(self),
+            config: self.config,
+            tree: self.tree.clone(),
+            aero: self.aero_with_states(),
+            subsystems: self.subsystems.clone(),
+            scale: self.scale,
+            mechanism_states: self.mechanism_states.clone(),
+        }
+    }
+
+    /// Restores both topology and runtime state from `snapshot`, keeping the
+    /// block's attached planetary world providers.
+    pub fn restore_structural(
+        &mut self,
+        snapshot: &MultibodyStructuralSnapshot,
+    ) -> Result<(), BlockError> {
+        let saved = self.structural_snapshot();
+        let res = self.apply_structural(snapshot);
+        if res.is_err() {
+            self.apply_structural(&saved).ok();
+        }
+        res
+    }
+
+    fn apply_structural(
+        &mut self,
+        snapshot: &MultibodyStructuralSnapshot,
+    ) -> Result<(), BlockError> {
+        self.config = snapshot.config;
+        self.tree = snapshot.tree.clone();
+        self.subsystems = snapshot.subsystems.clone();
+        self.scale = snapshot.scale;
+        (self.elements.aero, self.canopies) = snapshot.aero.iter().cloned().unzip();
+        self.rebuild_model()?;
+        take_up_specs(&mut self.elements, &self.subsystems);
+        self.try_restore(&snapshot.inner)?;
+        self.mechanism_states = snapshot.mechanism_states.clone();
+        Ok(())
+    }
+
+    /// Reconstructs a [`MultibodyVehicleBlock`] from a [`MultibodyStructuralSnapshot`]
+    /// using the supplied planetary world providers.
+    pub fn from_structural_snapshot(
+        snapshot: &MultibodyStructuralSnapshot,
+        atmosphere: Arc<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
+        surface: Arc<dyn SurfaceContactProvider>,
+    ) -> Result<Self, BlockError> {
+        let mut block = Self::build_with_parts(
+            snapshot.config,
+            snapshot.tree.clone(),
+            snapshot.aero.clone(),
+            snapshot.subsystems.clone(),
+            VehicleWorld {
+                atmosphere,
+                gravity,
+                surface,
+            },
+            snapshot.inner.pinned_rest,
+        )?;
+        block.apply_structural(snapshot)?;
+        Ok(block)
+    }
+
+    /// Rebuilds a [`MultibodyVehicleBlock`] from a [`MultibodyStructuralSnapshot`]
+    /// rehomed onto `body` at `state` and epoch `utc` (`SimInstant::START`).
+    pub fn rebuild_from_structural(
+        snapshot: &MultibodyStructuralSnapshot,
+        body: BodyEllipsoid,
+        atmosphere: Arc<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
+        surface: Arc<dyn SurfaceContactProvider>,
+        state: &crate::VehicleState,
+        utc: UtcTime,
+    ) -> Result<Self, BlockError> {
+        let mut block = Self::from_structural_snapshot(
+            snapshot,
+            Arc::clone(&atmosphere),
+            Arc::clone(&gravity),
+            Arc::clone(&surface),
+        )?;
+        block.config.epoch = utc;
+        block.now = crate::SimInstant::START;
+        block.rehome(body, gravity, atmosphere, surface, state)?;
+        Ok(block)
+    }
+
+    /// Reconstructs a sibling [`MultibodyVehicleBlock`] from `snapshot` reusing
+    /// this block's planetary atmosphere, gravity, and surface providers.
+    pub fn from_structural_sharing_world(
+        &self,
+        snapshot: &MultibodyStructuralSnapshot,
+    ) -> Result<Self, BlockError> {
+        Self::from_structural_snapshot(
+            snapshot,
+            std::sync::Arc::clone(&self.world.atmosphere),
+            std::sync::Arc::clone(&self.world.gravity),
+            std::sync::Arc::clone(&self.world.surface),
+        )
     }
 }

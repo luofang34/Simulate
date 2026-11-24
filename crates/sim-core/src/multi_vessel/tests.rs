@@ -14,6 +14,7 @@ use sim_geo::{BodyEllipsoid, UtcTime};
 use super::*;
 
 mod mechanism_reference;
+mod proximity;
 use crate::multibody_vehicle::{
     MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig,
 };

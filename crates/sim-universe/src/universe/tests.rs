@@ -24,6 +24,8 @@ mod carried;
 mod checkpoints;
 mod plans;
 mod policy;
+mod proximity;
+mod proximity_replay;
 
 /// `2027-03-01T00:00:00Z`.
 const START_UTC_UNIX_S: f64 = 1_803_859_200.0;

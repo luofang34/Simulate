@@ -18,17 +18,17 @@ use super::telemetry::find_rail;
 use super::topology::apply_fault_override;
 use crate::BlockError;
 
-pub(super) struct SubsystemStepOut {
-    pub(super) fluid_out: FluidStepOutput,
-    pub(super) elec_out: ElectricalStepOutput,
-    pub(super) prop_wrenches: Vec<WrenchAtSite>,
-    pub(super) grain_contribs: Vec<DynamicMassContribution>,
-    pub(super) thrust_body_n: DVec3,
-    pub(super) thrust_torque_cg_body_nm: DVec3,
-    pub(super) rf_blackout: bool,
-    pub(super) peak_heat_flux_w_m2: f64,
-    pub(super) ao_erosion_depth_m: f64,
-    pub(super) ao_remaining_fraction: f64,
+pub(crate) struct SubsystemStepOut {
+    pub(crate) fluid_out: FluidStepOutput,
+    pub(crate) elec_out: ElectricalStepOutput,
+    pub(crate) prop_wrenches: Vec<WrenchAtSite>,
+    pub(crate) grain_contribs: Vec<DynamicMassContribution>,
+    pub(crate) thrust_body_n: DVec3,
+    pub(crate) thrust_torque_cg_body_nm: DVec3,
+    pub(crate) rf_blackout: bool,
+    pub(crate) peak_heat_flux_w_m2: f64,
+    pub(crate) ao_erosion_depth_m: f64,
+    pub(crate) ao_remaining_fraction: f64,
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -71,9 +71,9 @@ pub use multi_vessel::{
 };
 pub use multibody_vehicle::{
     CarriedDecoupledStep, CarriedReaction, CgTrimConfig, EllipsoidSurfaceProvider, JointDriveInput,
-    MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleInput,
-    MultibodyVehicleSnapshot, MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands,
-    SurfaceContactProvider,
+    MultibodyStructuralSnapshot, MultibodySubsystems, MultibodyVehicleBlock,
+    MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
+    MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands, SurfaceContactProvider,
 };
 pub use rigid_body::{
     PropellantBurn, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, RigidBodySnapshot,

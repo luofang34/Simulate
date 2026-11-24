@@ -98,6 +98,10 @@ impl VesselBusState {
         }
     }
 
+    pub(crate) const fn config(&self) -> VesselBusConfig {
+        self.config
+    }
+
     pub(crate) const fn srp_surface(&self) -> Option<SrpSurface> {
         self.config.srp_surface
     }

@@ -94,21 +94,22 @@ fn a_soft_capture_mates_at_the_recorded_step() {
     }
     let merged = coord.vessel(SimVesselId(1)).unwrap();
     let state = merged.output();
-    // The ring's spring and damper act inside each step and its phase
-    // changes land on step boundaries, so the latch may move by a step or
-    // two and the chaser a few millimetres with it. Each vessel integrates
-    // against the other's port carried on from the start of the step, so
-    // the pair's momentum, zero here, closes with the step and not to
-    // round-off: 0.03 kg·m/s on 1,900 kg at 50 Hz.
+    // The ring's spring and damper act inside each step and its phase changes
+    // land on step boundaries, so the latch moves slightly with coupling
+    // fidelity. Under the shared-integrator proximity-group ODE (PR 3.9,
+    // replacing start-of-step `far_end` splitting where 50 Hz mated at step 44,
+    // `cg_x = 0.069_786_892_272_531_99 m`, momentum error `~0.03 kg*m/s`),
+    // 50 Hz now mates at step 45 with `cg_x = 0.067_886_526_696_383_95 m` and
+    // inertial pair momentum conserved to round-off (`4.26e-14 kg*m/s`).
     assert_rows(&[
-        ("mated_at_step", f64::from(mated_at.unwrap()), 44.0, 2.0),
+        ("mated_at_step", f64::from(mated_at.unwrap()), 45.0, 1.0),
         (
             "mated_cg_x",
             state.position_ecef.x - ORBIT_X_M,
-            0.069_786_892_272_531_99,
-            5e-3,
+            0.067_886_526_696_383_95,
+            1e-9,
         ),
-        ("mated_speed", state.velocity_ecef.length(), 0.0, 1e-4),
+        ("mated_speed", state.velocity_ecef.length(), 0.0, 1e-11),
         (
             "mated_mass",
             merged.mass_properties().total_mass_kg,
@@ -194,28 +195,31 @@ fn a_reeled_in_tether_draws_two_vessels_together_as_recorded() {
     let momentum = a.velocity_ecef * 1_050.0 + b.velocity_ecef * 850.0;
     let gap = (b.position_ecef - a.position_ecef).length();
     let closing = (b.velocity_ecef - a.velocity_ecef).x;
-    // The line's tension follows both vessels inside a step and its length
-    // pays out continuously. Each vessel integrates against the other's
-    // anchor carried on from the start of the step, so the pair's momentum
-    // closes with the step and not to round-off;
-    // `halving_the_step_keeps_the_reeled_in_gap_and_closes_the_pair_momentum`
-    // holds both to numbers.
+    // The line's tension follows both vessels symmetrically at every stage
+    // inside the shared-integrator proximity group (PR 3.9).
+    // Before PR 3.9 (start-of-step `far_end` splitting): 50 Hz recorded
+    // `gap = 8.113_764_781_763_89 m`, `closing = -0.777_834_309_755_426_6 m/s`,
+    // `payload_spin_z = 0.114_208_178_058_870_24 rad/s`, and `O(dt)` pair
+    // momentum drift `~0.025 kg·m/s`.
+    // Eliminating the `O(dt)` lag shifts 50 Hz to `8.114_738_230_655_824 m`
+    // (`payload_spin_z = 0.112_869_334_530_806_5 rad/s`) and closes total
+    // linear momentum to round-off (`4.44e-16 kg·m/s`).
     assert_rows(&[
-        ("gap_m", gap, REELED_IN_GAP_M, 0.02),
-        ("closing_m_s", closing, -0.777_834_309_755_426_6, 0.02),
+        ("gap_m", gap, REELED_IN_GAP_M, 1e-6),
+        ("closing_m_s", closing, -0.770_446_828_987_397_1, 1e-6),
         (
             "line_m",
             state.deployed_length_m,
             7.500_000_000_000_043,
-            0.011,
+            1e-9,
         ),
         (
             "payload_spin_z",
             b.angular_rate_body.z,
-            0.114_208_178_058_870_24,
-            2e-3,
+            0.112_869_334_530_806_5,
+            1e-9,
         ),
-        ("momentum", momentum.length(), 0.0, 0.25),
+        ("momentum", momentum.length(), 0.0, 1e-11),
     ]);
 }
 
@@ -250,37 +254,39 @@ fn reeled_in(steps_per_second: u64) -> (f64, f64) {
 }
 
 /// The gap recorded at 50 Hz by
-/// [`a_reeled_in_tether_draws_two_vessels_together_as_recorded`].
-const REELED_IN_GAP_M: f64 = 8.113_764_781_763_89;
+/// [`a_reeled_in_tether_draws_two_vessels_together_as_recorded`] under the
+/// shared-integrator proximity group (shifted from `8.113_764_781_763_89 m`
+/// by `+0.973 mm` when `O(dt)` start-of-step splitting was eliminated).
+const REELED_IN_GAP_M: f64 = 8.114_738_230_655_824;
+
+/// High-rate (3,200 Hz) reeled-in tether gap limit, m.
+const REELED_IN_CONVERGED_GAP_M: f64 = 8.114_000_603_963;
 
 #[test]
 fn halving_the_step_keeps_the_reeled_in_gap_and_closes_the_pair_momentum() {
     let flown = [50, 100, 200, 400, 800, 1_600].map(|rate| (rate, reeled_in(rate)));
-    // The gap does not close on a limit as the step halves: it moves by
-    // tenths of a millimetre either way from one step size to the next.
-    // What holds is that the recorded 50 Hz gap is within half a millimetre
-    // of the gap at every one of these steps, a fortieth of the tolerance
-    // it is held to.
-    for (rate, (gap, _)) in flown {
+    // Because the tether carries a `200 N` Heaviside turn-on in damping the
+    // moment separation exceeds `deployed_length_m` (`t* ~ 0.9989 s`), fixed
+    // RK4 exhibits `O(dt)` sub-millimetre jitter as `t*` crosses RK4 stage
+    // points (e.g. `400 Hz` = `8.11373 m` vs `500 Hz` = `8.11416 m`). Even
+    // including 50 Hz, all rates stay within `1.1 mm` of 50 Hz and all rates
+    // `>= 100 Hz` stay within `0.3 mm` of the 3,200 Hz limit.
+    for (rate, (gap, momentum_err)) in flown {
         assert!(
-            (gap - REELED_IN_GAP_M).abs() < 5e-4,
+            (gap - REELED_IN_GAP_M).abs() < 1.1e-3,
             "at {rate} Hz the gap is {gap} m"
         );
-    }
-    // Each vessel integrates against the other's anchor carried on from the
-    // start of the step, so the momentum of the pair is not exact; it is
-    // first order in the step, halving with it towards zero.
-    assert!(
-        flown[0].1.1 < 0.025,
-        "pair momentum at 50 Hz: {:?}",
-        flown[0]
-    );
-    for pair in flown.windows(2) {
-        let ((_, (_, coarse)), (rate, (_, fine))) = (pair[0], pair[1]);
-        let ratio = coarse / fine;
+        if rate >= 100 {
+            assert!(
+                (gap - REELED_IN_CONVERGED_GAP_M).abs() < 3.0e-4,
+                "at {rate} Hz the gap {gap} m wandered too far from {REELED_IN_CONVERGED_GAP_M}"
+            );
+        }
+        // Inside the unified ODE, pair linear momentum is exact to round-off at
+        // every step rate rather than converging slowly at O(dt) (~0.025 kg*m/s).
         assert!(
-            (1.7..2.2).contains(&ratio),
-            "halving the step to {rate} Hz took the pair momentum from {coarse} to {fine} kg·m/s"
+            momentum_err < 1e-11,
+            "at {rate} Hz the pair linear momentum error was {momentum_err} kg·m/s"
         );
     }
 }

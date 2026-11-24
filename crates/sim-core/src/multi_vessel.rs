@@ -5,21 +5,18 @@ use mbd_core::{ComponentId, Placement};
 use mbd_multibody::{
     DockingSpec, DockingState, GrappleLockSpec, HingeSwingSpec, HingeSwingState, RailSlideSpec,
     RailSlideState, TetherCommand, TetherCutReason, WinchTetherSpec, WinchTetherState,
-    execute_impulse_release, grapple_lock, hard_mate_vessels, undock_vessel,
+    execute_impulse_release, hard_mate_vessels, undock_vessel,
 };
 use mbd_systems::payload::transfer_payload_mass;
 
 use crate::BlockError;
 use crate::flight_model::planet_frame::fixed_to_instantaneous_inertial;
 use crate::multibody_vehicle::{MultibodyVehicleBlock, MultibodyVehicleInput};
-use mechanisms::{
-    mate_vessels_from_result, prepare_step_inputs, process_post_step_links,
-    split_vessel_with_release, take_link_states,
-};
-use plume::site_world_kinematics;
+use mechanisms::{grapple_lock_impl, mate_vessels_from_result, split_vessel_with_release};
 
 mod mechanisms;
 mod plume;
+mod proximity_group;
 
 #[cfg(test)]
 mod tests;
@@ -161,6 +158,20 @@ pub enum InterVesselLink {
     },
 }
 
+impl InterVesselLink {
+    /// Returns this link's identifier.
+    #[must_use]
+    pub const fn id(&self) -> u64 {
+        match *self {
+            Self::RailSlide { id, .. }
+            | Self::HingeSwing { id, .. }
+            | Self::Docking { id, .. }
+            | Self::WinchTether { id, .. }
+            | Self::PlumeLink { id, .. } => id,
+        }
+    }
+}
+
 /// Topology transitions emitted on one coordinated step of [`MultiVesselCoordinator`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MultiVesselStepReport {
@@ -267,6 +278,52 @@ impl MultiVesselCoordinator {
     /// Mutable slice of active [`InterVesselLink`] records (to arm/cut tethers or fire rails).
     pub fn links_mut(&mut self) -> &mut [InterVesselLink] {
         &mut self.links
+    }
+
+    /// Immutable slice of active [`InterVesselLink`] records.
+    #[must_use]
+    pub fn links(&self) -> &[InterVesselLink] {
+        &self.links
+    }
+
+    /// Rebuilds a coordinator directly from live vessels, active links,
+    /// active vessel focus, and next vessel counter.
+    pub fn from_parts(
+        vessels: BTreeMap<SimVesselId, MultibodyVehicleBlock>,
+        links: Vec<InterVesselLink>,
+        active_vessel: SimVesselId,
+        next_vessel_id: u64,
+    ) -> Result<Self, BlockError> {
+        if !vessels.is_empty() && !vessels.contains_key(&active_vessel) {
+            return Err(missing_vessel(active_vessel));
+        }
+        Ok(Self {
+            vessels,
+            links,
+            pending_releases: Vec::new(),
+            pending_hard_mates: Vec::new(),
+            active_vessel,
+            next_vessel_id,
+        })
+    }
+
+    /// Decomposes this coordinator into its live vessels, active links, active
+    /// vessel focus, and next vessel counter.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        BTreeMap<SimVesselId, MultibodyVehicleBlock>,
+        Vec<InterVesselLink>,
+        SimVesselId,
+        u64,
+    ) {
+        (
+            self.vessels,
+            self.links,
+            self.active_vessel,
+            self.next_vessel_id,
+        )
     }
 
     /// Transfers conserved payload mass between attached components on `vessel_id`.
@@ -395,64 +452,15 @@ impl MultiVesselCoordinator {
         fixture_component: ComponentId,
         mate_placement: Placement,
     ) -> Result<(), BlockError> {
-        let servicer = self
-            .vessels
-            .get(&servicer_id)
-            .ok_or_else(|| missing_vessel(servicer_id))?;
-        let target = self
-            .vessels
-            .get(&target_id)
-            .ok_or_else(|| missing_vessel(target_id))?;
-        let chain = servicer
-            .subsystems()
-            .manipulators
-            .iter()
-            .find(|(n, _)| n == manipulator_name)
-            .map(|(_, c)| c)
-            .ok_or_else(|| BlockError::InputOutOfRange {
-                block: COORD_BLOCK,
-                input: "manipulator_name",
-                detail: format!("unknown manipulator {manipulator_name:?}"),
-            })?;
-        let ee_comp = chain.ee_component();
-        let servicer_i =
-            fixed_to_instantaneous_inertial(&servicer.floating_base_fixed(), &servicer.body());
-        let target_i =
-            fixed_to_instantaneous_inertial(&target.floating_base_fixed(), &target.body());
-        let (ee_pos, ee_rot, ee_vel, _) = site_world_kinematics(
-            servicer.pose_table(),
-            &servicer_i,
-            ee_comp,
-            chain.ee_offset_local_m(),
-        )?;
-        let (fix_pos, fix_rot, fix_vel, _) = site_world_kinematics(
-            target.pose_table(),
-            &target_i,
-            fixture_component,
-            DVec3::ZERO,
-        )?;
-        let ma = servicer.dynamic_mass_contributions()?;
-        let mb = target.dynamic_mass_contributions()?;
-        let res = grapple_lock(
+        grapple_lock_impl(
+            self,
             spec,
-            ee_pos,
-            ee_rot,
-            ee_vel,
-            fix_pos,
-            fix_rot,
-            fix_vel,
-            servicer.tree(),
-            &ma,
-            &servicer_i,
-            ee_comp,
-            target.tree(),
-            &mb,
-            &target_i,
+            servicer_id,
+            manipulator_name,
+            target_id,
             fixture_component,
             mate_placement,
         )
-        .map_err(map_multi_coord)?;
-        mate_vessels_from_result(self, servicer_id, target_id, res)
     }
 
     /// Evaluates active inter-vessel mechanisms, advances every live vessel synchronously on the
@@ -461,15 +469,6 @@ impl MultiVesselCoordinator {
         &mut self,
         inputs: &BTreeMap<SimVesselId, MultibodyVehicleInput>,
     ) -> Result<MultiVesselStepReport, BlockError> {
-        let (mut step_inputs, owners) = prepare_step_inputs(self, inputs)?;
-        let ids = self.vessel_ids();
-        for id in ids {
-            if let Some(vessel) = self.vessels.get_mut(&id) {
-                let input = step_inputs.remove(&id).unwrap_or_default();
-                crate::Block::step(vessel, &input)?;
-            }
-        }
-        take_link_states(self, &owners);
-        process_post_step_links(self)
+        proximity_group::step_all_grouped(self, inputs)
     }
 }

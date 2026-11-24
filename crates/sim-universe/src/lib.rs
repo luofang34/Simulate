@@ -15,6 +15,7 @@ mod error;
 mod handoff;
 mod local;
 mod planning;
+mod proximity;
 mod station_keeping;
 mod tiering;
 mod universe;
@@ -32,6 +33,9 @@ pub use planning::ThreadPlanExecutor;
 pub use planning::{
     PlanExecutor, PlanHold, PlanId, PlanJob, PlanOutput, PlanRecord, PlanReport, PlanRequest,
     PlanSchedule, PlannedCommand, SlicedPlanExecutor, SynchronousPlanExecutor,
+};
+pub use proximity::{
+    DockingLinkSpec, LinkId, ProximityStepReport, UniverseInterVesselLink, UniverseLinkSpec,
 };
 pub use station_keeping::{DEFAULT_PLAN_DELAY, L2KeepingBurn, L2StationKeeper};
 pub use tiering::{AltitudeBand, TierChange, TierPolicy};

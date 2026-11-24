@@ -96,8 +96,12 @@ impl Universe {
 
     /// What the policy reads of a local vessel, or `None` for one that stays
     /// where it is.
-    fn local_policy_view(&self, plant: &dyn LocalPlant) -> Option<PolicyView> {
-        if plant.now() != self.now || plant.holds_local_tier() || plant.orbital_body().is_none() {
+    fn local_policy_view(&self, id: VesselId, plant: &dyn LocalPlant) -> Option<PolicyView> {
+        if self.is_vessel_in_any_link(id)
+            || plant.now() != self.now
+            || plant.holds_local_tier()
+            || plant.orbital_body().is_none()
+        {
             return None;
         }
         let body = plant.body();
@@ -118,7 +122,7 @@ impl Universe {
         let mut wanted = Vec::new();
         for (&id, vessel) in &self.vessels {
             let view = match &vessel.flight {
-                Flight::Local(plant) => self.local_policy_view(plant.as_ref()),
+                Flight::Local(plant) => self.local_policy_view(id, plant.as_ref()),
                 Flight::Orbital { carried, .. } => {
                     self.orbital_policy_view(id, carried.as_deref())?
                 }
@@ -161,6 +165,9 @@ impl Universe {
     /// vessel and keeps its internals running there; any other is dropped,
     /// and only its mass, inertia, size and environment loads go on.
     pub fn promote_to_orbital(&mut self, id: VesselId) -> Result<(), UniverseError> {
+        if self.is_vessel_in_any_link(id) {
+            return Err(UniverseError::VesselCoupled(id));
+        }
         let Flight::Local(plant) = &self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
         };
@@ -185,6 +192,7 @@ impl Universe {
         };
         match self.insert_promoted(id, plant.as_mut(), environment) {
             Ok(carryable) => {
+                self.auto_demoted.remove(&id);
                 self.vessel_mut(id)?.flight = Flight::Orbital {
                     carried: carryable.then_some(plant),
                     samples: Vec::new(),

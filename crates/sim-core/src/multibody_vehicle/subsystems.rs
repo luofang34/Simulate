@@ -1,9 +1,9 @@
 use glam::DVec3;
-use mbd_core::{ComponentId, ElectricalLoad, FaultState, ThermalLoad, WrenchAtSite};
+use mbd_core::{ComponentId, ComponentTree, ElectricalLoad, FaultState, ThermalLoad, WrenchAtSite};
 use mbd_multibody::{
     ContactPointSpec, ContactPointState, HydrodynamicsModel, JointDriveInput, LoopConstraint,
-    ManipulatorChain, ModelState, PinnedSurfaceRest, SurfaceMedium, SurfaceSample, WaterState,
-    WheelCommand, WheelSpec, WheelState,
+    ManipulatorChain, ModelScale, ModelState, PinnedSurfaceRest, SurfaceMedium, SurfaceSample,
+    WaterState, WheelCommand, WheelSpec, WheelState,
 };
 use mbd_systems::{
     AbepThrusterSpec, AbepThrusterState, AirbreathingEngineSpec, AirbreathingEngineState,
@@ -363,6 +363,20 @@ impl MultibodyVehicleSnapshot {
     pub const fn now(&self) -> SimInstant {
         self.now
     }
+}
+
+/// Complete topology-preserving snapshot of a [`super::MultibodyVehicleBlock`],
+/// including tree topology, subsystem specifications, aerodynamic elements,
+/// configuration, and continuous/discrete dynamic state.
+#[derive(Debug, Clone)]
+pub struct MultibodyStructuralSnapshot {
+    pub(super) inner: MultibodyVehicleSnapshot,
+    pub(super) config: MultibodyVehicleConfig,
+    pub(super) tree: ComponentTree,
+    pub(super) aero: super::VehicleAero,
+    pub(super) subsystems: MultibodySubsystems,
+    pub(super) scale: ModelScale,
+    pub(super) mechanism_states: Vec<crate::flight_model::coupled_mechanism::CoupledMechanismState>,
 }
 
 pub(super) fn lookup_mapped_comp(

@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use glam::DMat3;
 use sim_bodies::BodyDescriptor;
-use sim_core::{Block, RigidBody6DofBlock, RigidBodyInput, SimInstant, TickSpan, VehicleState};
+use sim_core::{
+    Block, EllipsoidSurfaceProvider, MultibodyStructuralSnapshot, MultibodyVehicleBlock,
+    MultibodyVehicleInput, RigidBody6DofBlock, RigidBodyInput, SimInstant, TickSpan, VehicleState,
+};
 use sim_geo::BodyEllipsoid;
 use sim_spacetime::SimEpoch;
 
@@ -33,7 +36,7 @@ pub struct OrbitalBody {
 /// A vessel's flight dynamics in its central body's rotating frame: the
 /// fidelity tier for atmospheric flight, surface contact and close
 /// proximity. Steps on its own period, on the universe's master clock.
-pub trait LocalPlant {
+pub trait LocalPlant: Any {
     /// The body whose fixed frame the state is in.
     fn body(&self) -> BodyEllipsoid;
     /// The native step.
@@ -225,4 +228,46 @@ impl LocalPlant for CoastingRigidBody {
     fn step(&mut self) -> Result<(), UniverseError> {
         Ok(self.block.step(&RigidBodyInput::default())?)
     }
+}
+
+/// `span` rounded up to a whole number of `period`s, at least one.
+pub(crate) fn whole_periods(span: TickSpan, period: TickSpan) -> Option<TickSpan> {
+    let period_ticks = period.ticks_u128();
+    if period_ticks == 0 {
+        return None;
+    }
+    let steps = span.ticks_u128().div_ceil(period_ticks).max(1);
+    Some(TickSpan::from_ticks_u128(
+        steps.saturating_mul(period_ticks),
+    ))
+}
+
+pub(crate) fn build_multibody_factory(
+    structural: MultibodyStructuralSnapshot,
+    bounding_radius_m: f64,
+    carry_period: Option<TickSpan>,
+    max_carried_thrust_accel_m_s2: f64,
+) -> LocalFactory {
+    Box::new(move |described, state, at, epoch| {
+        let utc = epoch.utc_at(at)?;
+        let body = described.ellipsoid;
+        let block = MultibodyVehicleBlock::rebuild_from_structural(
+            &structural,
+            body,
+            described.atmosphere().clone(),
+            described.fields().gravity,
+            Arc::new(EllipsoidSurfaceProvider::solid(body)),
+            state,
+            utc,
+        )?;
+        Ok(Box::new(MultibodyLocalPlant::from_parts(
+            block,
+            MultibodyVehicleInput::default(),
+            body,
+            at,
+            bounding_radius_m,
+            carry_period,
+            max_carried_thrust_accel_m_s2,
+        )))
+    })
 }
