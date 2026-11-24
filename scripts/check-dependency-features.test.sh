@@ -22,6 +22,7 @@ clean_ws() {
     mkdir -p "$ws"
     printf '[workspace]\nresolver = "3"\nmembers = ["app", "tool"]\n' > "$ws/Cargo.toml"
     package "$ws/jsbsim" jsbsim $'[features]\n__oracle = []\n__platform-libm = []\nfs = []'
+    package "$ws/nyx-space" nyx-space $'[features]\npremium = []\nstandard = []'
     package "$ws/app" app $'[dependencies]\njsbsim = { path = "../jsbsim", features = ["fs"] }'
     package "$ws/tool" tool $'[dependencies]\napp = { path = "../app" }'
 }
@@ -65,5 +66,9 @@ expect_reject "a renamed dependency" tool \
     $'oracle_jsbsim = { package = "jsbsim", path = "../jsbsim", features = ["__oracle"] }'
 expect_reject "another __ feature" tool \
     $'jsbsim = { path = "../jsbsim", features = ["__platform-libm"] }' __platform-libm
+expect_reject "nyx-space premium direct" tool \
+    $'nyx-space = { path = "../nyx-space", features = ["premium"] }' premium
+expect_reject "nyx-space premium via wasm32 target" tool \
+    $'[target.\'cfg(target_arch = "wasm32")\'.dependencies]\nnyx-space = { path = "../nyx-space", features = ["premium"] }' premium
 
 echo "check-dependency-features.test: ok"

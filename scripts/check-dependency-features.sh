@@ -3,6 +3,8 @@
 #   - jsbsim's features starting with `__`: they serve its oracle tooling
 #     only (`__oracle` exposes internals outside its semver promise,
 #     `__platform-libm` changes its numerical results).
+#   - nyx-space's `premium` feature: proprietary/non-free extensions that must
+#     never enter this AGPL-3.0-or-later workspace build graph.
 # Feature unification lets any crate in the graph switch a feature on, so
 # the check reads the resolved graph rather than Simulate's own manifests. It
 # resolves every feature of Simulate's own workspace members, dev-dependencies
@@ -16,7 +18,7 @@ set -euo pipefail
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$root"
 
-forbidden=("jsbsim:__")
+forbidden=("jsbsim:__" "nyx-space:premium")
 failures=0
 
 # Every feature of every workspace member except the forbidden crates.
