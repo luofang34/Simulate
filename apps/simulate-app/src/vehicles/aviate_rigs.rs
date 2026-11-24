@@ -282,8 +282,14 @@ pub(super) fn build_aviate_fixed_wing(
     field_elev_m: f64,
 ) -> Result<AviateFixedWingRig, AppSimError> {
     let pkg = builtin_c172s_package().map_err(sim_scenario::ScenarioError::from)?;
-    let (fdm, specific_force_frd_m_s2) =
-        build_jsbsim_fdm(&pkg, origin, heading_rad, 52.0, field_elev_m)?;
+    let (fdm, specific_force_frd_m_s2) = build_jsbsim_fdm(
+        &pkg,
+        origin,
+        heading_rad,
+        52.0,
+        field_elev_m,
+        JSBSIM_DEFAULT_PERIOD,
+    )?;
     let kernel: DirectFixedWingKernel =
         build_direct_fixed_wing_kernel(&sim_aviate::c172_airframe()).ok_or(
             AppSimError::AviateKernel {

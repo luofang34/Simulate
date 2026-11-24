@@ -1,5 +1,5 @@
 //! The JSBSim Cessna 172 as a flight controller's airframe, starting in
-//! trimmed level flight.
+//! trimmed level flight or as the host built and placed it.
 //!
 //! The four actuator lanes are throttle, aileron, elevator and rudder with
 //! the surfaces neutral at one half. Until the flight controller is armed,
@@ -149,6 +149,43 @@ impl C172Airframe {
         })
     }
 
+    /// A Cessna 172 the host built and placed, in flight or standing on its gear, with
+    /// `held` on its controls. Its period is the flight controller's cycle, so the host
+    /// builds it at the rate the controller flies at.
+    pub fn around(
+        mut fdm: JsbsimFdmBlock,
+        held: ControlInputs,
+        air: SharedAir,
+        utc: UtcTime,
+    ) -> Result<Self, ChainError> {
+        set_wind(&mut fdm, &air, utc)?;
+        let state = fdm.output();
+        // Unaccelerated, in flight or at rest: the specific force is the reaction to weight.
+        let steady = specific_force_body_m_s2(&state, &state, fdm.period().as_seconds());
+        Ok(Self {
+            fdm,
+            air,
+            utc,
+            trim: held,
+            pilot: held,
+            servos_engaged: true,
+            specific_force_body_m_s2: steady,
+        })
+    }
+
+    /// Puts the ground under the aeroplane at `ellipsoidal_height_m` (WGS84) for the next
+    /// step, as the host's terrain has it at `surface_version`: an aeroplane standing on
+    /// its gear keeps its height above ground when the terrain under it is refined.
+    pub fn sync_ground_versioned_m(
+        &mut self,
+        ellipsoidal_height_m: f64,
+        surface_version: u64,
+    ) -> Result<(), ChainError> {
+        self.fdm
+            .sync_ground_versioned_m(ellipsoidal_height_m, surface_version)
+            .map_err(|e| ChainError::Plant(Box::new(e)))
+    }
+
     /// What the pilot holds on the controls. It flies the aeroplane whenever the flight
     /// controller does not: before it is armed, and while its servos are released.
     pub const fn set_pilot_controls(&mut self, controls: ControlInputs) {
@@ -190,8 +227,9 @@ impl C172Airframe {
         self.specific_force_body_m_s2
     }
 
-    /// The controls JSBSim trimmed level flight with: the throttle that
-    /// holds the starting speed, and the stick with the pitch trim taken up.
+    /// The controls the aeroplane started with: those JSBSim trimmed level flight with
+    /// (the throttle that holds the starting speed, and the stick with the pitch trim
+    /// taken up), or those the host stated for an aeroplane it built.
     pub const fn trim(&self) -> ControlInputs {
         self.trim
     }

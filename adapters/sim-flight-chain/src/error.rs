@@ -38,6 +38,16 @@ pub enum ChainError {
     /// The airframe could not be trimmed for its starting flight condition.
     #[error("no trim at the start of flight")]
     Trim(#[source] Box<BlockError>),
+    /// The airframe steps at another period than the flight controller's cycle.
+    #[error(
+        "the airframe steps every {airframe_s} s, the flight controller every {controller_s} s"
+    )]
+    CyclePeriod {
+        /// The airframe's integration period, seconds.
+        airframe_s: f64,
+        /// The flight controller's cycle, seconds.
+        controller_s: f64,
+    },
     /// Pilotage's host core refused its configuration, the plan or a tick.
     #[error("the Pilotage host core failed")]
     Host(#[source] Box<pilotage_host_core::HostCoreError>),
