@@ -4,7 +4,8 @@
 //! coordinate frame identities and transforms (`FramedState`, `SynodicFrame`, `SensorMount`),
 //! propagator-agnostic trajectory query contracts (`TranslationalTrajectorySource`,
 //! `AttitudeTrajectorySource`, `VehicleInternalStateSource`), dataset provenance
-//! (`DataProvenance`, `ValidEpochInterval`), and planetary collision terrain traits (`CollisionTerrain`).
+//! (`DataProvenance`, `ValidEpochInterval`), planetary collision terrain traits
+//! (`CollisionTerrain`), and reproducible Monte Carlo dispersion and run manifests.
 
 mod catalogs;
 mod clock;
@@ -12,6 +13,7 @@ mod frames;
 mod hash;
 mod ids;
 mod kpl;
+mod monte_carlo;
 mod mount;
 mod provenance;
 mod relativity;
@@ -38,6 +40,11 @@ pub use frames::{
 pub use hash::{ContentHash, DomainHasher, HashParseError};
 pub use ids::{FrameCode, NaifId, VesselId};
 pub use kpl::{KplAtom, KplError, KplPool};
+pub use monte_carlo::{
+    DistributionSpec, EnsembleSummary, MONTE_CARLO_MANIFEST_SCHEMA_VERSION, MonteCarloConfig,
+    MonteCarloError, MonteCarloManifestDigest, MonteCarloRunManifest, ParameterDispersionSpec,
+    TrialRng, TrialStreamKey, cholesky_lower, sample_trial_parameters,
+};
 #[cfg(feature = "world-mbd-bridges")]
 pub use mount::SensorMountPlacementExt;
 pub use mount::{MountedKinematics, SensorMount};
