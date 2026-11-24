@@ -1,0 +1,52 @@
+[package]
+name = "sim-py"
+description = "Python PyO3 bindings for Simulate orbital mechanics, spacetime scales, CCSDS NDM, SPICE kernels, and coverage analysis"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[lib]
+name = "sim_py"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
+auto-initialize = ["pyo3/auto-initialize"]
+
+[dependencies]
+ccsds-ndm = { path = "../../crates/ccsds-ndm" }
+glam = "0.33"
+pyo3 = { version = "0.30.1", default-features = false, features = ["macros"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sim-analysis = { path = "../../crates/sim-analysis" }
+sim-geo = { path = "../../crates/sim-geo" }
+sim-orbital = { path = "../../crates/sim-orbital" }
+sim-spacetime = { path = "../../crates/sim-spacetime" }
+spice-kernels = { path = "../../crates/spice-kernels" }
+thiserror = "2"
+tracing = "0.1.44"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "forbid"
+expect_used = "forbid"
+panic = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+get_unwrap = "forbid"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"

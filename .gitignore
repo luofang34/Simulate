@@ -6,6 +6,7 @@
 /apps/flightdeck/swift/*/.swiftpm
 /apps/flightdeck/swift/*/Artifacts
 /apps/flightdeck/ffi/Cargo.lock
+/adapters/sim-py/Cargo.lock
 /book/build
 __pycache__/
 /.cargo/config.toml
