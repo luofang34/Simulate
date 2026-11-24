@@ -10,6 +10,9 @@ use crate::error::AppSimError;
 use crate::vehicles::{FreeFlightPlant, PlantSnapshot};
 use crate::world_surface::WorldSurfaceHandle;
 
+#[cfg(test)]
+mod tests;
+
 const BLOCK_NAME: &str = "free-flight plant";
 
 /// A free-flight plant stepped by the session.

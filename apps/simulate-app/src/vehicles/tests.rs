@@ -48,6 +48,7 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
         }
     }
 }
+mod autopilot_c172;
 mod gear_datum;
 mod page_mission;
 

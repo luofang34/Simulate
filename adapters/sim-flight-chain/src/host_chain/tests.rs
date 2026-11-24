@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod clutch;
+mod hand_flown;
 mod navigator_feed;
 mod rewind;
 mod zaragoza;

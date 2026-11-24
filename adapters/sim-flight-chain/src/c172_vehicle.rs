@@ -16,7 +16,10 @@ use sim_devices::{
 };
 use sim_geo::{Geodetic, UtcTime};
 
-use crate::{C172Airframe, C172Start, C172Variant, ChainError, HostedBoard, SharedAir};
+use crate::{
+    Airframe, C172Airframe, C172Start, C172Variant, ChainError, ChainSnapshot, HostChain,
+    HostedBoard, SharedAir,
+};
 
 /// Cycle rate of the C172's flight controller, hertz: the one rate Aviate's
 /// fixed-wing law has flown at.
@@ -25,6 +28,12 @@ const _: () = assert!(TICKS_PER_SECOND.is_multiple_of(C172_RATE_HZ));
 
 /// The C172's board on its airframe.
 pub type C172Board = HostedBoard<C172Airframe, FixedWingController, FixedWingMixer>;
+
+/// The C172's board under Pilotage's host core.
+pub type C172Chain = HostChain<C172Airframe, FixedWingController, FixedWingMixer>;
+
+/// A [`C172Chain`] at one instant.
+pub type C172ChainSnapshot = ChainSnapshot<C172Airframe, FixedWingController, FixedWingMixer>;
 
 /// One C172 in the air.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -139,8 +148,29 @@ pub fn c172_board_variant(
         utc: setup.utc,
     };
     let airframe = C172Airframe::trimmed_variant(variant, &start, air)?;
+    c172_board_on(airframe, suite, setup.origin, setup.decimal_year)
+}
+
+/// The C172's flight controller booting on `airframe`, which the host built in flight
+/// or standing on its gear, with the devices of `suite`. `origin` is the origin of the
+/// controller's local frame and `decimal_year` the date of its geomagnetic reference.
+/// An airframe that does not step at [`C172_RATE_HZ`] is refused.
+pub fn c172_board_on(
+    airframe: C172Airframe,
+    suite: &SensorSuiteSpec,
+    origin: Geodetic,
+    decimal_year: f64,
+) -> Result<C172Board, ChainError> {
+    let cycle = TickSpan::from_ticks(TICKS_PER_SECOND / C172_RATE_HZ);
+    let period = airframe.period();
+    if period != cycle {
+        return Err(ChainError::CyclePeriod {
+            airframe_s: period.as_seconds(),
+            controller_s: cycle.as_seconds(),
+        });
+    }
     let kernel = build_direct_fixed_wing_kernel(&c172_airframe()).ok_or(ChainError::KernelBuild)?;
-    HostedBoard::new(airframe, suite, kernel, setup.origin, setup.decimal_year)
+    HostedBoard::new(airframe, suite, kernel, origin, decimal_year)
 }
 
 /// The bank Pilotage's mission plans the C172's turns at, degrees: 3°
