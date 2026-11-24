@@ -1,7 +1,9 @@
 //! One defect per case, with the error kind, keyword and line it must name.
 
+#[cfg(feature = "json")]
+use ccsds_ndm::Omm;
 use ccsds_ndm::{
-    Error, ErrorKind, ExtensionValue, Ndm, Oem, Omm, Opm, ParseMode, Quantity, WriteOptions,
+    Error, ErrorKind, ExtensionValue, Ndm, Oem, Opm, ParseMode, Quantity, WriteOptions,
 };
 
 const OPM: &str = "CCSDS_OPM_VERS = 3.0
@@ -244,12 +246,15 @@ fn xml_and_json_defects() {
     let e = expect(Ndm::from_xml("<omm/>", ParseMode::Lenient), Some(1), None);
     assert!(matches!(e.kind(), ErrorKind::WrongMessage { .. }));
 
-    let e = expect(
-        Omm::from_json("{\"OBJECT_NAME\": [1]}", ParseMode::Lenient),
-        None,
-        Some("OBJECT_NAME"),
-    );
-    assert!(matches!(e.kind(), ErrorKind::JsonType { .. }));
+    #[cfg(feature = "json")]
+    {
+        let e = expect(
+            Omm::from_json("{\"OBJECT_NAME\": [1]}", ParseMode::Lenient),
+            None,
+            Some("OBJECT_NAME"),
+        );
+        assert!(matches!(e.kind(), ErrorKind::JsonType { .. }));
+    }
 }
 
 #[test]
@@ -267,9 +272,12 @@ fn writers_refuse_what_the_notation_cannot_carry() {
     let xml = opm.to_xml(WriteOptions::default()).unwrap();
     assert_eq!(Opm::from_xml(&xml, ParseMode::Strict).unwrap(), opm);
 
-    let json = "{\"OBJECT_NAME\":\"A\",\"OBJECT_ID\":\"B\",\"EPOCH\":\"2020-01-01T00:00:00\",\"MEAN_MOTION\":1,\"ECCENTRICITY\":0,\"INCLINATION\":0,\"RA_OF_ASC_NODE\":0,\"ARG_OF_PERICENTER\":0,\"MEAN_ANOMALY\":0}";
-    let omm = Omm::from_json(json, ParseMode::Lenient).unwrap();
-    let e = omm.to_kvn(WriteOptions::default()).err().unwrap();
-    assert_eq!(e.keyword(), Some("CCSDS_OMM_VERS"));
-    assert_eq!(omm.to_json(WriteOptions::default()).unwrap(), json);
+    #[cfg(feature = "json")]
+    {
+        let json = "{\"OBJECT_NAME\":\"A\",\"OBJECT_ID\":\"B\",\"EPOCH\":\"2020-01-01T00:00:00\",\"MEAN_MOTION\":1,\"ECCENTRICITY\":0,\"INCLINATION\":0,\"RA_OF_ASC_NODE\":0,\"ARG_OF_PERICENTER\":0,\"MEAN_ANOMALY\":0}";
+        let omm = Omm::from_json(json, ParseMode::Lenient).unwrap();
+        let e = omm.to_kvn(WriteOptions::default()).err().unwrap();
+        assert_eq!(e.keyword(), Some("CCSDS_OMM_VERS"));
+        assert_eq!(omm.to_json(WriteOptions::default()).unwrap(), json);
+    }
 }

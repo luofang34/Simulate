@@ -12,10 +12,9 @@ use crate::{
     ephemeris::KinematicStateIcrf,
     events::{AuthoritativeCommandLog, EventOrderKey},
     ids::VesselId,
-    manifest::SimulationManifestDigest,
     plant::ContinuousPlantState,
     time::SimClockAdapter,
-    universe::{OrbitalUniverse, SchedulerError},
+    universe::{OrbitalUniverse, SchedulerError, manifest::SimulationManifestDigest},
 };
 
 impl OrbitalUniverse {

@@ -1,10 +1,10 @@
 //! Binary NAIF `DAF/PCK` Type 2 Euler-angle orientation segment evaluation.
 
 use glam::{DMat3, DVec3};
+use navigate_astrodynamics::spk::eval_type2_record_3d;
 use spice_kernels::DafArray;
 
 use crate::{
-    chebyshev::eval_type2_record_3d,
     hash::ContentHash,
     ids::FrameCode,
     scalar_math::sin_cos,

@@ -6,11 +6,13 @@
 
 mod error;
 mod horizon;
+mod manifest;
 mod mutations;
 mod parallel;
 mod queries;
 mod rollback;
 mod snapshot;
+mod trajectory_product;
 pub mod worker;
 
 use std::{collections::BTreeMap, sync::Arc};
@@ -26,12 +28,13 @@ use crate::{
     },
     gravity::ForceModel,
     ids::VesselId,
-    manifest::SimulationManifestDigest,
     orientation::BodyOrientationCatalog,
     time::SimClockAdapter,
 };
 
+pub use manifest::{ManifestMismatchField, SimulationManifestDigest};
 use mutations::apply_checkpoint_event_mutation;
+pub use trajectory_product::{OrbitalTrajectoryProduct, PlanningInputFingerprint};
 
 pub use error::SchedulerError;
 pub use parallel::{

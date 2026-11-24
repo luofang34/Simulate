@@ -14,9 +14,11 @@
 //!   class: every value a string, plus its own members; the element values
 //!   are the CelesTrak ISS set above.
 
+#[cfg(feature = "json")]
+use ccsds_ndm::ExtensionValue;
 use ccsds_ndm::{
-    CenterName, ErrorKind, ExtensionValue, MeanElementTheory, Omm, OrbitSize, ParseMode, Quantity,
-    RefFrame, TleDrag, WriteOptions,
+    CenterName, ErrorKind, MeanElementTheory, Omm, OrbitSize, ParseMode, Quantity, RefFrame,
+    TleDrag, WriteOptions,
 };
 
 use super::content;
@@ -29,10 +31,13 @@ const KVN: [(&str, &str); 3] = [
 const XML_G10: &str = include_str!("../fixtures/bluebook/omm_g10.xml");
 const ISS_KVN: &str = include_str!("../fixtures/celestrak/iss_25544.kvn");
 const ISS_XML: &str = include_str!("../fixtures/celestrak/iss_25544.xml");
+#[cfg(feature = "json")]
 const ISS_JSON: &str = include_str!("../fixtures/celestrak/iss_25544.json");
 const PAIR_KVN: &str = include_str!("../fixtures/celestrak/intdes_2010-005.kvn");
 const PAIR_XML: &str = include_str!("../fixtures/celestrak/intdes_2010-005.xml");
+#[cfg(feature = "json")]
 const PAIR_JSON: &str = include_str!("../fixtures/celestrak/intdes_2010-005.json");
+#[cfg(feature = "json")]
 const SPACE_TRACK: &str = include_str!("../fixtures/spacetrack/iss_25544_gp.json");
 
 fn options() -> [WriteOptions; 2] {
@@ -119,17 +124,19 @@ fn celestrak_samples_need_lenient_mode() {
         matches!(error.kind(), ErrorKind::WrongMessage { .. }),
         "{error}"
     );
-    let error = Omm::from_json(ISS_JSON, ParseMode::Strict).err().unwrap();
-    assert!(matches!(error.kind(), ErrorKind::MissingKeyword), "{error}");
+    #[cfg(feature = "json")]
+    {
+        let error = Omm::from_json(ISS_JSON, ParseMode::Strict).err().unwrap();
+        assert!(matches!(error.kind(), ErrorKind::MissingKeyword), "{error}");
+    }
 }
 
 #[test]
 fn celestrak_notations_agree() {
     let kvn = Omm::from_kvn_all(ISS_KVN, ParseMode::Lenient).unwrap();
     let xml = Omm::from_xml_all(ISS_XML, ParseMode::Lenient).unwrap();
-    let json = Omm::from_json_all(ISS_JSON, ParseMode::Lenient).unwrap();
-    assert_eq!((kvn.len(), xml.len(), json.len()), (1, 1, 1));
-    let (kvn, xml, json) = (&kvn[0], &xml[0], &json[0]);
+    assert_eq!((kvn.len(), xml.len()), (1, 1));
+    let (kvn, xml) = (&kvn[0], &xml[0]);
     assert_eq!(kvn.header.creation_date, None);
     assert_eq!(kvn.metadata.center_name, Some(CenterName::Earth));
     assert_eq!(kvn.metadata.ref_frame, Some(RefFrame::Teme));
@@ -142,11 +149,17 @@ fn celestrak_notations_agree() {
         xml.metadata.mean_element_theory,
         Some(MeanElementTheory::Sgp4)
     );
-    assert_eq!(json.metadata.mean_element_theory, None);
     assert_eq!(kvn.data, xml.data);
-    assert_eq!(kvn.data, json.data);
-    assert_eq!(kvn.metadata.object_name, json.metadata.object_name);
-    assert_eq!(xml.metadata.object_id, json.metadata.object_id);
+    #[cfg(feature = "json")]
+    {
+        let json = Omm::from_json_all(ISS_JSON, ParseMode::Lenient).unwrap();
+        assert_eq!(json.len(), 1);
+        let json = &json[0];
+        assert_eq!(json.metadata.mean_element_theory, None);
+        assert_eq!(kvn.data, json.data);
+        assert_eq!(kvn.metadata.object_name, json.metadata.object_name);
+        assert_eq!(xml.metadata.object_id, json.metadata.object_id);
+    }
     for (label, omm) in [("KVN", kvn), ("XML", xml)] {
         assert_round_trips(omm, ParseMode::Lenient, label);
     }
@@ -156,19 +169,25 @@ fn celestrak_notations_agree() {
 fn celestrak_groups_read_every_message() {
     let kvn = Omm::from_kvn_all(PAIR_KVN, ParseMode::Lenient).unwrap();
     let xml = Omm::from_xml_all(PAIR_XML, ParseMode::Lenient).unwrap();
-    let json = Omm::from_json_all(PAIR_JSON, ParseMode::Lenient).unwrap();
     assert_eq!(kvn.len(), 2);
     assert_eq!(xml.len(), 2);
-    assert_eq!(json.len(), 2);
-    for ((k, x), j) in kvn.iter().zip(&xml).zip(&json) {
+    for (k, x) in kvn.iter().zip(&xml) {
         assert_eq!(k.data, x.data);
-        assert_eq!(k.data, j.data);
     }
     assert_eq!(kvn[1].metadata.object_name, "ATLAS 5 CENTAUR R/B");
-    let written = Omm::to_json_all(&json, WriteOptions::default()).unwrap();
-    assert_eq!(written, PAIR_JSON.trim_end());
+    #[cfg(feature = "json")]
+    {
+        let json = Omm::from_json_all(PAIR_JSON, ParseMode::Lenient).unwrap();
+        assert_eq!(json.len(), 2);
+        for (k, j) in kvn.iter().zip(&json) {
+            assert_eq!(k.data, j.data);
+        }
+        let written = Omm::to_json_all(&json, WriteOptions::default()).unwrap();
+        assert_eq!(written, PAIR_JSON.trim_end());
+    }
 }
 
+#[cfg(feature = "json")]
 #[test]
 fn json_round_trip_is_bit_exact() {
     let all = Omm::from_json_all(PAIR_JSON, ParseMode::Lenient).unwrap();
@@ -179,6 +198,7 @@ fn json_round_trip_is_bit_exact() {
     assert_eq!(bits(&again[1]), bits(&all[1]));
 }
 
+#[cfg(feature = "json")]
 #[test]
 fn space_track_layout_keeps_its_extra_members() {
     let error = Omm::from_json(SPACE_TRACK, ParseMode::Strict)

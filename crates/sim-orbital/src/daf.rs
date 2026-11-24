@@ -4,9 +4,15 @@
 //! and array extraction go through [`spice_kernels::Daf`].
 
 pub(crate) mod bpc;
+mod export;
 pub(crate) mod spk;
 
 pub use bpc::{BpcFile, BpcSegment};
+pub use export::{
+    CkExportConfig, CkExportKind, LinearSclkMapping, SpiceExportError, SpkExportConfig,
+    SpkExportKind, export_attitude_ck, export_sampled_attitude_ck, export_sampled_states_spk,
+    export_translational_spk,
+};
 pub use spice_kernels::Endian as DafEndian;
 pub use spk::{SpkDataType, SpkFile, SpkSegment};
 
@@ -70,7 +76,7 @@ pub enum DafError {
     MalformedDirectory(String),
     /// Underlying Chebyshev evaluation failed.
     #[error("Chebyshev evaluation error: {0}")]
-    Chebyshev(#[from] crate::chebyshev::ChebyshevError),
+    Chebyshev(#[from] navigate_astrodynamics::spk::ChebyshevError),
 }
 
 impl From<DafError> for sim_spacetime::EphemerisError {

@@ -21,14 +21,13 @@ use crate::{
     gravity::ForceModel,
     hash::ContentHash,
     ids::{NaifId, VesselId},
-    manifest::SimulationManifestDigest,
     orientation::BodyOrientationCatalog,
     plant::{ContinuousPlantState, MassPropertiesModel, PropellantMode, ReactionWheelMode},
     scalar_math::{cos, sin, sqrt},
     time::{SimClockAdapter, TdbEpoch},
     universe::{
         MAX_SPECULATIVE_SEGMENTS, OrbitalUniverse, RollbackMetrics, SchedulerError,
-        SpeculativeProposal,
+        SpeculativeProposal, manifest::SimulationManifestDigest,
     },
 };
 

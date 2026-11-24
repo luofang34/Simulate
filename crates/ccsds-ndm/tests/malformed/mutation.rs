@@ -1,7 +1,7 @@
 //! Deterministic mutation sweep across KVN, XML and JSON fixtures:
 //! never panics, and every accepted mutation round-trips with byte-stable writes.
 
-use ccsds_ndm::{Ndm, Oem, Omm, Opm, ParseMode, WriteOptions};
+use ccsds_ndm::{Aem, Apm, Cdm, Ndm, Oem, Omm, Opm, ParseMode, Tdm, WriteOptions};
 
 #[derive(Clone, Copy)]
 struct SplitMix64(u64);
@@ -138,36 +138,38 @@ fn check_oem_kvn(text: &str) {
     }
 }
 
+fn check_xml_variant<T: PartialEq + std::fmt::Debug>(
+    parse: fn(&str, ParseMode) -> ccsds_ndm::Result<T>,
+    write: fn(&T, WriteOptions) -> ccsds_ndm::Result<String>,
+    text: &str,
+    mode: ParseMode,
+) {
+    let opts = WriteOptions::default();
+    if let Ok(msg) = parse(text, mode)
+        && let Ok(written) = write(&msg, opts)
+    {
+        let again = parse(&written, mode).expect("re-parse xml");
+        assert_eq!(again, msg);
+        assert_eq!(write(&again, opts).unwrap(), written);
+    }
+}
+
 fn check_xml(text: &str) {
     let opts = WriteOptions::default();
     for mode in MODES {
-        if let Ok(ndm) = Ndm::from_xml(text, mode)
-            && let Ok(written) = ndm.to_xml(opts)
-        {
-            let again = Ndm::from_xml(&written, mode).expect("re-parse ndm xml");
-            assert_eq!(again, ndm);
-            assert_eq!(again.to_xml(opts).unwrap(), written);
-        }
-        if let Ok(opm) = Opm::from_xml(text, mode)
-            && let Ok(written) = opm.to_xml(opts)
-        {
-            let again = Opm::from_xml(&written, mode).expect("re-parse opm xml");
-            assert_eq!(again, opm);
-            assert_eq!(again.to_xml(opts).unwrap(), written);
-        }
+        check_xml_variant(Ndm::from_xml, Ndm::to_xml, text, mode);
+        check_xml_variant(Opm::from_xml, Opm::to_xml, text, mode);
+        check_xml_variant(Oem::from_xml, Oem::to_xml, text, mode);
+        check_xml_variant(Apm::from_xml, Apm::to_xml, text, mode);
+        check_xml_variant(Aem::from_xml, Aem::to_xml, text, mode);
+        check_xml_variant(Cdm::from_xml, Cdm::to_xml, text, mode);
+        check_xml_variant(Tdm::from_xml, Tdm::to_xml, text, mode);
         if let Ok(omms) = Omm::from_xml_all(text, mode)
             && omms.len() == 1
             && let Ok(written) = omms[0].to_xml(opts)
         {
             let again = Omm::from_xml(&written, mode).expect("re-parse omm xml");
             assert_eq!(again, omms[0]);
-            assert_eq!(again.to_xml(opts).unwrap(), written);
-        }
-        if let Ok(oem) = Oem::from_xml(text, mode)
-            && let Ok(written) = oem.to_xml(opts)
-        {
-            let again = Oem::from_xml(&written, mode).expect("re-parse oem xml");
-            assert_eq!(again, oem);
             assert_eq!(again.to_xml(opts).unwrap(), written);
         }
     }
@@ -271,5 +273,65 @@ fn json_fixtures_survive_deterministic_mutations() {
         0x51a0_0005,
         80,
         check_json,
+    );
+}
+
+fn check_kvn_roundtrip<T: PartialEq + std::fmt::Debug>(
+    parse: fn(&str, ParseMode) -> ccsds_ndm::Result<T>,
+    write: fn(&T, WriteOptions) -> ccsds_ndm::Result<String>,
+    text: &str,
+) {
+    let opts = WriteOptions::default();
+    for mode in MODES {
+        if let Ok(msg) = parse(text, mode)
+            && let Ok(written) = write(&msg, opts)
+        {
+            let again = parse(&written, mode).expect("re-parse kvn");
+            assert_eq!(again, msg);
+            assert_eq!(write(&again, opts).unwrap(), written);
+        }
+    }
+}
+
+#[test]
+fn apm_aem_cdm_tdm_survive_deterministic_mutations() {
+    let apm_kvn = "CCSDS_APM_VERS = 2.0\nCREATION_DATE = 2026-01-01T00:00:00\nORIGINATOR = SIM\nOBJECT_NAME = SAT\nOBJECT_ID = 2026-001A\nTIME_SYSTEM = UTC\nEPOCH = 2026-01-01T00:00:00\nREF_FRAME_A = GCRF\nREF_FRAME_B = SC_BODY_1\nQ1 = 0\nQ2 = 0\nQ3 = 0\nQC = 1\nMAN_EPOCH_START = 2026-01-01T00:01:00\nMAN_DURATION = 5 [s]\nMAN_REF_FRAME = SC_BODY_1\nMAN_TOR_1 = 0.1 [N*m]\nMAN_TOR_2 = 0 [N*m]\nMAN_TOR_3 = 0 [N*m]\n";
+    let aem_kvn = "CCSDS_AEM_VERS = 2.0\nCREATION_DATE = 2026-01-01T00:00:00\nORIGINATOR = SIM\nMETA_START\nOBJECT_NAME = SAT\nOBJECT_ID = 2026-001A\nREF_FRAME_A = GCRF\nREF_FRAME_B = SC_BODY_1\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-01-01T00:00:00\nSTOP_TIME = 2026-01-01T00:02:00\nATTITUDE_TYPE = QUATERNION/ANGVEL\nINTERPOLATION_METHOD = HERMITE\nINTERPOLATION_DEGREE = 3\nMETA_STOP\nDATA_START\n2026-01-01T00:00:00 0 0 0 1 0.01 0 0\nDATA_STOP\n";
+    let cdm_kvn = "CCSDS_CDM_VERS = 1.0\nCREATION_DATE = 2026-01-01T00:00:00\nORIGINATOR = SIM\nMESSAGE_ID = M1\nTCA = 2026-01-02T00:00:00\nMISS_DISTANCE = 150 [m]\nOBJECT = OBJECT1\nOBJECT_DESIGNATOR = 1\nCATALOG_NAME = SATCAT\nOBJECT_NAME = A\nINTERNATIONAL_DESIGNATOR = 2026-001A\nEPHEMERIS_NAME = NONE\nCOVARIANCE_METHOD = CALCULATED\nMANEUVERABLE = YES\nREF_FRAME = EME2000\nX = 7000\nY = 0\nZ = 0\nX_DOT = 0\nY_DOT = 7.5\nZ_DOT = 0\nCR_R = 10\nCT_R = 0\nCT_T = 10\nCN_R = 0\nCN_T = 0\nCN_N = 10\nCRDOT_R = 0\nCRDOT_T = 0\nCRDOT_N = 0\nCRDOT_RDOT = 0.01\nCTDOT_R = 0\nCTDOT_T = 0\nCTDOT_N = 0\nCTDOT_RDOT = 0\nCTDOT_TDOT = 0.01\nCNDOT_R = 0\nCNDOT_T = 0\nCNDOT_N = 0\nCNDOT_RDOT = 0\nCNDOT_TDOT = 0\nCNDOT_NDOT = 0.01\nOBJECT = OBJECT2\nOBJECT_DESIGNATOR = 2\nCATALOG_NAME = SATCAT\nOBJECT_NAME = B\nINTERNATIONAL_DESIGNATOR = 2026-002A\nEPHEMERIS_NAME = NONE\nCOVARIANCE_METHOD = CALCULATED\nMANEUVERABLE = NO\nREF_FRAME = EME2000\nX = 7000.15\nY = 0\nZ = 0\nX_DOT = 0\nY_DOT = -7.5\nZ_DOT = 0\nCR_R = 20\nCT_R = 0\nCT_T = 20\nCN_R = 0\nCN_T = 0\nCN_N = 20\nCRDOT_R = 0\nCRDOT_T = 0\nCRDOT_N = 0\nCRDOT_RDOT = 0.02\nCTDOT_R = 0\nCTDOT_T = 0\nCTDOT_N = 0\nCTDOT_RDOT = 0\nCTDOT_TDOT = 0.02\nCNDOT_R = 0\nCNDOT_T = 0\nCNDOT_N = 0\nCNDOT_RDOT = 0\nCNDOT_TDOT = 0\nCNDOT_NDOT = 0.02\n";
+    let tdm_kvn = "CCSDS_TDM_VERS = 2.0\nCREATION_DATE = 2026-01-01T00:00:00\nORIGINATOR = SIM\nMETA_START\nTIME_SYSTEM = UTC\nPARTICIPANT_1 = DSS-14\nPARTICIPANT_2 = SAT\nMODE = SEQUENTIAL\nPATH = 1,2,1\nRANGE_MODE = COHERENT\nRANGE_UNITS = km\nMETA_STOP\nDATA_START\nRANGE = 2026-01-01T00:00:00 384400\nDOPPLER_INTEGRATED = 2026-01-01T00:00:00 -0.5\nANGLE_1 = 2026-01-01T00:00:00 120.5\nANGLE_2 = 2026-01-01T00:00:00 45.25\nDATA_STOP\n";
+    sweep_kind(&[apm_kvn], 0x51a0_0006, 64, |t| {
+        check_kvn_roundtrip(Apm::from_kvn, Apm::to_kvn, t)
+    });
+    sweep_kind(&[aem_kvn], 0x51a0_0007, 64, |t| {
+        check_kvn_roundtrip(Aem::from_kvn, Aem::to_kvn, t)
+    });
+    sweep_kind(&[cdm_kvn], 0x51a0_0008, 64, |t| {
+        check_kvn_roundtrip(Cdm::from_kvn, Cdm::to_kvn, t)
+    });
+    sweep_kind(&[tdm_kvn], 0x51a0_0009, 64, |t| {
+        check_kvn_roundtrip(Tdm::from_kvn, Tdm::to_kvn, t)
+    });
+
+    let apm_xml = Apm::from_kvn(apm_kvn, ParseMode::Strict)
+        .unwrap()
+        .to_xml(WriteOptions::default())
+        .unwrap();
+    let aem_xml = Aem::from_kvn(aem_kvn, ParseMode::Strict)
+        .unwrap()
+        .to_xml(WriteOptions::default())
+        .unwrap();
+    let cdm_xml = Cdm::from_kvn(cdm_kvn, ParseMode::Strict)
+        .unwrap()
+        .to_xml(WriteOptions::default())
+        .unwrap();
+    let tdm_xml = Tdm::from_kvn(tdm_kvn, ParseMode::Strict)
+        .unwrap()
+        .to_xml(WriteOptions::default())
+        .unwrap();
+    sweep_kind(
+        &[&apm_xml, &aem_xml, &cdm_xml, &tdm_xml],
+        0x51a0_000a,
+        64,
+        check_xml,
     );
 }

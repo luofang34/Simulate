@@ -4,8 +4,9 @@ use sim_spacetime::SimInstant;
 
 use crate::{
     checkpoint::PropagatorKind, dop853::Dop853Error, gravity::GravityError, ids::VesselId,
-    manifest::ManifestMismatchField,
 };
+
+use super::manifest::ManifestMismatchField;
 
 /// Transactional scheduling, rollback, or manifest verification failure.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]

@@ -5636,6 +5636,7 @@ dependencies = [
 name = "sim-devices"
 version = "0.1.0"
 dependencies = [
+ "ccsds-ndm",
  "glam 0.33.12",
  "libm",
  "mbd-core",
@@ -5895,6 +5896,7 @@ dependencies = [
 name = "sim-orbital"
 version = "0.1.0"
 dependencies = [
+ "ccsds-ndm",
  "glam 0.33.12",
  "libm",
  "mbd-core",

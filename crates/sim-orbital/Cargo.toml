@@ -12,6 +12,7 @@ default = []
 portable-math = ["sim-spacetime/portable-math"]
 
 [dependencies]
+ccsds-ndm.workspace = true
 glam.workspace = true
 libm.workspace = true
 mbd-core.workspace = true

@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use glam::DMat3;
 use serde::{Deserialize, Serialize};
+use sim_spacetime::KplPool;
 
 use crate::{
     daf::{
@@ -13,7 +14,6 @@ use crate::{
     },
     hash::{ContentHash, DomainHasher},
     ids::{FrameCode, NaifId},
-    kpl::KplPool,
     time::{CoverageSet, TdbEpoch, TdbSpanNs},
 };
 

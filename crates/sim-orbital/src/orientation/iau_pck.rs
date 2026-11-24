@@ -6,11 +6,12 @@
 
 use std::collections::BTreeMap;
 
+use sim_spacetime::KplPool;
+
 use crate::{
     daf::bpc::{euler_313_kinematics, rot_axis_3},
     hash::ContentHash,
     ids::NaifId,
-    kpl::KplPool,
     scalar_math::{mul_add_unfused, sin_cos},
     time::{TdbEpoch, TdbSpanNs},
 };
