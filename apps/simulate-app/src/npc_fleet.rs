@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use sim_core::{AirframeArticulation, SimInstant};
 use sim_geo::Geodetic;
-use sim_maplibre::{Placement3d, UsdAircraftAsset};
+use sim_maplibre::{BuiltinAirframe, Placement3d, UsdAircraftAsset};
 #[cfg(not(any(target_arch = "wasm32", test)))]
 use tracing::warn;
 
@@ -206,7 +206,7 @@ impl NpcFleet {
         let asset = if let Some(found) = liveries.usd_asset_for(aircraft_id, livery_id)? {
             found
         } else if let Some(builtin) = fallback_builtin_asset(aircraft_id)? {
-            Arc::new(builtin)
+            builtin
         } else {
             return Ok(None);
         };
@@ -240,16 +240,18 @@ fn resolved_livery_name(
         .to_owned()
 }
 
-fn fallback_builtin_asset(aircraft_id: &str) -> Result<Option<UsdAircraftAsset>, AppSimError> {
-    let asset = match aircraft_id.trim().to_ascii_lowercase().as_str() {
-        "c172s" | "c172" | "skyhawk" => Some(UsdAircraftAsset::embedded_n642sp()?),
-        "c172p" => Some(UsdAircraftAsset::embedded_c172p_d_ecjb()?),
-        "p38g" | "p38" => Some(UsdAircraftAsset::p38g()?),
-        "raketa" => Some(UsdAircraftAsset::embedded_raketa()?),
-        "x500" => Some(UsdAircraftAsset::x500_quadrotor()?),
-        "lunar_lander" => Some(UsdAircraftAsset::lunar_lander()?),
-        "fixed_wing_uav" => Some(UsdAircraftAsset::fixed_wing_uav()?),
-        _ => None,
+fn fallback_builtin_asset(aircraft_id: &str) -> Result<Option<Arc<UsdAircraftAsset>>, AppSimError> {
+    let built = match aircraft_id.trim().to_ascii_lowercase().as_str() {
+        "c172s" | "c172" | "skyhawk" => {
+            return Ok(Some(UsdAircraftAsset::builtin(BuiltinAirframe::N642sp)?));
+        }
+        "c172p" => return Ok(Some(UsdAircraftAsset::builtin(BuiltinAirframe::DEcjb)?)),
+        "raketa" => return Ok(Some(UsdAircraftAsset::builtin(BuiltinAirframe::Raketa)?)),
+        "p38g" | "p38" => UsdAircraftAsset::p38g()?,
+        "x500" => UsdAircraftAsset::x500_quadrotor()?,
+        "lunar_lander" => UsdAircraftAsset::lunar_lander()?,
+        "fixed_wing_uav" => UsdAircraftAsset::fixed_wing_uav()?,
+        _ => return Ok(None),
     };
-    Ok(asset)
+    Ok(Some(Arc::new(built)))
 }

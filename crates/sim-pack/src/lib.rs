@@ -19,6 +19,7 @@ mod typefaces;
 mod variants;
 mod views;
 
+pub use builtin::usd_layers as builtin_usd_layers;
 pub use builtin::{
     builtin_c172_package, builtin_c172_source, builtin_c172p_package, builtin_c172p_source,
     builtin_c172s_package, builtin_c172s_source, builtin_p38g_package, builtin_p38g_source,

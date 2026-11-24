@@ -111,8 +111,9 @@ impl Host {
     }
 }
 
-/// Creates the renderer for `window` and posts it back to the event loop.
-pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
+/// Creates the renderer for `window` and posts it back to the event loop; the desktop
+/// `_host` has no progress surface to keep informed meanwhile.
+pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, _host: &Host) {
     let size = window.inner_size();
     let gpu = pollster::block_on(GpuReady::new(window, size.width, size.height));
     if proxy

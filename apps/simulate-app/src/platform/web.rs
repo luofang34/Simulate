@@ -103,16 +103,22 @@ pub fn is_handheld_browser() -> bool {
 }
 
 /// Starts creating the renderer for `window`; it is posted back to the event
-/// loop when the browser has granted a GPU device.
-pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>) {
+/// loop when the browser has granted a GPU device, after `host` has said what follows.
+pub fn spawn_renderer(window: Arc<Window>, proxy: EventLoopProxy<AppEvent>, host: &Host) {
     let size = window.inner_size();
     let ([width, height], _) = crate::app::surface_scale::capped_surface_size(
         [size.width, size.height],
         window.scale_factor(),
         is_handheld_browser(),
     );
+    let host = host.clone();
     wasm_bindgen_futures::spawn_local(async move {
         let gpu = GpuReady::new(window, width, height).await;
+        // Building the cockpit holds the page's only thread until the first frame, so
+        // the words for it have to be on screen before the renderer is handed over.
+        if gpu.is_ok() && host.startup_phase("Loading the aircraft and maps") {
+            progress_surface::painted().await;
+        }
         if proxy
             .send_event(AppEvent::RendererReady(Box::new(gpu)))
             .is_err()

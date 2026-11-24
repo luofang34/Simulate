@@ -6,9 +6,10 @@ use crate::{
 
 #[cfg(test)]
 mod tests;
+pub mod usd_layers;
 
 const C172S_MANIFEST: &[u8] = include_bytes!("../../../vehicles/c172s/syspack.json");
-const C172S_ASSETS: &[(&str, &[u8])] = &[
+static C172S_ASSETS: &[(&str, &[u8])] = &[
     (
         LIVERY_CATALOG_ASSET,
         include_bytes!("../../../vehicles/c172s/Liveries/catalog.json"),
@@ -45,38 +46,20 @@ const C172S_ASSETS: &[(&str, &[u8])] = &[
         CALIBRATION_SUITE_ASSET,
         include_bytes!("../../../vehicles/c172s/performance/poh_benchmarks.json"),
     ),
-    (
-        "usd/c172.usdc",
-        include_bytes!("../../../vehicles/c172s/usd/c172.usdc"),
-    ),
-    (
-        "usd/c172s_airframe.usda",
-        include_bytes!("../../../vehicles/c172s/usd/c172s_airframe.usda"),
-    ),
-    (
-        "usd/n172sp.usda",
-        include_bytes!("../../../vehicles/c172s/usd/n172sp.usda"),
-    ),
+    ("usd/c172.usdc", usd_layers::C172_USDC),
+    ("usd/c172s_airframe.usda", usd_layers::C172S_AIRFRAME_USDA),
+    ("usd/n172sp.usda", usd_layers::N172SP_USDA),
     (
         "usd/n172sp_livery.json",
         include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.json"),
     ),
-    (
-        "usd/n172sp_livery.usda",
-        include_bytes!("../../../vehicles/c172s/usd/n172sp_livery.usda"),
-    ),
-    (
-        "usd/n642sp.usda",
-        include_bytes!("../../../vehicles/c172s/usd/n642sp.usda"),
-    ),
+    ("usd/n172sp_livery.usda", usd_layers::N172SP_LIVERY_USDA),
+    ("usd/n642sp.usda", usd_layers::N642SP_USDA),
     (
         "usd/n642sp_livery.json",
         include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.json"),
     ),
-    (
-        "usd/n642sp_livery.usda",
-        include_bytes!("../../../vehicles/c172s/usd/n642sp_livery.usda"),
-    ),
+    ("usd/n642sp_livery.usda", usd_layers::N642SP_LIVERY_USDA),
     (
         CAMERA_VIEWS_ASSET,
         include_bytes!("../../../vehicles/c172s/views/cameras.json"),
@@ -84,7 +67,7 @@ const C172S_ASSETS: &[(&str, &[u8])] = &[
 ];
 
 const C172P_MANIFEST: &[u8] = include_bytes!("../../../vehicles/c172p/syspack.json");
-const C172P_ASSETS: &[(&str, &[u8])] = &[
+static C172P_ASSETS: &[(&str, &[u8])] = &[
     (
         LIVERY_CATALOG_ASSET,
         include_bytes!("../../../vehicles/c172p/Liveries/catalog.json"),
@@ -121,38 +104,20 @@ const C172P_ASSETS: &[(&str, &[u8])] = &[
         CALIBRATION_SUITE_ASSET,
         include_bytes!("../../../vehicles/c172p/performance/poh_benchmarks.json"),
     ),
-    (
-        "usd/c172.usdc",
-        include_bytes!("../../../vehicles/c172p/usd/c172.usdc"),
-    ),
-    (
-        "usd/c172p_airframe.usda",
-        include_bytes!("../../../vehicles/c172p/usd/c172p_airframe.usda"),
-    ),
-    (
-        "usd/d_ecjb.usda",
-        include_bytes!("../../../vehicles/c172p/usd/d_ecjb.usda"),
-    ),
+    ("usd/c172.usdc", usd_layers::C172_USDC),
+    ("usd/c172p_airframe.usda", usd_layers::C172P_AIRFRAME_USDA),
+    ("usd/d_ecjb.usda", usd_layers::D_ECJB_USDA),
     (
         "usd/d_ecjb_livery.json",
         include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.json"),
     ),
-    (
-        "usd/d_ecjb_livery.usda",
-        include_bytes!("../../../vehicles/c172p/usd/d_ecjb_livery.usda"),
-    ),
-    (
-        "usd/n53295.usda",
-        include_bytes!("../../../vehicles/c172p/usd/n53295.usda"),
-    ),
+    ("usd/d_ecjb_livery.usda", usd_layers::D_ECJB_LIVERY_USDA),
+    ("usd/n53295.usda", usd_layers::N53295_USDA),
     (
         "usd/n53295_livery.json",
         include_bytes!("../../../vehicles/c172p/usd/n53295_livery.json"),
     ),
-    (
-        "usd/n53295_livery.usda",
-        include_bytes!("../../../vehicles/c172p/usd/n53295_livery.usda"),
-    ),
+    ("usd/n53295_livery.usda", usd_layers::N53295_LIVERY_USDA),
     (
         CAMERA_VIEWS_ASSET,
         include_bytes!("../../../vehicles/c172p/views/cameras.json"),

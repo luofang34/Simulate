@@ -3,6 +3,8 @@
 //! elements over for its own start-up and removes them when it draws.
 
 use sim_link_host::PlanLine;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element};
 
 use super::section::{Section, write_lines};
@@ -91,6 +93,35 @@ impl ProgressSurface {
             attribute(&elements.root, "data-state", Some("done"));
         }
     }
+}
+
+/// Longest wait for a frame: a hidden tab is given none, and the start-up goes on there too.
+const PAINT_WAIT_MS: i32 = 250;
+
+/// Resolves once the browser has had a frame in which to paint what the surface says.
+/// Wasm that keeps the page's only thread paints nothing, so a phase that is followed
+/// by such work is awaited here first.
+pub async fn painted() {
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        let Some(window) = web_sys::window() else {
+            resolve.call0(&JsValue::UNDEFINED).ok();
+            return;
+        };
+        let hidden_tab =
+            window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, PAINT_WAIT_MS);
+        // A frame's callbacks run before its paint; a task queued from one runs after it.
+        let resolve_after_paint = resolve.clone();
+        let after_paint = Closure::once_into_js(move || {
+            if let Some(window) = web_sys::window() {
+                window.set_timeout_with_callback(&resolve_after_paint).ok();
+            }
+        });
+        let frame = window.request_animation_frame(after_paint.unchecked_ref());
+        if hidden_tab.is_err() && frame.is_err() {
+            resolve.call0(&JsValue::UNDEFINED).ok();
+        }
+    });
+    wasm_bindgen_futures::JsFuture::from(promise).await.ok();
 }
 
 /// Sets or removes an attribute. The DOM refuses only a malformed attribute

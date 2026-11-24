@@ -48,6 +48,13 @@ fn live(device: &wgpu::Device) -> [isize; 2] {
     [hal.buffers.read(), hal.textures.read()]
 }
 
+/// Frames every warm-up draws, enough for the pipelines and the largest track.
+const WARM_UP_FRAMES: u32 = 120;
+/// Frames the counters hold still before the warm-up counts as over.
+const SETTLED_FRAMES: u32 = 60;
+/// Frames after which a warm-up that never settles is measured anyway, and fails.
+const WARM_UP_LIMIT: u32 = 3000;
+
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn drawing_both_views_and_updating_the_plan_allocates_nothing_lasting() {
@@ -87,11 +94,22 @@ fn drawing_both_views_and_updating_the_plan_allocates_nothing_lasting() {
         efb.render(&symbology).expect("frame");
     };
     // Warm up: tiles, pipelines, the overlay's buffers and vector slabs reach their size.
-    for step in 0..120 {
+    // Tiles arrive on the loader's clock, not the frame count, so the warm-up ends when
+    // the counters have held still, however long a busy machine takes to get there.
+    let mut step = 0;
+    let mut settled = (live(&device), 0_u32);
+    while step < WARM_UP_FRAMES || (settled.1 < SETTLED_FRAMES && step < WARM_UP_LIMIT) {
         frame(&mut efb, step);
+        step += 1;
+        let now = live(&device);
+        settled = if now == settled.0 {
+            (now, settled.1 + 1)
+        } else {
+            (now, 0)
+        };
     }
     let before = live(&device);
-    for step in 120..320 {
+    for step in step..step + 200 {
         frame(&mut efb, step);
     }
     let after = live(&device);
