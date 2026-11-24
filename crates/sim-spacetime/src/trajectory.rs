@@ -58,6 +58,9 @@ pub enum TrajectoryQueryError {
     /// Underlying body-orientation lookup failed while converting a body-fixed trajectory sample to `ICRF`.
     #[error("orientation error during trajectory query: {0}")]
     Orientation(#[from] OrientationError),
+    /// Analytic or catalog trajectory evaluation failed at the requested epoch.
+    #[error("trajectory evaluation failed: {0}")]
+    PropagationFailed(String),
 }
 
 /// Propagator-agnostic query interface for 3-DoF translational position and velocity.

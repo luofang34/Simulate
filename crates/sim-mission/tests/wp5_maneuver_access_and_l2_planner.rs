@@ -13,11 +13,11 @@ use sim_analysis::{
 };
 use sim_geo::{BodyEllipsoid, Geodetic};
 use sim_mission::{
-    ApoapsisTargetProblem, BurnSteeringFrame, CrossingDirection, MissionPlan, MissionSegmentNode,
-    OrbitalScalarEventKind, PlanBudgetScope, ScaledControlVariable, ScaledEqualityGoal,
-    SegmentBurnLaw, SegmentStoppingCondition, SolverConvergenceStatus, TargetGoalSpec,
-    TargetVariableSpec, evaluate_orbital_maneuver_and_access, plan_assisted_l2_bounded_arc,
-    solve_multivariable_differential_correction,
+    ApoapsisTargetProblem, BurnSteeringFrame, CrossingDirection, MissionDesignError, MissionPlan,
+    MissionSegmentNode, OrbitalScalarEventKind, PlanBudgetScope, ScaledControlVariable,
+    ScaledEqualityGoal, SegmentBurnLaw, SegmentStoppingCondition, SolverConvergenceStatus,
+    TargetGoalSpec, TargetVariableSpec, evaluate_orbital_maneuver_and_access, execute_mission_plan,
+    plan_assisted_l2_bounded_arc, solve_multivariable_differential_correction,
 };
 use sim_orbital::{
     BodyOrientationCatalog, BuiltinSolarSystem2026_2028, ContinuousPlantState, Dop853Tolerances,
@@ -277,4 +277,38 @@ fn wp5_phase2_assisted_l2_planner_distinguishes_finite_horizon_arc_from_periodic
         L2OrbitRegimeKind::FiniteHorizonTargetedArc
     );
     assert!(report.periodic_closure.synodic_position_closure_residual_m > 1.0e6);
+}
+
+#[test]
+fn mission_execution_rejects_sgp4_catalog_model_identity() {
+    let solar = BuiltinSolarSystem2026_2028::load_verified().expect("solar");
+    let fm = ForceModel::new(
+        solar.constants.clone(),
+        vec![NaifId::SUN, NaifId::EARTH, NaifId::MOON],
+        vec![NaifId::EARTH],
+        DynamicalMode::PrescribedEphemeris,
+        0,
+    )
+    .expect("force model");
+    let (plant0, cfg) = sample_leo_plant_and_config();
+    let cp0 = VesselCheckpoint::new(VesselId(1), SimInstant::START, plant0, 1);
+    let clock = SimClockAdapter::new(TdbEpoch::JAN_1_2026_00Z_TDB);
+    let mut plan = build_apoapsis_problem(&fm, 500_000.0).base_plan;
+    plan.model_identity = DynamicalModelIdentity::Sgp4Catalog {
+        elements_hash: sim_spacetime::ContentHash::of_bytes(b"catalog-only"),
+    };
+    let err = execute_mission_plan(
+        &plan,
+        &cp0,
+        &cfg,
+        &clock,
+        &fm,
+        &solar.ephemeris,
+        &solar.orientation,
+    )
+    .expect_err("mission executor must reject catalog SGP4 model");
+    assert!(matches!(
+        err,
+        MissionDesignError::DynamicalModelMismatch { .. }
+    ));
 }

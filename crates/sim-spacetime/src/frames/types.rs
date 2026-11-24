@@ -64,6 +64,15 @@ pub enum DynamicalModelIdentity {
         /// Dimensionless mass ratio $\mu^* = \mu_2 / (\mu_1 + \mu_2)$.
         mu_star: f64,
     },
+    /// Catalog-tier `SGP4`/`SDP4` two-line/OMM analytical Earth-orbit propagation.
+    ///
+    /// Suitable for ground-station visibility, relay, and RF analysis behind
+    /// [`crate::TranslationalTrajectorySource`], and explicitly excluded from
+    /// authoritative truth digests (`SimulationManifestDigest`, `PlanningInputFingerprint`).
+    Sgp4Catalog {
+        /// Canonical SHA-256 hash of the NORAD orbital elements and SGP4 mode.
+        elements_hash: ContentHash,
+    },
 }
 
 impl DynamicalModelIdentity {
@@ -88,6 +97,10 @@ impl DynamicalModelIdentity {
                 h.write_i32(secondary.0);
                 h.write_f64_canonical(mu_star);
             }
+            Self::Sgp4Catalog { elements_hash } => {
+                h.write_u8(4);
+                h.write_hash(elements_hash);
+            }
         }
     }
 
@@ -96,8 +109,16 @@ impl DynamicalModelIdentity {
     pub const fn supports_physical_ephemeris_analysis(&self) -> bool {
         matches!(
             self,
-            Self::SolarSystemEphemerisNBody { .. } | Self::PlanetaryKinematicOrFlight { .. }
+            Self::SolarSystemEphemerisNBody { .. }
+                | Self::PlanetaryKinematicOrFlight { .. }
+                | Self::Sgp4Catalog { .. }
         )
+    }
+
+    /// Returns `true` if this model is a non-truth catalog/analytical approximation tier.
+    #[must_use]
+    pub const fn is_catalog_tier(&self) -> bool {
+        matches!(self, Self::Sgp4Catalog { .. })
     }
 }
 

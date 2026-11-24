@@ -51,6 +51,12 @@ pub fn sample_platform_trajectory(
                 boundary_time_tolerance_s: 0.0,
             },
         ),
+        TrajectoryQueryError::PropagationFailed(_) => AccessAnalysisError::ModelNotApplicable(
+            ModelNotApplicableReason::InvalidQueryParameters {
+                sample_step_s: 0.0,
+                boundary_time_tolerance_s: 0.0,
+            },
+        ),
     };
 
     match platform.nodes_frame {
