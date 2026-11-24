@@ -7,13 +7,14 @@ publish = false
 
 [features]
 default = ["world-mbd-bridges"]
-portable-math = ["dep:libm"]
+portable-math = []
 world-mbd-bridges = ["dep:mbd-core", "dep:world-core"]
 
 [dependencies]
 glam = "0.33"
-libm = { version = "0.2", optional = true }
+libm = "0.2"
 mbd-core = { workspace = true, optional = true }
+rand_chacha.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10.9"

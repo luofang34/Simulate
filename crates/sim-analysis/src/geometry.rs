@@ -201,7 +201,7 @@ fn evaluate_vehicle_mount_kinematics(
     )
 }
 
-fn enu_to_el_az(rho_enu: DVec3) -> (f64, f64) {
+pub(crate) fn enu_to_el_az(rho_enu: DVec3) -> (f64, f64) {
     let r = sqrt(rho_enu.length_squared());
     if r <= 1.0e-12 {
         return (0.0, 0.0);
@@ -382,7 +382,12 @@ fn chord_min_altitude_between_m(
     sqrt((q0 + nearest * d).length_squared()) - radius_m
 }
 
-fn chord_min_altitude_above_sphere_m(p0: DVec3, p1: DVec3, s_min: f64, radius_m: f64) -> f64 {
+pub(crate) fn chord_min_altitude_above_sphere_m(
+    p0: DVec3,
+    p1: DVec3,
+    s_min: f64,
+    radius_m: f64,
+) -> f64 {
     let d = p1 - p0;
     let d_sq = d.length_squared();
     if d_sq <= 1.0e-12 {
@@ -396,7 +401,7 @@ fn chord_min_altitude_above_sphere_m(p0: DVec3, p1: DVec3, s_min: f64, radius_m:
     sqrt(closest.length_squared()) - radius_m
 }
 
-fn chord_min_altitude_above_ellipsoid_m(
+pub(crate) fn chord_min_altitude_above_ellipsoid_m(
     p0_fixed: DVec3,
     p1_fixed: DVec3,
     s_min: f64,
