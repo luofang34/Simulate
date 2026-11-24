@@ -35,14 +35,25 @@ where
     /// The board as it stands: the airframe, the devices with the noise they have yet
     /// to draw, and the flight controller with its filter, its laws and its link rings.
     pub fn snapshot(&self) -> BoardSnapshot<A, C, M> {
+        // Every field is named so that one added to the board must be placed here.
+        let Self {
+            airframe,
+            suite,
+            controller,
+            origin: _,
+            now,
+            samples,
+            outages,
+            command,
+        } = self;
         BoardSnapshot {
-            airframe: self.airframe.snapshot(),
-            suite: self.suite,
-            controller: self.controller.clone(),
-            now: self.now,
-            samples: self.samples,
-            outages: self.outages,
-            command: self.command,
+            airframe: airframe.snapshot(),
+            suite: *suite,
+            controller: controller.clone(),
+            now: *now,
+            samples: *samples,
+            outages: *outages,
+            command: *command,
         }
     }
 

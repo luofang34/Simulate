@@ -13,6 +13,7 @@ use crate::{
     c172_sensor_suite,
 };
 
+mod clutch;
 mod navigator_feed;
 mod rewind;
 mod zaragoza;

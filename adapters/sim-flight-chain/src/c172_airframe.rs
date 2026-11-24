@@ -2,9 +2,9 @@
 //! trimmed level flight.
 //!
 //! The four actuator lanes are throttle, aileron, elevator and rudder with
-//! the surfaces neutral at one half. Until the flight controller is armed
-//! the airframe holds the controls JSBSim trimmed it with, as a pilot would
-//! before engaging an autopilot. JSBSim takes its density and temperature
+//! the surfaces neutral at one half. Until the flight controller is armed,
+//! and while its servos are released, the pilot's controls fly the airframe;
+//! they start as the controls JSBSim trimmed it with. JSBSim takes its density and temperature
 //! from its own standard atmosphere and its wind from the shared air field,
 //! so the aeroplane drifts with the same wind its sensors read.
 
@@ -13,7 +13,7 @@ use sim_atmosphere::AtmosphereField;
 use sim_aviate::{DirectActuatorCmd, direct_fixed_wing_controls};
 use sim_core::{
     Block, ControlInputs, EngineStartMode, JsbsimFdmBlock, JsbsimFdmConfig, JsbsimFdmSnapshot,
-    KinematicInput, TickSpan, VehicleState,
+    KinematicInput, SystemControls, TickSpan, VehicleState,
 };
 use sim_devices::SensedTruth;
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
@@ -69,6 +69,10 @@ pub struct C172Airframe {
     air: SharedAir,
     utc: UtcTime,
     trim: ControlInputs,
+    /// What the pilot holds on the yoke, pedals and throttle.
+    pilot: ControlInputs,
+    /// Whether the autopilot's servos are clutched to the controls.
+    servos_engaged: bool,
     specific_force_body_m_s2: DVec3,
 }
 
@@ -78,6 +82,8 @@ pub struct C172Airframe {
 pub struct C172AirframeSnapshot {
     fdm: JsbsimFdmSnapshot,
     utc: UtcTime,
+    pilot: ControlInputs,
+    servos_engaged: bool,
     specific_force_body_m_s2: DVec3,
 }
 
@@ -126,8 +132,40 @@ impl C172Airframe {
             air,
             utc: start.utc,
             trim,
+            pilot: trim,
+            servos_engaged: true,
             specific_force_body_m_s2: level,
         })
+    }
+
+    /// What the pilot holds on the controls. It flies the aeroplane whenever the flight
+    /// controller does not: before it is armed, and while its servos are released.
+    pub const fn set_pilot_controls(&mut self, controls: ControlInputs) {
+        self.pilot = controls;
+    }
+
+    /// What the pilot holds on the controls.
+    pub const fn pilot_controls(&self) -> ControlInputs {
+        self.pilot
+    }
+
+    /// Clutches the autopilot's servos to the controls, or releases them. A flight
+    /// controller keeps flying its laws while released, as an autopilot computer does
+    /// with its servos out; it refuses to disarm in the air, so the clutch and not the
+    /// arming state is what hands the aeroplane to the pilot.
+    pub const fn set_servos_engaged(&mut self, engaged: bool) {
+        self.servos_engaged = engaged;
+    }
+
+    /// Whether the autopilot's servos are clutched to the controls.
+    pub const fn servos_engaged(&self) -> bool {
+        self.servos_engaged
+    }
+
+    /// Sets what no flight controller lane reaches and the pilot always works by hand:
+    /// flaps, wheel brakes, mixture and the like, from the next step on.
+    pub fn set_system_controls(&mut self, controls: SystemControls) {
+        self.fdm.set_system_controls(controls);
     }
 
     /// The JSBSim flight model, to read its articulation and systems.
@@ -152,10 +190,22 @@ impl Airframe for C172Airframe {
     type Snapshot = C172AirframeSnapshot;
 
     fn snapshot(&self) -> C172AirframeSnapshot {
+        // Every field is named so that one added to the airframe must be placed here.
+        let Self {
+            fdm,
+            air: _,
+            utc,
+            trim: _,
+            pilot,
+            servos_engaged,
+            specific_force_body_m_s2,
+        } = self;
         C172AirframeSnapshot {
-            fdm: self.fdm.snapshot(),
-            utc: self.utc,
-            specific_force_body_m_s2: self.specific_force_body_m_s2,
+            fdm: fdm.snapshot(),
+            utc: *utc,
+            pilot: *pilot,
+            servos_engaged: *servos_engaged,
+            specific_force_body_m_s2: *specific_force_body_m_s2,
         }
     }
 
@@ -164,6 +214,8 @@ impl Airframe for C172Airframe {
             .try_restore(&snapshot.fdm)
             .map_err(|e| ChainError::Plant(Box::new(e)))?;
         self.utc = snapshot.utc;
+        self.pilot = snapshot.pilot;
+        self.servos_engaged = snapshot.servos_engaged;
         self.specific_force_body_m_s2 = snapshot.specific_force_body_m_s2;
         Ok(())
     }
@@ -191,10 +243,10 @@ impl Airframe for C172Airframe {
     }
 
     fn fly(&mut self, command: &DirectActuatorCmd) -> Result<(), ChainError> {
-        let controls = if command.armed {
+        let controls = if command.armed && self.servos_engaged {
             direct_fixed_wing_controls(command)
         } else {
-            self.trim
+            self.pilot
         };
         let before = self.fdm.output();
         set_wind(&mut self.fdm, &self.air, self.utc)?;
