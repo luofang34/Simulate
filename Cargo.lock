@@ -6187,6 +6187,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spice-kernels"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "spicekit",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "spicekit"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

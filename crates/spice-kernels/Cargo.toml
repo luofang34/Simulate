@@ -1,0 +1,44 @@
+[package]
+name = "spice-kernels"
+description = "Pure-Rust writer, reader and evaluator for NAIF SPICE binary kernels (DAF containers, SPK ephemerides) with no CSPICE binding"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+keywords = ["spice", "naif", "spk", "ephemeris", "astrodynamics"]
+categories = ["aerospace", "science", "encoding", "no-std"]
+publish = false
+
+[features]
+default = ["std"]
+# File-system helpers; without it the crate is `no_std` + `alloc` and works on
+# byte slices only.
+std = ["thiserror/std"]
+
+[dependencies]
+thiserror = { version = "2", default-features = false }
+
+[dev-dependencies]
+libm = "0.2"
+spicekit = "0.2.3"
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "forbid"
+expect_used = "forbid"
+panic = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "forbid"
+exit = "forbid"
+mem_forget = "forbid"
+get_unwrap = "forbid"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"
