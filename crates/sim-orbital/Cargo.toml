@@ -28,6 +28,7 @@ thiserror.workspace = true
 world-core.workspace = true
 
 [dev-dependencies]
+num-dual.workspace = true
 spicekit.workspace = true
 
 [lints]

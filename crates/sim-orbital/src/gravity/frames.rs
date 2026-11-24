@@ -57,7 +57,9 @@ impl ForceModel {
                 continue;
             }
             let rot = orientation.body_rotation(hb, epoch)?;
-            let Some(sample) = self.harmonic_sample(index, offset, rot.r_icrf_to_fixed) else {
+            let Some(sample) =
+                self.harmonic_sample_with_gradient(index, offset, rot.r_icrf_to_fixed, false)
+            else {
                 continue;
             };
             let pos_fixed = rot.r_icrf_to_fixed * offset;

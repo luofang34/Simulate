@@ -16,4 +16,9 @@ mbd-core = { workspace = true }
 sim-core = { workspace = true }
 sim-spacetime = { workspace = true }
 glam = { workspace = true }
+libm = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
