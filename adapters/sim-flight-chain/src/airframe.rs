@@ -32,6 +32,13 @@ pub trait Airframe {
     /// One period under `command`.
     fn fly(&mut self, command: &DirectActuatorCmd) -> Result<(), ChainError>;
 
+    /// Whether the flight controller's actuator command moves the vehicle. An airframe
+    /// whose servos a pilot can release says so here, and the board reports it to the
+    /// flight controller as its installation's discrete.
+    fn actuators_connected(&self) -> bool {
+        true
+    }
+
     /// The airframe as it stands, to return to with [`Airframe::restore`].
     fn snapshot(&self) -> Self::Snapshot;
 
