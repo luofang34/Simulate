@@ -1,5 +1,8 @@
 //! `DAF/SPK` ephemeris kernels: segments, their stored form, and evaluation.
 
+mod chebyshev;
+mod chebyshev_fit;
+mod chebyshev_states;
 #[cfg(feature = "std")]
 mod file_io;
 mod interpolation;
@@ -11,6 +14,8 @@ mod tests;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use chebyshev::{ChebyshevPositionRecord, ChebyshevPositions};
+pub use chebyshev_states::{ChebyshevStateRecord, ChebyshevStates};
 pub use sampled::SampledStates;
 pub use segment::{SpkData, SpkSegment};
 

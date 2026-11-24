@@ -1,16 +1,17 @@
 //! Binary NAIF `DAF/PCK` Type 2 Euler-angle orientation segment evaluation.
 
 use glam::{DMat3, DVec3};
+use navigate_astrodynamics::spk::eval_type2_record_3d;
+use spice_kernels::DafArray;
 
 use crate::{
-    chebyshev::eval_type2_record_3d,
     hash::ContentHash,
     ids::FrameCode,
     scalar_math::sin_cos,
     time::{TdbEpoch, TdbSpanNs},
 };
 
-use super::{DafContainer, DafError, RawDafSummary, spk::SPICE_OBLIQUITY_J2000_RAD};
+use super::{DafError, parse_daf, spk::SPICE_OBLIQUITY_J2000_RAD};
 
 /// Evaluated `(R_base_to_body, omega_body_rad_s, alpha_body_rad_s2)` from a `3-1-3` Euler series.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,14 +39,13 @@ pub struct BpcSegment {
 }
 
 impl BpcSegment {
-    fn from_raw(container: &DafContainer<'_>, raw: RawDafSummary) -> Result<Self, DafError> {
-        let start_s = raw.dc.first().copied().unwrap_or(0.0);
-        let end_s = raw.dc.get(1).copied().unwrap_or(0.0);
-        let class_id = FrameCode(raw.ic.first().copied().unwrap_or(0));
-        let base_raw = raw.ic.get(1).copied().unwrap_or(0);
-        let pck_type = raw.ic.get(2).copied().unwrap_or(0);
-        let start_word = raw.ic.get(3).copied().unwrap_or(0);
-        let end_word = raw.ic.get(4).copied().unwrap_or(0);
+    fn from_array(array: &DafArray) -> Result<Self, DafError> {
+        let name = array.name().to_owned();
+        let start_s = array.doubles().first().copied().unwrap_or(0.0);
+        let end_s = array.doubles().get(1).copied().unwrap_or(0.0);
+        let class_id = FrameCode(array.integers().first().copied().unwrap_or(0));
+        let base_raw = array.integers().get(1).copied().unwrap_or(0);
+        let pck_type = array.integers().get(2).copied().unwrap_or(0);
 
         let base_frame = FrameCode(base_raw);
         if base_frame != FrameCode::J2000 && base_frame != FrameCode::ECLIPJ2000 {
@@ -55,36 +55,47 @@ impl BpcSegment {
             return Err(DafError::UnsupportedPckDataType(pck_type));
         }
 
-        let words = container.read_f64_words(start_word, end_word)?;
+        let words = array.data();
         if words.len() < 4 {
-            return Err(DafError::MalformedDirectory(raw.name));
+            return Err(DafError::MalformedDirectory(name));
         }
-        let footer_start = words.len() - 4;
+        let footer_start = words.len().wrapping_sub(4);
         let init_s = words.get(footer_start).copied().unwrap_or(0.0);
-        let intlen_s = words.get(footer_start + 1).copied().unwrap_or(0.0);
-        let rsize_f = words.get(footer_start + 2).copied().unwrap_or(0.0);
-        let n_rec_f = words.get(footer_start + 3).copied().unwrap_or(0.0);
+        let intlen_s = words
+            .get(footer_start.wrapping_add(1))
+            .copied()
+            .unwrap_or(0.0);
+        let rsize_f = words
+            .get(footer_start.wrapping_add(2))
+            .copied()
+            .unwrap_or(0.0);
+        let n_rec_f = words
+            .get(footer_start.wrapping_add(3))
+            .copied()
+            .unwrap_or(0.0);
         if !init_s.is_finite()
             || !intlen_s.is_finite()
             || intlen_s <= 0.0
             || rsize_f < 5.0
             || n_rec_f < 1.0
         {
-            return Err(DafError::MalformedDirectory(raw.name));
+            return Err(DafError::MalformedDirectory(name));
         }
         let rsize = rsize_f as usize;
         let n_records = n_rec_f as usize;
         let expected_payload = rsize.saturating_mul(n_records);
         if expected_payload.saturating_add(4) != words.len() {
-            return Err(DafError::MalformedDirectory(raw.name));
+            return Err(DafError::MalformedDirectory(name));
         }
-        let mut records = words;
-        records.truncate(expected_payload);
+        let records = words
+            .get(..expected_payload)
+            .ok_or_else(|| DafError::MalformedDirectory(name.clone()))?
+            .to_vec();
         let span_ns = TdbSpanNs::from_j2000_seconds_inner(start_s, end_s)
-            .ok_or_else(|| DafError::MalformedDirectory(raw.name.clone()))?;
+            .ok_or_else(|| DafError::MalformedDirectory(name.clone()))?;
 
         Ok(Self {
-            name: raw.name,
+            name,
             frame_class_id: class_id,
             base_frame,
             span_ns,
@@ -166,14 +177,13 @@ pub struct BpcFile {
 impl BpcFile {
     /// Parses a binary `DAF/PCK` byte slice (`Type 2` Chebyshev Euler-angle subset).
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, DafError> {
-        let container = DafContainer::parse(bytes, "DAF/PCK ", 2, 5)?;
-        let raw_list = container.summaries()?;
-        let mut segments = Vec::with_capacity(raw_list.len());
-        for raw in raw_list {
-            segments.push(BpcSegment::from_raw(&container, raw)?);
+        let daf = parse_daf(bytes, "PCK", "DAF/PCK ", 2, 5)?;
+        let mut segments = Vec::with_capacity(daf.arrays().len());
+        for array in daf.arrays() {
+            segments.push(BpcSegment::from_array(array)?);
         }
         Ok(Self {
-            hash: container.content_hash(),
+            hash: ContentHash::of_bytes(bytes),
             segments,
         })
     }

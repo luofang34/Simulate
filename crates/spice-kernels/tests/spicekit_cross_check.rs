@@ -4,7 +4,11 @@
 #[path = "support/kepler.rs"]
 mod kepler;
 
-use spice_kernels::{FRAME_J2000, SampledStates, SpkFile, SpkSegment};
+use spice_kernels::{
+    ChebyshevPositions, ChebyshevStates, FRAME_J2000, SampledStates, SpkFile, SpkSegment,
+};
+
+const EXCERPT: &[u8] = include_bytes!("data/de440s_excerpt_1969.bsp");
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -173,6 +177,49 @@ fn spicekit_reads_every_segment_of_a_kernel_with_chained_summary_records() -> Te
             ours.name(),
             relative_difference(&ours.state(et)?, &theirs_state),
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn spicekit_agrees_on_type_2_and_type_3_chebyshev_and_de440s_excerpt() -> TestResult {
+    let orbit = kepler::low_earth_orbit();
+    let init = orbit.epoch + 10.0;
+    let intlen = 300.0;
+    let n_records = 12;
+    let c2 = ChebyshevPositions::fit_nodes(init, intlen, n_records, 12, |et| {
+        let s = orbit.state(et);
+        [s[0], s[1], s[2]]
+    })?;
+    let c3 = ChebyshevStates::fit_nodes(init, intlen, n_records, 12, |et| orbit.state(et))?;
+
+    let mut file = SpkFile::new("chebyshev spicekit")?;
+    file.push(SpkSegment::type2("type2", -42, CENTER, FRAME_J2000, c2)?);
+    let mut probes = Vec::new();
+    for k in 0..=180 {
+        probes.push(init + f64::from(k) * 20.0);
+    }
+    assert_agreement("type 2", worst_disagreement(&file, &probes)?);
+
+    let mut file3 = SpkFile::new("chebyshev3 spicekit")?;
+    file3.push(SpkSegment::type3("type3", -42, CENTER, FRAME_J2000, c3)?);
+    assert_agreement("type 3", worst_disagreement(&file3, &probes)?);
+
+    // Cross-check real NASA NAIF DE440s 1969 excerpt on Moon (301->3) and Earth (399->3).
+    let excerpt = SpkFile::parse(EXCERPT)?;
+    let dir = tempfile::tempdir()?;
+    let excerpt_path = dir.path().join("excerpt.bsp");
+    std::fs::write(&excerpt_path, EXCERPT)?;
+    let other = spicekit::SpkFile::open(&excerpt_path)?;
+    for (target, center) in [(301, 3), (399, 3), (3, 0), (10, 0)] {
+        for &et in &[-961_400_000.0, -960_910_900.0, -960_200_000.0] {
+            let ours = excerpt.state(target, center, et)?;
+            let theirs = other.state(target, center, et)?;
+            assert_agreement(
+                &format!("de440s {target}->{center}"),
+                relative_difference(&ours, &theirs),
+            );
+        }
     }
     Ok(())
 }

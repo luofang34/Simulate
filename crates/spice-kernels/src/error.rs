@@ -119,6 +119,52 @@ pub enum Error {
         /// What is wrong.
         reason: &'static str,
     },
+    /// A CK segment's stored words do not form a valid segment of its type.
+    #[error("malformed CK type {data_type} segment `{name}`: {reason}")]
+    MalformedCkSegment {
+        /// Segment name.
+        name: String,
+        /// CK data type.
+        data_type: i32,
+        /// What is wrong.
+        reason: &'static str,
+    },
+    /// Chebyshev parameters or records are invalid.
+    #[error("invalid Chebyshev data: {reason}")]
+    InvalidChebyshev {
+        /// What is wrong.
+        reason: &'static str,
+    },
+    /// Fewer samples in a Chebyshev granule than needed to fit the requested degree.
+    #[error("Chebyshev granule {granule} has {found} samples; degree requires at least {required}")]
+    InsufficientFitSamples {
+        /// Zero-based granule index.
+        granule: usize,
+        /// Minimum samples required (`degree + 1`).
+        required: usize,
+        /// Samples present in the granule.
+        found: usize,
+    },
+    /// Least-squares Chebyshev fit matrix is rank-deficient in a granule.
+    #[error("Chebyshev least-squares fit is singular in granule {granule}")]
+    SingularFit {
+        /// Zero-based granule index.
+        granule: usize,
+    },
+    /// A quaternion is zero-length or holds non-finite components.
+    #[error("quaternion at index {index} is zero or non-finite")]
+    InvalidQuaternion {
+        /// Zero-based index.
+        index: usize,
+    },
+    /// A CK pointing interval is empty, reversed, overlapping, or misaligned.
+    #[error("CK interval at index {index} is invalid: {reason}")]
+    InvalidCkInterval {
+        /// Zero-based interval index.
+        index: usize,
+        /// What is wrong.
+        reason: &'static str,
+    },
     /// Epoch and state counts differ.
     #[error("{epochs} epochs but {states} states")]
     LengthMismatch {
@@ -201,10 +247,28 @@ pub enum Error {
         /// Requested epoch.
         et: f64,
     },
+    /// No segment gives pointing for the instrument at the requested SCLK within tolerance.
+    #[error(
+        "no CK segment covers instrument {instrument} at SCLK {sclk} within tolerance {tolerance}"
+    )]
+    NoCkCoverage {
+        /// NAIF instrument or spacecraft structure ID.
+        instrument: i32,
+        /// Requested encoded SCLK ticks.
+        sclk: f64,
+        /// Allowed search tolerance in ticks.
+        tolerance: f64,
+    },
     /// The segment is carried verbatim and this crate cannot evaluate its type.
     #[error("SPK type {data_type} segments are carried verbatim and cannot be evaluated")]
     UnsupportedDataType {
         /// SPK data type.
+        data_type: i32,
+    },
+    /// The CK segment is carried verbatim and this crate cannot evaluate its type.
+    #[error("CK type {data_type} segments are carried verbatim and cannot be evaluated")]
+    UnsupportedCkDataType {
+        /// CK data type.
         data_type: i32,
     },
     /// Reading or writing the kernel file failed.

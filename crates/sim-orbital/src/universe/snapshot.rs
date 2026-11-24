@@ -8,9 +8,9 @@ use crate::{
     events::{AuthoritativeCommandLog, ScheduledEvent},
     hash::{ContentHash, DomainHasher},
     ids::VesselId,
-    manifest::SimulationManifestDigest,
     universe::{
-        OrbitalUniverse, SchedulerError, SpeculativeSegmentEntry, rollback::VesselTimeline,
+        OrbitalUniverse, SchedulerError, SpeculativeSegmentEntry,
+        manifest::SimulationManifestDigest, rollback::VesselTimeline,
     },
 };
 

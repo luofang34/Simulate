@@ -9,11 +9,11 @@ use std::{
 };
 
 use sim_bodies::{BodyCatalog, HarmonicGravity};
+use sim_spacetime::{KplError, KplPool};
 
 use crate::{
     hash::{ContentHash, DomainHasher},
     ids::NaifId,
-    kpl::{KplError, KplPool},
 };
 
 const KM_TO_M: f64 = 1_000.0;
