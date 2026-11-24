@@ -254,7 +254,9 @@ impl AviateDirectConfig {
 }
 
 /// Zero-overhead Tier-0 in-process flight-controller runner wrapping
-/// [`DirectXilBoard<C, M>`].
+/// [`DirectXilBoard<C, M>`]. A clone is the whole flight controller as it stands, so a host
+/// keeps one to return to an earlier instant.
+#[derive(Clone)]
 pub struct AviateDirectRunner<C, M>
 where
     C: VehicleController,

@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod navigator_feed;
+mod rewind;
 mod zaragoza;
 
 /// The first shareable link's route, degrees north and east.

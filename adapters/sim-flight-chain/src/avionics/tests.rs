@@ -18,6 +18,17 @@ struct Perturbed {
 }
 
 impl Airframe for Perturbed {
+    type Snapshot = (<C172Airframe as Airframe>::Snapshot, f64);
+
+    fn snapshot(&self) -> Self::Snapshot {
+        (self.inner.snapshot(), self.shift)
+    }
+
+    fn restore(&mut self, snapshot: &Self::Snapshot) -> Result<(), ChainError> {
+        self.shift = snapshot.1;
+        self.inner.restore(&snapshot.0)
+    }
+
     fn period(&self) -> TickSpan {
         self.inner.period()
     }

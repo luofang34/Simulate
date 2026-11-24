@@ -3,8 +3,11 @@
 //! its actuator command flies the airframe. Truth reaches the kernel through
 //! the suite and through nothing else.
 
+mod snapshot;
 #[cfg(test)]
 mod tests;
+
+pub use snapshot::BoardSnapshot;
 
 use aviate_core::control::{ControlMode, VehicleController};
 use aviate_core::kernel::DefaultAviateKernel;
