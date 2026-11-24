@@ -205,6 +205,7 @@ impl Airframe for C172Airframe {
         let Self {
             fdm,
             air: _,
+            fields: _,
             utc,
             trim: _,
             pilot,
