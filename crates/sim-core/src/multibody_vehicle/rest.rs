@@ -2,6 +2,7 @@
 //! it, and deciding at the end of each free step whether it has settled.
 
 use glam::{DQuat, DVec3};
+use mbd_core::WrenchAtSite;
 use mbd_multibody::{PinnedRestInputs, PinnedRestSpec, step_pinned_surface_rest};
 
 use super::subsystems::{MultibodyVehicleInput, MultibodyVehicleTelemetry};
@@ -12,9 +13,9 @@ use crate::flight_model::loads::LoadReadout;
 use crate::flight_model::planet_frame::spin;
 
 /// The root pose a vehicle is latched at, in fixed axes.
-pub(super) struct PinnedHold {
-    pub(super) world_pos_m: DVec3,
-    pub(super) world_rot: DQuat,
+pub(crate) struct PinnedHold {
+    pub(crate) world_pos_m: DVec3,
+    pub(crate) world_rot: DQuat,
 }
 
 fn surface_up_fixed(surface: &dyn SurfaceContactProvider, point_fixed: DVec3) -> DVec3 {
@@ -46,10 +47,11 @@ impl MultibodyVehicleBlock {
 /// Runs a step of a latched vehicle: its subsystems advance while it stays
 /// where it is. `None` when thrust, air and outside loads together lift it
 /// free, in which case nothing has been stepped.
-pub(super) fn hold_pinned_rest(
+pub(crate) fn hold_pinned_rest(
     block: &mut MultibodyVehicleBlock,
     hold: &PinnedHold,
     input: &MultibodyVehicleInput,
+    extra_wrenches: &[WrenchAtSite],
 ) -> Result<Option<MultibodyVehicleTelemetry>, BlockError> {
     let cg_fixed = hold.world_pos_m + hold.world_rot * block.mass.cg_body_m;
     let up = surface_up_fixed(block.world.surface.as_ref(), cg_fixed);
@@ -61,9 +63,12 @@ pub(super) fn hold_pinned_rest(
     (block.subsystems, block.tree) = saved;
     let (_, probe) = probe?;
     block.hold_loads(&probe, input);
+    block.elements.wrenches.extend_from_slice(extra_wrenches);
     let state = block.state.clone();
-    let lift = block.read_loads(&state, input)?;
+    let lift = block.read_loads(&state, input);
+    block.elements.wrenches.clear();
     block.elements.mechanisms.clear();
+    let lift = lift?;
     let lifting_n = hold.world_rot * (lift.external_force_body_n - lift.support_force_body_n);
     if lifting_n.dot(up) >= block.breakout_threshold_n(cg_fixed) {
         return Ok(None);
@@ -94,7 +99,7 @@ pub(super) fn hold_pinned_rest(
 
 /// Advances the rest latch at the end of a free step from the loads read
 /// there.
-pub(super) fn update_pinned_rest(block: &mut MultibodyVehicleBlock, loads: &LoadReadout) {
+pub(crate) fn update_pinned_rest(block: &mut MultibodyVehicleBlock, loads: &LoadReadout) {
     let base = block.state.base();
     let cg_fixed = block.cg_fixed_m();
     let up = surface_up_fixed(block.world.surface.as_ref(), cg_fixed);

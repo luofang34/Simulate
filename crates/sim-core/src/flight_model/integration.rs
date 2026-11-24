@@ -5,7 +5,7 @@
 use mbd_core::{ComponentTree, DynamicMassContribution};
 use mbd_multibody::{
     DormandPrince54, ForceElement, ModelState, MultibodyError, MultibodyModel, Rk4, Rosenbrock23,
-    TimeScale, Tolerances, Workspace,
+    TimeScale, Tolerance, Tolerances, Workspace,
 };
 use sim_atmosphere::AtmosphereError;
 use sim_geo::BodyEllipsoid;
@@ -124,6 +124,25 @@ impl Stepper {
         Some(Self::Adaptive(DormandPrince54::new(Tolerances::uniform(
             1e-11, 1e-11,
         ))))
+    }
+}
+
+fn min_tol(a: Tolerance, b: Tolerance) -> Tolerance {
+    Tolerance {
+        rel: a.rel.min(b.rel),
+        abs: a.abs.min(b.abs),
+    }
+}
+
+/// Component-wise tighter tolerance pair between `a` and `b`.
+pub(crate) fn tightest_tolerances(a: Tolerances, b: Tolerances) -> Tolerances {
+    Tolerances {
+        length: min_tol(a.length, b.length),
+        attitude: min_tol(a.attitude, b.attitude),
+        angle: min_tol(a.angle, b.angle),
+        linear_rate: min_tol(a.linear_rate, b.linear_rate),
+        angular_rate: min_tol(a.angular_rate, b.angular_rate),
+        auxiliary: min_tol(a.auxiliary, b.auxiliary),
     }
 }
 

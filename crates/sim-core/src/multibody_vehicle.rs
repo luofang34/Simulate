@@ -15,12 +15,14 @@ use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 pub use carried::{CarriedDecoupledStep, CarriedReaction};
 use element_state::CanopyState;
 pub use mbd_multibody::JointDriveInput;
+pub(crate) use step::EnvSample;
 use step::{BLOCK_NAME, collect_dynamic_masses};
+pub(crate) use step_subsystems::SubsystemStepOut;
 use subsystems::validate_input;
 pub use subsystems::{
-    CgTrimConfig, EllipsoidSurfaceProvider, MultibodySubsystems, MultibodyVehicleConfig,
-    MultibodyVehicleInput, MultibodyVehicleSnapshot, MultibodyVehicleTelemetry, PropulsionAssembly,
-    PropulsionCommands, SurfaceContactProvider,
+    CgTrimConfig, EllipsoidSurfaceProvider, MultibodyStructuralSnapshot, MultibodySubsystems,
+    MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
+    MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands, SurfaceContactProvider,
 };
 pub(crate) use topology::{
     VehicleAero, merge_aero_remapped, merge_subsystems_remapped, remap_aero_subset,
@@ -58,7 +60,7 @@ pub(crate) struct VehicleWorld {
 impl VehicleWorld {
     /// What the force elements sample over a step starting at `utc`, under
     /// the control channels of `input`.
-    fn environment<'a>(
+    pub(crate) fn environment<'a>(
         &'a self,
         body: BodyEllipsoid,
         utc: UtcTime,
@@ -298,7 +300,31 @@ impl MultibodyVehicleBlock {
         crate::Block::snapshot(self)
     }
 
-    fn current_utc(&self) -> UtcTime {
+    pub(crate) fn world_environment<'a>(
+        &'a self,
+        input: &'a MultibodyVehicleInput,
+    ) -> FlightEnvironment<'a> {
+        self.world
+            .environment(self.config.body, self.current_utc(), input)
+    }
+
+    pub(crate) const fn model(&self) -> &MultibodyModel {
+        &self.model
+    }
+
+    pub(crate) const fn mount(&self) -> &RootMount {
+        &self.mount
+    }
+
+    pub(crate) const fn elements(&self) -> &VehicleElements {
+        &self.elements
+    }
+
+    pub(crate) fn elements_mut(&mut self) -> &mut VehicleElements {
+        &mut self.elements
+    }
+
+    pub(crate) fn current_utc(&self) -> UtcTime {
         let elapsed = self
             .now
             .duration_since(crate::SimInstant::START)
@@ -311,9 +337,10 @@ impl MultibodyVehicleBlock {
             .vehicle_of(&self.state.base(), self.mass.cg_body_m)
     }
 
-    fn run_step(&mut self, input: &MultibodyVehicleInput) -> Result<(), crate::BlockError> {
-        validate_input(input)?;
-        let tel = self.advance_step(input)?;
+    pub(crate) fn finalize_step_telemetry(
+        &mut self,
+        tel: MultibodyVehicleTelemetry,
+    ) -> Result<(), crate::BlockError> {
         let state = self.vehicle_state();
         if !(state.position_ecef.is_finite()
             && state.velocity_ecef.is_finite()
@@ -335,6 +362,12 @@ impl MultibodyVehicleBlock {
         self.telemetry = tel;
         self.now = self.now.advanced(self.config.period);
         Ok(())
+    }
+
+    fn run_step(&mut self, input: &MultibodyVehicleInput) -> Result<(), crate::BlockError> {
+        validate_input(input)?;
+        let tel = self.advance_step(input)?;
+        self.finalize_step_telemetry(tel)
     }
 }
 

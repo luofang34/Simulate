@@ -7,7 +7,9 @@ use sim_geo::{BodyEllipsoid, LocalFrame, UtcTime};
 
 use super::rest::{PinnedHold, hold_pinned_rest, update_pinned_rest};
 use super::step_subsystems::{SubsystemStepOut, run_subsystems_step};
-use super::subsystems::{MultibodySubsystems, MultibodyVehicleInput, MultibodyVehicleTelemetry};
+use super::subsystems::{
+    MultibodySubsystems, MultibodyVehicleInput, MultibodyVehicleTelemetry, validate_input,
+};
 use super::telemetry::{build_telemetry, merge_dynamic_masses};
 use super::{MultibodyVehicleBlock, element_state};
 use crate::BlockError;
@@ -62,11 +64,11 @@ pub(super) fn collect_dynamic_masses(
 
 /// The air the vehicle's subsystems see at its centre of gravity for the
 /// span of a step.
-pub(super) struct EnvSample {
-    pub(super) ambient: mbd_core::AmbientGas,
-    pub(super) air_vel_root_m_s: DVec3,
-    pub(super) airspeed_m_s: f64,
-    pub(super) dynamic_pressure_pa: f64,
+pub(crate) struct EnvSample {
+    pub(crate) ambient: mbd_core::AmbientGas,
+    pub(crate) air_vel_root_m_s: DVec3,
+    pub(crate) airspeed_m_s: f64,
+    pub(crate) dynamic_pressure_pa: f64,
 }
 
 /// Samples the air at `cg_fixed_m` for a vehicle whose body axes move as
@@ -112,7 +114,7 @@ impl MultibodyVehicleBlock {
 
     /// Samples the air and steps every subsystem by `dt_s` with the vehicle
     /// where it is.
-    pub(super) fn step_subsystems(
+    pub(crate) fn step_subsystems(
         &mut self,
         dt_s: f64,
         input: &MultibodyVehicleInput,
@@ -145,7 +147,7 @@ impl MultibodyVehicleBlock {
 
     /// Takes the masses the subsystems now carry into the model and the
     /// vehicle's mass properties.
-    pub(super) fn take_up_masses(&mut self, sub: &SubsystemStepOut) -> Result<(), BlockError> {
+    pub(crate) fn take_up_masses(&mut self, sub: &SubsystemStepOut) -> Result<(), BlockError> {
         let dyn_masses =
             merge_dynamic_masses(&sub.fluid_out.mass_contributions, &sub.grain_contribs);
         self.model
@@ -161,7 +163,7 @@ impl MultibodyVehicleBlock {
     /// Puts the loads held over a step into the elements: gravity at the
     /// centre of gravity, the wrenches of the subsystems and of `input`,
     /// its joint drives, wheel commands and mechanisms.
-    pub(super) fn hold_loads(&mut self, sub: &SubsystemStepOut, input: &MultibodyVehicleInput) {
+    pub(crate) fn hold_loads(&mut self, sub: &SubsystemStepOut, input: &MultibodyVehicleInput) {
         let elements = &mut self.elements;
         elements.gravity = Some(CgGravity {
             cg_root_link_m: self.mount.point_in_link(self.mass.cg_body_m),
@@ -206,7 +208,10 @@ impl MultibodyVehicleBlock {
 
     /// The state the model is integrated from this step: the vehicle's own,
     /// with the states of this step's mechanisms appended.
-    fn step_state(&self, input: &MultibodyVehicleInput) -> Result<ModelState, BlockError> {
+    pub(crate) fn step_state(
+        &self,
+        input: &MultibodyVehicleInput,
+    ) -> Result<ModelState, BlockError> {
         if self.elements.mechanisms.is_empty() {
             return Ok(self.state.clone());
         }
@@ -307,7 +312,7 @@ impl MultibodyVehicleBlock {
                 world_pos_m,
                 world_rot,
             };
-            if let Some(held) = hold_pinned_rest(self, &hold, input)? {
+            if let Some(held) = hold_pinned_rest(self, &hold, input, &[])? {
                 return Ok(held);
             }
             self.pinned_rest = PinnedSurfaceRest::Free;
@@ -337,5 +342,64 @@ impl MultibodyVehicleBlock {
             specific_force,
             matches!(self.pinned_rest, PinnedSurfaceRest::Pinned { .. }),
         ))
+    }
+
+    pub(crate) fn probe_pinned_for_group(
+        &mut self,
+        input: &MultibodyVehicleInput,
+        extra_wrenches: &[mbd_core::WrenchAtSite],
+    ) -> Result<bool, BlockError> {
+        validate_input(input)?;
+        self.sync_elements()?;
+        let PinnedSurfaceRest::Pinned {
+            world_pos_m,
+            world_rot,
+        } = self.pinned_rest
+        else {
+            return Ok(false);
+        };
+        let hold = PinnedHold {
+            world_pos_m,
+            world_rot,
+        };
+        if let Some(held) = hold_pinned_rest(self, &hold, input, extra_wrenches)? {
+            self.finalize_step_telemetry(held)?;
+            return Ok(true);
+        }
+        self.pinned_rest = PinnedSurfaceRest::Free;
+        Ok(false)
+    }
+
+    pub(crate) fn finish_group_step(
+        &mut self,
+        env: &EnvSample,
+        sub: &SubsystemStepOut,
+        state: &ModelState,
+        readout: LoadReadout,
+    ) -> Result<(), BlockError> {
+        self.model
+            .write_joints(state, &mut self.tree)
+            .map_err(block_multi)?;
+        let dyn_masses =
+            merge_dynamic_masses(&sub.fluid_out.mass_contributions, &sub.grain_contribs);
+        self.mass = self
+            .tree
+            .mass_properties_with_contributions(&dyn_masses)
+            .map_err(block_mbd)?;
+        self.mechanism_states = element_state::mechanism_states(&self.elements, state);
+        element_state::copy_prefix(state, &mut self.state);
+        self.elements.mechanisms.clear();
+        self.last_alpha_root_rad_s2 = readout.alpha_body;
+        update_pinned_rest(self, &readout);
+        let specific_force = readout.external_force_body_n / self.mass.total_mass_kg;
+        let tel = build_telemetry(
+            &self.subsystems,
+            env,
+            sub,
+            &readout,
+            specific_force,
+            matches!(self.pinned_rest, PinnedSurfaceRest::Pinned { .. }),
+        );
+        self.finalize_step_telemetry(tel)
     }
 }

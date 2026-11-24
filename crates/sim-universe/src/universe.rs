@@ -1,7 +1,7 @@
 //! Every vessel of a run on one master clock, each in the fidelity tier that
 //! suits where it is.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use sim_bodies::BodyCatalog;
@@ -19,6 +19,7 @@ use crate::bus::{VesselBusConfig, VesselBusState};
 use crate::handoff::to_body_fixed;
 use crate::local::{LocalFactory, LocalPlant};
 use crate::planning::Planner;
+use crate::proximity::{ProximityStepReport, UniverseInterVesselLink};
 use crate::tiering::{TierChange, TierPolicy};
 
 mod carried_arc;
@@ -26,6 +27,8 @@ mod checkpoint;
 mod exchange;
 mod handoffs;
 mod planned;
+mod proximity_ops;
+mod proximity_step;
 
 pub use checkpoint::UniverseCheckpoint;
 
@@ -73,13 +76,17 @@ pub(crate) struct Vessel {
     pub(crate) bus: VesselBusState,
 }
 
+pub(crate) struct RetiredVessel {
+    meta: proximity_step::ExtractedPlantMeta,
+    survivor_world_donor: VesselId,
+}
+
 /// Every vessel of a run, advanced together on the master clock.
 ///
-/// Local vessels step in id order, each on its own period. Orbital vessels
-/// belong to one [`OrbitalUniverse`], which owns their events, commands and
-/// integration grid. Either way the result depends only on the instants
-/// asked for, never on the order vessels were added or how the caller
-/// slices time.
+/// Uncoupled local vessels step in id order, each on its own period; coupled
+/// vessels step synchronously through `sim-core` proximity groups. Orbital
+/// vessels belong to one [`OrbitalUniverse`], which owns their events,
+/// commands and integration grid.
 pub struct Universe {
     epoch: SimEpoch,
     orbital: OrbitalUniverse,
@@ -94,6 +101,15 @@ pub struct Universe {
     state_reinitializations: u64,
     planner: Planner,
     orbital_workers: usize,
+    pub(crate) links: Vec<UniverseInterVesselLink>,
+    pub(crate) active_vessel: Option<VesselId>,
+    pub(crate) next_vessel_id: u64,
+    pub(crate) next_link_id: u64,
+    pub(crate) proximity_spawned: BTreeSet<VesselId>,
+    pub(crate) retired_ever: BTreeSet<VesselId>,
+    pub(crate) auto_demoted: BTreeSet<VesselId>,
+    pub(crate) retired_vessels: BTreeMap<VesselId, RetiredVessel>,
+    pub(crate) proximity_report: ProximityStepReport,
 }
 
 impl Universe {
@@ -134,6 +150,15 @@ impl Universe {
             state_reinitializations: 0,
             planner: Planner::new(),
             orbital_workers: 1,
+            links: Vec::new(),
+            active_vessel: None,
+            next_vessel_id: 1,
+            next_link_id: 1,
+            proximity_spawned: BTreeSet::new(),
+            retired_ever: BTreeSet::new(),
+            auto_demoted: BTreeSet::new(),
+            retired_vessels: BTreeMap::new(),
+            proximity_report: ProximityStepReport::default(),
         }
     }
 
@@ -225,6 +250,10 @@ impl Universe {
                 bus,
             },
         );
+        self.next_vessel_id = self.next_vessel_id.max(id.0.saturating_add(1));
+        if self.active_vessel.is_none() {
+            self.active_vessel = Some(id);
+        }
         self.refresh_vessel_bus(id);
         Ok(())
     }
@@ -272,6 +301,10 @@ impl Universe {
                 bus,
             },
         );
+        self.next_vessel_id = self.next_vessel_id.max(id.0.saturating_add(1));
+        if self.active_vessel.is_none() {
+            self.active_vessel = Some(id);
+        }
         self.refresh_vessel_bus(id);
         Ok(())
     }

@@ -336,7 +336,7 @@ impl StepSetup<'_, '_, VehicleElements> {
         })
     }
 
-    fn loads_at(
+    pub(crate) fn loads_at(
         &self,
         mount: &RootMount,
         state: &ModelState,

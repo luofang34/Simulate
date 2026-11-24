@@ -7,12 +7,12 @@ use glam::{DMat3, DVec3};
 use sim_atmosphere::AtmosphereField;
 use sim_bodies::BodyDescriptor;
 use sim_core::{
-    Block, EllipsoidSurfaceProvider, MultibodyVehicleBlock, MultibodyVehicleInput,
-    MultibodyVehicleSnapshot, SimInstant, TickSpan, VehicleState,
+    Block, EllipsoidSurfaceProvider, MultibodyStructuralSnapshot, MultibodyVehicleBlock,
+    MultibodyVehicleInput, SimInstant, TickSpan, VehicleState,
 };
 use sim_geo::BodyEllipsoid;
 
-use super::{LocalPlant, OrbitalBody};
+use super::{LocalPlant, OrbitalBody, whole_periods};
 use crate::UniverseError;
 use crate::carry::{CarriedLoads, CarryContext, PlantSnapshot};
 
@@ -47,7 +47,7 @@ pub struct MultibodyLocalPlant {
 
 #[derive(Debug, Clone)]
 struct MultibodyPlantSnapshot {
-    block: MultibodyVehicleSnapshot,
+    structural: MultibodyStructuralSnapshot,
     input: MultibodyVehicleInput,
     start: SimInstant,
     /// The body the block's state is fixed to.
@@ -134,6 +134,60 @@ impl MultibodyLocalPlant {
     /// Mutable reference to underlying [`MultibodyVehicleBlock`].
     pub fn block_mut(&mut self) -> &mut MultibodyVehicleBlock {
         &mut self.block
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_parts(
+        block: MultibodyVehicleBlock,
+        input: MultibodyVehicleInput,
+        body: BodyEllipsoid,
+        start: SimInstant,
+        bounding_radius_m: f64,
+        carry_period: Option<TickSpan>,
+        max_carried_thrust_accel_m_s2: f64,
+    ) -> Self {
+        let block_period = block.period();
+        Self {
+            block,
+            input,
+            body,
+            start,
+            bounding_radius_m,
+            carry_period: carry_period.and_then(|p| whole_periods(p, block_period)),
+            max_carried_thrust_accel_m_s2,
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        MultibodyVehicleBlock,
+        MultibodyVehicleInput,
+        BodyEllipsoid,
+        SimInstant,
+        f64,
+        Option<TickSpan>,
+        f64,
+    ) {
+        (
+            self.block,
+            self.input,
+            self.body,
+            self.start,
+            self.bounding_radius_m,
+            self.carry_period,
+            self.max_carried_thrust_accel_m_s2,
+        )
+    }
+
+    pub(crate) fn rebuild_factory(&self) -> crate::local::LocalFactory {
+        crate::local::build_multibody_factory(
+            self.block.structural_snapshot(),
+            self.bounding_radius_m,
+            self.carry_period,
+            self.max_carried_thrust_accel_m_s2,
+        )
     }
 
     fn body_properties(&self) -> OrbitalBody {
@@ -299,18 +353,6 @@ impl MultibodyLocalPlant {
     }
 }
 
-/// `span` rounded up to a whole number of `period`s, at least one.
-fn whole_periods(span: TickSpan, period: TickSpan) -> Option<TickSpan> {
-    let period_ticks = period.ticks_u128();
-    if period_ticks == 0 {
-        return None;
-    }
-    let steps = span.ticks_u128().div_ceil(period_ticks).max(1);
-    Some(TickSpan::from_ticks_u128(
-        steps.saturating_mul(period_ticks),
-    ))
-}
-
 impl LocalPlant for MultibodyLocalPlant {
     fn body(&self) -> BodyEllipsoid {
         self.body
@@ -413,7 +455,7 @@ impl LocalPlant for MultibodyLocalPlant {
 
     fn snapshot_internals(&self) -> Option<PlantSnapshot> {
         Some(PlantSnapshot::new(MultibodyPlantSnapshot {
-            block: self.block.snapshot(),
+            structural: self.block.structural_snapshot(),
             input: self.input.clone(),
             start: self.start,
             body: self.body,
@@ -426,7 +468,7 @@ impl LocalPlant for MultibodyLocalPlant {
         };
         // A state fixed to another body means nothing in this one's axes,
         // and the fields of the body the plant left are not kept.
-        if saved.body != self.body || self.block.try_restore(&saved.block).is_err() {
+        if saved.body != self.body || self.block.restore_structural(&saved.structural).is_err() {
             return false;
         }
         self.input = saved.input.clone();

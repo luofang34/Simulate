@@ -121,4 +121,27 @@ pub enum UniverseError {
     /// A plan's command acts before the plan's deadline.
     #[error("plan {0:?} commanded an instant before its deadline")]
     PlanCommandTooEarly(PlanId),
+    /// A vessel is participating in an active inter-vessel link and cannot leave the local tier.
+    #[error("vessel {0:?} is coupled by an active inter-vessel link")]
+    VesselCoupled(VesselId),
+    /// Proximity/staging/docking operations require a [`crate::MultibodyLocalPlant`].
+    #[error("vessel {0:?} does not host a multibody local plant")]
+    NotMultibodyPlant(VesselId),
+    /// Two-vessel coupling requires distinct vessels.
+    #[error("vessel {0:?} cannot be linked to itself")]
+    SameVesselLink(VesselId),
+    /// Coupled vessels must fly on the same simulation period and central body.
+    #[error("coupled vessel {vessel:?} is incompatible: {detail}")]
+    IncompatibleCoupling {
+        /// Vessel whose period or central body did not match.
+        vessel: VesselId,
+        /// Reason the coupling could not be formed.
+        detail: &'static str,
+    },
+    /// No active inter-vessel link with this identifier exists.
+    #[error("no inter-vessel link with id {0}")]
+    UnknownLink(u64),
+    /// A tether-only operation targeted another kind of inter-vessel link.
+    #[error("inter-vessel link {0} is not a winch tether")]
+    NotATetherLink(u64),
 }

@@ -99,11 +99,7 @@ impl Universe {
     /// Advances every vessel to `until`, stopping the orbital tier at each
     /// carried plant's exchange instant on the way.
     pub(super) fn advance_all_to(&mut self, until: SimInstant) -> Result<(), UniverseError> {
-        for vessel in self.vessels.values_mut() {
-            if let Flight::Local(plant) = &mut vessel.flight {
-                plant.advance_to(until)?;
-            }
-        }
+        self.advance_local_to(until)?;
         loop {
             let stop = self.next_exchange(until).unwrap_or(until);
             if stop > self.now {
