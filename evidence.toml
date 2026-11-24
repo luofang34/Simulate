@@ -15,7 +15,7 @@ in_scope = [
     "sim-render", "sim-mission", "sim-universe", "sim-pack", "sim-scenario",
     "sim-apollo", "sim-raketa", "sim-p38g",
     "sim-aviate", "sim-navdata", "sim-indicate", "sim-pilotage", "sim-navigate",
-    "sim-flight-chain", "sim-maplibre", "sim-chain-trial", "sim-link-host",
+    "sim-flight-chain", "sim-flightdeck", "sim-maplibre", "sim-chain-trial", "sim-link-host",
     "ironbird", "link-replay", "nav-trial", "simulate-app",
 ]
 no_out_of_scope_deps = false
@@ -70,7 +70,7 @@ allow_same_layer = false
 
 [[architecture.layers]]
 name = "adapter_composites"
-crates = ["sim-flight-chain", "sim-maplibre"]
+crates = ["sim-flight-chain", "sim-flightdeck", "sim-maplibre"]
 allow_same_layer = false
 
 [[architecture.layers]]
