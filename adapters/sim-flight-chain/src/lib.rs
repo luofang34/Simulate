@@ -30,8 +30,8 @@ pub use pilotage_mission::{
     DisplayFix, DisplayWaypoint, FlightPhase, HoldingEntry, HoldingLeg, HoldingPattern,
     HoldingPatternStatus, HoldingTurn, LegDisplay, LegRole, MissionEvent, MissionState, NavQuality,
     NavigationDisplay, OnboardSolution, PlannedAltitude, PlannedCourseReference, PlannedHold,
-    PlannedHoldLength, PlannedPath, PositionIntegrity, PositionKind, SourceIntegrity,
-    SourceIntegrityState, SteeringIntegrity, SteeringSource, TerminalHoldingPattern, ToFrom,
-    WaypointProgress, WaypointTurn, WaypointTurnDirection,
+    PlannedHoldLength, PlannedPath, PositionIntegrity, PositionKind, SelectedTargets,
+    SourceIntegrity, SourceIntegrityState, SteeringIntegrity, SteeringSource,
+    TerminalHoldingPattern, ToFrom, WaypointProgress, WaypointTurn, WaypointTurnDirection,
 };
 pub use pilotage_protocol::{VehicleClass, VehicleId};

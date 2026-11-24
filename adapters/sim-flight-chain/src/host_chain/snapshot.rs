@@ -42,18 +42,32 @@ where
     /// The chain as it stands. The host core refuses a copy only when it talks to a
     /// flight controller outside the process, which a chain never does.
     pub fn snapshot(&self) -> Result<ChainSnapshot<A, C, M>, ChainError> {
+        // Every field is named so that one added to the chain must be placed here.
+        let Self {
+            board,
+            core,
+            record,
+            plan,
+            load_at,
+            next_wake,
+            transmit,
+            transmit_len,
+            sent,
+            events,
+            counters,
+        } = self;
         Ok(ChainSnapshot {
-            board: self.board.snapshot(),
-            core: Box::new(copy_of(&self.core)?),
-            record: self.record.clone(),
-            plan: self.plan.clone(),
-            load_at: self.load_at,
-            next_wake: self.next_wake,
-            transmit: self.transmit.clone(),
-            transmit_len: self.transmit_len,
-            sent: self.sent.clone(),
-            events: self.events.clone(),
-            counters: self.counters,
+            board: board.snapshot(),
+            core: Box::new(copy_of(core)?),
+            record: record.clone(),
+            plan: plan.clone(),
+            load_at: *load_at,
+            next_wake: *next_wake,
+            transmit: transmit.clone(),
+            transmit_len: *transmit_len,
+            sent: sent.clone(),
+            events: events.clone(),
+            counters: *counters,
         })
     }
 

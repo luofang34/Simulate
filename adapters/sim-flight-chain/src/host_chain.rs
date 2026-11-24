@@ -6,6 +6,7 @@
 //! serial line moves them on the vehicle. Nothing between the two is
 //! Simulate's: the core encodes every command and reads every report.
 
+mod operator;
 mod snapshot;
 #[cfg(test)]
 mod tests;
@@ -180,7 +181,8 @@ where
             board,
             core: Box::new(core),
             record: None,
-            plan: Some(waypoint_plan(route)),
+            // A route with no fix is a chain that waits for the crew's plan.
+            plan: (!route.fixes.is_empty()).then(|| waypoint_plan(&route.fixes)),
             load_at: nanos_of(route.plan_loaded_at_s),
             next_wake: MonotonicNanos::from_nanos(0),
             transmit: vec![0; TRANSMIT_RING_BYTES],
@@ -376,10 +378,9 @@ fn nanos_of(seconds: f64) -> MonotonicNanos {
     MonotonicNanos::from_nanos((seconds.max(0.0) * NANOS_PER_SECOND).round() as u64)
 }
 
-fn waypoint_plan(route: &ChainRoute) -> WaypointPlan {
+fn waypoint_plan(fixes: &[RouteFix]) -> WaypointPlan {
     WaypointPlan::new(
-        route
-            .fixes
+        fixes
             .iter()
             .map(|fix| PlannedWaypoint {
                 latitude_deg: fix.lat_deg,

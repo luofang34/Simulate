@@ -131,6 +131,11 @@ where
         &self.airframe
     }
 
+    /// The airframe, to put the pilot's hands on its controls.
+    pub const fn airframe_mut(&mut self) -> &mut A {
+        &mut self.airframe
+    }
+
     /// The sensor suite, to read what its devices drew at power-up.
     pub const fn suite(&self) -> &SensorSuite {
         &self.suite
