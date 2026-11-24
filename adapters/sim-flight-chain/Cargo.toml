@@ -22,6 +22,7 @@ pilotage-mission = { workspace = true }
 pilotage-protocol = { workspace = true }
 sim-atmosphere = { workspace = true }
 sim-aviate = { workspace = true }
+sim-bodies = { workspace = true }
 sim-core = { workspace = true }
 sim-devices = { workspace = true }
 sim-geo = { workspace = true }

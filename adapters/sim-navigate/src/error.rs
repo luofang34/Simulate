@@ -129,6 +129,10 @@ pub enum NavigateBridgeError {
         /// The instant the output describes.
         valid_at: SimInstant,
     },
+    /// The catalog entry of the body the vehicle flies about could not be
+    /// built.
+    #[error("the body's truth fields could not be built")]
+    Body(#[source] sim_bodies::FieldBuildError),
     /// The simulated IMU's error model refused its statistics or an
     /// increment.
     #[error("simulated IMU refused its input")]

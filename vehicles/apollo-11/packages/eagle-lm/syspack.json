@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "apollo-11-eagle-lm",
   "name": "Apollo 11 Lunar Module Eagle",
   "version": "1.0.0",
@@ -301,7 +301,7 @@
       "nominal_power_w": 0.0
     }
   ],
-  "dynamics": "RigidBodyVacuum",
+  "dynamics": { "MultibodyComposed": { "aero_elements": [] } },
   "devices": [
     {
       "id": "pgncs_imu",

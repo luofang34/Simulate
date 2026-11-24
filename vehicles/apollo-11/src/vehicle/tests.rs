@@ -131,8 +131,24 @@ fn the_cm_alone_keeps_its_offset_cg_and_the_sm_dominates_the_stack() {
 #[test]
 fn the_capsule_trims_near_twenty_degrees() {
     let aero = apollo_cm_aero().unwrap();
-    assert_eq!(aero.params().base_radius_m, 1.9558);
-    assert_eq!(aero.params().nose_radius_m, 4.69);
+    let [element] = aero.as_slice() else {
+        panic!("one element, the capsule: {aero:?}");
+    };
+    let mbd_aero::AeroElementKind::BluntCapsule(capsule) = &element.kind else {
+        panic!("a blunt capsule: {element:?}");
+    };
+    assert_eq!(element.component, CM_STRUCTURE);
+    assert_eq!(capsule.params().base_radius_m, 1.9558);
+    assert_eq!(capsule.params().nose_radius_m, 4.69);
+    // The shield's centre of curvature lies 4.69 m behind the apex on the
+    // symmetry axis, given here from the capsule's centre of gravity.
+    let centre = build_apollo_csm_tree()
+        .unwrap()
+        .world_transform_in_root(CM_STRUCTURE)
+        .unwrap()
+        .0
+        + capsule.params().reference_point_body_m;
+    assert!((centre - glam::DVec3::new(-4.69, 0.0, 0.0)).length() < 1e-12);
     let trim = cm_analytic_trim_incidence_rad().unwrap();
     assert!(trim < 0.0 && (trim.abs() - 20f64.to_radians()).abs() < 2f64.to_radians());
 }
@@ -197,10 +213,11 @@ fn every_csm_key_resolves_to_its_id_constant() {
 fn the_packages_declare_their_domains_and_dynamics() {
     let lm = apollo_lm_package().unwrap();
     assert_eq!(lm.manifest().kind, SystemKind::LunarLander);
-    assert_eq!(lm.manifest().dynamics, DynamicsSpec::RigidBodyVacuum);
+    assert_eq!(lm.manifest().dynamics, DynamicsSpec::vacuum());
     let csm = apollo_csm_package().unwrap();
     assert_eq!(csm.manifest().kind, SystemKind::ReentryCapsule);
-    assert_eq!(csm.manifest().dynamics.kind(), "RigidBodyBluntCapsule");
+    assert_eq!(csm.manifest().dynamics.kind(), "MultibodyComposed");
+    assert_eq!(csm.build_aero_elements().unwrap().len(), 1);
 }
 
 /// `(type_id, site, parameters)` of every custom device.

@@ -25,6 +25,10 @@ pub enum ChainError {
     /// A device of the sensor suite refused its configuration or a sample.
     #[error("a sensor device failed")]
     Devices(#[source] DeviceError),
+    /// The catalog entry of the body the vehicle flies about could not be
+    /// built.
+    #[error("the body's truth fields could not be built")]
+    Body(#[source] sim_bodies::FieldBuildError),
     /// The air field has no state where the vehicle is.
     #[error("no air state at the vehicle")]
     Air(#[source] AtmosphereError),

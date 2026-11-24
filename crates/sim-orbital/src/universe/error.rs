@@ -3,7 +3,8 @@
 use sim_spacetime::SimInstant;
 
 use crate::{
-    dop853::Dop853Error, gravity::GravityError, ids::VesselId, manifest::ManifestMismatchField,
+    checkpoint::PropagatorKind, dop853::Dop853Error, gravity::GravityError, ids::VesselId,
+    manifest::ManifestMismatchField,
 };
 
 /// Transactional scheduling, rollback, or manifest verification failure.
@@ -101,6 +102,28 @@ pub enum SchedulerError {
         frontier: SimInstant,
         /// Target step timestamp that required coverage.
         step_goal: SimInstant,
+    },
+    /// Externally owned loads held a non-finite component or a non-positive mass.
+    #[error("external loads for {vessel_id} at {} ticks are not finite or have no mass", instant.ticks_u128())]
+    InvalidExternalLoads {
+        /// Vessel the loads were for.
+        vessel_id: VesselId,
+        /// Committed instant at which they were to take effect.
+        instant: SimInstant,
+    },
+    /// A vessel on a closed-form path, an unperturbed Kepler arc or rest on a surface,
+    /// holds loads that path has no way to apply.
+    #[error(
+        "{vessel_id} holds loads its {propagator:?} propagation cannot apply at {} ticks",
+        instant.ticks_u128()
+    )]
+    LoadsNotPropagated {
+        /// Vessel holding the loads.
+        vessel_id: VesselId,
+        /// The closed-form propagation the vessel is on.
+        propagator: PropagatorKind,
+        /// Instant of the checkpoint that holds them.
+        instant: SimInstant,
     },
     /// Snapshot manifest disagreed with the active universe's model manifest.
     #[error("snapshot manifest mismatch on field {0}")]

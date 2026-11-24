@@ -22,7 +22,7 @@ use sim_orbital::{
 use sim_raketa::{RAKETA_CG_Y_M, RAKETA_PLANT_PERIOD, RaketaCommand, RaketaPlant};
 use sim_scenario::ScenarioWorld;
 use sim_spacetime::SimEpoch;
-use sim_universe::{Tier, TierPolicy, Universe, UniverseError, VesselBusTelemetry};
+use sim_universe::{Tier, Universe, UniverseError, VesselBusTelemetry};
 
 use super::free_world::SolarSystem;
 use crate::error::AppSimError;
@@ -106,7 +106,7 @@ impl SpaceWorld {
         )
         .map_err(|e| universe_error(UniverseError::LocalPlant(Box::new(e))))?;
         let mut universe = Universe::new(epoch.clone(), solar.context())
-            .with_tier_policy(TierPolicy::standard())
+            .with_regime_tier_policy()
             .with_plan_executor(plan_executor());
         let keeper = spawn_jwst_l2(&mut universe, &epoch, solar, &environment)?;
         universe.attach_plan_schedule(Box::new(keeper));
@@ -360,7 +360,7 @@ impl SpaceWorld {
             .universe
             .central_body(OWNSHIP)
             .map_err(universe_error)?;
-        if sim_universe::body_ellipsoid(central).is_some() {
+        if self.universe.bodies().ellipsoid_of(central).is_some() {
             self.central = central;
             self.truth = aircraft_axes(
                 self.universe

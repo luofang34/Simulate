@@ -175,7 +175,30 @@ impl TdbEpoch {
     pub fn advanced_seconds(self, delta_s: f64) -> Self {
         Self::from_j2000_seconds_f64(self.as_j2000_seconds_f64() + delta_s).unwrap_or(self)
     }
+
+    /// This epoch as UTC, to within the leap seconds counted before and after 2017:
+    /// good for sampling an environment model (an atmosphere, a magnetic field), where
+    /// a minute is nothing. A conversion that must be exact goes through the run's
+    /// `TimeScaleCatalog`.
+    #[must_use]
+    pub fn approximate_utc(self) -> sim_geo::UtcTime {
+        sim_geo::UtcTime::from_unix_seconds(
+            self.as_j2000_seconds_f64() + J2000_NOON_UNIX_LABEL_S - TT_MINUS_UNIX_LABEL_2017_S,
+        )
+    }
+
+    /// This epoch as a decimal year counted in Julian years from 2000, within a day of
+    /// the calendar's: the date a main-field or climatology model is evaluated for.
+    #[must_use]
+    pub fn approximate_decimal_year(self) -> f64 {
+        2000.0 + (self.as_j2000_seconds_f64() / 86_400.0 + 0.5) / 365.25
+    }
 }
+
+/// `2000-01-01T12:00:00` as seconds on the Unix count.
+const J2000_NOON_UNIX_LABEL_S: f64 = 946_728_000.0;
+/// `TT - UTC` since the leap second of 2017, s: `32.184 + 37`.
+const TT_MINUS_UNIX_LABEL_2017_S: f64 = 69.184;
 
 /// Pure adapter mapping `SimInstant` ticks onto `TDB` coordinate epochs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

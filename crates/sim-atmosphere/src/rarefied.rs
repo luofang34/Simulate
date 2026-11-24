@@ -7,17 +7,6 @@ use crate::AtmosphereSample;
 #[cfg(test)]
 mod tests;
 
-/// Sutherland reference viscosity of air, Pa·s.
-const SUTHERLAND_MU0_PA_S: f64 = 1.716e-5;
-/// Sutherland reference temperature, kelvin.
-const SUTHERLAND_T0_K: f64 = 273.15;
-/// Sutherland constant of air, kelvin.
-const SUTHERLAND_S_K: f64 = 110.4;
-/// Boltzmann constant, J/K (exact, SI 2019).
-const BOLTZMANN_J_K: f64 = 1.380_649e-23;
-/// Effective hard-sphere collision diameter of an air molecule, metres.
-const AIR_MOLECULE_DIAMETER_M: f64 = 3.65e-10;
-
 /// Knudsen number below which the Navier–Stokes equations hold with no-slip walls.
 const SLIP_KN: f64 = 0.01;
 /// Knudsen number where slip-wall corrections stop being enough.
@@ -55,30 +44,22 @@ impl FlowRegime {
 }
 
 impl AtmosphereSample {
-    /// Dynamic viscosity by Sutherland's law, Pa·s; `0.0` where there is no gas.
+    /// Multi-species mixture dynamic viscosity from `mbd-core`, Pa·s; `0.0` where there is no gas.
     #[must_use]
     pub fn dynamic_viscosity_pa_s(&self) -> f64 {
-        let t = self.temperature_k;
-        if self.density_kg_m3 <= 0.0 || self.pressure_pa <= 0.0 || t <= 0.0 {
-            return 0.0;
-        }
-        SUTHERLAND_MU0_PA_S * (t / SUTHERLAND_T0_K).powf(1.5) * (SUTHERLAND_T0_K + SUTHERLAND_S_K)
-            / (t + SUTHERLAND_S_K)
+        self.ambient_gas().dynamic_viscosity_pa_s
     }
 
-    /// Hard-sphere kinetic-theory mean free path `k_B T / (√2 π d² p)`, metres;
+    /// Multi-species kinetic-theory mean free path from `mbd-core`, metres;
     /// infinite in vacuum.
     #[must_use]
     pub fn mean_free_path_m(&self) -> f64 {
-        if self.pressure_pa <= 0.0 {
-            return f64::INFINITY;
+        let gas = self.ambient_gas();
+        if gas.is_vacuum() || gas.mean_free_path_m <= 0.0 {
+            f64::INFINITY
+        } else {
+            gas.mean_free_path_m
         }
-        BOLTZMANN_J_K * self.temperature_k
-            / (std::f64::consts::SQRT_2
-                * std::f64::consts::PI
-                * AIR_MOLECULE_DIAMETER_M
-                * AIR_MOLECULE_DIAMETER_M
-                * self.pressure_pa)
     }
 
     /// Knudsen number `λ / L` for a body of characteristic length `L` metres;
@@ -88,7 +69,7 @@ impl AtmosphereSample {
         if !(characteristic_length_m.is_finite() && characteristic_length_m > 0.0) {
             return f64::INFINITY;
         }
-        self.mean_free_path_m() / characteristic_length_m
+        self.ambient_gas().knudsen_number(characteristic_length_m)
     }
 
     /// Flow regime around a body of characteristic length `L` metres.

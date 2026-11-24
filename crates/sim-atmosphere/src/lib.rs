@@ -11,16 +11,19 @@
 //! [`CloudField`] is the weather-map input a volumetric cloud raymarcher reads.
 
 mod cloud;
+mod content;
 mod field;
 mod full_column;
 mod isa;
 mod mars;
 mod rarefied;
 mod reentry;
+mod thermosphere;
 mod vacuum;
 mod world_bridge;
 
 pub use cloud::{ClearSky, CloudField, CloudKind, CloudSample};
+pub use content::AtmosphereContent;
 pub use field::{
     AtmosphereError, AtmosphereField, AtmosphereSample, GeoidStandardAtmosphere, StandardAtmosphere,
 };
@@ -29,7 +32,9 @@ pub use isa::{IsaState, geometric_to_geopotential_m, isa_at_geopotential};
 pub use mars::{
     MARS_GAMMA, MARS_GAS_CONSTANT_J_KG_K, MarsAtmosphere, mars_geometric_to_geopotential_m,
 };
+pub use mbd_core::{AmbientGas, GasComposition, GasSpecies};
 pub use rarefied::FlowRegime;
 pub use reentry::ReentryAtmosphere;
+pub use thermosphere::VleoThermosphereAtmosphere;
 pub use vacuum::{COSMIC_BACKGROUND_K, VacuumAtmosphere};
 pub use world_bridge::{WorldAtmosphere, utc_to_decimal_year};

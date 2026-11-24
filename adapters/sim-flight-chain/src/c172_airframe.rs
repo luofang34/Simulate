@@ -11,6 +11,7 @@
 use glam::DVec3;
 use sim_atmosphere::AtmosphereField;
 use sim_aviate::{DirectActuatorCmd, direct_fixed_wing_controls};
+use sim_bodies::{BodyDescriptor, BodyFields};
 use sim_core::{
     Block, ControlInputs, EngineStartMode, JsbsimFdmBlock, JsbsimFdmConfig, JsbsimFdmSnapshot,
     KinematicInput, SystemControls, TickSpan, VehicleState,
@@ -67,6 +68,9 @@ pub struct C172Start {
 pub struct C172Airframe {
     fdm: JsbsimFdmBlock,
     air: SharedAir,
+    /// The Earth's catalog fields. JSBSim integrates its own gravity; the
+    /// sensed specific force and the board's devices read these.
+    fields: BodyFields,
     utc: UtcTime,
     trim: ControlInputs,
     /// What the pilot holds on the yoke, pedals and throttle.
@@ -125,11 +129,18 @@ impl C172Airframe {
             .trim_level_flight()
             .map_err(|e| ChainError::Trim(Box::new(e)))?;
         let state = fdm.output();
+        let fields = BodyDescriptor::earth().map_err(ChainError::Body)?.fields();
         // Unaccelerated flight: the specific force is the reaction to weight.
-        let level = specific_force_body_m_s2(&state, &state, start.period.as_seconds());
+        let level = specific_force_body_m_s2(
+            fields.gravity.as_ref(),
+            &state,
+            &state,
+            start.period.as_seconds(),
+        );
         Ok(Self {
             fdm,
             air,
+            fields,
             utc: start.utc,
             trim,
             pilot: trim,
@@ -149,11 +160,18 @@ impl C172Airframe {
     ) -> Result<Self, ChainError> {
         set_wind(&mut fdm, &air, utc)?;
         let state = fdm.output();
+        let fields = BodyDescriptor::earth().map_err(ChainError::Body)?.fields();
         // Unaccelerated, in flight or at rest: the specific force is the reaction to weight.
-        let steady = specific_force_body_m_s2(&state, &state, fdm.period().as_seconds());
+        let steady = specific_force_body_m_s2(
+            fields.gravity.as_ref(),
+            &state,
+            &state,
+            fdm.period().as_seconds(),
+        );
         Ok(Self {
             fdm,
             air,
+            fields,
             utc,
             trim: held,
             pilot: held,
@@ -232,6 +250,7 @@ impl Airframe for C172Airframe {
         let Self {
             fdm,
             air: _,
+            fields: _,
             utc,
             trim: _,
             pilot,
@@ -266,6 +285,10 @@ impl Airframe for C172Airframe {
         self.fdm.output()
     }
 
+    fn fields(&self) -> &BodyFields {
+        &self.fields
+    }
+
     fn sensed(&self) -> Result<SensedTruth, ChainError> {
         let vehicle = self.fdm.output();
         let position = ecef_to_geodetic(vehicle.position_ecef);
@@ -296,7 +319,12 @@ impl Airframe for C172Airframe {
             .step(&KinematicInput { controls })
             .map_err(|e| ChainError::Plant(Box::new(e)))?;
         let dt_s = self.fdm.period().as_seconds();
-        self.specific_force_body_m_s2 = specific_force_body_m_s2(&before, &self.fdm.output(), dt_s);
+        self.specific_force_body_m_s2 = specific_force_body_m_s2(
+            self.fields.gravity.as_ref(),
+            &before,
+            &self.fdm.output(),
+            dt_s,
+        );
         self.utc = self.utc.advanced_by(dt_s);
         Ok(())
     }

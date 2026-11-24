@@ -6,7 +6,7 @@ use std::f64::consts::FRAC_PI_2;
 
 use aviate_xil_contract::{FcState, SharedStateV2, pack_fc_status, seqlock_read, seqlock_write};
 use glam::{DMat3, DQuat, DVec3};
-use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::VacuumAtmosphere;
 use sim_aviate::{
     AviateSharedMemoryEndpoint, AviateStimulus, AviateXilBridge, EnuWorld, FlightControllerCommand,
@@ -51,6 +51,7 @@ fn x500_tree() -> ComponentTree {
                 dry_inertia_body: DMat3::from_diagonal(INERTIA_KG_M2),
                 thermal_capacity_j_k: 1.0,
                 nominal_power_w: 0.0,
+                joint: mbd_core::JointSpec::FIXED,
             },
             state,
         ),
@@ -62,6 +63,7 @@ fn x500_tree() -> ComponentTree {
                 dry_inertia_body: DMat3::ZERO,
                 thermal_capacity_j_k: 1.0,
                 nominal_power_w: 0.0,
+                joint: mbd_core::JointSpec::FIXED,
             },
             state,
         ),
@@ -85,8 +87,9 @@ fn x500(roll_rad: f64, offset_up_m: f64) -> RigidBody6DofBlock {
             initial,
         },
         x500_tree(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap()
 }

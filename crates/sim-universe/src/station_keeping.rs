@@ -121,7 +121,11 @@ impl L2StationKeeper {
             ephemeris: Arc::clone(&context.ephemeris),
             orientation: Arc::clone(&context.orientation),
             force_model: context.force_model.clone(),
-            flux: SolarFluxModel::standard(),
+            flux: context
+                .force_model
+                .body_catalog()
+                .solar_flux_model()
+                .clone(),
             config,
             tolerances: l2_holding_tolerances(),
             target,
@@ -206,7 +210,7 @@ fn srp_surface(universe: &Universe, vessel: VesselId) -> Option<SrpSurface> {
     universe
         .orbital()
         .committed_checkpoint(vessel)
-        .and_then(|checkpoint| checkpoint.gnc.srp_surface)
+        .and_then(|checkpoint| checkpoint.environment.srp_surface())
 }
 
 pub(crate) fn holding_error(error: LagrangeError) -> UniverseError {

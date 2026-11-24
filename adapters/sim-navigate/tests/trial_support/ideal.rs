@@ -31,7 +31,8 @@ pub struct IdealDrift {
 /// scoring every tenth of a second.
 pub fn dead_reckon(truth: &[Truth<(SimInstant, VehicleState)>], spec: ImuErrorSpec) -> IdealDrift {
     let clock = MasterClockBridge::default();
-    let mut imu = SimulatedImu::new(spec, 0).unwrap();
+    let mut imu =
+        SimulatedImu::new(spec, 0, std::sync::Arc::new(sim_geo::BodyEllipsoid::WGS84)).unwrap();
     let mut navigator = InertialNavigator::new(inertial_config(&spec), clock, IMU_SOURCE);
     let (start, initial) = *truth[0].get();
     navigator

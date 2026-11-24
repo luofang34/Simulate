@@ -6,7 +6,9 @@
 
 mod kernel_pack;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
+
+use sim_bodies::{BodyCatalog, RotationSource};
 
 pub use kernel_pack::{SolarSystemKernelPack, apollo_1969_spk_bytes};
 
@@ -99,6 +101,27 @@ pub enum BuiltinSolarError {
     /// Time-scale catalog failed to initialize.
     #[error("time-scale error: {0}")]
     Time(#[from] TimeError),
+    /// A body's fields could not be built from their data.
+    #[error("body catalog error")]
+    Bodies(#[from] sim_bodies::FieldBuildError),
+}
+
+/// How each described body's orientation is found: `precision` for one that names a
+/// precision kernel, the IAU model for the rest.
+pub(crate) fn orientation_policies(
+    bodies: &BodyCatalog,
+    precision: OrientationPolicy,
+) -> BTreeMap<NaifId, OrientationPolicy> {
+    bodies
+        .iter()
+        .map(|body| {
+            let policy = match body.rotation {
+                RotationSource::PrecisionKernel => precision,
+                RotationSource::IauModel => OrientationPolicy::AllowApproximateIau,
+            };
+            (body.naif, policy)
+        })
+        .collect()
 }
 
 /// Ready-to-use `2026-01-01 .. 2028-01-01 TDB` solar-system catalogs verified by SHA-256.
@@ -140,8 +163,17 @@ impl BuiltinSolarSystem2026_2028 {
             + NAIF0012_TLS_BYTES.len()
     }
 
-    /// Verifies all 7 embedded SHA-256 digests and constructs the complete catalog bundle.
+    /// Verifies all 7 embedded SHA-256 digests and constructs the complete catalog bundle
+    /// for the Earth, the Moon and Mars as [`BodyCatalog::standard_solar_system`]
+    /// describes them.
     pub fn load_verified() -> Result<Self, BuiltinSolarError> {
+        Self::load_verified_with_bodies(Arc::new(BodyCatalog::standard_solar_system()?))
+    }
+
+    /// As [`Self::load_verified`], for the bodies `bodies` describes: their gravity
+    /// fields, where their orientation comes from, and everything else a tier reads of
+    /// them.
+    pub fn load_verified_with_bodies(bodies: Arc<BodyCatalog>) -> Result<Self, BuiltinSolarError> {
         verify_asset(
             "solar_spk",
             SOLAR_SPK_2026_2028_BYTES,
@@ -170,15 +202,13 @@ impl BuiltinSolarSystem2026_2028 {
         let constants = GravityConstantsCatalog::from_naif_gm_and_pck_bytes(
             GM_DE440_TPC_BYTES,
             PCK00011_TPC_BYTES,
+            &bodies,
         )?;
 
         let iau = IauPckCatalog::from_pck_bytes(PCK00011_TPC_BYTES)?;
         let earth_bpc = BpcFile::from_bytes(EARTH_ITRF93_BPC_2026_2028_BYTES)?;
         let moon_bpc = BpcFile::from_bytes(MOON_PA_BPC_2026_2028_BYTES)?;
-        let mut policies = BTreeMap::new();
-        policies.insert(NaifId::EARTH, OrientationPolicy::RequirePrecision);
-        policies.insert(NaifId::MOON, OrientationPolicy::RequirePrecision);
-        policies.insert(NaifId::MARS, OrientationPolicy::AllowApproximateIau);
+        let policies = orientation_policies(&bodies, OrientationPolicy::RequirePrecision);
         let orientation = StackedOrientationCatalog::build(
             iau,
             vec![earth_bpc],

@@ -1,5 +1,5 @@
 use glam::{DQuat, DVec3};
-use mbd_core::{ComponentTree, VacuumAero};
+use mbd_core::ComponentTree;
 use sim_apollo::{
     CockpitInstrumentPanel, CockpitInstrumentSnapshot, GuidanceSource, InertialSiteSample, LM_ASA,
     LM_CDR_EYE, LM_DPS_EXHAUST_VELOCITY_M_S, LM_DPS_TANK, LM_DPS_THRUST_N, LM_DPS_THRUST_POINT_M,
@@ -9,6 +9,7 @@ use sim_apollo::{
     build_apollo_lm_tree, site_in_fixed_frame,
 };
 use sim_atmosphere::VacuumAtmosphere;
+use sim_bodies::BodyDescriptor;
 use sim_core::{
     Block, CameraMount, CameraPoseEcef, PropellantBurn, RateAdapter, RigidBody6DofBlock,
     RigidBodyConfig, RigidBodyInput, SimInstant, TICKS_PER_SECOND, ThrusterWrench, TickSpan,
@@ -232,8 +233,9 @@ impl LunarLandingRun {
                 },
             },
             lm_tree()?,
-            Box::new(VacuumAero),
+            Vec::new(),
             Box::new(VacuumAtmosphere),
+            BodyDescriptor::moon()?.fields().gravity,
         )?;
         let inertial = InertialTransform::moon_at(epoch.start_utc()?);
         let imu_site = InertialSiteSample::of(&vehicle, LM_IMU, &inertial)?;

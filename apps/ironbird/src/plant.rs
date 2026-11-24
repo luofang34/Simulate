@@ -1,10 +1,10 @@
 use glam::{DMat3, DVec3};
 use mbd_core::{
     ComponentId, ComponentSpec, ComponentState, ComponentTree, LocalSiteKinematics, Placement,
-    VacuumAero,
 };
 use sim_atmosphere::{AtmosphereField, AtmosphereSample, StandardAtmosphere};
 use sim_aviate::RotorLayout;
+use sim_bodies::BodyDescriptor;
 use sim_core::{
     Block, BlockError, ControlInputs, EngineStartMode, JSBSIM_DEFAULT_PERIOD, JsbsimFdmBlock,
     JsbsimFdmConfig, JsbsimFdmSnapshot, KinematicInput, RigidBody6DofBlock, RigidBodyConfig,
@@ -203,6 +203,7 @@ impl X500RigidPlant {
             dry_inertia_body: DMat3::from_diagonal(DVec3::new(0.029, 0.029, 0.055)),
             thermal_capacity_j_k: 0.0,
             nominal_power_w: 0.0,
+            joint: mbd_core::JointSpec::FIXED,
         };
         let tree = ComponentTree::new([(spec, ComponentState::at_temperature(293.15))])?;
         let cfg = RigidBodyConfig {
@@ -214,8 +215,9 @@ impl X500RigidPlant {
         let body = RigidBody6DofBlock::new(
             cfg,
             tree,
-            Box::new(VacuumAero),
+            Vec::new(),
             Box::new(StandardAtmosphere),
+            BodyDescriptor::earth()?.fields().gravity,
         )?;
         Ok(Self {
             body,

@@ -1,5 +1,5 @@
-use glam::DVec3;
-use mbd_core::{BluntBodyCapsuleAero, ComponentId, ComponentTree};
+use mbd_aero::{AeroElement, AeroElementKind};
+use mbd_core::{ComponentId, ComponentTree};
 use sim_pack::{LoadedSyspack, MemoryPackageSource, PackError, SyspackError};
 
 const CSM_MANIFEST: &[u8] = include_bytes!("../../packages/columbia-csm/syspack.json");
@@ -38,8 +38,8 @@ pub fn apollo_csm_package() -> Result<LoadedSyspack, PackError> {
 
 /// The Columbia Command and Service Module, fully fuelled.
 ///
-/// Axes are those of [`BluntBodyCapsuleAero`]: the origin is the heat-shield
-/// apex and `+x` runs out through the shield, the side leading during entry,
+/// Axes are those of [`mbd_aero::BluntCapsuleAero`]: the origin is the
+/// heat-shield apex and `+x` runs out through the shield, the side leading during entry,
 /// which is opposite to Apollo's own CM `+x`. The root stays with the capsule,
 /// so separating [`CSM_SERVICE_MODULE`] leaves the entry vehicle. Masses are
 /// the flown Apollo 11 figures; station and inertia values are representative.
@@ -47,12 +47,13 @@ pub fn build_apollo_csm_tree() -> Result<ComponentTree, PackError> {
     Ok(apollo_csm_package()?.tree().clone())
 }
 
-/// The capsule aerodynamics for [`build_apollo_csm_tree`]'s axes: the moment
-/// reference is the heat shield's centre of curvature. The normal-force slope
-/// is chosen with the capsule's offset centre of gravity to trim near 20° with
-/// a lift-to-drag ratio of 0.3.
-pub fn apollo_cm_aero() -> Result<BluntBodyCapsuleAero, PackError> {
-    Ok(apollo_csm_package()?.capsule_aero()?)
+/// The capsule aerodynamics of [`build_apollo_csm_tree`], mounted on
+/// [`CM_STRUCTURE`], whose origin is the capsule's centre of gravity: the
+/// moment reference, the heat shield's centre of curvature, is given from
+/// there. The normal-force slope is chosen with the capsule's offset centre
+/// of gravity to trim near 20° with a lift-to-drag ratio of 0.3.
+pub fn apollo_cm_aero() -> Result<Vec<AeroElement>, PackError> {
+    Ok(apollo_csm_package()?.build_aero_elements()?)
 }
 
 /// Incidence `atan2(z, x)` of the air velocity in body axes at which the
@@ -60,15 +61,18 @@ pub fn apollo_cm_aero() -> Result<BluntBodyCapsuleAero, PackError> {
 /// through the centre of gravity, whose `z` offset off the symmetry axis is
 /// what makes the capsule fly at incidence with lift.
 pub fn cm_analytic_trim_incidence_rad() -> Result<f64, PackError> {
-    let package = apollo_csm_package()?;
-    let aero = package.capsule_aero()?;
-    let params = aero.params();
-    let cg_m = package
-        .tree()
-        .spec(CM_STRUCTURE)
-        .map_err(SyspackError::InvalidTree)?
-        .placement
-        .translation_m;
-    let arm: DVec3 = params.reference_point_body_m - cg_m;
+    let aero = apollo_cm_aero()?;
+    let capsule = aero.iter().find_map(|element| match &element.kind {
+        AeroElementKind::BluntCapsule(capsule) if element.component == CM_STRUCTURE => {
+            Some(capsule.params())
+        }
+        _ => None,
+    });
+    let params = capsule.ok_or(SyspackError::DynamicsMismatch {
+        operation: "cm_analytic_trim_incidence_rad",
+        needed: "a BluntCapsule element on the Command Module",
+        declared: "MultibodyComposed",
+    })?;
+    let arm = params.reference_point_body_m;
     Ok((params.axial_drag_coeff / params.normal_force_slope * arm.z / arm.x).atan())
 }

@@ -44,21 +44,6 @@ pub struct SolarFluxModel {
 }
 
 impl SolarFluxModel {
-    /// Nominal solar output, eclipsed by Earth, the Moon and Mars at their
-    /// mean radii.
-    #[must_use]
-    pub fn standard() -> Self {
-        let sphere = |body, radius_m| OccultingSphere { body, radius_m };
-        Self {
-            irradiance_1au_w_m2: SOLAR_IRRADIANCE_1AU_W_M2,
-            occulters: vec![
-                sphere(NaifId::EARTH, 6_371_008.8),
-                sphere(NaifId::MOON, 1_737_400.0),
-                sphere(NaifId::MARS, 3_389_500.0),
-            ],
-        }
-    }
-
     /// Sunlight at `position_ssb_m` (barycentric, ICRF axes) at `epoch`,
     /// from geometric body positions.
     pub fn sample(

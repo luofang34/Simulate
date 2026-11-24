@@ -203,8 +203,11 @@ pub(super) fn evaluate_pair_at_epoch(
     )?;
     let accessible = restrictions.is_empty();
 
+    let unit = |v: DVec3| v.try_normalize();
     Ok(EndpointLinkSample {
         epoch,
+        source_look_direction_mount: src_los_mount.and_then(unit),
+        target_look_direction_mount: dst_los_mount.and_then(unit),
         source_pos_icrf_m: src.pos_ssb_m,
         target_pos_icrf_m: dst.pos_ssb_m,
         slant_range_m,

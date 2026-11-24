@@ -1,5 +1,5 @@
 use super::*;
-use crate::{AtmosphereField, FullColumnAtmosphere};
+use crate::{AtmosphereField, FullColumnAtmosphere, MarsAtmosphere};
 use sim_geo::{Geodetic, UtcTime};
 
 /// A sensor-boom-sized body, small enough that the upper mesosphere slips.
@@ -23,10 +23,29 @@ fn at_msl(msl_m: f64) -> AtmosphereSample {
 fn sea_level_mean_free_path_and_viscosity_match_kinetic_theory() {
     let sea = at_msl(0.0);
     let lambda = sea.mean_free_path_m();
-    assert!((lambda - 6.6e-8).abs() < 0.1e-8, "{lambda}");
+    assert!((lambda - 6.82e-8).abs() < 0.1e-8, "{lambda}");
     let mu = sea.dynamic_viscosity_pa_s();
-    assert!((mu - 1.789e-5).abs() < 0.005e-5, "{mu}");
+    assert!((mu - 1.789e-5).abs() < 0.03e-5, "{mu}");
     assert_eq!(sea.flow_regime(PROBE_LENGTH_M), FlowRegime::Continuum);
+}
+
+#[test]
+fn mars_co2_kinetics_differ_from_earth_dry_air() {
+    let mars = MarsAtmosphere::new()
+        .sample(
+            &Geodetic::from_degrees(0.0, 0.0, 0.0),
+            UtcTime::from_unix_seconds(0.0),
+        )
+        .unwrap();
+    let earth = at_msl(0.0);
+    assert!(mars.dynamic_viscosity_pa_s() < earth.dynamic_viscosity_pa_s());
+    assert!(mars.mean_free_path_m() > earth.mean_free_path_m() * 100.0);
+    assert_eq!(
+        mars.ambient_gas()
+            .mole_fraction(mbd_core::GasSpecies::CO2)
+            .round(),
+        1.0
+    );
 }
 
 #[test]

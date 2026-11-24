@@ -5,10 +5,7 @@ use glam::DVec3;
 
 use crate::{
     ephemeris::{DerivativeOrder, EphemerisCatalog, KinematicStateIcrf},
-    gravity::{
-        DynamicalMode, ForceModel, GravityError, InertialPotentialSample,
-        evaluate_spherical_harmonics_fixed,
-    },
+    gravity::{DynamicalMode, ForceModel, GravityError, InertialPotentialSample},
     ids::NaifId,
     orientation::BodyOrientationCatalog,
     scalar_math::sqrt,
@@ -48,13 +45,7 @@ impl ForceModel {
             acc_total += a_pm;
         }
 
-        for &hb in self.harmonic_bodies() {
-            let Some(spec) = self.constants().get(hb) else {
-                continue;
-            };
-            if spec.harmonics.is_empty() || spec.equatorial_radius_m <= 0.0 {
-                continue;
-            }
+        for (index, &hb) in self.harmonic_bodies().iter().enumerate() {
             let st = ephemeris.geometric_state_icrf(
                 hb,
                 NaifId::SSB,
@@ -62,28 +53,20 @@ impl ForceModel {
                 DerivativeOrder::Velocity,
             )?;
             let offset = pos_bary_icrf_m - st.pos_m;
-            if self.beyond_harmonic_reach(hb, offset) {
+            if !self.harmonics_reach(index, offset) {
                 continue;
             }
             let rot = orientation.body_rotation(hb, epoch)?;
+            let Some(sample) = self.harmonic_sample(index, offset, rot.r_icrf_to_fixed) else {
+                continue;
+            };
             let pos_fixed = rot.r_icrf_to_fixed * offset;
-            let filtered: Vec<_> = spec
-                .harmonics
-                .iter()
-                .copied()
-                .filter(|t| t.degree <= self.max_harmonic_degree())
-                .collect();
-            let eval = evaluate_spherical_harmonics_fixed(
-                pos_fixed,
-                spec.mu_m3_s2,
-                spec.equatorial_radius_m,
-                &filtered,
-            );
             let dr_fixed_dt_neg =
                 rot.omega_body_rad_s.cross(pos_fixed) + rot.r_icrf_to_fixed * st.vel_m_s;
-            u_total += eval.potential_j_kg;
-            du_dt += eval.accel_fixed_m_s2.dot(dr_fixed_dt_neg);
-            acc_total += rot.r_icrf_to_fixed.transpose() * eval.accel_fixed_m_s2;
+            // The field states the geodesy potential, positive; energy is its negative.
+            u_total -= sample.potential_m2_s2;
+            du_dt += sample.acceleration_m_s2.dot(dr_fixed_dt_neg);
+            acc_total += rot.r_icrf_to_fixed.transpose() * sample.acceleration_m_s2;
         }
 
         Ok(InertialPotentialSample {

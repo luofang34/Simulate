@@ -1,10 +1,12 @@
 use glam::DVec3;
+use mbd_core::{GasComposition, GasSpecies};
 use sim_geo::{Geodetic, UtcTime};
 
+use crate::content::{feed_f64s, feed_kind};
 use crate::isa::{speed_of_sound_m_s, ussa76_at_geopotential};
 use crate::{
-    AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K, VacuumAtmosphere,
-    geometric_to_geopotential_m,
+    AtmosphereContent, AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K,
+    VacuumAtmosphere, geometric_to_geopotential_m,
 };
 
 #[cfg(test)]
@@ -69,6 +71,30 @@ const THERMOSPHERE: [Node; 17] = [
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReentryAtmosphere;
 
+impl AtmosphereContent for ReentryAtmosphere {
+    /// The handover heights and both tables. The layered model below the
+    /// table is the 1976 standard's, which its tag names.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        feed_kind(f, "ussa76-with-thermosphere-table");
+        feed_f64s(f, &[LAYERS_TOP_M, FADE_START_M, VACUUM_FLOOR_M]);
+        for node in &THERMOSPHERE {
+            feed_f64s(
+                f,
+                &[
+                    node.height_m,
+                    node.temperature_k,
+                    node.pressure_pa,
+                    node.density_kg_m3,
+                ],
+            );
+        }
+        for (height_m, fractions) in &COMP_ANCHORS {
+            feed_f64s(f, &[*height_m]);
+            feed_f64s(f, fractions);
+        }
+    }
+}
+
 impl AtmosphereField for ReentryAtmosphere {
     fn sample(
         &self,
@@ -89,6 +115,7 @@ impl AtmosphereField for ReentryAtmosphere {
             density_kg_m3: state.density_kg_m3,
             speed_of_sound_m_s: state.speed_of_sound_m_s,
             wind_ned_m_s: DVec3::ZERO,
+            composition: GasComposition::earth_dry_air(),
         })
     }
 }
@@ -113,7 +140,41 @@ fn thermosphere_sample(height_m: f64) -> AtmosphereSample {
         density_kg_m3: remaining * decay(lower.density_kg_m3, upper.density_kg_m3),
         speed_of_sound_m_s: remaining * speed_of_sound_m_s(temperature_k),
         wind_ned_m_s: DVec3::ZERO,
+        composition: thermosphere_composition(height_m),
     }
+}
+
+/// Thermosphere species mole-fraction anchors `(height_m, [N2, O2, O, Ar, CO2, He])`.
+const COMP_ANCHORS: [(f64, [f64; 6]); 6] = [
+    (86_000.0, [0.780_84, 0.209_46, 0.0, 0.009_34, 0.000_36, 0.0]),
+    (100_000.0, [0.765, 0.205, 0.020, 0.009, 0.000_3, 0.000_7]),
+    (120_000.0, [0.650, 0.160, 0.180, 0.008, 0.000_1, 0.001_9]),
+    (150_000.0, [0.540, 0.102, 0.350, 0.006, 0.0, 0.002]),
+    (180_000.0, [0.460, 0.050, 0.480, 0.005, 0.0, 0.005]),
+    (200_000.0, [0.460, 0.050, 0.480, 0.005, 0.0, 0.005]),
+];
+
+fn thermosphere_composition(height_m: f64) -> GasComposition {
+    let pair = COMP_ANCHORS
+        .windows(2)
+        .find(|pair| matches!(pair, [_, upper] if height_m < upper.0));
+    let Some([(h0, f0), (h1, f1)]) = pair else {
+        return GasComposition::earth_vleo_200km();
+    };
+    let [n2_0, o2_0, o_0, ar_0, co2_0, he_0] = *f0;
+    let [n2_1, o2_1, o_1, ar_1, co2_1, he_1] = *f1;
+    let t = ((height_m - h0) / (h1 - h0)).clamp(0.0, 1.0);
+    let lerp = |a: f64, b: f64| a + t * (b - a);
+    let species = [
+        (GasSpecies::N2, lerp(n2_0, n2_1)),
+        (GasSpecies::O2, lerp(o2_0, o2_1)),
+        (GasSpecies::AtomicO, lerp(o_0, o_1)),
+        (GasSpecies::Ar, lerp(ar_0, ar_1)),
+        (GasSpecies::CO2, lerp(co2_0, co2_1)),
+        (GasSpecies::He, lerp(he_0, he_1)),
+    ];
+    GasComposition::from_mole_fractions(&species)
+        .unwrap_or_else(|_| GasComposition::earth_dry_air())
 }
 
 /// Smoothstep from one at [`FADE_START_M`] to zero at [`VACUUM_FLOOR_M`], with

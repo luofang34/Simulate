@@ -75,9 +75,11 @@ where
         controller
             .board_mut()
             .set_geoid_separation(egm96_undulation_m(origin.lat_rad, origin.lon_rad));
+        let suite = SensorSuite::new(suite, airframe.fields().magnetic.clone())
+            .map_err(ChainError::Devices)?;
         Ok(Self {
             airframe,
-            suite: SensorSuite::new(suite).map_err(ChainError::Devices)?,
+            suite,
             controller: Box::new(controller),
             origin,
             now: SimInstant::START,

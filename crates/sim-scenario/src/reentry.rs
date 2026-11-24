@@ -6,6 +6,7 @@ use sim_apollo::{
     build_apollo_csm_tree, cm_analytic_trim_incidence_rad,
 };
 use sim_atmosphere::ReentryAtmosphere;
+use sim_bodies::BodyDescriptor;
 use sim_core::{
     Block, CameraMount, CameraPoseEcef, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput,
     SimInstant, TICKS_PER_SECOND, ThrusterWrench, TickSpan, VehicleState,
@@ -141,8 +142,9 @@ impl CapsuleReentryRun {
                 initial: entry_state(trim),
             },
             build_apollo_csm_tree()?,
-            Box::new(apollo_cm_aero()?),
+            apollo_cm_aero()?,
             Box::new(ReentryAtmosphere),
+            BodyDescriptor::earth()?.fields().gravity,
         )?;
         vehicle.separate_stage(CSM_SERVICE_MODULE)?;
         let inertial = InertialTransform::earth_at(epoch.start_utc()?);

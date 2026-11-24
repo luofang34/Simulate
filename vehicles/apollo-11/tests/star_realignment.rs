@@ -2,7 +2,6 @@
 //! the Alignment Optical Telescope, and restores a tumbled platform.
 
 use glam::{DQuat, DVec3};
-use mbd_core::VacuumAero;
 use sim_apollo::{
     AOT_DETENT_PANEL, AOT_DETENTS, InertialSiteSample, LM_IMU, OpticalSightBlock,
     OpticalSightConfig, OpticalSightInput, SightMark, StarSighting, ThreeGimbalImuBlock,
@@ -58,8 +57,9 @@ impl Lander {
                 initial,
             },
             build_apollo_lm_tree().unwrap(),
-            Box::new(VacuumAero),
+            Vec::new(),
             Box::new(VacuumAtmosphere),
+            std::sync::Arc::new(body),
         )
         .unwrap();
         let start = sample(&vehicle).site_to_inertial;

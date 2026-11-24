@@ -48,7 +48,7 @@ where
         } = self;
         BoardSnapshot {
             airframe: airframe.snapshot(),
-            suite: *suite,
+            suite: suite.clone(),
             controller: controller.clone(),
             now: *now,
             samples: *samples,
@@ -61,7 +61,7 @@ where
     /// returns to it as often as it likes.
     pub fn restore(&mut self, snapshot: &BoardSnapshot<A, C, M>) -> Result<(), ChainError> {
         self.airframe.restore(&snapshot.airframe)?;
-        self.suite = snapshot.suite;
+        self.suite.clone_from(&snapshot.suite);
         self.controller.clone_from(&snapshot.controller);
         self.now = snapshot.now;
         self.samples = snapshot.samples;

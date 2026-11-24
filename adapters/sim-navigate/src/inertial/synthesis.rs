@@ -108,23 +108,19 @@ pub struct SimulatedImu {
 }
 
 impl SimulatedImu {
-    /// A unit with errors drawn from `spec` and `seed`, on Earth's reference
-    /// field [`BodyEllipsoid::WGS84`].
-    pub fn new(spec: ImuErrorSpec, seed: u64) -> Result<Self, NavigateBridgeError> {
+    /// A unit with errors drawn from `spec` and `seed`, in the world whose
+    /// truth gravity is `gravity`: the instance the catalog entry of the
+    /// vehicle's body holds, which its dynamics integrate too.
+    pub fn new(
+        spec: ImuErrorSpec,
+        seed: u64,
+        gravity: Arc<dyn GravityField>,
+    ) -> Result<Self, NavigateBridgeError> {
         Ok(Self {
-            gravity: Arc::new(BodyEllipsoid::WGS84),
+            gravity,
             errors: ImuErrorModel::new(spec, seed).map_err(NavigateBridgeError::ImuModel)?,
             previous: None,
         })
-    }
-
-    /// The unit in a world whose truth gravity is `gravity`: the instance
-    /// the vehicle's dynamics integrate, such as
-    /// `sim_core::RigidBody6DofBlock::gravity`.
-    #[must_use]
-    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
-        self.gravity = gravity;
-        self
     }
 
     /// The unit's error state, for scoring its bias against an estimate.
@@ -153,4 +149,13 @@ impl SimulatedImu {
             .map(Some)
             .map_err(NavigateBridgeError::ImuModel)
     }
+}
+
+/// The Earth's truth gravity from its catalog entry, for a trial whose
+/// vehicle follows a recorded route with no dynamics block to share one.
+pub fn earth_gravity() -> Result<Arc<dyn GravityField>, NavigateBridgeError> {
+    Ok(sim_bodies::BodyDescriptor::earth()
+        .map_err(NavigateBridgeError::Body)?
+        .fields()
+        .gravity)
 }
