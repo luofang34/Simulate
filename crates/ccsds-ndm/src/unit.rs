@@ -31,20 +31,42 @@ macro_rules! units {
 units! {
     /// Kilometres.
     Km => "km",
+    /// Metres.
+    Meters => "m",
     /// Kilometres per second.
     KmPerS => "km/s",
+    /// Metres per second.
+    MPerS => "m/s",
     /// Kilometres per second squared.
     KmPerS2 => "km/s**2",
+    /// Metres per second squared.
+    MPerS2 => "m/s**2",
     /// Degrees.
     Deg => "deg",
+    /// Degrees per second.
+    DegPerS => "deg/s",
+    /// Inverse seconds (quaternion time derivatives).
+    PerS => "1/s",
     /// Seconds.
     Seconds => "s",
+    /// Seconds per second (clock drift).
+    SPerS => "s/s",
+    /// Days.
+    Days => "d",
     /// Kilograms.
     Kg => "kg",
     /// Square metres.
     M2 => "m**2",
     /// Square metres per kilogram.
     M2PerKg => "m**2/kg",
+    /// Kilogram-square metres (moments and products of inertia).
+    KgM2 => "kg*m**2",
+    /// Newton-metres (attitude maneuver torque).
+    Nm => "N*m",
+    /// Watts per kilogram (specific energy dissipation rate).
+    WPerKg => "W/kg",
+    /// Percentage.
+    Percent => "%",
     /// Gravitational parameter, cubic kilometres per second squared.
     Km3PerS2 => "km**3/s**2",
     /// Revolutions per day.
@@ -55,6 +77,20 @@ units! {
     RevPerDay3 => "rev/day**3",
     /// Inverse Earth radii (the SGP4 BSTAR drag term).
     PerEarthRadius => "1/ER",
+    /// Hertz.
+    Hz => "Hz",
+    /// Hertz per second.
+    HzPerS => "Hz/s",
+    /// Decibel-watts (carrier power).
+    DbW => "dBW",
+    /// Decibel-hertz (signal-to-noise spectral density ratio).
+    DbHz => "dBHz",
+    /// Hectopascals (atmospheric pressure).
+    Hpa => "hPa",
+    /// Kelvin (temperature).
+    Kelvin => "K",
+    /// Total Electron Content Units (slant TEC).
+    Tecu => "TECU",
 }
 
 /// A number in unit `U`.

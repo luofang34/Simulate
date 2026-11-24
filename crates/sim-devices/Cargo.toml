@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+ccsds-ndm = { workspace = true }
 sim-atmosphere = { workspace = true }
 sim-bodies = { workspace = true }
 sim-geo = { workspace = true }

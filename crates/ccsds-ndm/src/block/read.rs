@@ -4,7 +4,7 @@
 use super::{Block, Entry, ValueKind};
 use crate::error::{Error, ErrorKind, Location, Result};
 use crate::extension::{Extension, ExtensionValue};
-use crate::frame::{CenterName, RefFrame};
+use crate::frame::{CenterName, RefFrame, YesNo};
 use crate::time_system::TimeSystem;
 use crate::unit::{Quantity, Unit};
 use crate::{Epoch, ParseMode, number};
@@ -36,6 +36,11 @@ impl Fields {
     /// Whether an entry with this keyword is still unread.
     pub fn has(&self, keyword: &str) -> bool {
         self.entries.iter().flatten().any(|e| e.keyword == keyword)
+    }
+
+    /// Whether any keyword from `keywords` is still unread.
+    pub fn has_any(&self, keywords: &[&str]) -> bool {
+        keywords.iter().any(|kw| self.has(kw))
     }
 
     fn take(&mut self, keyword: &str) -> Option<Entry> {
@@ -215,6 +220,16 @@ impl Entry {
             self.error(ErrorKind::InvalidValue {
                 text: self.value.clone(),
                 expected: "a time system listed in ODM 502.0-B-3 3.2.3.2",
+            })
+        })
+    }
+
+    /// A `YES` or `NO` flag.
+    pub fn yes_no(&self, mode: ParseMode) -> Result<YesNo> {
+        YesNo::from_name(&self.value, mode == ParseMode::Lenient).ok_or_else(|| {
+            self.error(ErrorKind::InvalidValue {
+                text: self.value.clone(),
+                expected: "YES or NO",
             })
         })
     }

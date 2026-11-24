@@ -1,8 +1,7 @@
-//! Multi-body solar-system orbital dynamics, NAIF SPK/PCK ephemerides, transactional
-//! multi-vessel scheduling, swept collision detection, and pure-memory spaceflight `GNC`.
-
+//! Multi-body orbital dynamics, SPK/PCK ephemerides, scheduling, GNC, and CCSDS NDM.
 mod builtin_solar;
 mod catalog_sgp4;
+mod ccsds;
 mod chebyshev;
 mod checkpoint;
 mod collision;
@@ -30,11 +29,11 @@ mod trajectory_product;
 mod universe;
 mod variational;
 mod warp;
-
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
-pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4TemeState, teme_to_icrf_rotation};
-pub use checkpoint::MomentumRamp;
-pub use checkpoint::{ActuatorState, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
+pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4Mode, Sgp4TemeState};
+pub use ccsds::{ApmBurn, ApmImport, CcsdsAdm, CcsdsCdm, CcsdsEpoch, CcsdsError, CcsdsMeta};
+pub use ccsds::{CcsdsOdm, CdmImport, CdmObj, CdmObjState, OpmImport};
+pub use checkpoint::{ActuatorState, ExternalLoads, LatchedBurnLaw, MomentumRamp, PropagatorKind};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
 pub use checkpoint::{DiscreteGncState, EventGenerationState, ExternalInputs, VesselCheckpoint};
 pub use collision::{ContactRootKind, RendezvousGroup, SweptObbKinematics, SweptPoseTrajectory};
@@ -75,12 +74,13 @@ pub use plant::{ContinuousPlantState, EnvironmentWrench, GravityGradient, MassPr
 pub use plant::{EnvironmentStage, clamp_vec_norm, quat_normalize_portable, quat_omega_derivative};
 pub use plant::{PLANT_ODE_DIM, PropagationAudit, evaluate_plant_ode_rhs, quat_geodesic_angle_rad};
 pub use sim_spacetime::{ContentHash, DomainHasher, FrameCode, HashParseError, NaifId, VesselId};
-pub use time::{CoverageSet, EarthEopTable, FutureUtcPolicy, LeapSecondEntry, TdbEpoch, TimeError};
-pub use time::{LeapSecondTable, OutOfEopPolicy, SimClockAdapter, TdbSpanNs, TimeScaleCatalog};
+pub use time::{CoverageSet, EarthEopEntry, EarthEopTable, FutureUtcPolicy, LeapSecondEntry};
+pub use time::{LeapSecondTable, OutOfEopPolicy, SimClockAdapter, TdbEpoch, TdbSpanNs, Ut1Sample};
 pub use trajectory_product::{OrbitalTrajectoryProduct, PlanningInputFingerprint};
 pub use universe::{DEFAULT_HORIZON_QUANTUM_SECONDS, HardwareProfile, run_fleet_scale_benchmark};
 pub use universe::{FleetScaleBenchmarkReport, MAX_PROPOSAL_CHUNK_SECONDS, SpeculativeProposal};
 pub use universe::{FleetTierMetrics, MAX_SPECULATIVE_SEGMENTS, OrbitalUniverse, UniverseSnapshot};
+pub use universe::{MAX_SAME_TICK_TRANSITIONS, SpeculativeSegmentEntry};
 pub use universe::{RollbackMetrics, SchedulerError, VesselSnapshotRecord, propose_vessel_horizon};
 pub use variational::{BPlaneEncounterResult, gravity_gradient_icrf, icrf_to_ric_rotation};
 pub use variational::{ProcessNoiseQ, StateCovariance6, VariationalError, propagate_state_and_stm};
@@ -88,12 +88,12 @@ pub use variational::{StmPropagationResult, compute_bplane_collision_probability
 pub use warp::{FullCoupledPidFeedForwardSasLaw, WarpStatus, conservative_hazard_time_to_go_s};
 pub use warp::{ReducedManifoldSteeringLaw, ReducedThrustGateRejection, VesselWarpConstraintInput};
 pub use warp::{ReducedThrustGateConfig, check_reduced_manifold_gate, evaluate_global_warp_status};
-pub use {builtin_solar::apollo_1969_spk_bytes, contact::CONTACT_PROXIMITY_THRESHOLD_M};
-pub use {catalog_sgp4::Sgp4Mode, events::ScheduledEvent, kpl::KplAtom, kpl::KplPool};
-pub use {collision::eval_bernstein_vec3, docking::Apas95PortSpec, ephemeris::SpkEphemerisCatalog};
-pub use {constants::ConstantsError, orientation::IauPckCatalog, warp::WarpBottleneckReason};
-pub use {contact::CONTACT_SUBSTEP_SECONDS, kepler::propagate_encke_interval, time::EarthEopEntry};
-pub use {dop853::propagate_plant_until_step, kpl::KplError, universe::MAX_SAME_TICK_TRANSITIONS};
-pub use {ephemeris::EphemerisCatalog, gnc::AutolandGuidanceOutput, warp::SmoothSteeringProfile};
-pub use {events::AuthoritativeCommandLog, events::EventOrderKey, manifest::ManifestMismatchField};
-pub use {manifest::SimulationManifestDigest, time::Ut1Sample, universe::SpeculativeSegmentEntry};
+pub use {builtin_solar::apollo_1969_spk_bytes, catalog_sgp4::teme_to_icrf_rotation};
+pub use {checkpoint::VesselConfig, collision::eval_bernstein_vec3, constants::ConstantsError};
+pub use {contact::CONTACT_PROXIMITY_THRESHOLD_M, contact::CONTACT_SUBSTEP_SECONDS};
+pub use {docking::Apas95PortSpec, dop853::propagate_plant_until_step, orientation::IauPckCatalog};
+pub use {ephemeris::EphemerisCatalog, ephemeris::SpkEphemerisCatalog, events::EventOrderKey};
+pub use {events::AuthoritativeCommandLog, events::ScheduledEvent, warp::WarpBottleneckReason};
+pub use {gnc::AutolandGuidanceOutput, kpl::KplAtom, kpl::KplError, warp::SmoothSteeringProfile};
+pub use {kepler::propagate_encke_interval, kpl::KplPool, manifest::ManifestMismatchField};
+pub use {manifest::SimulationManifestDigest, time::TimeError, time::TimeScaleCatalog};

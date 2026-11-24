@@ -102,7 +102,7 @@ open_enum! {
 }
 
 open_enum! {
-    /// Interpolation method recommended for an OEM segment.
+    /// Interpolation method recommended for an OEM or AEM segment.
     Interpolation {
         /// Hermite interpolation.
         Hermite => "HERMITE",
@@ -110,6 +110,42 @@ open_enum! {
         Lagrange => "LAGRANGE",
         /// Linear interpolation.
         Linear => "LINEAR",
+    }
+}
+
+/// Boolean `YES` / `NO` flag used in CCSDS CDM and TDM keywords.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum YesNo {
+    /// `YES`.
+    Yes,
+    /// `NO`.
+    No,
+}
+
+impl YesNo {
+    /// The keyword value, as written in a message.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Yes => "YES",
+            Self::No => "NO",
+        }
+    }
+
+    /// Parses `YES` or `NO` (case-sensitive in strict mode, case-insensitive in lenient mode).
+    pub fn from_name(name: &str, ignore_case: bool) -> Option<Self> {
+        if (ignore_case && name.eq_ignore_ascii_case("YES")) || name == "YES" {
+            Some(Self::Yes)
+        } else if (ignore_case && name.eq_ignore_ascii_case("NO")) || name == "NO" {
+            Some(Self::No)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::fmt::Display for YesNo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

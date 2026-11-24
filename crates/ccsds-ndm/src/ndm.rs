@@ -18,6 +18,7 @@ pub struct Ndm {
 /// One message of an [`Ndm`].
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
+#[allow(clippy::large_enum_variant)]
 pub enum NdmMessage {
     /// An Orbit Parameter Message.
     Opm(Opm),
@@ -25,6 +26,14 @@ pub enum NdmMessage {
     Omm(Omm),
     /// An Orbit Ephemeris Message.
     Oem(Oem),
+    /// An Attitude Parameter Message.
+    Apm(crate::Apm),
+    /// An Attitude Ephemeris Message.
+    Aem(crate::Aem),
+    /// A Conjunction Data Message.
+    Cdm(crate::Cdm),
+    /// A Tracking Data Message.
+    Tdm(crate::Tdm),
 }
 
 impl NdmMessage {
@@ -33,6 +42,10 @@ impl NdmMessage {
             Self::Opm(opm) => Some(opm.version),
             Self::Omm(omm) => omm.version,
             Self::Oem(oem) => Some(oem.version),
+            Self::Apm(apm) => Some(apm.version),
+            Self::Aem(aem) => Some(aem.version),
+            Self::Cdm(cdm) => Some(cdm.version),
+            Self::Tdm(tdm) => Some(tdm.version),
         }
     }
 }
@@ -60,6 +73,10 @@ impl Ndm {
                 "opm" => Opm::from_element(child, mode).map(NdmMessage::Opm),
                 "omm" => Omm::from_element(child, mode).map(NdmMessage::Omm),
                 "oem" => Oem::from_element(child, mode).map(NdmMessage::Oem),
+                "apm" => crate::Apm::from_element(child, mode).map(NdmMessage::Apm),
+                "aem" => crate::Aem::from_element(child, mode).map(NdmMessage::Aem),
+                "cdm" => crate::Cdm::from_element(child, mode).map(NdmMessage::Cdm),
+                "tdm" => crate::Tdm::from_element(child, mode).map(NdmMessage::Tdm),
                 _ => Err(child.unexpected()),
             };
             messages.push(message.map_err(|e| e.in_message(index))?);
@@ -83,6 +100,10 @@ impl Ndm {
                 NdmMessage::Opm(opm) => opm.write_element(&mut out, options, false),
                 NdmMessage::Omm(omm) => omm.write_element(&mut out, options, false),
                 NdmMessage::Oem(oem) => oem.write_element(&mut out, options, false),
+                NdmMessage::Apm(apm) => apm.write_element(&mut out, options, false),
+                NdmMessage::Aem(aem) => aem.write_element(&mut out, options, false),
+                NdmMessage::Cdm(cdm) => cdm.write_element(&mut out, options, false),
+                NdmMessage::Tdm(tdm) => tdm.write_element(&mut out, options, false),
             }
             .map_err(|e| e.in_message(index))?;
         }

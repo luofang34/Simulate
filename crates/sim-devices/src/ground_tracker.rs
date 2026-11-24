@@ -18,6 +18,7 @@
 //!   East–North–Up frame with azimuth in `[0, 2*pi)` clockwise from North.
 
 mod solver;
+mod tdm;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -30,6 +31,10 @@ use sim_spacetime::{
 
 use solver::{doppler_from_range_rate, evaluate_truth, wrap_azimuth_rad};
 
+pub use tdm::{
+    GroundTrackerTdm, GroundTrackerTdmError, GroundTrackerTdmMeta, TdmImportedObservation,
+    TdmRangeExportUnit,
+};
 pub use types::{
     GroundTrackerError, GroundTrackerStationSpec, TrackingErrorSpec, TrackingLinkMode,
     TrackingMeasurement, TrackingTruthMeasurement,

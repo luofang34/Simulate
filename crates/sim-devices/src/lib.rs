@@ -33,8 +33,9 @@ pub use geomagnetic::MagneticEnvironment;
 pub use gnss_receiver::{GnssErrorSpec, GnssReading, GnssReceiver, GnssSpoof};
 pub use gravimeter::{GravimeterTruth, gravimeter_truth};
 pub use ground_tracker::{
-    GroundTracker, GroundTrackerError, GroundTrackerStationSpec, TrackingErrorSpec,
-    TrackingLinkMode, TrackingMeasurement, TrackingTruthMeasurement,
+    GroundTracker, GroundTrackerError, GroundTrackerStationSpec, GroundTrackerTdm,
+    GroundTrackerTdmError, GroundTrackerTdmMeta, TdmImportedObservation, TdmRangeExportUnit,
+    TrackingErrorSpec, TrackingLinkMode, TrackingMeasurement, TrackingTruthMeasurement,
 };
 pub use icm42688::{Icm42688Block, Icm42688Config, Icm42688Sample, Icm42688Snapshot};
 pub use inertial_error::{
