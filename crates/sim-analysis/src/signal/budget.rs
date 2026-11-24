@@ -71,6 +71,27 @@ fn system_temperature_k(link: &RfLinkSpec, rx_peak_gain_dbi: f64) -> f64 {
     }
 }
 
+fn validate_antenna_terms(
+    tx_gain_dbi: f64,
+    rx_gain_dbi: f64,
+    t_sys_k: f64,
+) -> Result<(), BudgetUnavailableReason> {
+    if !tx_gain_dbi.is_finite() {
+        return Err(BudgetUnavailableReason::PropagationModelInapplicable {
+            model: "transmit-antenna".to_owned(),
+            reason: "transmit antenna pattern returned a non-finite gain".to_owned(),
+        });
+    }
+    if !rx_gain_dbi.is_finite() || !t_sys_k.is_finite() || t_sys_k <= 0.0 {
+        return Err(BudgetUnavailableReason::PropagationModelInapplicable {
+            model: "receive-antenna".to_owned(),
+            reason: "receive antenna pattern returned an invalid gain or noise temperature"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
 fn sum_propagation(
     models: &[&dyn PropagationLoss],
     path: &PathGeometry,
@@ -116,6 +137,8 @@ pub fn compute_link_budget(
     )?;
     let tx_gain_dbi = inputs.transmit_antenna.gain_dbi(tx_dir, f_hz);
     let rx_gain_dbi = inputs.receive_antenna.gain_dbi(rx_dir, f_hz);
+    let t_sys_k = system_temperature_k(link, inputs.receive_antenna.peak_gain_dbi(f_hz));
+    validate_antenna_terms(tx_gain_dbi, rx_gain_dbi, t_sys_k)?;
     let propagation_losses = sum_propagation(inputs.propagation, path)?;
 
     let transmit_power_dbw = db_from_ratio(tx.transmit_power_w);
@@ -125,7 +148,6 @@ pub fn compute_link_budget(
     let rip_dbw = eirp_dbw - fspl_db - extra_db - link.polarization_mismatch_loss_db;
     let received_power_dbw = rip_dbw + rx_gain_dbi - rx.line_loss_db;
 
-    let t_sys_k = system_temperature_k(link, inputs.receive_antenna.peak_gain_dbi(f_hz));
     let t_sys_db = db_from_ratio(t_sys_k);
     let n0_dbw_hz = db_from_ratio(BOLTZMANN_CONSTANT_J_K) + t_sys_db;
     let c_over_n0_dbhz = received_power_dbw - n0_dbw_hz;

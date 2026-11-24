@@ -9,10 +9,10 @@ use sim_maplibre::{
 };
 use sim_scenario::ScenarioProfile;
 use sim_scenery::CatalogVerticalDatum;
-use world::surveillance::SurveillanceStore;
 use world::surveillance::{
-    AddressNamespace, Callsign, DeliveryPath, EmitterCategory, IntegrityQuality, ObservationSource,
-    TrackKey, TrackObservation,
+    AddressNamespace, AirGroundState, Band, Callsign, DeliveryPath, EmitterCategory,
+    ObservationOrigin, ObservationTime, PositionObservation, SourceRef, SurveillanceEngine,
+    TimeBasis, TrackKey, TrafficObservation, VelocityObservation, Wgs84Position,
 };
 use world::{GeodeticPosition, LocalTangentPlane, Ned};
 
@@ -20,6 +20,10 @@ use super::{
     DELAWARE_RUNWAY_BEARING_RAD, DELAWARE_RUNWAY_HEIGHT_M, DELAWARE_RUNWAY_LAT_DEG,
     DELAWARE_RUNWAY_LON_DEG, SupervisorRig,
 };
+
+const METRES_PER_FOOT: f64 = 0.3048;
+const KNOTS_TO_MPS: f64 = 1_852.0 / 3_600.0;
+const FPM_TO_MPS: f64 = METRES_PER_FOOT / 60.0;
 
 impl SupervisorRig {
     /// Updates omniscient truth traffic kinematics at `now` and projects radio-visible tracks
@@ -41,12 +45,8 @@ impl SupervisorRig {
 
     /// Current revision of the operator's `belief_world` surveillance store.
     #[must_use]
-    pub fn belief_surveillance_revision(&self) -> u64 {
-        self.supervisor
-            .operator_view()
-            .belief_world
-            .surveillance
-            .revision()
+    pub const fn belief_surveillance_revision(&self) -> u64 {
+        self.supervisor.belief_surveillance_revision()
     }
 
     /// Avionics-belief 3D traffic entities derived strictly from `OperatorBeliefView::belief_world`.
@@ -57,8 +57,8 @@ impl SupervisorRig {
     /// `ConformalFrameStamp::geoid_undulation_m`.
     #[must_use]
     pub fn belief_entities(&self, visibility: ViewSlotMask) -> Vec<DynamicEntity3D> {
-        let store = &self.supervisor.operator_view().belief_world.surveillance;
-        entities_for_datum(store, self.datum, visibility)
+        let engine = &self.supervisor.operator_view().belief_world.surveillance;
+        entities_for_datum(engine, self.datum, visibility)
     }
 
     /// Omniscient physical-truth 3D traffic entities (rendered only in `TruthSceneMap`), in
@@ -109,35 +109,47 @@ impl SupervisorRig {
                 }
                 CatalogVerticalDatum::EllipsoidWgs84 => 0.0,
             };
-            let key = TrackKey {
-                namespace: AddressNamespace::Icao24,
-                address: 0x00FE_0000_u64.wrapping_add(idx as u64),
-            };
-            let obs = TrackObservation {
-                key,
-                source: ObservationSource::Adsb1090,
-                delivery: DeliveryPath::Simulator,
-                observed_at_us: now_us,
-                position: GeodeticPosition::wgs84(
-                    lat,
-                    lon,
-                    npc.placement.altitude_meters + undul_m,
-                ),
-                velocity_ned_m_s: Ned {
-                    north_m: npc.velocity_ned_mps[0],
-                    east_m: npc.velocity_ned_mps[1],
-                    down_m: npc.velocity_ned_mps[2],
+            let key = TrackKey::new(
+                AddressNamespace::Icao,
+                0x00FE_0000_u32.wrapping_add(idx as u32),
+            );
+            let alt_m = npc.placement.altitude_meters + undul_m;
+            let vel = velocity_from_ned(
+                npc.velocity_ned_mps[0],
+                npc.velocity_ned_mps[1],
+                npc.velocity_ned_mps[2],
+                Some(npc.heading_rad),
+            );
+            let mut obs = TrafficObservation::new(
+                ObservationTime {
+                    received_at_micros: now_us,
+                    observed_at_micros: now_us,
+                    basis: TimeBasis::LocalIngress,
                 },
-                heading_rad: Some(npc.heading_rad),
-                callsign: Callsign::parse(&npc.callsign),
-                category: EmitterCategory::Heavy,
-                on_ground: npc.ground_height_msl_m.is_some(),
-                quality: IntegrityQuality::default(),
-            };
-            let store = &mut self.supervisor.truth_world_mut().surveillance;
-            let _outcome = store.ingest(obs, now_us);
-            if let Some(track) = store.tracks().iter().find(|t| t.key == key) {
-                self.npc_track_ids.insert(track.id.0);
+                SourceRef::new(1, 0, DeliveryPath::Simulator),
+                ObservationOrigin::AdsbDirect {
+                    band: Band::Adsb1090,
+                },
+                key,
+            );
+            obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+                latitude_deg: lat,
+                longitude_deg: lon,
+            }));
+            obs.geometric_altitude_ft = Some((alt_m / METRES_PER_FOOT).round() as i32);
+            obs.velocity = Some(vel);
+            obs.callsign =
+                (!npc.callsign.trim().is_empty()).then(|| Callsign::new(npc.callsign.trim()));
+            obs.emitter_category = Some(EmitterCategory::HeavyAircraft);
+            obs.air_ground = Some(if npc.ground_height_msl_m.is_some() {
+                AirGroundState::Ground
+            } else {
+                AirGroundState::Airborne
+            });
+            let engine = &mut self.supervisor.truth_world_mut().surveillance;
+            let _outcome = engine.ingest(obs, |_| {});
+            if let Some(track) = engine.snapshot(key) {
+                self.npc_track_ids.insert(track.id.get());
             }
         }
     }
@@ -157,58 +169,42 @@ impl SupervisorRig {
             east_m: 2_800.0 + 46.0 * t_s,
             down_m: -420.0,
         });
-        let _near_outcome = self.supervisor.truth_world_mut().surveillance.ingest(
-            TrackObservation {
-                key: TrackKey {
-                    namespace: AddressNamespace::Icao24,
-                    address: 0xA1_B2_C3,
-                },
-                source: ObservationSource::Adsb1090,
-                delivery: DeliveryPath::Simulator,
-                observed_at_us: now_us,
-                position: near_pos,
-                velocity_ned_m_s: Ned {
-                    north_m: 3.0,
-                    east_m: 46.0,
-                    down_m: 0.0,
-                },
-                heading_rad: Some(DELAWARE_RUNWAY_BEARING_RAD),
-                callsign: Callsign::parse("N172SP"),
-                category: EmitterCategory::Light,
-                on_ground: false,
-                quality: IntegrityQuality::default(),
+        let near_obs = build_traffic_obs(
+            TrackKey::new(AddressNamespace::Icao, 0xA1_B2_C3),
+            ObservationOrigin::AdsbDirect {
+                band: Band::Adsb1090,
             },
+            near_pos,
+            velocity_from_ned(3.0, 46.0, 0.0, Some(DELAWARE_RUNWAY_BEARING_RAD)),
+            "N172SP",
+            EmitterCategory::LightAircraft,
             now_us,
         );
+        let _near_outcome = self
+            .supervisor
+            .truth_world_mut()
+            .surveillance
+            .ingest(near_obs, |_| {});
 
         let far_pos = plane.to_geodetic(Ned {
             north_m: 1_200.0,
             east_m: 45_000.0,
             down_m: -120.0,
         });
-        let _far_outcome = self.supervisor.truth_world_mut().surveillance.ingest(
-            TrackObservation {
-                key: TrackKey {
-                    namespace: AddressNamespace::RemoteId,
-                    address: 0xD0_00_99,
-                },
-                source: ObservationSource::RemoteId,
-                delivery: DeliveryPath::Simulator,
-                observed_at_us: now_us,
-                position: far_pos,
-                velocity_ned_m_s: Ned {
-                    north_m: 0.0,
-                    east_m: 8.0,
-                    down_m: 0.0,
-                },
-                heading_rad: Some(1.57),
-                callsign: Callsign::parse("UAS99"),
-                category: EmitterCategory::Uav,
-                on_ground: false,
-                quality: IntegrityQuality::default(),
-            },
+        let far_obs = build_traffic_obs(
+            TrackKey::new(AddressNamespace::SelfAssigned, 0xD0_00_99),
+            ObservationOrigin::Unknown,
+            far_pos,
+            velocity_from_ned(0.0, 8.0, 0.0, Some(1.57)),
+            "UAS99",
+            EmitterCategory::UncrewedAircraft,
             now_us,
         );
+        let _far_outcome = self
+            .supervisor
+            .truth_world_mut()
+            .surveillance
+            .ingest(far_obs, |_| {});
     }
 
     /// The point traffic circulates around: the active airport's reference point at its
@@ -239,8 +235,62 @@ impl SupervisorRig {
     }
 }
 
+fn build_traffic_obs(
+    key: TrackKey,
+    origin: ObservationOrigin,
+    pos: GeodeticPosition,
+    vel: VelocityObservation,
+    callsign: &str,
+    category: EmitterCategory,
+    now_us: u64,
+) -> TrafficObservation {
+    let mut obs = TrafficObservation::new(
+        ObservationTime {
+            received_at_micros: now_us,
+            observed_at_micros: now_us,
+            basis: TimeBasis::LocalIngress,
+        },
+        SourceRef::new(1, 0, DeliveryPath::Simulator),
+        origin,
+        key,
+    );
+    obs.position = Some(PositionObservation::Decoded(Wgs84Position {
+        latitude_deg: pos.latitude_deg,
+        longitude_deg: pos.longitude_deg,
+    }));
+    obs.geometric_altitude_ft = Some((pos.ellipsoidal_height_m / METRES_PER_FOOT).round() as i32);
+    obs.velocity = Some(vel);
+    obs.callsign = Some(Callsign::new(callsign));
+    obs.emitter_category = Some(category);
+    obs.air_ground = Some(AirGroundState::Airborne);
+    obs
+}
+
+fn velocity_from_ned(vn: f64, ve: f64, vd: f64, heading_rad: Option<f64>) -> VelocityObservation {
+    let gs_mps = vn.hypot(ve);
+    let trk_deg = normalize_deg_360(ve.atan2(vn).to_degrees());
+    let mut vel = VelocityObservation::default();
+    vel.ground_speed_kt = Some(gs_mps / KNOTS_TO_MPS);
+    vel.track_angle_deg_true = trk_deg;
+    vel.heading_deg = heading_rad.and_then(|r| normalize_deg_360(r.to_degrees()));
+    vel.vertical_rate_fpm = Some(((-vd) / FPM_TO_MPS).round() as i32);
+    vel
+}
+
+fn normalize_deg_360(deg: f64) -> Option<f64> {
+    if !deg.is_finite() {
+        return None;
+    }
+    let wrapped = deg.rem_euclid(360.0);
+    if !(0.0..360.0).contains(&wrapped) {
+        Some(0.0)
+    } else {
+        Some(wrapped)
+    }
+}
+
 fn entities_for_datum(
-    store: &SurveillanceStore,
+    store: &SurveillanceEngine,
     datum: CatalogVerticalDatum,
     visibility: ViewSlotMask,
 ) -> Vec<DynamicEntity3D> {

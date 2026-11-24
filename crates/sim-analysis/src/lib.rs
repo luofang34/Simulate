@@ -54,9 +54,12 @@ pub use relay::{
     evaluate_shared_trajectory_access_suite,
 };
 pub use signal::{
-    AntennaPattern, LinkBudgetInputs, LinkBudgetModels, MediumQueryLoss, PathGeometry,
-    PropagationLoss, PropagationLossError, compute_link_budget, db_from_ratio, doppler_shift_hz,
-    evaluate_endpoint_link_budget, free_space_path_loss_db, ratio_from_db,
+    AntennaPattern, DeltaBullingtonPropagationLoss, ExceedancePercentages, F1245Pattern,
+    ItmPropagationLoss, KnifeEdgePropagationLoss, KnifeEdgeSource, LinkBudgetInputs,
+    LinkBudgetModels, MainBeamPolicy, MediumQueryLoss, PathGeometry, PropagationLoss,
+    PropagationLossError, S465Pattern, S580Pattern, SmoothEarthPropagationLoss,
+    compute_link_budget, db_from_ratio, doppler_shift_hz, evaluate_endpoint_link_budget,
+    free_space_path_loss_db, ratio_from_db,
 };
 pub use sim_analysis_contract::{
     AntennaPointing, AntennaSpec, BOLTZMANN_CONSTANT_J_K, BudgetUnavailableReason,
@@ -70,3 +73,9 @@ pub use terrain::{
     TerrainElevationSource, TerrainLosConfig, VerticalDatumKind, VerticalDatumSpec,
     check_terrain_line_of_sight_fixed, resolve_altitude_ellipsoidal_height_m,
 };
+pub use world_propagation::itm::{Climate, ItmLoss, ItmWarnings, PropagationMode, VariabilityMode};
+pub use world_propagation::p526::{
+    DEFAULT_EFFECTIVE_EARTH_RADIUS_M, DeltaBullingtonLoss, KnifeEdgeGeometry, KnifeEdgeLoss,
+    KnifeEdgeMethod, SmoothEarthLoss,
+};
+pub use world_propagation::{Ground, Percentage, Polarisation, ProfilePoint, PropagationError};

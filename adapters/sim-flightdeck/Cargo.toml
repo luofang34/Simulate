@@ -28,7 +28,7 @@ sim-geo = { workspace = true }
 sim-indicate = { workspace = true }
 sim-scenery = { workspace = true }
 thiserror = { workspace = true }
+world = { workspace = true }
 world-core = { workspace = true }
 world-geomag = { workspace = true }
 world-notices = { workspace = true }
-world-surveillance = { workspace = true }

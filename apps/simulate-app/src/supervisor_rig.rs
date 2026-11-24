@@ -1,3 +1,4 @@
+use crate::error::AppSimError;
 use flightbag::{AirportSurfaceGraph, FacilityCode, RunwayDesignator, RunwayEndSpec};
 use sim_core::VirtualCameraSpec;
 use sim_geo::Geodetic;
@@ -50,18 +51,15 @@ pub struct SupervisorRig {
     npc_track_ids: std::collections::HashSet<u64>,
 }
 
-impl Default for SupervisorRig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SupervisorRig {
     /// Creates a supervisor seeded with OpenStreetMap diagrams (`KDOV`, `47N`, `KEWR`)
     /// and radio reception limits.
-    #[must_use]
-    pub fn new() -> Self {
-        let mut supervisor = SimSupervisor::new();
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppSimError::Scenario`] if world surveillance or weather state fails setup.
+    pub fn new() -> Result<Self, AppSimError> {
+        let mut supervisor = SimSupervisor::new()?;
         supervisor.set_radio_policy(RadioBeliefPolicy {
             adsb_range_m: 120_000.0,
             short_range_radio_m: 15_000.0,
@@ -74,7 +72,7 @@ impl SupervisorRig {
             .collect();
         let datum = CatalogVerticalDatum::OrthometricMslEgm96;
         let free_airport = featured_idx(AerodromeId::DoverKdov);
-        Self {
+        Ok(Self {
             supervisor,
             delaware_fallback: build_delaware_airport(),
             diagrams,
@@ -88,7 +86,7 @@ impl SupervisorRig {
             camera_suite: None,
             vehicle_cameras: Vec::new(),
             npc_track_ids: std::collections::HashSet::new(),
-        }
+        })
     }
 
     /// Underlying [`SimSupervisor`].

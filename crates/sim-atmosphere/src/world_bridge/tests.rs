@@ -1,5 +1,5 @@
 use sim_geo::{Geodetic, UtcTime};
-use world_airmass::{AirmassStore, AloftLevel, CloudGenus, CloudLayer, SoundingProfile};
+use world_aloft::{AloftLevel, AloftModel, CloudGenus, CloudLayer, SoundingProfile};
 use world_atmosphere::{Altitude, Isa};
 use world_core::{DecimalYear, GeodeticPosition, Ned, ValidityWindow};
 
@@ -19,8 +19,8 @@ fn world_isa_matches_sim_standard_atmosphere() {
 }
 
 #[test]
-fn airmass_store_serves_both_3d_wind_and_cloud_fields() {
-    let mut store = AirmassStore::default();
+fn aloft_model_serves_both_3d_wind_and_cloud_fields() {
+    let mut store = AloftModel::default();
     let utc = UtcTime::from_unix_seconds(1_780_000_000.0);
     let now = utc_to_decimal_year(utc);
     let valid = ValidityWindow {
@@ -33,7 +33,6 @@ fn airmass_store_serves_both_3d_wind_and_cloud_fields() {
         Some(GeodeticPosition::wgs84(39.18, -75.53, 0.0)),
         40_000.0,
         valid,
-        None,
         vec![AloftLevel {
             altitude: Altitude::GeometricMsl(1_000.0),
             temperature_k: 286.0,

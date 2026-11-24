@@ -144,7 +144,7 @@ impl CockpitRig {
         {
             warn!(%err, "collapsing EFB on handheld failed");
         }
-        let mut supervisor = SupervisorRig::new();
+        let mut supervisor = SupervisorRig::new()?;
         supervisor.set_vertical_datum(surface.vertical_datum());
         Ok(Self {
             supervisor,

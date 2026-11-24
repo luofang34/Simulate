@@ -16,6 +16,7 @@ mod field;
 mod full_column;
 mod isa;
 mod mars;
+mod nrlmsise00;
 mod rarefied;
 mod reentry;
 mod thermosphere;
@@ -33,8 +34,16 @@ pub use mars::{
     MARS_GAMMA, MARS_GAS_CONSTANT_J_KG_K, MarsAtmosphere, mars_geometric_to_geopotential_m,
 };
 pub use mbd_core::{AmbientGas, GasComposition, GasSpecies};
+pub use nrlmsise00::{Nrlmsise00Activity, Nrlmsise00Atmosphere};
 pub use rarefied::FlowRegime;
 pub use reentry::ReentryAtmosphere;
 pub use thermosphere::VleoThermosphereAtmosphere;
 pub use vacuum::{COSMIC_BACKGROUND_K, VacuumAtmosphere};
 pub use world_bridge::{WorldAtmosphere, utc_to_decimal_year};
+pub use world_thermosphere::{
+    ApHistory, Effect, GeomagneticActivity, NumberDensities, Switch, Switches, ThermosphereState,
+    space_weather::{
+        CalendarDate, IndexQuality, SpaceWeatherDay, SpaceWeatherError, SpaceWeatherSource,
+        SpaceWeatherTable,
+    },
+};
