@@ -49,6 +49,7 @@ pub(crate) use pixel_ratio::pixel_ratio_update;
 pub(crate) use readback::read_texture_rgba_blocking;
 pub(crate) use svs_dem::sample_point_msl;
 pub(crate) use tile_json::resolve_or_strip_tile_json;
+pub use tile_json::{cache_tile_json, prefetch_tile_json};
 pub use truth::{
     AircraftInstance, CelestialDisc, CelestialEarthShadow, CelestialSkyInput, CelestialStar,
     CelestialTwilight, TruthSceneConfig, TruthSceneFrame, TruthSceneMap, TruthSlotMask,
