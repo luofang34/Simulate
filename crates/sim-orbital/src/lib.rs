@@ -33,6 +33,7 @@ mod warp;
 
 pub use builtin_solar::{BuiltinSolarError, BuiltinSolarSystem2026_2028, SolarSystemKernelPack};
 pub use catalog_sgp4::{Sgp4CatalogTrajectory, Sgp4Error, Sgp4TemeState, teme_to_icrf_rotation};
+pub use checkpoint::MomentumRamp;
 pub use checkpoint::{ActuatorState, ExternalLoads, LatchedBurnLaw, PropagatorKind, VesselConfig};
 pub use checkpoint::{DeterministicRngState, ExternalMassProperties, IntegratorContinuation};
 pub use checkpoint::{DiscreteGncState, EventGenerationState, ExternalInputs, VesselCheckpoint};

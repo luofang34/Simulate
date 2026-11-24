@@ -1,5 +1,7 @@
 //! Read-only render, telemetry, and inspection queries on [`crate::OrbitalUniverse`].
 
+use std::sync::Arc;
+
 use sim_spacetime::SimInstant;
 
 use crate::{
@@ -164,5 +166,45 @@ impl OrbitalUniverse {
         let tubes =
             self.speculative_reachability_tubes(rigid_radius_m, max_control_accel_delta_m_s2);
         form_rendezvous_groups(&tubes)
+    }
+
+    /// Samples `vessel_id` in order across `instants` (`>= committed_instant`) on a
+    /// read-only scratch propagation without advancing or mutating `self`.
+    pub fn sample_vessel_arc(
+        &self,
+        vessel_id: VesselId,
+        instants: &[SimInstant],
+    ) -> Result<Vec<ContinuousPlantState>, SchedulerError> {
+        if !self.vessels.contains_key(&vessel_id) {
+            return Err(SchedulerError::UnknownVessel(vessel_id));
+        }
+        if instants.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut scratch = Self {
+            manifest: self.manifest,
+            clock: self.clock,
+            force_model: self.force_model.clone(),
+            ephemeris: Arc::clone(&self.ephemeris),
+            orientation: Arc::clone(&self.orientation),
+            committed_instant: self.committed_instant,
+            horizon_quantum_ticks: self.horizon_quantum_ticks,
+            vessels: self.vessels.clone(),
+            event_queue: self.event_queue.clone(),
+            command_log: self.command_log.clone(),
+            fired_events_log: Vec::new(),
+            active_camera_vessel: None,
+        };
+        let mut out = Vec::with_capacity(instants.len());
+        for &at in instants {
+            if at > scratch.committed_instant {
+                scratch.advance_committed_to(at)?;
+            }
+            let st = scratch
+                .sample_vessel_state(vessel_id, at)
+                .ok_or(SchedulerError::UnknownVessel(vessel_id))?;
+            out.push(st);
+        }
+        Ok(out)
     }
 }

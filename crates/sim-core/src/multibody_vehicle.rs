@@ -12,7 +12,7 @@ use mbd_multibody::{
 use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
-pub use carried::CarriedReaction;
+pub use carried::{CarriedDecoupledStep, CarriedReaction};
 use element_state::CanopyState;
 pub use mbd_multibody::JointDriveInput;
 use step::{BLOCK_NAME, collect_dynamic_masses};

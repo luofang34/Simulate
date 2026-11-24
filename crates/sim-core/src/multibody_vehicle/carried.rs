@@ -10,7 +10,8 @@
 
 use std::sync::Arc;
 
-use glam::DVec3;
+use glam::{DMat3, DVec3};
+use mbd_core::{ComponentTree, JointKind};
 use mbd_multibody::{FloatingBaseState, PinnedSurfaceRest};
 use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField};
@@ -21,7 +22,7 @@ use super::telemetry::build_telemetry;
 use super::{MultibodyVehicleBlock, MultibodyVehicleInput, SurfaceContactProvider, VehicleWorld};
 use crate::flight_model::coupled_mechanism::CoupledMechanism;
 use crate::flight_model::loads::LoadReadout;
-use crate::flight_model::planet_frame::fixed_to_instantaneous_inertial;
+use crate::flight_model::planet_frame::{fixed_to_instantaneous_inertial, spin};
 use crate::{BlockError, VehicleState};
 
 /// What the motion inside a vehicle over one carried step asks of the
@@ -56,6 +57,23 @@ impl CarriedReaction {
     };
 }
 
+/// Carried-step result exposing the free-joint effective (Schur-complement)
+/// base inertia and canonical joint momentum alongside [`CarriedReaction`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CarriedDecoupledStep {
+    /// Standard [`CarriedReaction`] measured at `reaction_base`.
+    pub reaction: CarriedReaction,
+    /// Free-joint effective rotational inertia about CG before joint motion,
+    /// using post-drain masses, body axes, kg·m².
+    pub effective_inertia_before_cg_body: DMat3,
+    /// Free-joint effective rotational inertia about CG after joint motion,
+    /// body axes, kg·m².
+    pub effective_inertia_after_cg_body: DMat3,
+    /// Canonical internal angular momentum `L_cg - I_eff ω` after the step at
+    /// `reaction_base`, body axes, N·m·s.
+    pub canonical_momentum_after_cg_body_nms: DVec3,
+}
+
 impl MultibodyVehicleBlock {
     /// Advances the subsystems (fluids, electrical bus, propulsion, thermal,
     /// surface erosion) and the joints one period with the vehicle carried
@@ -76,8 +94,35 @@ impl MultibodyVehicleBlock {
         input: &MultibodyVehicleInput,
         prescribed: &VehicleState,
     ) -> Result<CarriedReaction, BlockError> {
+        self.step_carried_between(input, prescribed, prescribed, prescribed)
+    }
+
+    /// Advances subsystems and joints one period from `start` to `end` while
+    /// another integrator holds the base trajectory, returning the reaction
+    /// owed at `reaction_base`.
+    pub fn step_carried_between(
+        &mut self,
+        input: &MultibodyVehicleInput,
+        start: &VehicleState,
+        end: &VehicleState,
+        reaction_base: &VehicleState,
+    ) -> Result<CarriedReaction, BlockError> {
+        self.step_carried_decoupled(input, start, end, reaction_base)
+            .map(|out| out.reaction)
+    }
+
+    /// Advances subsystems and joints one period from `start` to `end`, also
+    /// returning the free-joint Schur-complement inertia and canonical
+    /// momentum at `reaction_base`.
+    pub fn step_carried_decoupled(
+        &mut self,
+        input: &MultibodyVehicleInput,
+        start: &VehicleState,
+        end: &VehicleState,
+        reaction_base: &VehicleState,
+    ) -> Result<CarriedDecoupledStep, BlockError> {
         let saved = self.snapshot_for_coord();
-        let res = self.run_carried_step(input, prescribed);
+        let res = self.run_carried_step(input, start, end, reaction_base);
         if res.is_err()
             && let Err(error) = self.try_restore(&saved)
         {
@@ -94,8 +139,65 @@ impl MultibodyVehicleBlock {
     }
 
     /// Whether any joint has a degree of freedom.
-    fn has_moving_joints(&self) -> bool {
+    pub fn has_moving_joints(&self) -> bool {
         self.model.layout().velocity_len() > 6
+    }
+
+    /// Computes the free-joint effective (Schur-complement) inertia tensor about
+    /// CG in body axes and the canonical joint momentum `L_cg - I_eff ω` at
+    /// `prescribed`.
+    pub fn effective_inertia_and_momentum_cg_body(
+        &mut self,
+        prescribed: &VehicleState,
+    ) -> Result<(DMat3, DVec3), BlockError> {
+        if !self.has_moving_joints() {
+            return Ok((self.mass.inertia_cg_body, DVec3::ZERO));
+        }
+        let saved = self.state.base();
+        self.place_at(prescribed);
+        let res = self.compute_effective_at(prescribed);
+        self.state.set_base(&saved);
+        res
+    }
+
+    fn compute_effective_at(
+        &mut self,
+        prescribed: &VehicleState,
+    ) -> Result<(DMat3, DVec3), BlockError> {
+        let (whole_body, _) = self.angular_momentum_cg_body()?;
+        let i_eff = self.schur_inertia_cg_body()?;
+        let w_inertial = prescribed.angular_rate_body
+            + prescribed.attitude.conjugate() * spin(&self.config.body);
+        Ok((i_eff, whole_body - i_eff * w_inertial))
+    }
+
+    fn schur_inertia_cg_body(&mut self) -> Result<DMat3, BlockError> {
+        let nv = self.model.layout().velocity_len();
+        let mut tau = vec![0.0; nv];
+        let mut accel = vec![0.0; nv];
+        let mut cols = [DVec3::ZERO; 3];
+        for (axis, col) in [DVec3::X, DVec3::Y, DVec3::Z].into_iter().zip(&mut cols) {
+            tau.fill(0.0);
+            let tau_link = self.mount.body_from_link.conjugate() * axis;
+            if let Some(dst) = tau.get_mut(3..6) {
+                dst.copy_from_slice(&[tau_link.x, tau_link.y, tau_link.z]);
+            }
+            self.model
+                .apply_inverse_mass(self.state.as_slice(), &tau, &mut self.work, &mut accel)
+                .map_err(super::step::block_multi)?;
+            if let [_, _, _, ax, ay, az, ..] = *accel.as_slice() {
+                *col = self.mount.body_from_link * DVec3::new(ax, ay, az);
+            }
+        }
+        let [c0, c1, c2] = cols;
+        let inv = DMat3::from_cols(c0, c1, c2);
+        let sym = 0.5 * (inv + inv.transpose());
+        let det = sym.determinant();
+        if det.is_finite() && det > 0.0 {
+            Ok(sym.inverse())
+        } else {
+            Ok(self.mass.inertia_cg_body)
+        }
     }
 
     /// The vehicle's angular momentum about its centre of gravity in body
@@ -159,38 +261,71 @@ impl MultibodyVehicleBlock {
         self.adopt_base_state(state)
     }
 
+    fn step_carried_joints(
+        &mut self,
+        sub: &super::step_subsystems::SubsystemStepOut,
+        input: &MultibodyVehicleInput,
+        start: &VehicleState,
+        end: &VehicleState,
+        reaction_base: &VehicleState,
+    ) -> Result<CarriedDecoupledStep, BlockError> {
+        if !self.has_moving_joints() {
+            self.place_at(end);
+            self.elements.mechanisms.clear();
+            self.mechanism_states.clear();
+            return Ok(CarriedDecoupledStep {
+                reaction: CarriedReaction::NONE,
+                effective_inertia_before_cg_body: self.mass.inertia_cg_body,
+                effective_inertia_after_cg_body: self.mass.inertia_cg_body,
+                canonical_momentum_after_cg_body_nms: DVec3::ZERO,
+            });
+        }
+        let dt_s = self.config.period.as_seconds();
+        self.place_at(reaction_base);
+        let (before, _) = self.angular_momentum_cg_body()?;
+        let (i_eff_before, _) = self.compute_effective_at(reaction_base)?;
+        self.place_at(start);
+        let omega_inertial =
+            start.angular_rate_body + start.attitude.conjugate() * spin(&self.config.body);
+        let near_stop = any_joint_near_stop(&self.tree, dt_s);
+        let mut override_stepper = self
+            .stepper
+            .carried_for_spin(omega_inertial, dt_s, near_stop);
+        self.integrate_held_with(sub, input, override_stepper.as_mut())?;
+        self.place_at(reaction_base);
+        let (after, internal) = self.angular_momentum_cg_body()?;
+        let (i_eff_after, h_after) = self.compute_effective_at(reaction_base)?;
+        self.place_at(end);
+        Ok(CarriedDecoupledStep {
+            reaction: CarriedReaction {
+                angular_impulse_cg_body_nms: before - after,
+                internal_momentum_cg_body_nms: internal,
+            },
+            effective_inertia_before_cg_body: i_eff_before,
+            effective_inertia_after_cg_body: i_eff_after,
+            canonical_momentum_after_cg_body_nms: h_after,
+        })
+    }
+
     fn run_carried_step(
         &mut self,
         input: &MultibodyVehicleInput,
-        prescribed: &VehicleState,
-    ) -> Result<CarriedReaction, BlockError> {
+        start: &VehicleState,
+        end: &VehicleState,
+        reaction_base: &VehicleState,
+    ) -> Result<CarriedDecoupledStep, BlockError> {
         validate_input(input)?;
-        check_prescribed(prescribed)?;
+        check_prescribed(start)?;
+        check_prescribed(end)?;
+        check_prescribed(reaction_base)?;
         check_mechanisms(input)?;
         self.sync_elements()?;
         let dt_s = self.config.period.as_seconds();
-        self.place_at(prescribed);
+        self.place_at(start);
         let (env, sub) = self.step_subsystems(dt_s, input)?;
         self.take_up_masses(&sub)?;
-        // The prescribed point is the centre of gravity, which moves in the
-        // root frame as tanks drain, so the root is placed from the new mass.
-        self.place_at(prescribed);
         self.hold_loads(&sub, input);
-        let reaction = if self.has_moving_joints() {
-            let (before, _) = self.angular_momentum_cg_body()?;
-            self.integrate_held(&sub, input)?;
-            // The joints have moved the centre of gravity in the root frame.
-            self.place_at(prescribed);
-            let (after, internal) = self.angular_momentum_cg_body()?;
-            CarriedReaction {
-                angular_impulse_cg_body_nms: before - after,
-                internal_momentum_cg_body_nms: internal,
-            }
-        } else {
-            self.elements.mechanisms.clear();
-            self.mechanism_states.clear();
-            CarriedReaction::NONE
-        };
+        let decoupled = self.step_carried_joints(&sub, input, start, end, reaction_base)?;
         self.poses = self
             .tree
             .evaluate_pose_table()
@@ -216,7 +351,7 @@ impl MultibodyVehicleBlock {
             false,
         );
         self.now = self.now.advanced(self.config.period);
-        Ok(reaction)
+        Ok(decoupled)
     }
 
     /// Takes `state` as the vehicle's centre-of-gravity state at
@@ -262,4 +397,49 @@ fn check_mechanisms(input: &MultibodyVehicleInput) -> Result<(), BlockError> {
         ));
     }
     Ok(())
+}
+
+/// Switches carried fixed-step RK4 to adaptive integration near a finite travel
+/// stop whose penalty stiffness (`~omega_stop = 45 rad/s`) would destabilize `h ~ 10 s`.
+fn any_joint_near_stop(tree: &ComponentTree, dt_s: f64) -> bool {
+    const STOP_MARGIN: f64 = 0.15;
+    tree.ids().any(|id| {
+        let (Ok(spec), Ok(state)) = (tree.spec(id), tree.state(id)) else {
+            return false;
+        };
+        if !state.attached {
+            return false;
+        }
+        let js = state.joint;
+        match spec.joint.kind {
+            JointKind::Fixed | JointKind::Compliant6Dof { .. } => false,
+            JointKind::Revolute {
+                min_rad: min,
+                max_rad: max,
+                ..
+            }
+            | JointKind::Prismatic {
+                min_m: min,
+                max_m: max,
+                ..
+            } => {
+                let q0 = js.q_scalar;
+                let q1 = q0 + js.q_vel_scalar * dt_s;
+                (min.is_finite() && (q0 <= min + STOP_MARGIN || q1 <= min + STOP_MARGIN))
+                    || (max.is_finite() && (q0 >= max - STOP_MARGIN || q1 >= max - STOP_MARGIN))
+            }
+            JointKind::Spherical {
+                cone_half_angle_rad,
+            } => {
+                if !cone_half_angle_rad.is_finite() {
+                    return false;
+                }
+                let r = js.rotation;
+                let angle = 2.0 * sim_spacetime::atan2(r.xyz().length(), r.w.abs());
+                let speed = js.angular_vel_rad_s.length();
+                angle + STOP_MARGIN >= cone_half_angle_rad
+                    || angle + speed * dt_s + STOP_MARGIN >= cone_half_angle_rad
+            }
+        }
+    })
 }

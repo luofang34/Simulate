@@ -19,7 +19,7 @@ use crate::local::OrbitalBody;
 /// A carried plant's surroundings at an exchange instant: the base motion the
 /// orbital tier committed, and the environment the plant cannot work out for
 /// itself.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct CarryContext {
     /// The exchange instant, which the plant's internals advance to.
@@ -40,6 +40,45 @@ pub struct CarryContext {
     /// act in, on the date that tier evaluates it for. `None` where the
     /// field has no value, as on a date its model does not cover.
     pub magnetic_field_fixed_nt: Option<DVec3>,
+    /// Base states along `[plant.now(), at]`, in chronological order, each
+    /// at one of the plant's step instants up to `at`.
+    pub trajectory: Vec<(SimInstant, VehicleState)>,
+    pub(crate) carried_momentum_ramp_end: Option<DVec3>,
+    pub(crate) preview_ramp_target: bool,
+    pub(crate) planet_spin_fixed_rad_s: Option<DVec3>,
+}
+
+impl CarryContext {
+    pub(crate) fn with_trajectory(mut self, trajectory: Vec<(SimInstant, VehicleState)>) -> Self {
+        self.trajectory = trajectory;
+        self
+    }
+
+    pub(crate) fn with_carried_ramp_end(mut self, end_momentum_body_nms: DVec3) -> Self {
+        self.carried_momentum_ramp_end = Some(end_momentum_body_nms);
+        self
+    }
+
+    pub(crate) fn with_preview_ramp_target(mut self) -> Self {
+        self.preview_ramp_target = true;
+        self
+    }
+
+    /// The orbital tier's committed base state at `instant`, or [`Self::state`]
+    /// if no sample was recorded for `instant`.
+    #[must_use]
+    pub fn state_at(&self, instant: SimInstant) -> VehicleState {
+        if instant == self.at {
+            return self.state;
+        }
+        match self.trajectory.binary_search_by_key(&instant, |(t, _)| *t) {
+            Ok(idx) => self
+                .trajectory
+                .get(idx)
+                .map_or(self.state, |(_, state)| *state),
+            Err(_) => self.state,
+        }
+    }
 }
 
 /// What the orbital tier holds for a carried plant until the next exchange.

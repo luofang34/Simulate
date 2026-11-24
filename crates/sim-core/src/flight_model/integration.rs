@@ -37,6 +37,12 @@ pub enum VehicleIntegrator {
 impl VehicleIntegrator {
     /// One fourth-order step per block period.
     pub const REAL_TIME: Self = Self::FixedRk4 { substeps: 1 };
+
+    /// Adaptive Dormand–Prince 5(4) with uniform relative and absolute tolerances.
+    #[must_use]
+    pub fn adaptive(rtol: f64, atol: f64) -> Self {
+        Self::Adaptive(Tolerances::uniform(rtol, atol))
+    }
 }
 
 /// Where the characteristic time of a vehicle's motion comes from. With the
@@ -97,6 +103,27 @@ impl Stepper {
             }
             VehicleIntegrator::Stiff(tolerances) => Self::Stiff(Rosenbrock23::new(tolerances)),
         }
+    }
+
+    pub(crate) fn carried_for_spin(
+        &self,
+        omega_inertial_rad_s: glam::DVec3,
+        dt_s: f64,
+        near_stop: bool,
+    ) -> Option<Self> {
+        const MAX_RK4_PHASE_RAD: f64 = 0.25;
+        let Self::FixedRk4(rk4) = self else {
+            return None;
+        };
+        let substeps = rk4.substeps.max(1);
+        let h = dt_s / f64::from(substeps);
+        let spin = omega_inertial_rad_s.length();
+        if !near_stop && spin * h <= MAX_RK4_PHASE_RAD {
+            return None;
+        }
+        Some(Self::Adaptive(DormandPrince54::new(Tolerances::uniform(
+            1e-11, 1e-11,
+        ))))
     }
 }
 

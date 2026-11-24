@@ -21,6 +21,7 @@ use crate::local::{LocalFactory, LocalPlant};
 use crate::planning::Planner;
 use crate::tiering::{TierChange, TierPolicy};
 
+mod carried_arc;
 mod checkpoint;
 mod exchange;
 mod handoffs;
@@ -60,6 +61,9 @@ pub(crate) enum Flight {
     /// with the scheduler, and flies the vessel again when it comes down.
     Orbital {
         carried: Option<Box<dyn LocalPlant>>,
+        /// Base states sampled at each `plant.period()` step since the last
+        /// exchange, so multi-step carries integrate along the orbital trajectory.
+        samples: Vec<(SimInstant, VehicleState)>,
     },
 }
 
@@ -260,7 +264,10 @@ impl Universe {
         self.vessels.insert(
             id,
             Vessel {
-                flight: Flight::Orbital { carried: None },
+                flight: Flight::Orbital {
+                    carried: None,
+                    samples: Vec::new(),
+                },
                 rebuild,
                 bus,
             },

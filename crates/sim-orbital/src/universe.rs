@@ -237,12 +237,32 @@ impl OrbitalUniverse {
     pub fn ingest_proposals(&mut self, proposals: impl IntoIterator<Item = SpeculativeProposal>) {
         let mut sorted: Vec<SpeculativeProposal> = proposals.into_iter().collect();
         sorted.sort_by_key(|p| (p.vessel_id, p.from_instant));
-        for prop in sorted {
+        let requested: Vec<Option<SimInstant>> = sorted
+            .iter()
+            .map(|prop| {
+                self.vessels.get(&prop.vessel_id).map(|tl| {
+                    worker::clamp_proposal_end(
+                        &tl.frontier_checkpoint,
+                        self.speculation_horizon(tl),
+                        &self.clock,
+                    )
+                })
+            })
+            .collect();
+        for (prop, req_end) in sorted.into_iter().zip(requested) {
             let vid = prop.vessel_id;
             let events = prop.proposed_events.clone();
             if let Some(tl) = self.vessels.get_mut(&vid)
                 && tl.apply_proposal(prop)
             {
+                tl.pending_horizon = if events.is_empty()
+                    && tl.speculative.len() >= MAX_SPECULATIVE_SEGMENTS
+                    && req_end.is_some_and(|end| tl.frontier_instant() < end)
+                {
+                    req_end
+                } else {
+                    None
+                };
                 for ev in events {
                     if ev.key.instant >= self.committed_instant {
                         self.event_queue.insert(ev.key, ev);

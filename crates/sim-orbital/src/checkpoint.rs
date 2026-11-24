@@ -25,7 +25,7 @@ use crate::{
 };
 
 pub use burn_law::{ActuatorState, LatchedBurnLaw};
-pub use external_inputs::{ExternalInputs, ExternalLoads, ExternalMassProperties};
+pub use external_inputs::{ExternalInputs, ExternalLoads, ExternalMassProperties, MomentumRamp};
 
 /// Explicit per-vessel `Xoshiro256**` deterministic PRNG state (zero thread-local or OS RNG).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

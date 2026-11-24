@@ -3,11 +3,11 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use glam::DVec3;
+use glam::{DMat3, DVec3};
 use sim_atmosphere::AtmosphereField;
 use sim_bodies::BodyDescriptor;
 use sim_core::{
-    Block, CarriedReaction, EllipsoidSurfaceProvider, MultibodyVehicleBlock, MultibodyVehicleInput,
+    Block, EllipsoidSurfaceProvider, MultibodyVehicleBlock, MultibodyVehicleInput,
     MultibodyVehicleSnapshot, SimInstant, TickSpan, VehicleState,
 };
 use sim_geo::BodyEllipsoid;
@@ -155,6 +155,148 @@ impl MultibodyLocalPlant {
         let accel = thrust_n / self.block.mass_properties().total_mass_kg;
         self.carry_period.is_some() && accel <= self.max_carried_thrust_accel_m_s2
     }
+
+    fn carry_fixed(&mut self, context: &CarryContext) -> Result<CarriedLoads, UniverseError> {
+        let mut force = DVec3::ZERO;
+        let mut torque = DVec3::ZERO;
+        let mut steps = 0_u32;
+        while self.now().advanced(self.block.period()) <= context.at {
+            let _ = self.block.step_carried(&self.input, &context.state)?;
+            let tel = self.block.telemetry();
+            force += tel.total_thrust_body_n;
+            torque += tel.thrust_torque_cg_body_nm;
+            steps = steps.wrapping_add(1);
+        }
+        let tel = self.block.telemetry();
+        let (force_body_n, torque_body_nm) = if steps == 0 {
+            (tel.total_thrust_body_n, tel.thrust_torque_cg_body_nm)
+        } else {
+            (force / f64::from(steps), torque / f64::from(steps))
+        };
+        Ok(CarriedLoads {
+            force_body_n,
+            torque_body_nm,
+            dipole_body_a_m2: DVec3::ZERO,
+            angular_impulse_body_nms: DVec3::ZERO,
+            internal_momentum_body_nms: DVec3::ZERO,
+            body: self.body_properties(),
+        })
+    }
+
+    fn carry_articulated(&mut self, context: &CarryContext) -> Result<CarriedLoads, UniverseError> {
+        let start_state = context.state_at(self.now());
+        let (i_eff_start, mut h_start) = self
+            .block
+            .effective_inertia_and_momentum_cg_body(&start_state)?;
+        let spin_offset = context
+            .planet_spin_fixed_rad_s
+            .map_or(DVec3::ZERO, |spin| spin - DVec3::Z * self.body.omega_rad_s);
+        if spin_offset != DVec3::ZERO {
+            let m_bb_start = self.block.mass_properties().inertia_cg_body;
+            let dw_start = start_state.attitude.conjugate() * spin_offset;
+            h_start += (m_bb_start - i_eff_start) * dw_start;
+        }
+        let mut force = DVec3::ZERO;
+        let mut torque = DVec3::ZERO;
+        let mut delta_i_eff = DMat3::ZERO;
+        let mut i_eff_end = i_eff_start;
+        let mut h_end = h_start;
+        let mut steps = 0_u32;
+        while self.now().advanced(self.block.period()) <= context.at {
+            let start_at = self.now();
+            let end_at = start_at.advanced(self.block.period());
+            let start = context.state_at(start_at);
+            let end = context.state_at(end_at);
+            let step =
+                self.block
+                    .step_carried_decoupled(&self.input, &start, &end, &context.state)?;
+            delta_i_eff +=
+                step.effective_inertia_before_cg_body - step.effective_inertia_after_cg_body;
+            i_eff_end = step.effective_inertia_after_cg_body;
+            h_end = step.canonical_momentum_after_cg_body_nms;
+            let tel = self.block.telemetry();
+            force += tel.total_thrust_body_n;
+            torque += tel.thrust_torque_cg_body_nm;
+            steps = steps.wrapping_add(1);
+        }
+        let m_bb = self.block.mass_properties().inertia_cg_body;
+        if steps > 0 && spin_offset != DVec3::ZERO {
+            let dw_end = context.state.attitude.conjugate() * spin_offset;
+            h_end += (m_bb - i_eff_end) * dw_end;
+        }
+        let tel = self.block.telemetry();
+        let (force_body_n, torque_body_nm, angular_impulse_body_nms, internal_momentum_body_nms) =
+            if steps == 0 {
+                (
+                    tel.total_thrust_body_n,
+                    tel.thrust_torque_cg_body_nm,
+                    DVec3::ZERO,
+                    h_end,
+                )
+            } else {
+                let (impulse, h_new) = self.reconcile_carried_reaction(
+                    context,
+                    i_eff_start,
+                    delta_i_eff,
+                    i_eff_end,
+                    h_start,
+                    h_end,
+                    m_bb,
+                );
+                (
+                    force / f64::from(steps),
+                    torque / f64::from(steps),
+                    impulse,
+                    h_new,
+                )
+            };
+        Ok(CarriedLoads {
+            force_body_n,
+            torque_body_nm,
+            dipole_body_a_m2: DVec3::ZERO,
+            angular_impulse_body_nms,
+            internal_momentum_body_nms,
+            body: OrbitalBody {
+                inertia_cg_body: i_eff_end,
+                ..self.body_properties()
+            },
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reconcile_carried_reaction(
+        &self,
+        context: &CarryContext,
+        i_eff_start: DMat3,
+        delta_i_eff: DMat3,
+        i_eff_end: DMat3,
+        h_start: DVec3,
+        h_end: DVec3,
+        m_bb: DMat3,
+    ) -> (DVec3, DVec3) {
+        let planet_spin = context
+            .planet_spin_fixed_rad_s
+            .unwrap_or(DVec3::Z * self.body.omega_rad_s);
+        let w_end =
+            context.state.angular_rate_body + context.state.attitude.conjugate() * planet_spin;
+        if context.preview_ramp_target {
+            // Target `h_end - ΔI_eff ω_end` at the interval end so `residual == 0`.
+            let _ = (i_eff_start, h_start, m_bb);
+            return (DVec3::ZERO, h_end - delta_i_eff * w_end);
+        }
+        let h_held_end = context.carried_momentum_ramp_end.unwrap_or(h_start);
+        let residual = delta_i_eff * w_end + (h_held_end - h_end);
+        // Shifting base spin with `(q, q_dot)` frozen changes total multibody
+        // momentum by `M_bb Δω`, not `I_eff Δω`, so solve `M_bb Δω = residual`
+        // and adjust `H_canon` consistently by `(M_bb - I_eff) Δω`.
+        let det = m_bb.determinant();
+        let dw = if det.is_finite() && det > 0.0 {
+            m_bb.inverse() * residual
+        } else {
+            DVec3::ZERO
+        };
+        (i_eff_end * dw, h_end + (m_bb - i_eff_end) * dw)
+    }
 }
 
 /// `span` rounded up to a whole number of `period`s, at least one.
@@ -220,6 +362,10 @@ impl LocalPlant for MultibodyLocalPlant {
         self.carry_period
     }
 
+    fn has_moving_joints(&self) -> bool {
+        self.block.has_moving_joints()
+    }
+
     fn carry(&mut self, context: &CarryContext) -> Result<CarriedLoads, UniverseError> {
         if context.body != self.body {
             return Err(UniverseError::UnmodelledBody);
@@ -229,36 +375,10 @@ impl LocalPlant for MultibodyLocalPlant {
         // occulted fraction goes into the irradiance, once.
         self.input.sun_irradiance_w_m2 = context.solar_irradiance_w_m2 * context.solar_lit_fraction;
         self.input.sun_visibility = context.solar_lit_fraction;
-        let mut force = DVec3::ZERO;
-        let mut torque = DVec3::ZERO;
-        let mut reaction = CarriedReaction::NONE;
-        let mut steps = 0_u32;
-        while self.now().advanced(self.block.period()) <= context.at {
-            let step = self.block.step_carried(&self.input, &context.state)?;
-            reaction.angular_impulse_cg_body_nms += step.angular_impulse_cg_body_nms;
-            reaction.internal_momentum_cg_body_nms = step.internal_momentum_cg_body_nms;
-            let tel = self.block.telemetry();
-            force += tel.total_thrust_body_n;
-            torque += tel.thrust_torque_cg_body_nm;
-            steps = steps.wrapping_add(1);
+        if !self.block.has_moving_joints() {
+            return self.carry_fixed(context);
         }
-        let tel = self.block.telemetry();
-        let (force_body_n, torque_body_nm) = if steps == 0 {
-            (tel.total_thrust_body_n, tel.thrust_torque_cg_body_nm)
-        } else {
-            (force / f64::from(steps), torque / f64::from(steps))
-        };
-        if steps == 0 {
-            reaction.internal_momentum_cg_body_nms = self.block.internal_momentum_cg_body()?;
-        }
-        Ok(CarriedLoads {
-            force_body_n,
-            torque_body_nm,
-            dipole_body_a_m2: DVec3::ZERO,
-            angular_impulse_body_nms: reaction.angular_impulse_cg_body_nms,
-            internal_momentum_body_nms: reaction.internal_momentum_cg_body_nms,
-            body: self.body_properties(),
-        })
+        self.carry_articulated(context)
     }
 
     /// About another body than its own the plant moves there: the block

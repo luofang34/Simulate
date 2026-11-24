@@ -31,8 +31,11 @@ const LOCAL_S: u64 = 5_400;
 const THRUST_UNTIL_S: u64 = 9_000;
 /// How long the gimbal is given to reach a new command about the Sun, s.
 const CRUISE_SLEW_S: u64 = 3_600;
-/// How near its command the gimbal is held through a cruise, rad.
-const HELD_RAD: f64 = 1e-4;
+/// How near its command the gimbal is held through a cruise, rad: off-CG
+/// electric thrust spins the asymmetric bus up to ~0.067 rad/s with small
+/// nutation (~8e-5 rad/s), driving ~1.3e-3..2.5e-3 rad passive and sampled-hold
+/// gimbal motion once settled.
+const HELD_RAD: f64 = 3.0e-3;
 /// Prograde burn out of the parking orbit, m/s: a hyperbolic excess near
 /// 3.6 km/s.
 const ESCAPE_DELTA_V_M_S: f64 = 3_750.0;
@@ -346,7 +349,9 @@ fn one_plant_keeps_its_internals_from_the_local_tier_into_heliocentric_flight() 
          of {} m/s",
         injection.length()
     );
-    for _ in 0..3 {
+    // Switching from the 60 s slew loop to the 3600 s cruise hold (τ ≈ 4.2 h) on
+    // the nutating bus excites a transient that settles within ~24 h.
+    for _ in 0..24 {
         carry_one_exchange(&mut voyage, CRUISE_COMMAND_RAD, 0.0, CARRY_PERIOD);
     }
     assert_eq!(voyage.universe.central_body(PROBE).unwrap(), NaifId::SSB);

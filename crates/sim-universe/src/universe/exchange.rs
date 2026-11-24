@@ -8,6 +8,7 @@
 //! instants: speculative proposals stay pure functions of their checkpoints,
 //! and no rollback reaches inside a plant.
 
+use glam::{DMat3, DVec3};
 use sim_core::{SimInstant, VehicleState};
 use sim_geo::BodyEllipsoid;
 use sim_orbital::{
@@ -50,7 +51,7 @@ impl Universe {
     #[must_use]
     pub fn carried<P: LocalPlant + 'static>(&self, id: VesselId) -> Option<&P> {
         match &self.vessels.get(&id)?.flight {
-            Flight::Orbital { carried } => carried.as_ref()?.as_any().downcast_ref(),
+            Flight::Orbital { carried, .. } => carried.as_ref()?.as_any().downcast_ref(),
             Flight::Local(_) => None,
         }
     }
@@ -60,8 +61,38 @@ impl Universe {
     /// the run reaches however it is sliced.
     pub fn carried_mut<P: LocalPlant + 'static>(&mut self, id: VesselId) -> Option<&mut P> {
         match &mut self.vessels.get_mut(&id)?.flight {
-            Flight::Orbital { carried } => carried.as_mut()?.as_any_mut().downcast_mut(),
+            Flight::Orbital { carried, .. } => carried.as_mut()?.as_any_mut().downcast_mut(),
             Flight::Local(_) => None,
+        }
+    }
+
+    /// Inertia tensor (`kg·m²`) and held internal angular momentum (`N·m·s`)
+    /// about the centre of gravity that the orbital tier applies to `id` at
+    /// [`Self::now`], in body axes, accounting for any active momentum ramp.
+    pub fn orbital_held_rotational_state_body(
+        &self,
+        id: VesselId,
+    ) -> Result<(DMat3, DVec3), UniverseError> {
+        match self.vessel(id)?.flight {
+            Flight::Local(_) => Err(UniverseError::NotOrbital(id)),
+            Flight::Orbital { .. } => {
+                let checkpoint = self
+                    .orbital
+                    .committed_checkpoint(id)
+                    .ok_or(UniverseError::UnknownVessel(id))?;
+                let config = self
+                    .orbital
+                    .vessel_config(id)
+                    .ok_or(UniverseError::UnknownVessel(id))?;
+                let inertia = checkpoint
+                    .mass_model(config)
+                    .inertia_tensor(checkpoint.plant.propellant_mass_kg);
+                let held = checkpoint
+                    .external
+                    .loads
+                    .internal_momentum_at(self.epoch.tdb_at(self.now));
+                Ok((inertia, held))
+            }
         }
     }
 
@@ -75,6 +106,9 @@ impl Universe {
         }
         loop {
             let stop = self.next_exchange(until).unwrap_or(until);
+            if stop > self.now {
+                self.prepare_carried_intervals()?;
+            }
             self.commit_orbital_to(stop)?;
             self.now = stop;
             self.exchange_due()?;
@@ -98,7 +132,7 @@ impl Universe {
 
     /// When `plant` next exchanges: one carry period after the instant its
     /// internals describe, which rides in the plant's own snapshot.
-    fn exchange_instant(plant: &dyn LocalPlant) -> Option<SimInstant> {
+    pub(super) fn exchange_instant(plant: &dyn LocalPlant) -> Option<SimInstant> {
         let period = plant.carry_period()?;
         (period.ticks_u128() > 0).then(|| plant.now().advanced(period))
     }
@@ -108,7 +142,7 @@ impl Universe {
         self.vessels
             .values()
             .filter_map(|vessel| match &vessel.flight {
-                Flight::Orbital { carried } => Self::exchange_instant(carried.as_deref()?),
+                Flight::Orbital { carried, .. } => Self::exchange_instant(carried.as_deref()?),
                 Flight::Local(_) => None,
             })
             .min()
@@ -123,7 +157,7 @@ impl Universe {
             .vessels
             .iter()
             .filter_map(|(&id, vessel)| match &vessel.flight {
-                Flight::Orbital { carried } => {
+                Flight::Orbital { carried, .. } => {
                     let at = Self::exchange_instant(carried.as_deref()?)?;
                     (at <= self.now).then_some(id)
                 }
@@ -144,7 +178,7 @@ impl Universe {
     /// reaction of its joints in it.
     pub(super) fn bring_carried_to_now(&mut self, id: VesselId) -> Result<(), UniverseError> {
         let behind = match &self.vessel(id)?.flight {
-            Flight::Orbital { carried } => carried
+            Flight::Orbital { carried, .. } => carried
                 .as_deref()
                 .is_some_and(|plant| plant.now() < self.now),
             Flight::Local(_) => false,
@@ -157,7 +191,7 @@ impl Universe {
 
     pub(super) fn take_carried(&mut self, id: VesselId) -> Option<Box<dyn LocalPlant>> {
         match &mut self.vessels.get_mut(&id)?.flight {
-            Flight::Orbital { carried } => carried.take(),
+            Flight::Orbital { carried, .. } => carried.take(),
             Flight::Local(_) => None,
         }
     }
@@ -168,8 +202,12 @@ impl Universe {
         let Some(mut plant) = self.take_carried(id) else {
             return Ok(None);
         };
-        let carried = self.carry_plant(id, plant.as_mut());
-        if let Flight::Orbital { carried: slot } = &mut self.vessel_mut(id)?.flight {
+        let samples = match &mut self.vessel_mut(id)?.flight {
+            Flight::Orbital { samples, .. } => std::mem::take(samples),
+            Flight::Local(_) => Vec::new(),
+        };
+        let carried = self.carry_plant(id, plant.as_mut(), samples);
+        if let Flight::Orbital { carried: slot, .. } = &mut self.vessel_mut(id)?.flight {
             *slot = Some(plant);
         }
         carried.map(Some)
@@ -179,10 +217,23 @@ impl Universe {
         &self,
         id: VesselId,
         plant: &mut dyn LocalPlant,
+        samples: Vec<(SimInstant, VehicleState)>,
     ) -> Result<CarriedLoads, UniverseError> {
         let body = plant.body();
         let state = self.carried_base_state(id, body)?;
-        let context = self.carry_context(body, state, self.now)?;
+        let mut context = self
+            .carry_context(body, state, self.now)?
+            .with_trajectory(samples);
+        if plant.has_moving_joints()
+            && let Some(checkpoint) = self.orbital.committed_checkpoint(id)
+            && checkpoint.external.loads.momentum_ramp.is_some()
+        {
+            let h_ramp = checkpoint
+                .external
+                .loads
+                .internal_momentum_at(self.epoch.tdb_at(self.now));
+            context = context.with_carried_ramp_end(h_ramp);
+        }
         let loads = plant.carry(&context)?;
         if plant.now() != self.now {
             return Err(UniverseError::BetweenSteps { vessel: id });
@@ -193,7 +244,7 @@ impl Universe {
     /// The orbital vessel `id`'s state at [`Self::now`] fixed to `body`, the
     /// plant's own, whatever origin the scheduler integrates it about. Between
     /// integration step ends this is the scheduler's dense output.
-    fn carried_base_state(
+    pub(super) fn carried_base_state(
         &self,
         id: VesselId,
         body: BodyEllipsoid,
@@ -265,6 +316,10 @@ impl Universe {
             sun_direction_fixed: rotation.r_icrf_to_fixed * sunlight.to_sun_icrf,
             solar_irradiance_w_m2: sunlight.unobstructed_w_m2,
             solar_lit_fraction: sunlight.lit_fraction,
+            trajectory: Vec::new(),
+            carried_momentum_ramp_end: None,
+            preview_ramp_target: false,
+            planet_spin_fixed_rad_s: Some(rotation.omega_body_rad_s),
         })
     }
 

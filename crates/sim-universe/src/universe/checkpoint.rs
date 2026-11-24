@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use sim_core::SimInstant;
+use sim_core::{SimInstant, VehicleState};
 use sim_orbital::{UniverseSnapshot, VesselId};
 
 use super::{Flight, Tier, Universe};
@@ -27,6 +27,7 @@ pub struct UniverseCheckpoint {
     tiers: BTreeMap<VesselId, Tier>,
     buses: BTreeMap<VesselId, VesselBusSnapshot>,
     plants: BTreeMap<VesselId, PlantSnapshot>,
+    carried_samples: BTreeMap<VesselId, Vec<(SimInstant, VehicleState)>>,
     planner: PlannerCheckpoint,
 }
 
@@ -52,12 +53,23 @@ impl Universe {
             .iter()
             .filter_map(|(&id, vessel)| Some((id, vessel.flight.plant()?.snapshot_internals()?)))
             .collect();
+        let carried_samples = self
+            .vessels
+            .iter()
+            .filter_map(|(&id, vessel)| match &vessel.flight {
+                Flight::Orbital { samples, .. } if !samples.is_empty() => {
+                    Some((id, samples.clone()))
+                }
+                _ => None,
+            })
+            .collect();
         UniverseCheckpoint {
             now: self.now,
             orbital: self.orbital.capture_snapshot(),
             tiers: self.tiers(),
             buses,
             plants,
+            carried_samples,
             planner: self.planner.checkpoint(),
         }
     }
@@ -78,7 +90,7 @@ impl Universe {
                 Flight::Local(plant) if !saved && plant.now() > checkpoint.now => {
                     return Err(UniverseError::LocalAheadOfCheckpoint { vessel });
                 }
-                Flight::Orbital { carried } if saved != carried.is_some() => {
+                Flight::Orbital { carried, .. } if saved != carried.is_some() => {
                     return Err(UniverseError::TiersChangedSinceCheckpoint);
                 }
                 Flight::Local(_) | Flight::Orbital { .. } => {}
@@ -93,6 +105,12 @@ impl Universe {
                 && !plant.restore_internals(saved)
             {
                 return Err(UniverseError::PlantSnapshotMismatch { vessel });
+            }
+            if let Flight::Orbital { samples, .. } = &mut entry.flight {
+                samples.clear();
+                if let Some(saved_samples) = checkpoint.carried_samples.get(&vessel) {
+                    samples.extend_from_slice(saved_samples);
+                }
             }
         }
         for (&id, entry) in &mut self.vessels {
@@ -127,14 +145,14 @@ impl Flight {
     fn plant(&self) -> Option<&dyn LocalPlant> {
         match self {
             Self::Local(plant) => Some(plant.as_ref()),
-            Self::Orbital { carried } => carried.as_deref(),
+            Self::Orbital { carried, .. } => carried.as_deref(),
         }
     }
 
     fn plant_mut(&mut self) -> Option<&mut (dyn LocalPlant + 'static)> {
         match self {
             Self::Local(plant) => Some(plant.as_mut()),
-            Self::Orbital { carried } => carried.as_deref_mut(),
+            Self::Orbital { carried, .. } => carried.as_deref_mut(),
         }
     }
 }
