@@ -10,7 +10,7 @@ use sim_scenery::CatalogVerticalDatum;
 use tracing::warn;
 
 use super::efb_chrome::rect_px;
-use super::safe_area::{DockClearance, SafeAreaInsets};
+use super::safe_area::SafeAreaInsets;
 use crate::avionics::{ConformalSurface, HudView};
 use crate::map_rig::{AvionicsPreset, MapLibreRig, ScenerySource};
 use crate::world_surface::WorldSurfaceHandle;
@@ -71,24 +71,9 @@ pub enum InstrumentDockStyle {
     /// Traditional side-by-side strip docked along the bottom edge (desktop default).
     #[default]
     BottomRow,
-    /// Vertical `PFD` (top) + `HSI` (bottom) stack on the left edge so the center windshield
-    /// stays clear on compact landscape displays (handheld default).
+    /// Vertical `PFD` (top) + `HSI` (bottom) column on the left edge, which leaves the
+    /// windshield and both bottom corners to a handheld's thumb controls (handheld only).
     LeftRail,
-}
-
-impl InstrumentDockStyle {
-    /// Toggles between vertical left-rail and bottom-row docks.
-    #[cfg_attr(
-        not(target_arch = "wasm32"),
-        allow(dead_code, reason = "used by wasm32 touch controls and tests")
-    )]
-    #[must_use]
-    pub const fn toggled(self) -> Self {
-        match self {
-            Self::BottomRow => Self::LeftRail,
-            Self::LeftRail => Self::BottomRow,
-        }
-    }
 }
 
 /// Integer-aligned dock rectangles and panel pixel resolution for one cockpit frame.
@@ -154,37 +139,19 @@ fn snap_rect(rect: ViewportRect, [pw, ph]: [u32; 2], [sw, sh]: [u32; 2]) -> View
     px_to_viewport_rect([x, y, w, h], [sw_i, sh_i])
 }
 
-/// The arrangement drawn on a `surface_size` window when `style` is asked for: a window
-/// taller than wide has no room for a row beside the thumb controls, so it takes the rail.
-#[must_use]
-pub(super) const fn drawn_style(
-    style: InstrumentDockStyle,
-    [width, height]: [u32; 2],
-) -> InstrumentDockStyle {
-    if height > width {
-        InstrumentDockStyle::LeftRail
-    } else {
-        style
-    }
-}
-
-/// Computes integer-snapped dock geometry for `style` and `has_dock_chart`, clear of
-/// everything `clearance` names.
+/// Computes integer-snapped dock geometry for `style`, clear of the window edges `insets`
+/// says the system covers. Only the bottom row has a place for the dock chart: beside the
+/// rail it would lie under the left thumb controls, and a handheld shows one map, the
+/// corner one.
 pub(super) fn dock_layout(
     surface_size: [u32; 2],
     style: InstrumentDockStyle,
     has_dock_chart: bool,
-    clearance: DockClearance,
+    insets: SafeAreaInsets,
 ) -> PanelDockLayout {
-    match drawn_style(style, surface_size) {
-        InstrumentDockStyle::BottomRow => bottom_row_layout(
-            surface_size,
-            has_dock_chart,
-            clearance.for_bottom_row(GAP_X),
-        ),
-        InstrumentDockStyle::LeftRail => {
-            left_rail_layout(surface_size, has_dock_chart, clearance.system)
-        }
+    match style {
+        InstrumentDockStyle::BottomRow => bottom_row_layout(surface_size, has_dock_chart, insets),
+        InstrumentDockStyle::LeftRail => left_rail_layout(surface_size, insets),
     }
 }
 
@@ -219,11 +186,17 @@ fn bottom_row_layout(
 /// The rail's share of the window height, the rest split above and below it.
 const RAIL_HEIGHT_FRACTION: f32 = 0.88;
 
-fn left_rail_layout(
-    surface_size: [u32; 2],
-    has_dock_chart: bool,
-    insets: SafeAreaInsets,
-) -> PanelDockLayout {
+/// The furthest right the rail's edge may sit in a window wider than tall, as a fraction
+/// of its width. The left thumb controls start right beside the rail, and a thumb holding
+/// the device's left edge reaches about a third of the way across: on an 874 × 402 point
+/// window whose sensor housing covers 59 points, this keeps the rail's edge within 236
+/// points of the window's, so the throttle beside it ends near 300.
+const RAIL_REACH_FRACTION: f32 = 0.27;
+/// Widest rail panel in a window taller than wide, as a fraction of its width; the thumb
+/// controls sit under the rail there, not beside it.
+const RAIL_TALL_WIDTH_FRACTION: f32 = 0.36;
+
+fn left_rail_layout(surface_size: [u32; 2], insets: SafeAreaInsets) -> PanelDockLayout {
     let sw_i = surface_size[0].max(1);
     let sh_i = surface_size[1].max(1);
     let (sw, sh) = (sw_i as f32, sh_i as f32);
@@ -232,36 +205,34 @@ fn left_rail_layout(
     let [left_px, top_px, right_px, bottom_px] =
         insets.margins_px([sw, sh], [edge_px, band_px, edge_px, band_px]);
     let gap_y_px = (sh * 0.014).round().clamp(6.0, 14.0);
-    let room_w_px = (sw - left_px - right_px).max(1.0);
+    let x = (left_px.round() as u32).min(sw_i - 1);
+    let room_w_px = (sw - x as f32 - right_px).max(1.0);
     let room_h_px = (sh - top_px - bottom_px).max(1.0);
-    let max_w_px = (sw * if sh_i > sw_i { 0.36 } else { 0.30 }).min(room_w_px);
+    let reach_w_px = if sh_i > sw_i {
+        sw * RAIL_TALL_WIDTH_FRACTION
+    } else {
+        (sw * RAIL_REACH_FRACTION).floor() - x as f32
+    };
+    let max_w_px = reach_w_px.min(room_w_px);
     let max_h_px = ((room_h_px - gap_y_px) * 0.5).floor().max(1.0);
-    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT).floor().max(1.0) as u32).min(sw_i);
+    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT).floor().max(1.0) as u32).min(sw_i - x);
     let h_px = ((w_px as f32 / PANEL_ASPECT).round().max(1.0) as u32).min(sh_i);
     let gap_y = (gap_y_px as u32).min(sh_i.saturating_sub(h_px.saturating_mul(2)));
     let total_h = h_px.saturating_mul(2).saturating_add(gap_y).min(sh_i);
     let slack_px = (room_h_px - total_h as f32).max(0.0) * 0.5;
     let top_y = ((top_px + slack_px).round() as u32).min(sh_i - total_h);
-    let x = (left_px.round() as u32).min(sw_i - w_px);
     let pfd = px_to_viewport_rect([x, top_y, w_px, h_px], [sw_i, sh_i]);
     let hsi_y = top_y
         .saturating_add(h_px)
         .saturating_add(gap_y)
         .min(sh_i - h_px);
     let hsi = px_to_viewport_rect([x, hsi_y, w_px, h_px], [sw_i, sh_i]);
-    let right_edge_px = x.saturating_add(w_px);
-    let mfd = has_dock_chart.then(|| {
-        let gap_x = (sw * 0.015).round().max(8.0) as u32;
-        let mfd_x = right_edge_px.saturating_add(gap_x).min(sw_i - w_px);
-        let mfd_y = (sh_i - h_px).saturating_sub(bottom_px.max(sh * 0.012).round() as u32);
-        px_to_viewport_rect([mfd_x, mfd_y, w_px, h_px], [sw_i, sh_i])
-    });
     PanelDockLayout {
         pfd,
-        mfd,
+        mfd: None,
         hsi,
         panel_px: [w_px, h_px],
-        right_edge_norm: right_edge_px as f32 / sw,
+        right_edge_norm: x.saturating_add(w_px) as f32 / sw,
     }
 }
 
@@ -314,9 +285,9 @@ pub(super) fn dock_panel_px(
     surface_size: [u32; 2],
     style: InstrumentDockStyle,
     has_dock_chart: bool,
-    clearance: DockClearance,
+    insets: SafeAreaInsets,
 ) -> Option<[u32; 2]> {
-    Some(dock_layout(surface_size, style, has_dock_chart, clearance).panel_px)
+    Some(dock_layout(surface_size, style, has_dock_chart, insets).panel_px)
 }
 
 /// Appends the docked PFD (with optional SVS underlay), optional MFD chart, and HSI quads.

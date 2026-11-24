@@ -1,11 +1,11 @@
-//! Direct swapchain avionics layering, `PFD`+`HSI` dock style, and cockpit view modes.
+//! Direct swapchain avionics layering and cockpit view modes.
 
 use sim_geo::BodyEllipsoid;
 use sim_render::{DirectVectorDraw, OverlayQuad, ViewportRect};
 use sim_scenario::{OperatorViewportMode, ScenarioWorld};
 
-use super::layout::{self, InstrumentDockStyle};
-use super::safe_area::DockClearance;
+use super::layout;
+use super::safe_area::SafeAreaInsets;
 use super::{CockpitRig, MFD_CHART_MAP, PFD_SVS_MAP};
 use crate::map_rig::MapLibreRig;
 
@@ -85,6 +85,18 @@ impl CockpitViewMode {
     #[must_use]
     pub const fn shows_hud(self) -> bool {
         matches!(self, Self::HudAndEfis | Self::HudOnly)
+    }
+
+    /// The mode a handheld's column tab asks for: the `PFD`+`HSI` column alone when
+    /// `head_down`, the HUD alone otherwise. The two show the same flight data, and a
+    /// phone has room for one of them beside the thumb controls.
+    #[must_use]
+    pub const fn for_head_down(head_down: bool) -> Self {
+        if head_down {
+            Self::EfisOnly
+        } else {
+            Self::HudOnly
+        }
     }
 }
 
@@ -167,26 +179,6 @@ impl CockpitRig {
         self.direct_avionics && self.panels_apart.is_none()
     }
 
-    /// The dock arrangement asked for; a window taller than wide draws the rail regardless.
-    #[cfg_attr(
-        not(target_arch = "wasm32"),
-        allow(dead_code, reason = "used by wasm32 touch controls and tests")
-    )]
-    #[must_use]
-    pub const fn dock_style(&self) -> InstrumentDockStyle {
-        self.dock_style
-    }
-
-    /// Toggles between `LeftRail` and `BottomRow` dock arrangements and returns the new style.
-    #[cfg_attr(
-        not(target_arch = "wasm32"),
-        allow(dead_code, reason = "used by wasm32 touch controls and tests")
-    )]
-    pub fn toggle_dock_style(&mut self) -> InstrumentDockStyle {
-        self.dock_style = self.dock_style.toggled();
-        self.dock_style
-    }
-
     /// Combined visibility mode of the HUD and EFIS overlays.
     #[cfg_attr(
         not(target_arch = "wasm32"),
@@ -217,28 +209,14 @@ impl CockpitRig {
         self.allow_efb_solo = !self.show_instruments && was_open_efb;
     }
 
-    /// Horizontal fraction of `surface_size` reserved on the left for vertical `PFD`+`HSI` panels
-    /// (`0.0` when panels are hidden, apart, or bottom-docked) so touch throttles never collide.
-    #[cfg_attr(
-        not(target_arch = "wasm32"),
-        allow(dead_code, reason = "used by wasm32 touch controls and tests")
-    )]
-    #[must_use]
-    pub fn efis_left_clear_fraction(&self, surface_size: [u32; 2]) -> f32 {
-        if !self.show_instruments || !self.sources.avionics || self.panels_apart.is_some() {
-            return 0.0;
-        }
-        layout::dock_layout(surface_size, self.dock_style, false, self.clearance).right_edge_norm
-    }
-
-    /// Keeps the docked instruments clear of the window edges the system covers and of the
-    /// thumb controls.
+    /// Keeps the docked instruments and the corner map clear of the window edges the
+    /// system covers.
     #[cfg_attr(
         not(target_arch = "wasm32"),
         allow(dead_code, reason = "only a browser reports insets")
     )]
-    pub const fn set_dock_clearance(&mut self, clearance: DockClearance) {
-        self.clearance = clearance;
+    pub const fn set_safe_area(&mut self, insets: SafeAreaInsets) {
+        self.safe_area = insets;
     }
 
     /// Shows or hides 3D cockpit control geometry (yoke/stick/column) in interior cameras.
@@ -326,7 +304,7 @@ impl CockpitRig {
             self.surface_size,
             self.dock_style,
             chart_view.is_some(),
-            self.clearance,
+            self.safe_area,
         );
         if self.uses_direct_avionics() {
             if let Some(svs) = svs_view {
@@ -395,5 +373,13 @@ mod tests {
             assert_eq!(CockpitViewMode::from_code(mode.code()), Some(mode));
         }
         assert_eq!(CockpitViewMode::from_code("unknown"), None);
+    }
+
+    #[test]
+    fn the_column_tab_swaps_the_instruments_for_the_hud() {
+        let down = CockpitViewMode::for_head_down(true);
+        assert!(down.shows_instruments() && !down.shows_hud());
+        let up = CockpitViewMode::for_head_down(false);
+        assert!(up.shows_hud() && !up.shows_instruments());
     }
 }

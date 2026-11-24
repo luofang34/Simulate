@@ -144,10 +144,26 @@
           env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
       }
-      .tc-top-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+      .tc-top-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; min-width: 0; }
+      /* The bar ends left of the corner map and, beside the instrument column, right of
+         its fold tab; the wrap right-aligns it, and a bar wider than that room scrolls. */
+      #touch-cockpit[data-has-map="true"] .tc-top-wrap {
+        margin-right: max(0px, calc((1 - var(--tc-map-left, 1)) * 100vw + 6px - max(0.5rem, env(safe-area-inset-right, 0px))));
+      }
+      @media (orientation: landscape) {
+        #touch-cockpit[data-has-rail="true"] .tc-top-wrap {
+          margin-left: max(0px, calc(var(--tc-efis-left, 0) * 100vw + 50px - max(0.5rem, env(safe-area-inset-left, 0px))));
+        }
+      }
       .tc-top {
-        display: flex; flex-wrap: nowrap; gap: 0.4rem; align-items: center; justify-content: flex-end;
-        max-width: 100%;
+        display: flex; flex-wrap: nowrap; gap: 0.4rem; align-items: center;
+        max-width: 100%; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: none;
+      }
+      .tc-top::-webkit-scrollbar { display: none; }
+      .tc-top .tc-btn { touch-action: pan-x; }
+      @media (max-width: 720px) {
+        .tc-top { gap: 0.25rem; }
+        .tc-top .tc-btn { padding: 0 0.4rem; }
       }
       .tc-btn {
         pointer-events: auto; touch-action: none; min-width: 44px; min-height: 44px; flex-shrink: 0;
@@ -161,6 +177,27 @@
       .tc-collapsed-only { display: none; }
       #touch-cockpit[data-collapsed="true"] .tc-collapsed-only {
         display: inline-flex; align-items: center; justify-content: center;
+      }
+      /* Fold tabs sit on the edges the window reports for what they fold, as fractions of
+         the canvas, so they are placed in the canvas's own units. */
+      .tc-tab {
+        position: absolute; display: none; align-items: center; justify-content: center;
+        width: 44px; height: 44px; padding: 0; font-size: 16px;
+      }
+      #touch-cockpit[data-has-rail="true"] .tc-rail-fold {
+        display: inline-flex; border-left: 0; border-radius: 0 10px 10px 0;
+        left: calc(var(--tc-efis-left, 0) * 100vw); top: calc(var(--tc-rail-top, 0) * 100vh);
+        left: calc(var(--tc-efis-left, 0) * 100dvw); top: calc(var(--tc-rail-top, 0) * 100dvh);
+      }
+      #touch-cockpit[data-rail-folded="true"] .tc-rail-unfold {
+        display: inline-flex; width: auto; padding: 0 0.6rem; font-size: 12px;
+        left: calc(var(--tc-rail-left, 0) * 100vw); top: calc(var(--tc-rail-top, 0) * 100vh);
+        left: calc(var(--tc-rail-left, 0) * 100dvw); top: calc(var(--tc-rail-top, 0) * 100dvh);
+      }
+      #touch-cockpit[data-has-map="true"] .tc-map-fold {
+        display: inline-flex; border-radius: 0 10px 0 0;
+        left: calc(var(--tc-map-left, 1) * 100vw); top: calc(var(--tc-map-bottom, 0) * 100vh - 44px);
+        left: calc(var(--tc-map-left, 1) * 100dvw); top: calc(var(--tc-map-bottom, 0) * 100dvh - 44px);
       }
       .tc-brake[data-active="true"] { border-color: #ffb454; background: rgba(92, 56, 12, 0.82); color: #ffd9a0; }
       #tc-rotate-banner {

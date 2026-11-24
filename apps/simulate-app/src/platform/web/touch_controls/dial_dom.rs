@@ -8,7 +8,7 @@ use web_sys::{Document, Element};
 use super::dom::{add_click, create_button, create_el, wire_captured_pointer};
 use super::tilt::TiltController;
 use super::{ListenerHandle, PointerListenerHandle};
-use crate::cockpit_rig::{CockpitViewMode, InstrumentDockStyle};
+use crate::cockpit_rig::CockpitViewMode;
 use crate::controls::touch::{TouchAction, TouchFlightState, TouchUiSnapshot};
 
 /// Mutable references into the `DIAL` and `···` popovers synchronized from frame UI snapshots.
@@ -18,7 +18,6 @@ pub(super) struct PopoverUi {
     alt_val_el: Element,
     baro_val_el: Element,
     view_btns: Vec<(CockpitViewMode, Element)>,
-    layout_btn: Element,
     yoke_btn: Element,
 }
 
@@ -32,7 +31,6 @@ pub(super) struct PopoverBuild {
 struct MorePopoverParts {
     popover: Element,
     view_btns: Vec<(CockpitViewMode, Element)>,
-    layout_btn: Element,
     yoke_btn: Element,
 }
 
@@ -56,7 +54,6 @@ pub(super) fn build_popovers_and_banner(
     let MorePopoverParts {
         popover: more_popover,
         view_btns,
-        layout_btn,
         yoke_btn,
     } = build_more_popover(doc, root, state, tilt, tilt_btn, collapsed, fly_btn, clicks)?;
     Some(PopoverBuild {
@@ -69,7 +66,6 @@ pub(super) fn build_popovers_and_banner(
             alt_val_el,
             baro_val_el,
             view_btns,
-            layout_btn,
             yoke_btn,
         },
     })
@@ -101,12 +97,6 @@ pub(super) fn sync_popovers(ui: &PopoverUi, snap: &TouchUiSnapshot) {
         };
         btn.set_attribute("data-active", active).ok();
     }
-    let rail = snap.dock_style == InstrumentDockStyle::LeftRail;
-    ui.layout_btn
-        .set_text_content(Some(if rail { "DOCK: RAIL" } else { "DOCK: ROW" }));
-    ui.layout_btn
-        .set_attribute("data-active", if rail { "true" } else { "false" })
-        .ok();
     ui.yoke_btn.set_text_content(Some(if snap.hides_yoke {
         "YOKE: HIDDEN"
     } else {
@@ -311,8 +301,7 @@ fn build_more_popover(
     pop.set_id("tc-more-popover");
     pop.set_attribute("popover", "auto").ok()?;
     let (views_sec, view_btns) = build_views_section(doc, state, clicks)?;
-    let (cockpit_sec, layout_btn, yoke_btn) =
-        build_cockpit_section(doc, state, tilt, tilt_btn, clicks)?;
+    let (cockpit_sec, yoke_btn) = build_cockpit_section(doc, state, tilt, tilt_btn, clicks)?;
     let flight_sec = build_systems_section(doc, root, collapsed, fly_btn, clicks)?;
     pop.append_child(&views_sec).ok()?;
     pop.append_child(&cockpit_sec).ok()?;
@@ -320,7 +309,6 @@ fn build_more_popover(
     Some(MorePopoverParts {
         popover: pop,
         view_btns,
-        layout_btn,
         yoke_btn,
     })
 }
@@ -354,24 +342,11 @@ fn build_cockpit_section(
     tilt: &Rc<RefCell<TiltController>>,
     tilt_btn: &Element,
     clicks: &mut Vec<ListenerHandle>,
-) -> Option<(Element, Element, Element)> {
+) -> Option<(Element, Element)> {
     let sec = create_el(doc, "div", "tc-more-section", None)?;
     let hdr = create_el(doc, "div", "tc-more-label", Some("COCKPIT & SENSORS"))?;
     sec.append_child(&hdr).ok()?;
     let grid = create_el(doc, "div", "tc-more-grid", None)?;
-    let layout_btn = create_button(
-        doc,
-        "tc-more-btn",
-        "DOCK: RAIL",
-        "Toggle PFD/HSI dock layout",
-    )?;
-    let st_lay = Rc::clone(state);
-    add_click(&layout_btn, clicks, move || {
-        st_lay
-            .borrow_mut()
-            .actions
-            .push(TouchAction::ToggleDockStyle);
-    });
     let yoke_btn = create_button(doc, "tc-more-btn", "YOKE: SHOWN", "Toggle 3D cockpit yoke")?;
     let st_yoke = Rc::clone(state);
     add_click(&yoke_btn, clicks, move || {
@@ -385,11 +360,11 @@ fn build_cockpit_section(
         tilt_zero.borrow_mut().recalibrate();
         st_zero.borrow_mut().actions.push(TouchAction::ResetLook);
     });
-    for btn in [&layout_btn, &yoke_btn, &tilt_el, &zero_btn] {
+    for btn in [&yoke_btn, &tilt_el, &zero_btn] {
         grid.append_child(btn).ok()?;
     }
     sec.append_child(&grid).ok()?;
-    Some((sec, layout_btn, yoke_btn))
+    Some((sec, yoke_btn))
 }
 
 fn build_systems_section(

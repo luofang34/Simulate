@@ -12,7 +12,7 @@ use sim_scenery::AirportRecord;
 use tracing::warn;
 
 use super::CockpitRig;
-use super::efb_chrome::{EfbChrome, efb_map_rect, rect_px};
+use super::efb_chrome::{EfbChrome, EfbPlacement, efb_map_rect, rect_px};
 use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::map_rig::{EfbAirport, EfbCommand, EfbStatus, MapFrameInput, MapLibreRig};
@@ -60,10 +60,25 @@ impl CockpitRig {
             && self.supervisor.viewport_mode() != OperatorViewportMode::ChartMap;
         let maps = self.maps.as_ref().filter(|m| shown && m.efb_ready())?;
         let status = self.inset_status(maps.efb_status()?);
-        if self.suppress_collapsed_pill && status.collapsed {
+        // A handheld's folded map leaves nothing on the window: the page's touch overlay
+        // unfolds it.
+        if self.handheld && status.collapsed {
             return None;
         }
-        Some(self.inset_chrome(EfbChrome::new(self.surface_size, &status)))
+        Some(self.inset_chrome(EfbChrome::new(
+            self.surface_size,
+            &status,
+            self.efb_placement(),
+        )))
+    }
+
+    /// What places the window's EFB map: the covered edges, and whether a handheld's
+    /// touch overlay lies over the window.
+    pub(super) const fn efb_placement(&self) -> EfbPlacement {
+        EfbPlacement {
+            insets: self.safe_area,
+            handheld: self.handheld,
+        }
     }
 
     /// Applies an operator command to the EFB.
@@ -115,7 +130,11 @@ impl CockpitRig {
     pub(super) fn efb_expanded_px(&self, surface_size: [u32; 2]) -> [u32; 2] {
         self.page_map_px.unwrap_or_else(|| {
             rect_px(
-                efb_map_rect(surface_size, EfbDisplayMode::ExpandedEfb),
+                efb_map_rect(
+                    surface_size,
+                    EfbDisplayMode::ExpandedEfb,
+                    self.efb_placement(),
+                ),
                 surface_size,
             )
         })

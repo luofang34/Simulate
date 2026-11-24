@@ -7,7 +7,7 @@ use sim_render::{HeadlessGpu, VectorScenePass, ViewportRect};
 use sim_scenario::OperatorViewportMode;
 
 use super::CockpitRig;
-use super::efb_chrome::efb_map_rect;
+use super::efb_chrome::{EfbPlacement, efb_map_rect};
 use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::map_rig::{AvionicsPreset, EfbCommand, GlobeSelection, ScenerySource};
@@ -52,7 +52,7 @@ fn the_efb_draws_top_right_then_expands_over_the_dock() -> Result<(), AppSimErro
     assert!(status.plate_title.is_some(), "{code} has a plate");
     assert!(!status.plate_shown, "the corner map hides the plate");
     let quads = rig.overlay_quads(flight.world());
-    let corner = efb_map_rect(size, EfbDisplayMode::CompactCorner);
+    let corner = efb_map_rect(size, EfbDisplayMode::CompactCorner, EfbPlacement::default());
     assert_eq!(quads.last().map(|q| q.rect), Some(corner));
     assert_eq!(quads.len(), 5, "scene, HUD, PFD, HSI, EFB");
 
@@ -61,7 +61,7 @@ fn the_efb_draws_top_right_then_expands_over_the_dock() -> Result<(), AppSimErro
     let status = rig.maps().and_then(|m| m.efb_status()).expect("status");
     assert_eq!(status.mode, EfbDisplayMode::ExpandedEfb);
     assert!(status.plate_shown, "the tablet shows the plate");
-    let tablet = efb_map_rect(size, EfbDisplayMode::ExpandedEfb);
+    let tablet = efb_map_rect(size, EfbDisplayMode::ExpandedEfb, EfbPlacement::default());
     let quads = rig.overlay_quads(flight.world());
     assert_eq!(
         quads.last().map(|q| q.rect),
@@ -171,3 +171,4 @@ fn panels_drawn_apart_leave_the_window_view_to_the_world_and_hud() -> Result<(),
 }
 
 mod page_map;
+mod touch_fold;

@@ -3,7 +3,7 @@
 use winit::event_loop::ActiveEventLoop;
 
 use super::FlightApp;
-use crate::cockpit_rig::{CockpitViewMode, InstrumentDockStyle};
+use crate::cockpit_rig::{CockpitViewMode, TouchAnchors};
 use crate::controls::touch::{TouchAction, TouchUiSnapshot};
 use crate::host_guidance::DialedAvionicsReadout;
 use crate::keyboard::CockpitAction;
@@ -40,7 +40,10 @@ impl FlightApp {
         if !self.handheld || page_view {
             return;
         }
-        if let (Some(mode), Some(rig)) = (load_saved_view_mode(), self.cockpit_rig.as_mut()) {
+        // A phone starts head down: the HUD's tapes repeat the column's and would lie
+        // under the thumb controls.
+        let mode = load_saved_view_mode().unwrap_or(CockpitViewMode::for_head_down(true));
+        if let Some(rig) = self.cockpit_rig.as_mut() {
             rig.set_view_mode(mode);
             self.sync_hub_layout();
         }
@@ -60,12 +63,11 @@ impl FlightApp {
                 hub_open,
                 throttle_norm,
                 view_mode: CockpitViewMode::HudAndEfis,
-                dock_style: InstrumentDockStyle::LeftRail,
                 hides_yoke: false,
                 autopilot_engaged: false,
                 efb_open: false,
                 efb_label: "MAP",
-                efis_left_fraction: 0.0,
+                anchors: TouchAnchors::default(),
                 dial_readout: DialedAvionicsReadout {
                     heading_bug_deg: None,
                     altitude_bug_ft: None,
@@ -92,12 +94,16 @@ impl FlightApp {
             hub_open,
             throttle_norm,
             view_mode: rig.view_mode(),
-            dock_style: rig.dock_style(),
             hides_yoke: rig.hides_cockpit_controls(),
             autopilot_engaged: self.efb_workspace.autopilot.is_engaged(),
             efb_open,
             efb_label,
-            efis_left_fraction: rig.efis_left_clear_fraction(surface_size),
+            // The hub covers the window, so nothing under it is there to attach to.
+            anchors: if hub_open {
+                TouchAnchors::default()
+            } else {
+                rig.touch_anchors(surface_size, self.flight.world())
+            },
             dial_readout: rig.dialed_readout(&self.flight),
             now_s,
         }
@@ -133,6 +139,7 @@ impl FlightApp {
                 self.handle_cockpit_action(event_loop, CockpitAction::ToggleGear);
             }
             TouchAction::CycleEfb => self.efb_command(EfbCommand::CycleMobileState),
+            TouchAction::CollapseMap => self.efb_command(EfbCommand::SetCollapsed(true)),
             TouchAction::ToggleAutopilot => self.efb_command(EfbCommand::Plan(
                 crate::efb_plan::EfbPlanAction::ToggleAutopilot,
             )),
@@ -158,8 +165,13 @@ impl FlightApp {
                 self.sync_hub_layout();
                 save_view_mode(mode);
             }
-            TouchAction::ToggleDockStyle => {
-                rig.toggle_dock_style();
+            TouchAction::SetInstrumentsShown(shown) => {
+                // Through the view mode, so a map shown without the column stays, and the
+                // choice is kept with the mode across visits.
+                let mode = CockpitViewMode::for_head_down(shown);
+                rig.set_view_mode(mode);
+                self.sync_hub_layout();
+                save_view_mode(mode);
             }
             TouchAction::ToggleYoke => {
                 let next = !rig.hides_cockpit_controls();
@@ -192,12 +204,12 @@ impl FlightApp {
         let now_s = web_sys::window()
             .and_then(|w| w.performance())
             .map_or(0.0, |p| p.now() / 1000.0);
-        let clearance = self
+        let insets = self
             .touch_cockpit
             .as_ref()
-            .and_then(|cockpit| cockpit.poll_dock_clearance(now_s));
-        if let (Some(clearance), Some(rig)) = (clearance, self.cockpit_rig.as_mut()) {
-            rig.set_dock_clearance(clearance);
+            .and_then(|cockpit| cockpit.poll_safe_area(now_s));
+        if let (Some(insets), Some(rig)) = (insets, self.cockpit_rig.as_mut()) {
+            rig.set_safe_area(insets);
         }
         let initial_snap = self.touch_ui_snapshot(now_s);
         let actions = {

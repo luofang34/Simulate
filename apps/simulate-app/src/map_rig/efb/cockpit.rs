@@ -14,7 +14,7 @@ use web_time::Instant;
 
 use super::super::{MapFrameInput, MapLibreRig, charts};
 use super::{EfbAirport, EfbCommand, EfbRig, EfbStatus};
-use crate::cockpit_rig::efb_chrome::{efb_map_rect, rect_px};
+use crate::cockpit_rig::efb_chrome::{EfbPlacement, efb_map_rect, rect_px};
 use crate::error::AppSimError;
 
 impl MapLibreRig {
@@ -33,8 +33,12 @@ impl MapLibreRig {
         if self.efb_state.hidden_on_no_map || self.efb_state.collapsed || self.efb.is_some() {
             return;
         }
+        let placement = EfbPlacement {
+            handheld: self.efb_state.handheld_cockpit,
+            ..EfbPlacement::default()
+        };
         let compact = rect_px(
-            efb_map_rect(self.window_px, EfbDisplayMode::CompactCorner),
+            efb_map_rect(self.window_px, EfbDisplayMode::CompactCorner, placement),
             self.window_px,
         );
         self.efb = EfbRig::new(

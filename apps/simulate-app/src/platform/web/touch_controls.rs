@@ -1,9 +1,12 @@
 //! Responsive DOM `#touch-cockpit` overlay for mobile browsers (`pointer: coarse` / iPhone):
-//! compact 4-pill top bar (`MAP | DIAL | ··· | MENU`), popover `DIAL` & display/system drawers,
-//! portrait rotate reminder, virtual stick, throttle, rudder, wheel brakes, and optional gyro tilt.
+//! compact top bar (`MAP | DIAL | ··· | II | MENU`), popover `DIAL` & display/system drawers,
+//! fold tabs on the instrument column and the corner map, portrait rotate reminder, virtual
+//! stick, throttle, rudder, wheel brakes, and optional gyro tilt. Every control is on the
+//! surface or one tap inside a drawer.
 
 mod dial_dom;
 mod dom;
+mod fold_tabs;
 mod safe_area;
 mod tilt;
 
@@ -136,7 +139,8 @@ impl TouchCockpit {
         root.append_child(&dial_popover).ok()?;
         root.append_child(&more_popover).ok()?;
         root.append_child(&built.deck).ok()?;
-        let safe_area = SafeAreaProbe::mount(&document, &root, built.left, built.right)?;
+        fold_tabs::mount(&document, &root, &state, &mut click_listeners)?;
+        let safe_area = SafeAreaProbe::mount(&document, &root)?;
         body.append_child(&root).ok()?;
 
         Some(Self {
@@ -159,7 +163,7 @@ impl TouchCockpit {
         })
     }
 
-    /// Synchronizes DOM attributes, deck clearances, auto-hide fade, throttle bar, stick puck,
+    /// Synchronizes DOM attributes, fold tabs, auto-hide fade, throttle bar, stick puck,
     /// and `DIAL` / `···` popover readouts from the active frame snapshot.
     pub fn sync_ui(&self, snap: &TouchUiSnapshot) {
         let open_attr = if snap.hub_open { "true" } else { "false" };
@@ -178,16 +182,7 @@ impl TouchCockpit {
         self.autopilot_btn
             .set_attribute("data-active", engaged)
             .ok();
-        let has_rail = snap.efis_left_fraction > 0.01;
-        self.root
-            .set_attribute("data-has-rail", if has_rail { "true" } else { "false" })
-            .ok();
-        if let Some(root_html) = self.root.dyn_ref::<HtmlElement>() {
-            root_html
-                .style()
-                .set_property("--tc-efis-left", &format!("{:.4}", snap.efis_left_fraction))
-                .ok();
-        }
+        fold_tabs::sync(&self.root, &snap.anchors);
         let (stick_axes, rudder, brake, idle) = {
             let mut s = self.state.borrow_mut();
             let idle = s.touch_deck_idle(snap.now_s);
@@ -219,9 +214,9 @@ impl TouchCockpit {
         sync_popovers(&self.popovers, snap);
     }
 
-    /// What the docked instruments keep clear of, when a fresh reading is due at `now_s`.
+    /// The window edges the system covers, when a fresh reading is due at `now_s`.
     #[must_use]
-    pub fn poll_dock_clearance(&self, now_s: f64) -> Option<crate::cockpit_rig::DockClearance> {
+    pub fn poll_safe_area(&self, now_s: f64) -> Option<crate::cockpit_rig::SafeAreaInsets> {
         self.safe_area.poll(now_s)
     }
 
@@ -264,6 +259,8 @@ fn new_root(document: &web_sys::Document) -> Option<Element> {
         "data-collapsed",
         "data-rotate-dismissed",
         "data-has-rail",
+        "data-rail-folded",
+        "data-has-map",
         "data-deck-idle",
     ] {
         root.set_attribute(name, "false").ok()?;
@@ -274,8 +271,6 @@ fn new_root(document: &web_sys::Document) -> Option<Element> {
 /// The mounted thumb clusters and the parts the frame loop keeps in step.
 struct DeckBuild {
     deck: Element,
-    left: Element,
-    right: Element,
     stick_puck: HtmlElement,
     throttle_fill: HtmlElement,
     throttle_label: Element,
@@ -371,8 +366,6 @@ fn mount_deck(
     wire_brake_button(&brake_btn, state, pointers);
     Some(DeckBuild {
         deck,
-        left,
-        right,
         stick_puck,
         throttle_fill,
         throttle_label,

@@ -105,6 +105,8 @@ pub struct EfbStatus {
 pub(in crate::map_rig) struct EfbCockpitState {
     pub(super) collapsed: bool,
     pub(super) hidden_on_no_map: bool,
+    /// Whether the cockpit is a handheld's own, whose corner map is drawn larger.
+    pub(super) handheld_cockpit: bool,
     pub(super) pending_route: Option<(FlightPlan, RouteProgress)>,
     pub(super) pending_airports: Vec<(AirportRecord, Value)>,
 }

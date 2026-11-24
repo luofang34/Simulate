@@ -56,7 +56,7 @@ pub(super) fn add_top_buttons(
         doc,
         "tc-btn tc-flight-only",
         "MAP",
-        "Cycle moving map and EFB tablet",
+        "Show the moving map, then the EFB tablet, then neither",
     )?;
     let st_map = Rc::clone(state);
     add_click(&map_btn, listeners, move || {
