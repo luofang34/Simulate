@@ -4,4 +4,5 @@
 #[cfg(test)]
 mod malformed {
     pub mod corpus;
+    pub mod mutation;
 }

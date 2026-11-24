@@ -129,6 +129,12 @@ fn read_data(
                 data.comments.append(pending);
                 data.states.push(state_line(&text, at, mode)?);
             }
+            Some(Line::Pair(entry)) if mode == ParseMode::Lenient => {
+                data.comments.append(pending);
+                let mut extra = Block::starting_at(entry.at);
+                extra.entries.push(entry);
+                Fields::new(extra, mode)?.1.finish(extensions)?;
+            }
             Some(other) => {
                 return Err(Error::new(ErrorKind::UnexpectedLine {
                     text: describe(&other),
