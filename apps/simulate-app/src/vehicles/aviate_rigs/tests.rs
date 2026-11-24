@@ -1,6 +1,7 @@
 use glam::DVec3;
 use sim_core::{Block, ControlInputs, VehicleState};
-use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame};
+use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime};
+use sim_scenario::ScenarioProfile;
 
 use super::{build_aviate_x500, step_aviate_x500};
 use crate::vehicles::{FreeFlightPlant, FreeFlightVehicle};
@@ -23,11 +24,13 @@ fn x500_spawns_and_holds_newark_rwy_22l_true_heading() {
     let frame = LocalFrame::at(&origin);
     let surface = WorldSurfaceHandle::new();
 
+    let utc = UtcTime::from_unix_seconds(ScenarioProfile::CorridorNominalCruise.start_utc_unix_s());
     let mut airborne = FreeFlightPlant::new_at(
         FreeFlightVehicle::AviateX500Direct,
         origin,
         heading_rad,
         5.0,
+        utc,
     )
     .expect("airborne x500");
     let ground = FreeFlightPlant::new_on_ground(
@@ -35,6 +38,7 @@ fn x500_spawns_and_holds_newark_rwy_22l_true_heading() {
         origin,
         heading_rad,
         false,
+        utc,
     )
     .expect("ground-hover x500");
 
