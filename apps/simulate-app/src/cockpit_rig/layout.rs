@@ -71,24 +71,9 @@ pub enum InstrumentDockStyle {
     /// Traditional side-by-side strip docked along the bottom edge (desktop default).
     #[default]
     BottomRow,
-    /// Vertical `PFD` (top) + `HSI` (bottom) stack on the left edge so the center windshield
-    /// stays clear on compact landscape displays (handheld default).
+    /// Vertical `PFD` (top) + `HSI` (bottom) column on the left edge, which leaves the
+    /// windshield and both bottom corners to a handheld's thumb controls (handheld only).
     LeftRail,
-}
-
-impl InstrumentDockStyle {
-    /// Toggles between vertical left-rail and bottom-row docks.
-    #[cfg_attr(
-        not(target_arch = "wasm32"),
-        allow(dead_code, reason = "used by wasm32 touch controls and tests")
-    )]
-    #[must_use]
-    pub const fn toggled(self) -> Self {
-        match self {
-            Self::BottomRow => Self::LeftRail,
-            Self::LeftRail => Self::BottomRow,
-        }
-    }
 }
 
 /// Integer-aligned dock rectangles and panel pixel resolution for one cockpit frame.
@@ -154,8 +139,10 @@ fn snap_rect(rect: ViewportRect, [pw, ph]: [u32; 2], [sw, sh]: [u32; 2]) -> View
     px_to_viewport_rect([x, y, w, h], [sw_i, sh_i])
 }
 
-/// Computes integer-snapped dock geometry for `style` and `has_dock_chart`, clear of the
-/// window edges `insets` says the system covers.
+/// Computes integer-snapped dock geometry for `style`, clear of the window edges `insets`
+/// says the system covers. Only the bottom row has a place for the dock chart: beside the
+/// rail it would lie under the left thumb controls, and a handheld shows one map, the
+/// corner one.
 pub(super) fn dock_layout(
     surface_size: [u32; 2],
     style: InstrumentDockStyle,
@@ -164,7 +151,7 @@ pub(super) fn dock_layout(
 ) -> PanelDockLayout {
     match style {
         InstrumentDockStyle::BottomRow => bottom_row_layout(surface_size, has_dock_chart, insets),
-        InstrumentDockStyle::LeftRail => left_rail_layout(surface_size, has_dock_chart, insets),
+        InstrumentDockStyle::LeftRail => left_rail_layout(surface_size, insets),
     }
 }
 
@@ -199,11 +186,17 @@ fn bottom_row_layout(
 /// The rail's share of the window height, the rest split above and below it.
 const RAIL_HEIGHT_FRACTION: f32 = 0.88;
 
-fn left_rail_layout(
-    surface_size: [u32; 2],
-    has_dock_chart: bool,
-    insets: SafeAreaInsets,
-) -> PanelDockLayout {
+/// The furthest right the rail's edge may sit in a window wider than tall, as a fraction
+/// of its width. The left thumb controls start right beside the rail, and a thumb holding
+/// the device's left edge reaches about a third of the way across: on an 874 × 402 point
+/// window whose sensor housing covers 59 points, this keeps the rail's edge within 236
+/// points of the window's, so the throttle beside it ends near 300.
+const RAIL_REACH_FRACTION: f32 = 0.27;
+/// Widest rail panel in a window taller than wide, as a fraction of its width; the thumb
+/// controls sit under the rail there, not beside it.
+const RAIL_TALL_WIDTH_FRACTION: f32 = 0.36;
+
+fn left_rail_layout(surface_size: [u32; 2], insets: SafeAreaInsets) -> PanelDockLayout {
     let sw_i = surface_size[0].max(1);
     let sh_i = surface_size[1].max(1);
     let (sw, sh) = (sw_i as f32, sh_i as f32);
@@ -212,36 +205,34 @@ fn left_rail_layout(
     let [left_px, top_px, right_px, bottom_px] =
         insets.margins_px([sw, sh], [edge_px, band_px, edge_px, band_px]);
     let gap_y_px = (sh * 0.014).round().clamp(6.0, 14.0);
-    let room_w_px = (sw - left_px - right_px).max(1.0);
+    let x = (left_px.round() as u32).min(sw_i - 1);
+    let room_w_px = (sw - x as f32 - right_px).max(1.0);
     let room_h_px = (sh - top_px - bottom_px).max(1.0);
-    let max_w_px = (sw * if sh_i > sw_i { 0.36 } else { 0.30 }).min(room_w_px);
+    let reach_w_px = if sh_i > sw_i {
+        sw * RAIL_TALL_WIDTH_FRACTION
+    } else {
+        (sw * RAIL_REACH_FRACTION).floor() - x as f32
+    };
+    let max_w_px = reach_w_px.min(room_w_px);
     let max_h_px = ((room_h_px - gap_y_px) * 0.5).floor().max(1.0);
-    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT).floor().max(1.0) as u32).min(sw_i);
+    let w_px = (max_w_px.min(max_h_px * PANEL_ASPECT).floor().max(1.0) as u32).min(sw_i - x);
     let h_px = ((w_px as f32 / PANEL_ASPECT).round().max(1.0) as u32).min(sh_i);
     let gap_y = (gap_y_px as u32).min(sh_i.saturating_sub(h_px.saturating_mul(2)));
     let total_h = h_px.saturating_mul(2).saturating_add(gap_y).min(sh_i);
     let slack_px = (room_h_px - total_h as f32).max(0.0) * 0.5;
     let top_y = ((top_px + slack_px).round() as u32).min(sh_i - total_h);
-    let x = (left_px.round() as u32).min(sw_i - w_px);
     let pfd = px_to_viewport_rect([x, top_y, w_px, h_px], [sw_i, sh_i]);
     let hsi_y = top_y
         .saturating_add(h_px)
         .saturating_add(gap_y)
         .min(sh_i - h_px);
     let hsi = px_to_viewport_rect([x, hsi_y, w_px, h_px], [sw_i, sh_i]);
-    let right_edge_px = x.saturating_add(w_px);
-    let mfd = has_dock_chart.then(|| {
-        let gap_x = (sw * 0.015).round().max(8.0) as u32;
-        let mfd_x = right_edge_px.saturating_add(gap_x).min(sw_i - w_px);
-        let mfd_y = (sh_i - h_px).saturating_sub(bottom_px.max(sh * 0.012).round() as u32);
-        px_to_viewport_rect([mfd_x, mfd_y, w_px, h_px], [sw_i, sh_i])
-    });
     PanelDockLayout {
         pfd,
-        mfd,
+        mfd: None,
         hsi,
         panel_px: [w_px, h_px],
-        right_edge_norm: right_edge_px as f32 / sw,
+        right_edge_norm: x.saturating_add(w_px) as f32 / sw,
     }
 }
 
@@ -359,120 +350,4 @@ pub(super) fn hud_view<'a>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn docked_panels_keep_four_by_three_pixels_on_a_wide_window() {
-        let size = [1280_u32, 720_u32];
-        let rects = dock_rects(size, 3, SafeAreaInsets::NONE);
-        assert_eq!(rects.len(), 3);
-        for rect in &rects {
-            let aspect = (rect.width * 1280.0) / (rect.height * 720.0);
-            assert!((aspect - PANEL_ASPECT).abs() < 1e-4, "{aspect}");
-            assert!((rect.y + rect.height + GAP_BOTTOM - 1.0).abs() < 1e-6);
-        }
-        assert!((rects[0].width - 0.255).abs() < 1e-3);
-        assert!((rects[1].x + rects[1].width * 0.5 - 0.5).abs() < 1e-4);
-    }
-
-    #[test]
-    fn a_narrow_window_shrinks_the_dock_instead_of_overlapping() {
-        let rects = dock_rects([600, 900], 3, SafeAreaInsets::NONE);
-        for pair in rects.windows(2) {
-            assert!(pair[0].x + pair[0].width <= pair[1].x + 1e-5);
-        }
-        let r = rects[2];
-        assert!(r.x + r.width <= 1.0 + 1e-5);
-        assert!(((r.width * 600.0) / (r.height * 900.0) - PANEL_ASPECT).abs() < 1e-4);
-    }
-
-    #[test]
-    fn left_rail_stacks_pfd_above_hsi_without_overlap_or_aspect_distortion() {
-        for size in [[1704_u32, 786_u32], [786_u32, 1704_u32]] {
-            let layout = dock_layout(
-                size,
-                InstrumentDockStyle::LeftRail,
-                false,
-                SafeAreaInsets::NONE,
-            );
-            let pfd = viewport_to_px_rect(layout.pfd, size);
-            let hsi = viewport_to_px_rect(layout.hsi, size);
-            assert_eq!([pfd[2], pfd[3]], layout.panel_px);
-            assert_eq!([hsi[2], hsi[3]], layout.panel_px);
-            assert_eq!(pfd[0], hsi[0]);
-            assert!(pfd[1] + pfd[3] < hsi[1], "PFD must sit cleanly above HSI");
-            assert!(hsi[1] + hsi[3] <= size[1]);
-            assert!(layout.right_edge_norm > 0.15 && layout.right_edge_norm < 0.45);
-            let aspect = pfd[2] as f32 / pfd[3] as f32;
-            assert!((aspect - PANEL_ASPECT).abs() < 0.02, "{aspect}");
-        }
-    }
-
-    #[test]
-    fn docks_stay_inside_a_surface_of_any_size() {
-        let insets = SafeAreaInsets::from_lengths([59.0, 59.0, 59.0, 21.0], [402.0, 402.0]);
-        for size in [
-            [1_u32, 1_u32],
-            [60, 1],
-            [1, 60],
-            [47, 47],
-            [300, 20],
-            [20, 300],
-        ] {
-            for style in [
-                InstrumentDockStyle::LeftRail,
-                InstrumentDockStyle::BottomRow,
-            ] {
-                for insets in [SafeAreaInsets::NONE, insets] {
-                    let layout = dock_layout(size, style, true, insets);
-                    for rect in [Some(layout.pfd), layout.mfd, Some(layout.hsi)]
-                        .into_iter()
-                        .flatten()
-                    {
-                        let [x, y, w, h] = viewport_to_px_rect(rect, size);
-                        assert!(w >= 1 && h >= 1, "{size:?} {style:?}");
-                        assert!(x + w <= size[0].max(1), "{size:?} {style:?}");
-                        assert!(y + h <= size[1].max(1), "{size:?} {style:?}");
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn the_rail_clears_a_landscape_phone_sensor_housing() {
-        let size = [1748_u32, 804_u32];
-        let housing = SafeAreaInsets::from_lengths([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
-        let bare = dock_layout(
-            size,
-            InstrumentDockStyle::LeftRail,
-            false,
-            SafeAreaInsets::NONE,
-        );
-        let clear = dock_layout(size, InstrumentDockStyle::LeftRail, false, housing);
-        let [bare_x, ..] = viewport_to_px_rect(bare.pfd, size);
-        let [x, y, w, h] = viewport_to_px_rect(clear.pfd, size);
-        let [_, hsi_y, _, hsi_h] = viewport_to_px_rect(clear.hsi, size);
-        assert!(
-            bare_x < 118,
-            "an uncovered window keeps the standard margin"
-        );
-        assert_eq!(x, 118, "the larger of margin and inset, not their sum");
-        assert!(y + h < hsi_y);
-        assert!(hsi_y + hsi_h <= 804 - 42);
-        assert!((w as f32 / h as f32 - PANEL_ASPECT).abs() < 0.02);
-    }
-
-    #[test]
-    fn the_bottom_row_clears_both_side_insets_and_the_home_indicator() {
-        let size = [1748_u32, 804_u32];
-        let housing = SafeAreaInsets::from_lengths([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
-        let rects = dock_rects(size, 2, housing);
-        let first = viewport_to_px_rect(rects[0], size);
-        let last = viewport_to_px_rect(rects[1], size);
-        assert!(first[0] >= 118);
-        assert!(last[0] + last[2] <= 1748 - 118);
-        assert!(last[1] + last[3] <= 804 - 42);
-    }
-}
+mod tests;

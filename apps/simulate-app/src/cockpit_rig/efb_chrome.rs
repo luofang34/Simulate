@@ -2,6 +2,8 @@
 //! the top-right corner (clear of the HUD and the PFD/HSI dock) with a zoom pill, corner
 //! buttons, and optional active-leg glance pill, or the expanded EFB tablet with its
 //! header, map toolbar, and modern `Pilotage`-inspired Mission Planner & Ad-Hoc Runway dock.
+//! A handheld's corner map is larger and has no vector buttons: they would be a fraction
+//! of a fingertip there, so the page's touch overlay folds the map and a tap expands it.
 //!
 //! The chrome is laid out once per frame in window fractions; drawing and mouse hit
 //! testing read the same rectangles, so a click acts on exactly what is drawn.
@@ -12,6 +14,7 @@ use indicate_instrument_scene::Rgba8;
 use sim_maplibre::{EfbBasemap, EfbDisplayMode};
 use sim_render::ViewportRect;
 
+use super::safe_area::SafeAreaInsets;
 use crate::map_rig::{EfbCommand, EfbStatus};
 
 /// Map width over height.
@@ -22,6 +25,10 @@ const COMPACT_TOP: f32 = 0.018;
 const COMPACT_RIGHT_GAP: f32 = 0.015;
 /// Compact map height, fraction of the window height.
 const COMPACT_HEIGHT: f32 = 0.235;
+/// Compact map height on a handheld, fraction of the window height: the corner map is
+/// the only map a handheld shows, and it has the windshield's whole right edge above the
+/// thumb controls to itself.
+const COMPACT_HEIGHT_HANDHELD: f32 = 0.34;
 /// Widest compact map, fraction of the window width, so a portrait window keeps the
 /// corner map in its corner.
 const COMPACT_MAX_WIDTH: f32 = 0.28;
@@ -78,11 +85,28 @@ pub struct EfbLabel {
     pub max_chars: usize,
 }
 
-/// Where the EFB map of `mode` sits in a `surface` window.
+/// What places the EFB's map besides the window's size and the shown view.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct EfbPlacement {
+    /// The window edges the system covers. They move the corner map and never resize it,
+    /// so its texture can be sized before any are known.
+    pub insets: SafeAreaInsets,
+    /// Whether the window is a handheld's cockpit, with the page's touch overlay over it.
+    pub handheld: bool,
+}
+
+/// Where the EFB map of `mode` sits in a `surface` window, placed by `placement`.
 #[must_use]
-pub fn efb_map_rect([sw, sh]: [u32; 2], mode: EfbDisplayMode) -> ViewportRect {
+pub fn efb_map_rect(
+    [sw, sh]: [u32; 2],
+    mode: EfbDisplayMode,
+    placement: EfbPlacement,
+) -> ViewportRect {
     let px_aspect = sh.max(1) as f32 / sw.max(1) as f32;
     let (height, max_width) = match mode {
+        EfbDisplayMode::CompactCorner if placement.handheld => {
+            (COMPACT_HEIGHT_HANDHELD, COMPACT_MAX_WIDTH)
+        }
         EfbDisplayMode::CompactCorner => (COMPACT_HEIGHT, COMPACT_MAX_WIDTH),
         EfbDisplayMode::ExpandedEfb => (EXPANDED_HEIGHT, EXPANDED_MAX_WIDTH),
     };
@@ -93,12 +117,17 @@ pub fn efb_map_rect([sw, sh]: [u32; 2], mode: EfbDisplayMode) -> ViewportRect {
         height = width / (MAP_ASPECT * px_aspect);
     }
     match mode {
-        EfbDisplayMode::CompactCorner => ViewportRect {
-            x: 1.0 - COMPACT_RIGHT_GAP - width,
-            y: COMPACT_TOP,
-            width,
-            height,
-        },
+        EfbDisplayMode::CompactCorner => {
+            let [_, top, right, _] = placement
+                .insets
+                .margins_px([1.0, 1.0], [0.0, COMPACT_TOP, COMPACT_RIGHT_GAP, 0.0]);
+            ViewportRect {
+                x: 1.0 - right - width,
+                y: top,
+                width,
+                height,
+            }
+        }
         EfbDisplayMode::ExpandedEfb => ViewportRect {
             x: (1.0 - width) * 0.5,
             y: EXPANDED_TOP,
@@ -185,15 +214,21 @@ pub struct EfbChrome {
 }
 
 impl EfbChrome {
-    /// Lays the chrome out for `status` in a `surface` window.
+    /// Lays the chrome out for `status` in a `surface` window, its map placed by
+    /// `placement`.
     #[must_use]
-    pub fn new(surface: [u32; 2], status: &EfbStatus) -> Self {
+    pub fn new(surface: [u32; 2], status: &EfbStatus, placement: EfbPlacement) -> Self {
         let [sw, sh] = surface.map(|v| v.max(1) as f32);
         let design = [CHROME_DESIGN_HEIGHT * sw / sh, CHROME_DESIGN_HEIGHT];
-        let rect = efb_map_rect(surface, status.mode);
+        let rect = efb_map_rect(surface, status.mode, placement);
         let [dw, dh] = design;
         let map = [rect.x * dw, rect.y * dh, rect.width * dw, rect.height * dh];
         match status.mode {
+            EfbDisplayMode::CompactCorner if placement.handheld => {
+                let mut chrome = compact(design, map, status);
+                chrome.buttons.clear();
+                chrome
+            }
             EfbDisplayMode::CompactCorner => compact(design, map, status),
             EfbDisplayMode::ExpandedEfb => expanded(design, map, status),
         }

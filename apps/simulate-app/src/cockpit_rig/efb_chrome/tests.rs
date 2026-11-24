@@ -4,8 +4,9 @@
 use sim_maplibre::EfbDisplayMode;
 use sim_render::ViewportRect;
 
-use super::{EfbChrome, EfbHit, ZOOM_STEP, efb_map_rect, rect_px};
-use crate::cockpit_rig::layout::dock_rects;
+use super::{EfbChrome, EfbHit, EfbPlacement, ZOOM_STEP, efb_map_rect, rect_px};
+use crate::cockpit_rig::SafeAreaInsets;
+use crate::cockpit_rig::layout::{InstrumentDockStyle, dock_layout, dock_rects};
 use crate::map_rig::{EfbCommand, EfbStatus};
 
 const WINDOWS: [[u32; 2]; 5] = [
@@ -55,7 +56,7 @@ fn the_corner_map_sits_top_right_clear_of_the_hud_and_the_dock() {
         height: 0.5,
     };
     for size in WINDOWS {
-        let rect = efb_map_rect(size, EfbDisplayMode::CompactCorner);
+        let rect = efb_map_rect(size, EfbDisplayMode::CompactCorner, EfbPlacement::default());
         assert!(rect.x > 0.70, "{size:?} {rect:?}");
         assert!(
             rect.y > 0.0 && rect.y + rect.height < 0.35,
@@ -63,7 +64,7 @@ fn the_corner_map_sits_top_right_clear_of_the_hud_and_the_dock() {
         );
         assert!(rect.x + rect.width < 1.0, "{size:?}");
         assert!(!overlaps(rect, hud), "{size:?} covers the HUD");
-        for dock in dock_rects(size, 2, crate::cockpit_rig::SafeAreaInsets::NONE) {
+        for dock in dock_rects(size, 2, SafeAreaInsets::NONE) {
             assert!(!overlaps(rect, dock), "{size:?} covers {dock:?}");
         }
     }
@@ -73,7 +74,7 @@ fn the_corner_map_sits_top_right_clear_of_the_hud_and_the_dock() {
 fn both_views_keep_four_by_three_pixels_inside_the_window() {
     for size in WINDOWS {
         for mode in [EfbDisplayMode::CompactCorner, EfbDisplayMode::ExpandedEfb] {
-            let rect = efb_map_rect(size, mode);
+            let rect = efb_map_rect(size, mode, EfbPlacement::default());
             let [w, h] = rect_px(rect, size);
             let aspect = f64::from(w) / f64::from(h);
             assert!(
@@ -89,7 +90,11 @@ fn both_views_keep_four_by_three_pixels_inside_the_window() {
                 "{size:?} {mode:?}"
             );
         }
-        let chrome = EfbChrome::new(size, &status(EfbDisplayMode::ExpandedEfb));
+        let chrome = EfbChrome::new(
+            size,
+            &status(EfbDisplayMode::ExpandedEfb),
+            EfbPlacement::default(),
+        );
         let [_, by, _, bh] = chrome.bezel;
         assert!(
             by >= 0.0 && by + bh <= chrome.design[1],
@@ -101,7 +106,11 @@ fn both_views_keep_four_by_three_pixels_inside_the_window() {
 #[test]
 fn compact_buttons_and_the_map_hit_test_to_what_is_drawn() {
     for size in WINDOWS {
-        let chrome = EfbChrome::new(size, &status(EfbDisplayMode::CompactCorner));
+        let chrome = EfbChrome::new(
+            size,
+            &status(EfbDisplayMode::CompactCorner),
+            EfbPlacement::default(),
+        );
         let commands: Vec<EfbCommand> = chrome.buttons.iter().map(|b| b.command).collect();
         assert_eq!(
             commands,
@@ -133,7 +142,7 @@ fn compact_buttons_and_the_map_hit_test_to_what_is_drawn() {
 
         let mut folded_status = status(EfbDisplayMode::CompactCorner);
         folded_status.collapsed = true;
-        let folded = EfbChrome::new(size, &folded_status);
+        let folded = EfbChrome::new(size, &folded_status, EfbPlacement::default());
         assert_eq!(folded.map, [0.0; 4]);
         assert_eq!(folded.buttons.len(), 1);
         let Some(unfold_btn) = folded.buttons.first() else {
@@ -157,7 +166,11 @@ fn compact_buttons_and_the_map_hit_test_to_what_is_drawn() {
 #[test]
 fn expanded_toolbar_chips_read_in_full_and_hit_test_to_their_commands() {
     for size in WINDOWS {
-        let chrome = EfbChrome::new(size, &status(EfbDisplayMode::ExpandedEfb));
+        let chrome = EfbChrome::new(
+            size,
+            &status(EfbDisplayMode::ExpandedEfb),
+            EfbPlacement::default(),
+        );
         assert_eq!(chrome.buttons.len(), 9);
         let labels: Vec<&str> = chrome.buttons.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(
@@ -199,7 +212,152 @@ fn expanded_toolbar_chips_read_in_full_and_hit_test_to_their_commands() {
         let corner = centre_px(&chrome, [bx, by, 2.0, 2.0], size);
         assert_eq!(chrome.hit(corner, size), Some(EfbHit::Bezel));
         let viewport = chrome.map_viewport();
-        let rect = efb_map_rect(size, EfbDisplayMode::ExpandedEfb);
+        let rect = efb_map_rect(size, EfbDisplayMode::ExpandedEfb, EfbPlacement::default());
         assert!((viewport.x - rect.x).abs() < 1e-5 && (viewport.width - rect.width).abs() < 1e-5);
+    }
+}
+
+/// A handheld's cockpit on a `[width, height]` point window whose system covers `covered`
+/// (`[left, top, right, bottom]`).
+fn handheld(covered: [f64; 4], window: [f64; 2]) -> EfbPlacement {
+    EfbPlacement {
+        insets: SafeAreaInsets::from_lengths(covered, window),
+        handheld: true,
+    }
+}
+
+#[test]
+fn a_desktop_corner_map_sits_where_it_always_has() {
+    let rect = efb_map_rect(
+        [1920, 1080],
+        EfbDisplayMode::CompactCorner,
+        EfbPlacement::default(),
+    );
+    let width = 0.235 * (4.0 / 3.0) * 1080.0 / 1920.0;
+    assert!((rect.height - 0.235).abs() < 1e-6, "{rect:?}");
+    assert!((rect.width - width).abs() < 1e-6, "{rect:?}");
+    assert!((rect.x - (1.0 - 0.015 - width)).abs() < 1e-6, "{rect:?}");
+    assert!((rect.y - 0.018).abs() < 1e-6, "{rect:?}");
+    let chrome = EfbChrome::new(
+        [1920, 1080],
+        &status(EfbDisplayMode::CompactCorner),
+        EfbPlacement::default(),
+    );
+    assert_eq!(chrome.buttons.len(), 4, "a pointer keeps its buttons");
+}
+
+#[test]
+fn a_handheld_corner_map_is_larger_and_inside_the_covered_edges() {
+    let wide = handheld([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
+    let rect = efb_map_rect([874, 402], EfbDisplayMode::CompactCorner, wide);
+    let [x, y, w, h] = [
+        rect.x * 874.0,
+        rect.y * 402.0,
+        rect.width * 874.0,
+        rect.height * 402.0,
+    ];
+    assert!((h - 0.34 * 402.0).abs() < 0.01, "{h}");
+    assert!((w / h - 4.0 / 3.0).abs() < 1e-3, "{w} x {h}");
+    assert!(
+        (x + w - (874.0 - 59.0)).abs() < 0.01,
+        "ends at the housing: {x} {w}"
+    );
+    assert!((y - 0.018 * 402.0).abs() < 0.01, "the standard margin: {y}");
+    assert!(
+        (x - 632.8).abs() < 0.1 && (y + h - 143.9).abs() < 0.1,
+        "{x} {y} {w} {h}"
+    );
+
+    let tall = handheld([0.0, 59.0, 0.0, 34.0], [402.0, 874.0]);
+    let rect = efb_map_rect([402, 874], EfbDisplayMode::CompactCorner, tall);
+    assert!(
+        (rect.y * 874.0 - 59.0).abs() < 0.01,
+        "under the housing: {rect:?}"
+    );
+    assert!(
+        (rect.width - 0.28).abs() < 1e-6,
+        "capped by the width: {rect:?}"
+    );
+    assert!(rect.x + rect.width <= 1.0 - 0.015 + 1e-6, "{rect:?}");
+    let [w, h] = rect_px(rect, [1206, 2622]);
+    assert!((f64::from(w) / f64::from(h) - 4.0 / 3.0).abs() < 0.02);
+}
+
+#[test]
+fn covered_edges_move_the_corner_map_and_never_resize_it() {
+    for size in [[874_u32, 402_u32], [402, 874], [667, 375]] {
+        let bare = EfbPlacement {
+            handheld: true,
+            ..EfbPlacement::default()
+        };
+        let covered = handheld([59.0, 59.0, 59.0, 34.0], [402.0, 402.0]);
+        let a = efb_map_rect(size, EfbDisplayMode::CompactCorner, bare);
+        let b = efb_map_rect(size, EfbDisplayMode::CompactCorner, covered);
+        assert_eq!([a.width, a.height], [b.width, b.height], "{size:?}");
+        assert!(b.x < a.x && b.y > a.y, "{size:?}");
+        let tablet = efb_map_rect(size, EfbDisplayMode::ExpandedEfb, covered);
+        assert_eq!(
+            tablet,
+            efb_map_rect(size, EfbDisplayMode::ExpandedEfb, EfbPlacement::default())
+        );
+    }
+}
+
+#[test]
+fn a_handheld_corner_map_has_no_vector_buttons_and_a_tap_lands_on_the_map() {
+    let placement = handheld([59.0, 0.0, 59.0, 21.0], [874.0, 402.0]);
+    let size = [1748_u32, 804_u32];
+    let chrome = EfbChrome::new(size, &status(EfbDisplayMode::CompactCorner), placement);
+    assert!(chrome.buttons.is_empty(), "the page's tab folds the map");
+    let rect = efb_map_rect(size, EfbDisplayMode::CompactCorner, placement);
+    let viewport = chrome.map_viewport();
+    assert!((viewport.x - rect.x).abs() < 1e-5 && (viewport.y - rect.y).abs() < 1e-5);
+    assert!((viewport.width - rect.width).abs() < 1e-5);
+    for corner in [[0.02, 0.02], [0.5, 0.5], [0.98, 0.98]] {
+        let at = [
+            f64::from((rect.x + rect.width * corner[0]) * 1748.0),
+            f64::from((rect.y + rect.height * corner[1]) * 804.0),
+        ];
+        assert_eq!(chrome.hit(at, size), Some(EfbHit::Map), "{corner:?}");
+    }
+    let tablet = EfbChrome::new(size, &status(EfbDisplayMode::ExpandedEfb), placement);
+    assert_eq!(tablet.buttons.len(), 9, "the tablet keeps its toolbar");
+}
+
+#[test]
+fn the_handheld_corner_map_and_the_instrument_column_never_overlap() {
+    for (window, covered) in [
+        ([874.0, 402.0], [59.0, 0.0, 59.0, 21.0]),
+        ([667.0, 375.0], [0.0; 4]),
+        ([402.0, 874.0], [0.0, 59.0, 0.0, 34.0]),
+    ] {
+        let placement = handheld(covered, window);
+        for scale in [1.0, 2.0, 3.0] {
+            let size = window.map(|v: f64| (v * scale) as u32);
+            let map = efb_map_rect(size, EfbDisplayMode::CompactCorner, placement);
+            let dock = dock_layout(size, InstrumentDockStyle::LeftRail, true, placement.insets);
+            for panel in [dock.pfd, dock.hsi] {
+                assert!(!overlaps(map, panel), "{size:?} {map:?} {panel:?}");
+            }
+            assert!(map.x >= 0.0 && map.x + map.width <= 1.0, "{size:?}");
+            assert!(map.y >= 0.0 && map.y + map.height <= 1.0, "{size:?}");
+        }
+    }
+}
+
+#[test]
+fn a_one_pixel_window_places_a_map_without_panicking() {
+    for placement in [
+        EfbPlacement::default(),
+        handheld([59.0, 59.0, 59.0, 34.0], [100.0, 100.0]),
+    ] {
+        for mode in [EfbDisplayMode::CompactCorner, EfbDisplayMode::ExpandedEfb] {
+            for size in [[1_u32, 1_u32], [0, 0], [1, 900], [900, 1]] {
+                let rect = efb_map_rect(size, mode, placement);
+                assert!(rect.width.is_finite() && rect.height.is_finite());
+                assert!(rect.x.is_finite() && rect.y.is_finite(), "{size:?}");
+                let _chrome = EfbChrome::new(size, &status(mode), placement);
+            }
+        }
     }
 }

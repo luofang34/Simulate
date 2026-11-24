@@ -153,6 +153,7 @@ impl MapLibreRig {
             efb: None,
             efb_state: efb::EfbCockpitState {
                 collapsed: tier.tier == CockpitDeviceTier::Handheld && register_aux_sensor,
+                handheld_cockpit: tier.tier == CockpitDeviceTier::Handheld && register_aux_sensor,
                 hidden_on_no_map: preset == AvionicsPreset::NoMapGauges,
                 ..efb::EfbCockpitState::default()
             },

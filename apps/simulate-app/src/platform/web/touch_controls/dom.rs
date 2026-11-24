@@ -44,7 +44,7 @@ pub(super) fn create_button(
     Some(btn)
 }
 
-/// Adds the compact 4-pill top-right bar (`MAP`, `DIAL`, `···`, `MENU`) plus the hidden
+/// Adds the compact top-right bar (`MAP`, `DIAL`, `···`, pause, `MENU`) plus the hidden
 /// `FLY` unhide pill when the control deck is collapsed. Returns `(map_btn, fly_btn, menu_btn)`.
 pub(super) fn add_top_buttons(
     doc: &Document,
@@ -56,7 +56,7 @@ pub(super) fn add_top_buttons(
         doc,
         "tc-btn tc-flight-only",
         "MAP",
-        "Cycle moving map and EFB tablet",
+        "Show the moving map, then the EFB tablet, then neither",
     )?;
     let st_map = Rc::clone(state);
     add_click(&map_btn, listeners, move || {
@@ -85,6 +85,12 @@ pub(super) fn add_top_buttons(
         .ok()?;
     add_click(&more_btn, listeners, || {});
 
+    let pause_btn = create_button(doc, "tc-btn tc-flight-only", "II", "Pause or resume")?;
+    let st_pause = Rc::clone(state);
+    add_click(&pause_btn, listeners, move || {
+        st_pause.borrow_mut().actions.push(TouchAction::TogglePause);
+    });
+
     let fly_btn = create_button(
         doc,
         "tc-btn tc-collapsed-only",
@@ -96,7 +102,9 @@ pub(super) fn add_top_buttons(
     add_click(&menu_btn, listeners, move || {
         st_menu.borrow_mut().actions.push(TouchAction::ToggleHub);
     });
-    for el in [&map_btn, &dial_btn, &more_btn, &fly_btn, &menu_btn] {
+    for el in [
+        &map_btn, &dial_btn, &more_btn, &pause_btn, &fly_btn, &menu_btn,
+    ] {
         top.append_child(el).ok()?;
     }
     Some((map_btn, fly_btn, menu_btn))

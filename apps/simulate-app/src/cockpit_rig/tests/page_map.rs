@@ -9,7 +9,7 @@ use sim_render::{HeadlessGpu, VectorScenePass};
 use sim_scenario::OperatorViewportMode;
 
 use super::super::CockpitRig;
-use super::super::efb_chrome::efb_map_rect;
+use super::super::efb_chrome::{EfbPlacement, efb_map_rect};
 use crate::error::AppSimError;
 use crate::flight::Flight;
 use crate::map_rig::{AvionicsPreset, EfbCommand, ScenerySource};
@@ -112,7 +112,7 @@ fn the_inset_and_the_page_map_are_one_map_drawn_together() -> Result<(), AppSimE
         "the page's buttons command the map"
     );
     assert!(rig.page_commands_efb());
-    let corner = efb_map_rect(SIZE, EfbDisplayMode::CompactCorner);
+    let corner = efb_map_rect(SIZE, EfbDisplayMode::CompactCorner, EfbPlacement::default());
     let quads = rig.overlay_quads(flight.world());
     assert_eq!(
         quads.last().map(|q| q.rect),

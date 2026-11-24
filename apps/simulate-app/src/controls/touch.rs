@@ -4,7 +4,7 @@
 use sim_input::{Control, InputMapper};
 
 use super::ControlScheme;
-use crate::cockpit_rig::{CockpitViewMode, InstrumentDockStyle};
+use crate::cockpit_rig::{CockpitViewMode, TouchAnchors};
 use crate::flight::Flight;
 use crate::host_guidance::DialedAvionicsReadout;
 
@@ -42,12 +42,16 @@ pub enum TouchAction {
     FlapsUp,
     /// Toggle landing gear up/down.
     ToggleGear,
+    /// Engage or disengage the flight-plan autopilot.
+    ToggleAutopilot,
     /// Cycle mobile EFB state (`Hidden -> CompactCorner -> ExpandedEfb -> Hidden`).
     CycleEfb,
     /// Switch active primary HUD + EFIS view combination (`HUD+EFIS`, `EFIS`, `HUD`, `CLEAN`).
     SetViewMode(CockpitViewMode),
-    /// Toggle docked EFIS arrangement between vertical left rail and bottom row.
-    ToggleDockStyle,
+    /// Show or fold the docked `PFD`+`HSI` column, leaving the HUD as it is.
+    SetInstrumentsShown(bool),
+    /// Fold the corner moving map away; the `MAP` pill brings it back.
+    CollapseMap,
     /// Toggle visibility of 3D cockpit yoke/stick controls in interior cameras.
     ToggleYoke,
     /// Adjust HSI heading bug by signed degrees.
@@ -175,16 +179,16 @@ pub struct TouchUiSnapshot {
     pub throttle_norm: f64,
     /// Active HUD + EFIS visibility preset.
     pub view_mode: CockpitViewMode,
-    /// Active PFD+HSI dock geometry (`LeftRail` vs `BottomRow`).
-    pub dock_style: InstrumentDockStyle,
     /// Whether interior 3D yoke/stick geometry is hidden.
     pub hides_yoke: bool,
+    /// Whether the flight-plan autopilot is flying.
+    pub autopilot_engaged: bool,
     /// Whether the EFB map overlay is currently visible (compact or expanded).
     pub efb_open: bool,
     /// Short badge label for the `MAP` pill (`"MAP"` / `"EFB"` / `"CLOSE"`).
     pub efb_label: &'static str,
-    /// Normalized left-edge clearance `[0.0..0.45]` reserved for the vertical PFD+HSI rail.
-    pub efis_left_fraction: f32,
+    /// The drawn instrument column and corner map the overlay's tabs and bars attach to.
+    pub anchors: TouchAnchors,
     /// Live dialed heading bug, altitude preselect, and baro QNH summary.
     pub dial_readout: DialedAvionicsReadout,
     /// Monotonic browser clock timestamp in seconds (`performance.now() / 1000`).
