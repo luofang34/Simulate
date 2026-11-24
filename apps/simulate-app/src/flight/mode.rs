@@ -233,6 +233,7 @@ impl Mode {
         liveries: Option<&crate::livery_session::LiverySession>,
         utc_s: f64,
     ) -> Result<Self, AppSimError> {
+        let start_utc = UtcTime::from_unix_seconds(utc_s.floor());
         let plant = if let FreeFlightVehicle::External(slot) = vehicle {
             build_external_plant(slot, spawn, liveries)?
         } else {
@@ -240,7 +241,7 @@ impl Mode {
                 (_, Some(feed)) if vehicle == FreeFlightVehicle::C172Mission => {
                     FreeFlightPlant::page_mission(feed.clone())
                 }
-                (FreeSpawn::Delaware, _) => FreeFlightPlant::new(vehicle)?,
+                (FreeSpawn::Delaware, _) => FreeFlightPlant::new(vehicle, start_utc)?,
                 (
                     FreeSpawn::At {
                         spawn,
@@ -248,7 +249,7 @@ impl Mode {
                         field_elev_m,
                     },
                     _,
-                ) => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m)?,
+                ) => FreeFlightPlant::new_at(vehicle, spawn, heading_rad, field_elev_m, start_utc)?,
                 (
                     FreeSpawn::Ground {
                         spawn,
@@ -256,7 +257,7 @@ impl Mode {
                         cold,
                     },
                     _,
-                ) => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold)?,
+                ) => FreeFlightPlant::new_on_ground(vehicle, spawn, heading_rad, cold, start_utc)?,
             }
         };
         let mut panel = Box::new(CockpitInstrumentPanel::new(SimInstant::START));

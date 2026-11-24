@@ -8,7 +8,9 @@
 //! outright, inside it the field is evaluated exactly as without a reach, so nothing
 //! flown near a body changes.
 
-use crate::{constants::BodyGravitySpec, scalar_math::sqrt};
+use sim_bodies::HarmonicGravity;
+
+use crate::scalar_math::sqrt;
 
 /// Largest acceleration (`m/s²`) a skipped harmonic field may have.
 ///
@@ -28,28 +30,23 @@ const MAX_DOUBLINGS: u32 = 256;
 /// Bisection steps narrowing the reach once it is bracketed.
 const BISECTION_STEPS: u32 = 64;
 
-/// Distance from `spec`'s centre (`m`) beyond which its harmonic terms of degree at
-/// most `max_degree` provably accelerate less than `threshold_m_s2`; `f64::INFINITY`
-/// (never skipped) for a non-positive or non-finite threshold, a body without such
-/// terms, or a field that never falls below the threshold.
+/// Distance from the centre of `field`'s body (`m`) beyond which the terms `field` sums
+/// provably accelerate less than `threshold_m_s2`; `f64::INFINITY` (never skipped) for a
+/// non-positive or non-finite threshold, a field with no non-central term, or one that
+/// never falls below the threshold.
 ///
-/// The bound per term follows the recurrence [`super::evaluate_spherical_harmonics_fixed`]
-/// evaluates: an acceleration of degree $n$ is built from normalized
-/// $\bar V_{n+1,k}, \bar W_{n+1,k}$, each at most $(R/r)^{n+2}\sqrt{2n+3}$ in
-/// magnitude because a fully normalized associated Legendre function of degree $n+1$
-/// is at most $\sqrt{2n+3}$.
+/// The bound per term follows the solid-harmonic recurrence: an acceleration of degree
+/// $n$ is built from normalized $\bar V_{n+1,k}, \bar W_{n+1,k}$, each at most
+/// $(R/r)^{n+2}\sqrt{2n+3}$ in magnitude because a fully normalized associated Legendre
+/// function of degree $n+1$ is at most $\sqrt{2n+3}$.
 #[must_use]
-pub fn harmonic_reach_m(spec: &BodyGravitySpec, max_degree: u32, threshold_m_s2: f64) -> f64 {
-    let r_eq = spec.equatorial_radius_m;
-    let has_terms = spec
-        .harmonics
-        .iter()
-        .any(|t| t.degree >= 1 && t.order <= t.degree && t.degree <= max_degree);
+pub fn harmonic_reach_m(field: &HarmonicGravity, threshold_m_s2: f64) -> f64 {
+    let r_eq = field.radius_m();
     let usable_threshold = threshold_m_s2.is_finite() && threshold_m_s2 > 0.0;
-    if !has_terms || r_eq <= 0.0 || spec.mu_m3_s2 <= 0.0 || !usable_threshold {
+    if !has_terms(field) || !usable_threshold {
         return f64::INFINITY;
     }
-    let bound = |r: f64| field_bound_m_s2(spec, max_degree, r);
+    let bound = |r: f64| field_bound_m_s2(field, r);
     let mut outside = r_eq;
     let mut doublings = 0_u32;
     while bound(outside) > threshold_m_s2 {
@@ -74,22 +71,35 @@ pub fn harmonic_reach_m(spec: &BodyGravitySpec, max_degree: u32, threshold_m_s2:
     outside
 }
 
-/// Upper bound on the magnitude of `spec`'s harmonic acceleration of degree at most
-/// `max_degree` anywhere at distance `r_m` from its centre (`m/s²`).
-fn field_bound_m_s2(spec: &BodyGravitySpec, max_degree: u32, r_m: f64) -> f64 {
-    let ratio = spec.equatorial_radius_m / r_m;
-    let central = spec.mu_m3_s2 / (r_m * r_m);
+/// The non-central terms `field` sums that are not zero, as `(n, m, C̄nm, S̄nm)`.
+fn summed_terms(field: &HarmonicGravity) -> impl Iterator<Item = (u32, u32, f64, f64)> + '_ {
+    let truncation = field.truncation();
+    (truncation.min_degree.max(1)..=truncation.degree).flat_map(move |n| {
+        (0..=n.min(truncation.order)).filter_map(move |m| {
+            let (c_bar, s_bar) = field.coefficient(n, m);
+            let degree = u32::try_from(n).ok()?;
+            let order = u32::try_from(m).ok()?;
+            (c_bar != 0.0 || s_bar != 0.0).then_some((degree, order, c_bar, s_bar))
+        })
+    })
+}
+
+fn has_terms(field: &HarmonicGravity) -> bool {
+    summed_terms(field).next().is_some()
+}
+
+/// Upper bound on the magnitude of the non-central acceleration `field` sums anywhere at
+/// distance `r_m` from its body's centre (`m/s²`).
+fn field_bound_m_s2(field: &HarmonicGravity, r_m: f64) -> f64 {
+    let ratio = field.radius_m() / r_m;
+    let central = field.gm_m3_s2() / (r_m * r_m);
     let mut total = 0.0_f64;
-    for term in &spec.harmonics {
-        let n = term.degree;
-        if n == 0 || term.order > n || n > max_degree {
-            continue;
-        }
+    for (degree, order, c_bar, s_bar) in summed_terms(field) {
         let mut falloff = 1.0_f64;
-        for _ in 0..n {
+        for _ in 0..degree {
             falloff *= ratio;
         }
-        total += central * falloff * term_factor(n, term.order, term.c_bar, term.s_bar);
+        total += central * falloff * term_factor(degree, order, c_bar, s_bar);
     }
     total
 }

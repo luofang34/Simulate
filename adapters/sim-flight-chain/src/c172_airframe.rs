@@ -1,5 +1,5 @@
 //! The JSBSim Cessna 172 as a flight controller's airframe, starting in
-//! trimmed level flight.
+//! trimmed level flight or as the host built and placed it.
 //!
 //! The four actuator lanes are throttle, aileron, elevator and rudder with
 //! the surfaces neutral at one half. Until the flight controller is armed,
@@ -11,6 +11,7 @@
 use glam::DVec3;
 use sim_atmosphere::AtmosphereField;
 use sim_aviate::{DirectActuatorCmd, direct_fixed_wing_controls};
+use sim_bodies::{BodyDescriptor, BodyFields};
 use sim_core::{
     Block, ControlInputs, EngineStartMode, JsbsimFdmBlock, JsbsimFdmConfig, JsbsimFdmSnapshot,
     KinematicInput, SystemControls, TickSpan, VehicleState,
@@ -67,6 +68,9 @@ pub struct C172Start {
 pub struct C172Airframe {
     fdm: JsbsimFdmBlock,
     air: SharedAir,
+    /// The Earth's catalog fields. JSBSim integrates its own gravity; the
+    /// sensed specific force and the board's devices read these.
+    fields: BodyFields,
     utc: UtcTime,
     trim: ControlInputs,
     /// What the pilot holds on the yoke, pedals and throttle.
@@ -125,17 +129,68 @@ impl C172Airframe {
             .trim_level_flight()
             .map_err(|e| ChainError::Trim(Box::new(e)))?;
         let state = fdm.output();
+        let fields = BodyDescriptor::earth().map_err(ChainError::Body)?.fields();
         // Unaccelerated flight: the specific force is the reaction to weight.
-        let level = specific_force_body_m_s2(&state, &state, start.period.as_seconds());
+        let level = specific_force_body_m_s2(
+            fields.gravity.as_ref(),
+            &state,
+            &state,
+            start.period.as_seconds(),
+        );
         Ok(Self {
             fdm,
             air,
+            fields,
             utc: start.utc,
             trim,
             pilot: trim,
             servos_engaged: true,
             specific_force_body_m_s2: level,
         })
+    }
+
+    /// A Cessna 172 the host built and placed, in flight or standing on its gear, with
+    /// `held` on its controls. Its period is the flight controller's cycle, so the host
+    /// builds it at the rate the controller flies at.
+    pub fn around(
+        mut fdm: JsbsimFdmBlock,
+        held: ControlInputs,
+        air: SharedAir,
+        utc: UtcTime,
+    ) -> Result<Self, ChainError> {
+        set_wind(&mut fdm, &air, utc)?;
+        let state = fdm.output();
+        let fields = BodyDescriptor::earth().map_err(ChainError::Body)?.fields();
+        // Unaccelerated, in flight or at rest: the specific force is the reaction to weight.
+        let steady = specific_force_body_m_s2(
+            fields.gravity.as_ref(),
+            &state,
+            &state,
+            fdm.period().as_seconds(),
+        );
+        Ok(Self {
+            fdm,
+            air,
+            fields,
+            utc,
+            trim: held,
+            pilot: held,
+            servos_engaged: true,
+            specific_force_body_m_s2: steady,
+        })
+    }
+
+    /// Puts the ground under the aeroplane at `ellipsoidal_height_m` (WGS84) for the next
+    /// step, as the host's terrain has it at `surface_version`: an aeroplane standing on
+    /// its gear keeps its height above ground when the terrain under it is refined.
+    pub fn sync_ground_versioned_m(
+        &mut self,
+        ellipsoidal_height_m: f64,
+        surface_version: u64,
+    ) -> Result<(), ChainError> {
+        self.fdm
+            .sync_ground_versioned_m(ellipsoidal_height_m, surface_version)
+            .map_err(|e| ChainError::Plant(Box::new(e)))
     }
 
     /// What the pilot holds on the controls. It flies the aeroplane whenever the flight
@@ -150,9 +205,9 @@ impl C172Airframe {
     }
 
     /// Clutches the autopilot's servos to the controls, or releases them. A flight
-    /// controller keeps flying its laws while released, as an autopilot computer does
-    /// with its servos out; it refuses to disarm in the air, so the clutch and not the
-    /// arming state is what hands the aeroplane to the pilot.
+    /// controller stays armed while released and keeps computing its targets, as an
+    /// autopilot computer does with its servos out; it refuses to disarm in the air, so
+    /// the clutch and not the arming state is what hands the aeroplane to the pilot.
     pub const fn set_servos_engaged(&mut self, engaged: bool) {
         self.servos_engaged = engaged;
     }
@@ -179,8 +234,9 @@ impl C172Airframe {
         self.specific_force_body_m_s2
     }
 
-    /// The controls JSBSim trimmed level flight with: the throttle that
-    /// holds the starting speed, and the stick with the pitch trim taken up.
+    /// The controls the aeroplane started with: those JSBSim trimmed level flight with
+    /// (the throttle that holds the starting speed, and the stick with the pitch trim
+    /// taken up), or those the host stated for an aeroplane it built.
     pub const fn trim(&self) -> ControlInputs {
         self.trim
     }
@@ -194,6 +250,7 @@ impl Airframe for C172Airframe {
         let Self {
             fdm,
             air: _,
+            fields: _,
             utc,
             trim: _,
             pilot,
@@ -228,6 +285,10 @@ impl Airframe for C172Airframe {
         self.fdm.output()
     }
 
+    fn fields(&self) -> &BodyFields {
+        &self.fields
+    }
+
     fn sensed(&self) -> Result<SensedTruth, ChainError> {
         let vehicle = self.fdm.output();
         let position = ecef_to_geodetic(vehicle.position_ecef);
@@ -242,6 +303,10 @@ impl Airframe for C172Airframe {
         })
     }
 
+    fn actuators_connected(&self) -> bool {
+        self.servos_engaged
+    }
+
     fn fly(&mut self, command: &DirectActuatorCmd) -> Result<(), ChainError> {
         let controls = if command.armed && self.servos_engaged {
             direct_fixed_wing_controls(command)
@@ -254,7 +319,12 @@ impl Airframe for C172Airframe {
             .step(&KinematicInput { controls })
             .map_err(|e| ChainError::Plant(Box::new(e)))?;
         let dt_s = self.fdm.period().as_seconds();
-        self.specific_force_body_m_s2 = specific_force_body_m_s2(&before, &self.fdm.output(), dt_s);
+        self.specific_force_body_m_s2 = specific_force_body_m_s2(
+            self.fields.gravity.as_ref(),
+            &before,
+            &self.fdm.output(),
+            dt_s,
+        );
         self.utc = self.utc.advanced_by(dt_s);
         Ok(())
     }

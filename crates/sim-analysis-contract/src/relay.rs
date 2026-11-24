@@ -14,7 +14,8 @@ use crate::{
 pub struct VerificationScope {
     /// `true` when geometric line-of-sight, planetary ellipsoid/terrain occultation, and sensor mount `FOV` were evaluated.
     pub geometric_los_and_fov_verified: bool,
-    /// `false` for geometric analysis: RF link budget (`EIRP`, `G/T`, $E_b/N_0$, rain/ionospheric fade) is NOT verified.
+    /// `true` only for a report whose link budget (`EIRP`, `G/T`, $E_b/N_0$) was evaluated;
+    /// ionospheric and rain fade are never part of it unless a propagation model supplies them.
     pub rf_link_budget_verified: bool,
     /// `false` for simultaneous geometric relay: onboard store-and-forward buffering is NOT modeled.
     pub store_and_forward_modeled: bool,
@@ -29,6 +30,30 @@ impl VerificationScope {
             rf_link_budget_verified: false,
             store_and_forward_modeled: false,
         }
+    }
+
+    /// Scope for a geometric analysis whose accessible epochs also carry an RF link budget.
+    #[must_use]
+    pub const fn geometric_visibility_with_rf_link_budget() -> Self {
+        Self {
+            geometric_los_and_fov_verified: true,
+            rf_link_budget_verified: true,
+            store_and_forward_modeled: false,
+        }
+    }
+}
+
+/// Serde adapter for an optional `DVec3` written as `[f64; 3]`.
+mod serde_opt_dvec3 {
+    use glam::DVec3;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(v: &Option<DVec3>, s: S) -> Result<S::Ok, S::Error> {
+        v.as_ref().map(DVec3::to_array).serialize(s)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DVec3>, D::Error> {
+        Ok(Option::<[f64; 3]>::deserialize(d)?.map(DVec3::from_array))
     }
 }
 
@@ -55,6 +80,12 @@ pub struct EndpointLinkSample {
     pub source_off_boresight_rad: Option<f64>,
     /// Off-boresight angle in target sensor mount (`rad`, `Some` when target mount orientation is defined).
     pub target_off_boresight_rad: Option<f64>,
+    /// Unit direction from source to target in the source mount frame (`Some` when its orientation is defined).
+    #[serde(with = "serde_opt_dvec3")]
+    pub source_look_direction_mount: Option<DVec3>,
+    /// Unit direction from target to source in the target mount frame (`Some` when its orientation is defined).
+    #[serde(with = "serde_opt_dvec3")]
+    pub target_look_direction_mount: Option<DVec3>,
     /// One-way light time from source to target (`s`), under `SignalTimeModel::LightTime`.
     /// The source position and its angles are then those at `epoch` less this.
     #[serde(default)]
@@ -80,7 +111,7 @@ pub struct EndpointLinkReport {
     pub valid_interval: ValidEpochInterval,
     /// Search completeness declaration.
     pub completeness: WindowSearchCompleteness,
-    /// Explicit verification scope (`rf_link_budget_verified = false`).
+    /// Explicit verification scope.
     pub verification_scope: VerificationScope,
     /// Input trajectory and dataset provenance.
     pub provenance: Vec<DataProvenance>,

@@ -49,6 +49,7 @@ aircraft, an aerodrome, a scenario, and your controls, and rewind the flight.
 | `sim-universe` | `crates/sim-universe` | Vessels on one clock across flight and orbital tiers, and the handoff between them |
 | `sim-geo` | `crates/sim-geo` | WGS84 and lunar geodesy, local frames, floating origin, pinhole intrinsics |
 | `sim-atmosphere` | `crates/sim-atmosphere` | Atmosphere and cloud fields |
+| `sim-bodies` | `crates/sim-bodies` | Body catalog and the gravity and magnetic truth fields every tier reads |
 | `sim-core` | `crates/sim-core` | Master clock, the `Block` contract, vehicle state, rigid-body and JSBSim dynamics, XIL bridges |
 | `sim-devices` | `crates/sim-devices` | Sensor and bus models (IMU, barometer, ARINC 429) |
 | `sim-xil` | `crates/sim-xil` | External SITL/HITL wire protocols: MAVLink v2 HIL and Betaflight SITL |

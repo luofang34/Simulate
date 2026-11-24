@@ -140,3 +140,48 @@ fn touchdown_happens_at_the_historical_minute() {
         run.now().duration_since(SimInstant::START).as_seconds()
     );
 }
+
+#[test]
+fn the_landing_ends_where_it_was_recorded() {
+    let run = land(&LunarLandingConfig::default());
+    let report = run.report();
+    let elapsed = run.now().duration_since(SimInstant::START).as_seconds();
+    let state = run.vehicle();
+    let height = BodyEllipsoid::MOON_IAU
+        .fixed_to_geodetic(state.position_ecef)
+        .height_m;
+    // Guidance closes the loop on true position and velocity through sensed
+    // attitude, so integration truncation does not grow; contact is sampled
+    // once a step and redesignation once per guidance pass, each of which
+    // may move by one sample.
+    crate::recorded::assert_rows(&[
+        ("contact_s", elapsed, 163.06, 0.05),
+        (
+            "dps_burned_kg",
+            report.dps_burned_kg,
+            827.3151387093126,
+            0.5,
+        ),
+        ("cg_rise_m", report.cg_rise_m, 0.1030298453267709, 1e-4),
+        (
+            "miss_m",
+            report.contact_miss_m.unwrap(),
+            1.2753237775088855,
+            0.05,
+        ),
+        (
+            "sink_m_s",
+            report.contact_sink_m_s.unwrap(),
+            0.9977442673868565,
+            5e-3,
+        ),
+        (
+            "drift_m_s",
+            report.contact_drift_m_s.unwrap(),
+            0.047133516004390204,
+            5e-3,
+        ),
+        ("peak_mga_deg", report.peak_mga_deg, 13.87640351754038, 0.01),
+        ("height_m", height, 5.254593966295943, 0.05),
+    ]);
+}

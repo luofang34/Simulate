@@ -236,6 +236,7 @@ const fn unreachable_vacuum() -> sim_atmosphere::AtmosphereSample {
         density_kg_m3: 0.0,
         speed_of_sound_m_s: 0.0,
         wind_ned_m_s: DVec3::ZERO,
+        composition: sim_atmosphere::GasComposition::VACUUM,
     }
 }
 

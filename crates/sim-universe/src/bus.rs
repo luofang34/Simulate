@@ -21,7 +21,8 @@ pub struct VesselBusConfig {
     pub solar_array: SolarArrayConfig,
     /// Relativistic proper-time oscillator configuration.
     pub oscillator: OscillatorConfig,
-    /// Optional cannonball solar radiation pressure surface (`SolarRadiationPressureLaw`).
+    /// Optional cannonball solar radiation pressure surface, carried into the orbital
+    /// tier as an environment load.
     pub srp_surface: Option<SrpSurface>,
 }
 
@@ -67,6 +68,13 @@ pub(crate) struct VesselBusSnapshot {
     last_instant: SimInstant,
     last_sample_instant: Option<SimInstant>,
     telemetry: VesselBusTelemetry,
+}
+
+/// The Sun as a bus samples it: the run's one flux model and the ephemeris it reads.
+#[derive(Clone, Copy)]
+pub(crate) struct SunlightSource<'a> {
+    pub(crate) model: &'a SolarFluxModel,
+    pub(crate) ephemeris: &'a dyn EphemerisCatalog,
 }
 
 pub(crate) struct VesselBusState {
@@ -159,11 +167,11 @@ impl VesselBusState {
         vel_ssb_m_s: DVec3,
         direct_beam_fraction: f64,
         epoch: &SimEpoch,
-        ephemeris: &dyn EphemerisCatalog,
+        sun: SunlightSource<'_>,
     ) {
         let tdb = epoch.tdb_at(instant);
-        let flux_model = SolarFluxModel::standard();
-        let Ok(sunlight) = flux_model.sample(pos_ssb_m, tdb, ephemeris) else {
+        let ephemeris = sun.ephemeris;
+        let Ok(sunlight) = sun.model.sample(pos_ssb_m, tdb, ephemeris) else {
             return;
         };
         let normal_icrf = if sunlight.to_sun_icrf.length_squared() > 0.0 {
@@ -264,17 +272,26 @@ impl Universe {
         };
         let epoch = self.epoch().clone();
         let ephemeris = self.ephemeris.clone();
+        let bodies = self.bodies().clone();
         if let Some(vessel) = self.vessels.get_mut(&id) {
-            vessel
-                .bus
-                .refresh_at(now, pos_ssb_m, vel_ssb_m_s, 1.0, &epoch, ephemeris.as_ref());
+            vessel.bus.refresh_at(
+                now,
+                pos_ssb_m,
+                vel_ssb_m_s,
+                1.0,
+                &epoch,
+                SunlightSource {
+                    model: bodies.solar_flux_model(),
+                    ephemeris: ephemeris.as_ref(),
+                },
+            );
         }
     }
 
     fn vessel_barycentric_state(&self, id: VesselId, at: SimInstant) -> Option<(DVec3, DVec3)> {
         let vessel = self.vessels.get(&id)?;
         match &vessel.flight {
-            Flight::Orbital => {
+            Flight::Orbital { .. } => {
                 let st = self.orbital().sample_vessel_barycentric(id, at).ok()?;
                 Some((st.pos_m, st.vel_m_s))
             }

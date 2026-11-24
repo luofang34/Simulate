@@ -67,34 +67,24 @@ impl VesselTimeline {
     }
 
     pub(crate) fn from_snapshot_record(rec: VesselSnapshotRecord) -> Self {
-        let mut speculative = Vec::new();
-        let frontier_checkpoint = match rec.spanning_segment {
-            Some(seg) => {
-                let end_cp = seg.end_checkpoint.clone();
-                speculative.push(seg);
-                end_cp
-            }
-            None => rec.committed_checkpoint.clone(),
-        };
         Self {
             config: rec.config,
             committed_checkpoint: rec.committed_checkpoint,
-            speculative,
-            frontier_checkpoint,
+            speculative: rec.speculative_segments,
+            frontier_checkpoint: rec.frontier_checkpoint,
         }
     }
 
-    pub(crate) fn to_snapshot_record(&self, committed_instant: SimInstant) -> VesselSnapshotRecord {
-        let spanning = self
-            .speculative
-            .first()
-            .filter(|e| e.start_instant <= committed_instant && committed_instant < e.end_instant)
-            .cloned();
+    /// The whole buffered lookahead goes into the record: a proposal's last step is
+    /// clipped to its horizon, so continuing from any other frontier than the one
+    /// the buffer ends on would put later step boundaries elsewhere.
+    pub(crate) fn to_snapshot_record(&self) -> VesselSnapshotRecord {
         VesselSnapshotRecord {
             vessel_id: self.committed_checkpoint.vessel_id,
             config: self.config,
             committed_checkpoint: self.committed_checkpoint.clone(),
-            spanning_segment: spanning,
+            speculative_segments: self.speculative.clone(),
+            frontier_checkpoint: self.frontier_checkpoint.clone(),
         }
     }
 

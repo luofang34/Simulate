@@ -3,7 +3,7 @@
 use sim_spacetime::SimInstant;
 
 use crate::{
-    checkpoint::VesselCheckpoint,
+    checkpoint::{VesselCheckpoint, VesselConfig},
     collision::{
         RendezvousGroup, SweptReachabilityTube, TubeUncertaintyBudget, form_rendezvous_groups,
     },
@@ -57,6 +57,12 @@ impl OrbitalUniverse {
         self.vessels
             .get(&vessel_id)
             .map(|v| &v.committed_checkpoint)
+    }
+
+    /// Mass, actuator-mode and tolerance configuration `vessel_id` is integrated with.
+    #[must_use]
+    pub fn vessel_config(&self, vessel_id: VesselId) -> Option<&VesselConfig> {
+        self.vessels.get(&vessel_id).map(|v| &v.config)
     }
 
     /// Number of buffered speculative segments currently held for `vessel_id`.

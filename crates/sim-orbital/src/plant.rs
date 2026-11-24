@@ -4,7 +4,7 @@
 //! Runge–Kutta stages remain pure functions of `(tau_s, epoch, state)`.
 
 pub mod attitude_math;
-mod srp;
+mod environment;
 
 use glam::{DMat3, DQuat, DVec3};
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,11 @@ pub use attitude_math::{
     clamp_vec_norm, quat_geodesic_angle_rad, quat_normalize_portable, quat_omega_derivative,
     quat_rotate_vec_portable, serde_dquat, serde_dvec3,
 };
-pub use srp::{SolarRadiationPressureLaw, SrpSurface};
+pub use environment::{
+    BodyFixedState, DragSurface, EnvironmentContext, EnvironmentLaw, EnvironmentLoad,
+    EnvironmentLoadSpec, EnvironmentLoads, EnvironmentStage, EnvironmentWrench, GravityGradient,
+    ResidualDipole, SrpSurface,
+};
 
 /// Dimension of the packed continuous 6-DoF plant ODE state vector.
 pub const PLANT_ODE_DIM: usize = 17;
@@ -211,6 +215,21 @@ impl MassPropertiesModel {
             propellant_inertia_per_kg_cols: [[jxx, 0.0, 0.0], [0.0, jyy, 0.0], [0.0, 0.0, jzz]],
             uncompensated_idot_factor: 0.0,
         }
+    }
+
+    pub(crate) fn write_to_hasher(&self, h: &mut crate::hash::DomainHasher) {
+        h.write_f64_canonical(self.dry_mass_kg);
+        for col in self.dry_inertia_cols {
+            for v in col {
+                h.write_f64_canonical(v);
+            }
+        }
+        for col in self.propellant_inertia_per_kg_cols {
+            for v in col {
+                h.write_f64_canonical(v);
+            }
+        }
+        h.write_f64_canonical(self.uncompensated_idot_factor);
     }
 
     /// Total vehicle mass $m = m_{\text{dry}} + \max(m_p, 0)$ ($\text{kg}$).

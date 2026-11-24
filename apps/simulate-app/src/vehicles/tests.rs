@@ -1,7 +1,12 @@
 use sim_core::ControlInputs;
-use sim_geo::{Geodetic, ecef_to_geodetic};
+use sim_geo::{Geodetic, UtcTime, ecef_to_geodetic};
+use sim_scenario::ScenarioProfile;
 
 use super::*;
+
+fn test_utc() -> UtcTime {
+    UtcTime::from_unix_seconds(ScenarioProfile::CorridorNominalCruise.start_utc_unix_s())
+}
 
 /// A parked aircraft settles onto its gear and stays there, finite; with the engine idling
 /// and brakes off it may only creep.
@@ -15,12 +20,13 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
         (FreeFlightVehicle::JsbsimP38g, false),
         (FreeFlightVehicle::JsbsimP38g, true),
     ] {
-        let mut plant = FreeFlightPlant::new_on_ground(vehicle, ground, 1.2, cold).expect("parked");
+        let mut plant =
+            FreeFlightPlant::new_on_ground(vehicle, ground, 1.2, cold, test_utc()).expect("parked");
         let mut plant_ground = ground;
         if let Some(height_m) = world.ellipsoidal_ground_m(&ground) {
             plant_ground.height_m = height_m;
-            plant =
-                FreeFlightPlant::new_on_ground(vehicle, plant_ground, 1.2, cold).expect("parked");
+            plant = FreeFlightPlant::new_on_ground(vehicle, plant_ground, 1.2, cold, test_utc())
+                .expect("parked");
         }
         let start = plant.state();
         let periods = (3.0 / plant.period().as_seconds()) as usize;
@@ -48,6 +54,7 @@ fn parked_jsbsim_aircraft_rest_on_their_gear() {
         }
     }
 }
+mod autopilot_c172;
 mod gear_datum;
 mod page_mission;
 
@@ -57,7 +64,8 @@ mod page_mission;
 #[test]
 fn an_airborne_p38g_spawns_with_both_engines_turning() {
     let spawn = Geodetic::from_degrees(40.524, -74.598, 300.0);
-    let plant = FreeFlightPlant::new_at(FreeFlightVehicle::JsbsimP38g, spawn, 0.0, 0.0).unwrap();
+    let plant = FreeFlightPlant::new_at(FreeFlightVehicle::JsbsimP38g, spawn, 0.0, 0.0, test_utc())
+        .unwrap();
     let art = plant.articulation(0.0);
     assert!(art.engine_running, "{art:?}");
     assert!(art.gear_pos_norm < 0.01, "gear at {}", art.gear_pos_norm);
@@ -74,9 +82,14 @@ fn an_airborne_p38g_spawns_with_both_engines_turning() {
 fn fly_c172_mission(seconds: f64, stick: ControlInputs) -> FreeFlightPlant {
     let world = crate::world_surface::WorldSurfaceHandle::new();
     let spawn = Geodetic::from_degrees(39.1582, -75.5244, 15.0);
-    let mut plant =
-        FreeFlightPlant::new_on_ground(FreeFlightVehicle::C172Mission, spawn, 0.6, false)
-            .expect("at the first link's start");
+    let mut plant = FreeFlightPlant::new_on_ground(
+        FreeFlightVehicle::C172Mission,
+        spawn,
+        0.6,
+        false,
+        test_utc(),
+    )
+    .expect("at the first link's start");
     let periods = (seconds / plant.period().as_seconds()) as usize;
     for _ in 0..periods {
         plant.step(stick, &world).expect("step");

@@ -25,6 +25,10 @@ pub enum ChainError {
     /// A device of the sensor suite refused its configuration or a sample.
     #[error("a sensor device failed")]
     Devices(#[source] DeviceError),
+    /// The catalog entry of the body the vehicle flies about could not be
+    /// built.
+    #[error("the body's truth fields could not be built")]
+    Body(#[source] sim_bodies::FieldBuildError),
     /// The air field has no state where the vehicle is.
     #[error("no air state at the vehicle")]
     Air(#[source] AtmosphereError),
@@ -34,6 +38,16 @@ pub enum ChainError {
     /// The airframe could not be trimmed for its starting flight condition.
     #[error("no trim at the start of flight")]
     Trim(#[source] Box<BlockError>),
+    /// The airframe steps at another period than the flight controller's cycle.
+    #[error(
+        "the airframe steps every {airframe_s} s, the flight controller every {controller_s} s"
+    )]
+    CyclePeriod {
+        /// The airframe's integration period, seconds.
+        airframe_s: f64,
+        /// The flight controller's cycle, seconds.
+        controller_s: f64,
+    },
     /// Pilotage's host core refused its configuration, the plan or a tick.
     #[error("the Pilotage host core failed")]
     Host(#[source] Box<pilotage_host_core::HostCoreError>),

@@ -1,6 +1,6 @@
 //! The truth gravity of a simulated world.
 
-use glam::DVec3;
+use glam::{DMat3, DVec3};
 
 use crate::BodyEllipsoid;
 
@@ -19,6 +19,14 @@ use crate::BodyEllipsoid;
 pub trait GravityField: Send + Sync + core::fmt::Debug {
     /// The attraction at `fixed`, body-fixed m/s².
     fn attraction_fixed(&self, fixed: DVec3) -> DVec3;
+
+    /// The gravity-gradient tensor `∂g_i/∂x_j` at `fixed`, 1/s², in
+    /// body-fixed axes: what a gradiometer senses and what torques an
+    /// extended body. `None` for a field that cannot state one, so a
+    /// consumer never mistakes a missing tensor for a flat field.
+    fn attraction_gradient_fixed(&self, _fixed: DVec3) -> Option<DMat3> {
+        None
+    }
 }
 
 impl GravityField for BodyEllipsoid {

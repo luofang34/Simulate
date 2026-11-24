@@ -4,7 +4,7 @@ use aviate_core::mixer::Mixer;
 use aviate_core::types::{Meters, MetersPerSecond, NormalizedThrust, Radians};
 use aviate_hal_io::SystemCommand;
 use glam::{DMat3, DVec3, EulerRot, Quat};
-use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement, VacuumAero};
+use mbd_core::{ComponentSpec, ComponentState, ComponentTree, Placement};
 use sim_atmosphere::FullColumnAtmosphere;
 use sim_aviate::{
     AviateDirectConfig, AviateDirectRunner, DirectFixedWingKernel, DirectX500Kernel, RotorLayout,
@@ -87,6 +87,7 @@ pub(super) fn build_aviate_x500(
         dry_inertia_body: DMat3::from_diagonal(DVec3::new(0.029, 0.029, 0.055)),
         thermal_capacity_j_k: 0.0,
         nominal_power_w: 0.0,
+        joint: mbd_core::JointSpec::FIXED,
     };
     let tree = ComponentTree::new([(spec, ComponentState::at_temperature(293.15))])
         .map_err(sim_scenario::ScenarioError::from)?;
@@ -98,8 +99,12 @@ pub(super) fn build_aviate_x500(
             initial: VehicleState::level_flight(&origin, heading_rad, 0.0),
         },
         tree,
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(FullColumnAtmosphere::new()),
+        sim_bodies::BodyDescriptor::earth()
+            .map_err(sim_scenario::ScenarioError::from)?
+            .fields()
+            .gravity,
     )
     .map_err(sim_scenario::ScenarioError::from)?;
     let kernel: DirectX500Kernel =
@@ -277,8 +282,14 @@ pub(super) fn build_aviate_fixed_wing(
     field_elev_m: f64,
 ) -> Result<AviateFixedWingRig, AppSimError> {
     let pkg = builtin_c172s_package().map_err(sim_scenario::ScenarioError::from)?;
-    let (fdm, specific_force_frd_m_s2) =
-        build_jsbsim_fdm(&pkg, origin, heading_rad, 52.0, field_elev_m)?;
+    let (fdm, specific_force_frd_m_s2) = build_jsbsim_fdm(
+        &pkg,
+        origin,
+        heading_rad,
+        52.0,
+        field_elev_m,
+        JSBSIM_DEFAULT_PERIOD,
+    )?;
     let kernel: DirectFixedWingKernel =
         build_direct_fixed_wing_kernel(&sim_aviate::c172_airframe()).ok_or(
             AppSimError::AviateKernel {

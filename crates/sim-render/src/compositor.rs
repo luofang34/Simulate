@@ -4,11 +4,12 @@ use crate::RenderError;
 
 mod panel_texture;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use panel_texture::RgbaPanelTexture;
 
-/// Maximum number of textured viewport/instrument quads composited in one pass.
+/// Maximum number of textured viewport/instrument quads a pass composites in one queue
+/// submission, over all its layers.
 pub const MAX_COMPOSITE_QUADS: usize = 12;
 
 const FLAG_SRGB_UNORM: u32 = 1;
@@ -231,11 +232,54 @@ impl CompositorPass {
         })
     }
 
-    /// Encodes ordered [`OverlayQuad`] draws onto `target`.
+    /// The layers of one queue submission, the first drawn from the pass's first slot.
+    #[must_use]
+    pub const fn layers<'a>(
+        &'a self,
+        device: &'a wgpu::Device,
+        queue: &'a wgpu::Queue,
+    ) -> CompositorLayers<'a> {
+        CompositorLayers {
+            pass: self,
+            device,
+            queue,
+            next_slot: 0,
+        }
+    }
+
+    /// Encodes ordered [`OverlayQuad`] draws onto `target` as the only layer this pass
+    /// composites in the submission; a submission of several layers encodes them all
+    /// through one [`Self::layers`].
     pub fn encode(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: CompositorTarget<'_>,
+        quads: &[OverlayQuad<'_>],
+    ) {
+        self.layers(device, queue).encode(encoder, target, quads);
+    }
+}
+
+/// The layers one queue submission composites with a [`CompositorPass`].
+///
+/// A quad's uniforms reach the GPU through `Queue::write_buffer`, which lands before
+/// every pass of the submission, whichever pass was encoded first. Two layers reading
+/// one slot would both draw with the later layer's rectangle and flags, so each layer
+/// takes the slots after the layer before it. Quads past the pass's
+/// [`MAX_COMPOSITE_QUADS`] slots are not drawn.
+pub struct CompositorLayers<'a> {
+    pass: &'a CompositorPass,
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    next_slot: usize,
+}
+
+impl CompositorLayers<'_> {
+    /// Encodes ordered [`OverlayQuad`] draws onto `target` as the submission's next layer.
+    pub fn encode(
+        &mut self,
         encoder: &mut wgpu::CommandEncoder,
         target: CompositorTarget<'_>,
         quads: &[OverlayQuad<'_>],
@@ -247,18 +291,18 @@ impl CompositorPass {
         let mut bind_groups = Vec::with_capacity(quads.len().min(MAX_COMPOSITE_QUADS));
         for (quad, buffer) in quads
             .iter()
-            .take(MAX_COMPOSITE_QUADS)
-            .zip(&self.uniform_buffers)
+            .zip(self.pass.uniform_buffers.iter().skip(self.next_slot))
         {
             let uniform = build_quad_uniform(quad, target_w, target_h);
-            queue.write_buffer(buffer, 0, bytemuck::bytes_of(&uniform));
+            self.queue
+                .write_buffer(buffer, 0, bytemuck::bytes_of(&uniform));
             let sampler = match quad.filter {
-                QuadFilter::Linear => &self.linear_sampler,
-                QuadFilter::Nearest => &self.nearest_sampler,
+                QuadFilter::Linear => &self.pass.linear_sampler,
+                QuadFilter::Nearest => &self.pass.nearest_sampler,
             };
-            bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            bind_groups.push(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("compositor quad"),
-                layout: &self.layout,
+                layout: &self.pass.layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -275,6 +319,7 @@ impl CompositorPass {
                 ],
             }));
         }
+        self.next_slot = self.next_slot.saturating_add(bind_groups.len());
 
         let load = target.clear.map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -293,7 +338,7 @@ impl CompositorPass {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&self.pipeline);
+        pass.set_pipeline(&self.pass.pipeline);
         for bg in &bind_groups {
             pass.set_bind_group(0, bg, &[]);
             pass.draw(0..6, 0..1);

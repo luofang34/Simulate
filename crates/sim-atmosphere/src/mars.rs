@@ -1,10 +1,13 @@
 //! Continuous Mars $\text{CO}_2$ standard atmosphere from `-9 km` (Hellas basin) to space (`200 km`).
 
 use glam::DVec3;
+use mbd_core::GasComposition;
 use sim_geo::{Geodetic, UtcTime};
 
+use crate::content::{feed_f64s, feed_kind};
 use crate::{
-    AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K, VacuumAtmosphere,
+    AtmosphereContent, AtmosphereError, AtmosphereField, AtmosphereSample, COSMIC_BACKGROUND_K,
+    VacuumAtmosphere,
 };
 
 #[cfg(test)]
@@ -96,6 +99,33 @@ impl MarsAtmosphere {
     }
 }
 
+impl AtmosphereContent for MarsAtmosphere {
+    /// The wind, the gas, the datum and every layer of the profile.
+    fn visit_content(&self, f: &mut dyn FnMut(&[u8])) {
+        feed_kind(f, "mars-co2-layers");
+        feed_f64s(f, &self.wind_ned_m_s.to_array());
+        feed_f64s(
+            f,
+            &[
+                MARS_GAS_CONSTANT_J_KG_K,
+                MARS_GAMMA,
+                MARS_G0_M_S2,
+                MARS_GEOPOTENTIAL_RADIUS_M,
+                MARS_FLOOR_GEOPOTENTIAL_M,
+                MARS_LAYERS_TOP_M,
+                MARS_FADE_START_M,
+                MARS_VACUUM_FLOOR_M,
+                T_DATUM_K,
+                P_DATUM_PA,
+                BASIN_LAPSE_K_PER_M,
+            ],
+        );
+        for layer in &UPPER_LAYERS {
+            feed_f64s(f, &[layer.base_h_m, layer.top_h_m, layer.lapse_k_per_m]);
+        }
+    }
+}
+
 impl AtmosphereField for MarsAtmosphere {
     fn sample(
         &self,
@@ -125,6 +155,7 @@ impl AtmosphereField for MarsAtmosphere {
             density_kg_m3: rho,
             speed_of_sound_m_s: mars_speed_of_sound_m_s(t_k),
             wind_ned_m_s: self.wind_ned_m_s,
+            composition: GasComposition::mars_air(),
         })
     }
 }
@@ -196,6 +227,7 @@ fn mars_thermosphere_sample(geom_m: f64, wind_ned_m_s: DVec3) -> AtmosphereSampl
         density_kg_m3: rem * rho_raw,
         speed_of_sound_m_s: rem * mars_speed_of_sound_m_s(t_k),
         wind_ned_m_s: rem * wind_ned_m_s,
+        composition: GasComposition::mars_air(),
     }
 }
 

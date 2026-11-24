@@ -19,8 +19,9 @@ pub use airframe::{Airframe, SharedAir};
 pub use avionics::{FcAirData, FcAvionics, FcTargets};
 pub use c172_airframe::{C172Airframe, C172AirframeSnapshot, C172Start, C172Variant};
 pub use c172_vehicle::{
-    AccelCalibration, C172_PLANNING_BANK_DEG, C172_RATE_HZ, C172Board, C172Setup, c172_board,
-    c172_board_variant, c172_pilotage_airframe, c172_sensor_suite, c172_sensor_suite_with,
+    AccelCalibration, C172_PLANNING_BANK_DEG, C172_RATE_HZ, C172Board, C172Chain,
+    C172ChainSnapshot, C172Setup, c172_board, c172_board_on, c172_board_variant,
+    c172_pilotage_airframe, c172_sensor_suite, c172_sensor_suite_with,
 };
 pub use error::ChainError;
 pub use host_chain::{ChainRoute, ChainSnapshot, HostChain, LinkCounters, OwnshipFeed, RouteFix};

@@ -1,10 +1,10 @@
 use glam::{DMat3, DQuat, DVec3};
 use sim_core::VehicleState;
-use sim_geo::{BodyEllipsoid, Geodetic};
+use sim_geo::Geodetic;
 use sim_orbital::{BodyOrientationCatalog, BuiltinSolarSystem2026_2028, NaifId, TdbEpoch};
 use sim_spacetime::BodyRotationState;
 
-use super::{InertialExtras, body_ellipsoid, naif_body, to_body_fixed, to_inertial};
+use super::{InertialExtras, to_body_fixed, to_inertial};
 use crate::UniverseError;
 
 /// `2027-03-01T00:00:00 TDB`, inside the built-in kernels' coverage.
@@ -81,16 +81,4 @@ fn a_state_about_another_body_is_refused() {
         to_body_fixed(&inertial, NaifId::EARTH, &rotation),
         Err(UniverseError::WrongPrimary { .. })
     ));
-}
-
-#[test]
-fn modelled_bodies_map_to_their_naif_ids() {
-    assert_eq!(naif_body(BodyEllipsoid::WGS84), Some(NaifId::EARTH));
-    assert_eq!(naif_body(BodyEllipsoid::MOON_IAU), Some(NaifId::MOON));
-    assert_eq!(naif_body(BodyEllipsoid::MARS_IAU), Some(NaifId::MARS));
-    for body in [NaifId::EARTH, NaifId::MOON, NaifId::MARS] {
-        assert_eq!(body_ellipsoid(body).and_then(naif_body), Some(body));
-    }
-    assert_eq!(body_ellipsoid(NaifId::SUN), None);
-    assert_eq!(body_ellipsoid(NaifId::SSB), None);
 }

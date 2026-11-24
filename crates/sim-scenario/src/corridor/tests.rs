@@ -241,6 +241,7 @@ fn autopilot_throttle_regulates_pitot_airspeed_rather_than_ground_speed() {
         density_kg_m3: 1.225,
         speed_of_sound_m_s: 340.294,
         wind_ned_m_s: DVec3::new(-15.0, 0.0, 0.0),
+        composition: sim_atmosphere::GasComposition::earth_dry_air(),
     };
     let mut pitot = PitotStatic::with_pitot(
         PressureErrorSpec::IDEAL,

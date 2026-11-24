@@ -11,6 +11,9 @@ pub enum PackError {
     /// it.
     #[error(transparent)]
     Syspack(#[from] SyspackError),
+    /// Model-based design verification, analysis, or calibration error.
+    #[error(transparent)]
+    Design(#[from] mbd_design::DesignError),
     /// A device block refused its configuration.
     #[error("device {device:?} could not be built")]
     DeviceBuild {

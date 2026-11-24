@@ -14,6 +14,9 @@ pub enum IronbirdError {
     /// A system package failed verification or loading.
     #[error("vehicle package failed: {0}")]
     Pack(#[from] PackError),
+    /// The Earth's catalog entry could not be built.
+    #[error("the body's truth fields could not be built: {0}")]
+    Body(#[from] sim_bodies::FieldBuildError),
     /// Component tree evaluation failed.
     #[error("component tree failed: {0}")]
     Mbd(#[from] MbdError),

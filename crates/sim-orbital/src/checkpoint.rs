@@ -4,6 +4,7 @@
 //! bit-identically without mutating shared controller or RNG state inside rejected RK stages.
 
 pub mod burn_law;
+pub mod external_inputs;
 
 use serde::{Deserialize, Serialize};
 pub(crate) use sim_spacetime::sim_instant_serde;
@@ -17,13 +18,14 @@ use crate::{
     ids::VesselId,
     orientation::BodyOrientationCatalog,
     plant::{
-        ContinuousPlantState, MassPropertiesModel, PropagationAudit, PropellantMode,
-        ReactionWheelMode, SrpSurface,
+        ContinuousPlantState, EnvironmentLoadSpec, EnvironmentLoads, MassPropertiesModel,
+        PropagationAudit, PropellantMode, ReactionWheelMode,
     },
     time::SimClockAdapter,
 };
 
 pub use burn_law::{ActuatorState, LatchedBurnLaw};
+pub use external_inputs::{ExternalInputs, ExternalLoads, ExternalMassProperties};
 
 /// Explicit per-vessel `Xoshiro256**` deterministic PRNG state (zero thread-local or OS RNG).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -195,9 +197,6 @@ pub struct DiscreteGncState {
     pub integral_att_error_body: [f64; 3],
     /// Pure continuous steering/burn law latched across continuous integration steps.
     pub latched_law: LatchedBurnLaw,
-    /// Optional cannonball solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
-    #[serde(default)]
-    pub srp_surface: Option<SrpSurface>,
 }
 
 impl DiscreteGncState {
@@ -224,15 +223,13 @@ impl DiscreteGncState {
             h.write_f64_canonical(v);
         }
         self.latched_law.write_to_hasher(h);
-        if let Some(srp) = self.srp_surface {
-            h.write_u8(1);
-            h.write_f64_canonical(srp.area_m2);
-            h.write_f64_canonical(srp.reflectivity_coefficient);
-        }
     }
 }
 
 /// Static mass, actuator-mode, tolerance, and SOI-switching configuration for one vessel.
+///
+/// An external owner's mass in [`VesselCheckpoint::external`] overrides the dry part of
+/// [`Self::mass_model`]; [`VesselCheckpoint::mass_model`] resolves the one to integrate.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VesselConfig {
     /// Mass and inertia tensor model.
@@ -259,18 +256,7 @@ impl VesselConfig {
     }
 
     pub(crate) fn write_to_hasher(&self, h: &mut DomainHasher) {
-        h.write_f64_canonical(self.mass_model.dry_mass_kg);
-        for col in self.mass_model.dry_inertia_cols {
-            for v in col {
-                h.write_f64_canonical(v);
-            }
-        }
-        for col in self.mass_model.propellant_inertia_per_kg_cols {
-            for v in col {
-                h.write_f64_canonical(v);
-            }
-        }
-        h.write_f64_canonical(self.mass_model.uncompensated_idot_factor);
+        self.mass_model.write_to_hasher(h);
         match self.propellant_mode {
             PropellantMode::FiniteVariableMass => h.write_u8(0),
             PropellantMode::InfiniteConstantMass => h.write_u8(1),
@@ -320,6 +306,13 @@ pub struct VesselCheckpoint {
     pub pinned_surface: Option<PinnedSurfaceState>,
     /// Cumulative idealization/exceedance audit flags.
     pub audit: PropagationAudit,
+    /// Force, torque and mass held by an owner outside the orbital tier, added to whatever
+    /// [`DiscreteGncState::latched_law`] produces.
+    pub external: ExternalInputs,
+    /// What the vessel's surroundings do to it besides gravity: sunlight, thin air, the
+    /// gravity gradient, the body's magnetic field. Evaluated at every integrator stage.
+    #[serde(default)]
+    pub environment: EnvironmentLoads,
 }
 
 impl VesselCheckpoint {
@@ -342,13 +335,22 @@ impl VesselCheckpoint {
             integrator_hint: IntegratorContinuation::default(),
             pinned_surface: None,
             audit: PropagationAudit::default(),
+            external: ExternalInputs::default(),
+            environment: EnvironmentLoads::default(),
         }
     }
 
-    /// Attaches a solar radiation pressure surface evaluated via [`crate::SolarRadiationPressureLaw`].
+    /// The mass model this checkpoint integrates with: `config`'s, with any externally
+    /// owned mass in place of its dry mass and dry inertia.
     #[must_use]
-    pub const fn with_srp_surface(mut self, surface: SrpSurface) -> Self {
-        self.gnc.srp_surface = Some(surface);
+    pub fn mass_model(&self, config: &VesselConfig) -> MassPropertiesModel {
+        self.external.mass_model(&config.mass_model)
+    }
+
+    /// This checkpoint with `load` added to the vessel's environment loads.
+    #[must_use]
+    pub fn with_environment_load(mut self, load: EnvironmentLoadSpec) -> Self {
+        self.environment = self.environment.with(load);
         self
     }
 
@@ -373,26 +375,31 @@ impl VesselCheckpoint {
             }
             None => h.write_u8(0),
         }
+        self.external.loads.write_to_hasher(h);
     }
 
     /// Canonical SHA-256 hash of instantaneous physical and actuator state only
-    /// (`vessel_id`, `instant`, `plant`, `actuators`, and `pinned_surface`).
+    /// (`vessel_id`, `instant`, `plant`, `actuators`, `pinned_surface`, and the externally
+    /// held loads, dipole, internal momentum and mass).
     #[must_use]
     pub fn physics_state_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v1");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v4");
         self.write_physics_state_to_hasher(&mut h);
         h.finish()
     }
 
     /// Canonical SHA-256 content hash of the full per-vessel replay checkpoint
-    /// (covering physical state, GNC state, RNG, generations, integrator continuation, and audit).
+    /// (covering physical state, GNC state, RNG, generations including the external inputs'
+    /// own, the environment loads, integrator continuation, and audit).
     #[must_use]
     pub fn checkpoint_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v2");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v6");
         self.write_physics_state_to_hasher(&mut h);
         self.gnc.write_to_hasher(&mut h);
+        self.environment.write_to_hasher(&mut h);
         self.rng.write_to_hasher(&mut h);
         self.generations.write_to_hasher(&mut h);
+        h.write_u64(self.external.generation);
         self.integrator_hint.write_to_hasher(&mut h);
         h.write_u8(u8::from(self.audit.mass_conservation_exempt));
         h.write_u8(u8::from(self.audit.angular_momentum_exempt));

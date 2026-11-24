@@ -115,6 +115,14 @@ impl DomainHasher {
         self.hasher.update(bytes);
     }
 
+    /// Appends raw bytes with no length prefix: for a content feed handed
+    /// over in slices whose boundaries carry no meaning, so the digest
+    /// depends on the concatenation alone. Give such a feed a hasher of its
+    /// own and write that hasher's digest where a framed value is needed.
+    pub fn write_unframed(&mut self, bytes: &[u8]) {
+        self.hasher.update(bytes);
+    }
+
     /// Appends a `u8`.
     pub fn write_u8(&mut self, v: u8) {
         self.hasher.update([v]);

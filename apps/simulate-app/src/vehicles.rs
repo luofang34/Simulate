@@ -1,27 +1,29 @@
 use glam::DVec3;
 use sim_core::{
-    AirframeArticulation, Block, ControlInputs, EngineStartMode, EngineStatus, JsbsimFdmBlock,
-    JsbsimFdmSnapshot, KinematicInput, KinematicModel, SystemControls, TickSpan, VehicleState,
+    AirframeArticulation, Block, ControlInputs, EngineStatus, JsbsimFdmBlock, KinematicInput,
+    KinematicModel, SystemControls, TickSpan, VehicleState,
 };
-use sim_geo::Geodetic;
-use sim_pack::{builtin_c172p_package, builtin_c172s_package, builtin_p38g_package};
 
 use crate::error::AppSimError;
-use crate::supervisor_rig::{DELAWARE_RUNWAY_BEARING_RAD, default_delaware_spawn};
 use crate::world_surface::WorldSurfaceHandle;
 
+mod autopilot_c172;
 mod aviate_rigs;
 mod chain_displays;
 mod chain_rig;
 mod jsbsim;
+mod plant_snapshot;
 mod selection;
+mod spawn;
 mod structural;
 #[cfg(test)]
 mod tests;
 
+pub use autopilot_c172::AutopilotC172;
 #[cfg(any(target_arch = "wasm32", test))]
 pub use chain_rig::PageSnapshot;
 pub use chain_rig::{PageFeed, SetStanding, SteeredFix};
+pub use plant_snapshot::PlantSnapshot;
 pub use selection::FreeFlightVehicle;
 pub use structural::ModelOrigins;
 
@@ -50,43 +52,22 @@ pub use jsbsim::p38g_gear_height_m;
 pub const KINEMATIC_PARKED_HEIGHT_M: f64 = C172_GEAR_HEIGHT_M;
 
 pub use aviate_rigs::{AviateFixedWingRig, AviateX500Rig, FixedWingSnapshot, X500Snapshot};
-use aviate_rigs::{
-    build_aviate_fixed_wing, build_aviate_x500, step_aviate_fixed_wing, step_aviate_x500,
-};
-use jsbsim::{build_jsbsim_parked, build_jsbsim_plant, step_jsbsim_with_force};
-
-/// Everything a [`FreeFlightPlant`] needs to fly the same bits again from one instant.
-#[derive(Debug, Clone)]
-pub enum PlantSnapshot {
-    /// JSBSim aircraft state, latched systems, and the derived specific force.
-    Jsbsim {
-        /// Complete JSBSim executive state.
-        fdm: Box<JsbsimFdmSnapshot>,
-        /// Body FRD specific force (`m/s²`) at the snapshot.
-        specific_force_frd_m_s2: DVec3,
-        /// Latched operator system controls at the snapshot.
-        system: Box<SystemControls>,
-    },
-    /// Aviate X500 rigid body and position-hold target.
-    AviateX500(Box<X500Snapshot>),
-    /// Aviate fixed-wing JSBSim aircraft and attitude target.
-    AviateFixedWing(Box<FixedWingSnapshot>),
-    /// A flight on the real control chain, which keeps no rewindable state: the marker
-    /// only says which plant it came from.
-    C172Mission,
-    /// Kinematic model state.
-    Kinematic(Box<KinematicModel>),
-}
+use aviate_rigs::{step_aviate_fixed_wing, step_aviate_x500};
+use jsbsim::step_jsbsim_with_force;
 
 /// Active free-flight plant stepped by the interactive clock.
 pub enum FreeFlightPlant {
-    /// Direct pilot-flown JSBSim fixed-wing aircraft (`C172` or `P-38G`).
+    /// Direct pilot-flown JSBSim fixed-wing aircraft (the `P-38G` or an imported one).
     Jsbsim {
         /// Loaded JSBSim flight dynamics block.
         fdm: Box<JsbsimFdmBlock>,
         /// Latest body FRD specific force (`m/s²`).
         specific_force_frd_m_s2: DVec3,
     },
+    /// The hand-flown C172 with its autopilot installed: the pilot's controls fly it
+    /// while the servos are released, and its flight controller and Pilotage's host core
+    /// run beside them.
+    C172Autopilot(Box<AutopilotC172>),
     /// Tier-0 Aviate quadrotor flight controller closed around a `400 Hz` 6-DoF rigid body.
     AviateX500(Box<AviateX500Rig>),
     /// Tier-0 Aviate fixed-wing controller closed around a `120 Hz` JSBSim plant.
@@ -99,73 +80,6 @@ pub enum FreeFlightPlant {
 }
 
 impl FreeFlightPlant {
-    /// Instantiates `vehicle` over the Delaware corridor runway alignment.
-    pub fn new(vehicle: FreeFlightVehicle) -> Result<Self, AppSimError> {
-        Self::new_at(
-            vehicle,
-            default_delaware_spawn(),
-            DELAWARE_RUNWAY_BEARING_RAD,
-            8.5,
-        )
-    }
-
-    /// Instantiates `vehicle` at `spawn` (`heading_rad`, `field_elev_m`).
-    pub fn new_at(
-        vehicle: FreeFlightVehicle,
-        spawn: Geodetic,
-        heading_rad: f64,
-        field_elev_m: f64,
-    ) -> Result<Self, AppSimError> {
-        match vehicle {
-            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimC172p => {
-                let (pkg, speed_m_s) = if vehicle == FreeFlightVehicle::JsbsimC172p {
-                    (builtin_c172p_package(), 50.0)
-                } else {
-                    (builtin_c172s_package(), 52.0)
-                };
-                let pkg = pkg.map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, heading_rad, speed_m_s, field_elev_m)
-            }
-            FreeFlightVehicle::JsbsimP38g => {
-                let pkg = builtin_p38g_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_plant(&pkg, spawn, heading_rad, 95.0, field_elev_m)
-            }
-            FreeFlightVehicle::AviateX500Direct => {
-                let hover_spawn = Geodetic {
-                    height_m: field_elev_m + 110.0,
-                    ..spawn
-                };
-                Ok(Self::AviateX500(Box::new(build_aviate_x500(
-                    hover_spawn,
-                    heading_rad,
-                )?)))
-            }
-            FreeFlightVehicle::AviateFixedWingDirect => Ok(Self::AviateFixedWing(Box::new(
-                build_aviate_fixed_wing(spawn, heading_rad, field_elev_m)?,
-            ))),
-            FreeFlightVehicle::C172Mission => Self::on_first_link(),
-            FreeFlightVehicle::Kinematic => Ok(Self::Kinematic(KinematicModel::new(
-                VehicleState::level_flight(&spawn, heading_rad, 55.0),
-            ))),
-            FreeFlightVehicle::External(_) => Err(sim_scenario::ScenarioError::Unsupported {
-                detail: "external plugin vehicle requires LiverySession context",
-            }
-            .into()),
-        }
-    }
-
-    /// The C172 a link's page flies, drawn from what the page publishes.
-    #[must_use]
-    pub fn page_mission(feed: PageFeed) -> Self {
-        Self::C172Mission(Box::new(chain_rig::page_chain_rig(feed)))
-    }
-
-    /// The C172 at the first link's start, wherever the spawn was: the link states where
-    /// the flight begins.
-    fn on_first_link() -> Result<Self, AppSimError> {
-        Ok(Self::C172Mission(Box::new(chain_rig::build_chain_rig()?)))
-    }
-
     /// The civil time the plant's flight states for its start, Unix seconds, when it
     /// states one: a link's flight happens at the link's epoch, not the host's clock.
     #[must_use]
@@ -191,76 +105,13 @@ impl FreeFlightPlant {
         }
     }
 
-    /// Instantiates `vehicle` at rest on the ground at `spawn` (whose height is the ground
-    /// under it), engine running or `cold`. The X500 hovers [`X500_GROUND_HOVER_M`] up, and
-    /// the Aviate fixed-wing controller, which arms only in flight, starts
-    /// [`FBW_GROUND_FALLBACK_AGL_M`] over the spawn.
-    pub fn new_on_ground(
-        vehicle: FreeFlightVehicle,
-        spawn: Geodetic,
-        heading_rad: f64,
-        cold: bool,
-    ) -> Result<Self, AppSimError> {
-        let engine = if cold {
-            EngineStartMode::ColdAndDark
-        } else {
-            EngineStartMode::Running
-        };
-        let ground_m = spawn.height_m;
-        match vehicle {
-            FreeFlightVehicle::JsbsimC172 | FreeFlightVehicle::JsbsimC172p => {
-                let pkg = if vehicle == FreeFlightVehicle::JsbsimC172p {
-                    builtin_c172p_package()
-                } else {
-                    builtin_c172s_package()
-                }
-                .map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_parked(&pkg, spawn, heading_rad, engine, C172_GEAR_HEIGHT_M, 0.0)
-            }
-            FreeFlightVehicle::JsbsimP38g => {
-                let pkg = builtin_p38g_package().map_err(sim_scenario::ScenarioError::from)?;
-                build_jsbsim_parked(
-                    &pkg,
-                    spawn,
-                    heading_rad,
-                    engine,
-                    p38g_gear_height_m(),
-                    P38G_STATIC_PITCH_RAD,
-                )
-            }
-            FreeFlightVehicle::AviateX500Direct => {
-                Ok(Self::AviateX500(Box::new(build_aviate_x500(
-                    Geodetic {
-                        height_m: ground_m + X500_GROUND_HOVER_M,
-                        ..spawn
-                    },
-                    heading_rad,
-                )?)))
-            }
-            FreeFlightVehicle::C172Mission => Self::on_first_link(),
-            FreeFlightVehicle::AviateFixedWingDirect => Self::new_at(
-                vehicle,
-                Geodetic {
-                    height_m: ground_m + FBW_GROUND_FALLBACK_AGL_M,
-                    ..spawn
-                },
-                heading_rad,
-                ground_m,
-            ),
-            FreeFlightVehicle::Kinematic => Ok(Self::Kinematic(KinematicModel::new(
-                VehicleState::level_flight(
-                    &Geodetic {
-                        height_m: ground_m + KINEMATIC_PARKED_HEIGHT_M,
-                        ..spawn
-                    },
-                    heading_rad,
-                    0.0,
-                ),
-            ))),
-            FreeFlightVehicle::External(_) => Err(sim_scenario::ScenarioError::Unsupported {
-                detail: "external plugin vehicle requires LiverySession context",
-            }
-            .into()),
+    /// The JSBSim flight model of a plant that flies one in the open.
+    fn jsbsim_fdm(&self) -> Option<&JsbsimFdmBlock> {
+        match self {
+            Self::Jsbsim { fdm, .. } => Some(fdm),
+            Self::C172Autopilot(c172) => Some(c172.fdm()),
+            Self::AviateFixedWing(rig) => Some(&rig.fdm),
+            _ => None,
         }
     }
 
@@ -269,6 +120,7 @@ impl FreeFlightPlant {
     pub fn period(&self) -> TickSpan {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.period(),
+            Self::C172Autopilot(c172) => c172.period(),
             Self::AviateX500(rig) => rig.body.period(),
             Self::AviateFixedWing(rig) => rig.fdm.period(),
             Self::C172Mission(rig) => rig.period(),
@@ -281,6 +133,7 @@ impl FreeFlightPlant {
     pub fn state(&self) -> VehicleState {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.output(),
+            Self::C172Autopilot(c172) => c172.state(),
             Self::AviateX500(rig) => rig.body.output(),
             Self::AviateFixedWing(rig) => rig.fdm.output(),
             Self::C172Mission(rig) => rig.state(),
@@ -296,6 +149,7 @@ impl FreeFlightPlant {
                 specific_force_frd_m_s2,
                 ..
             } => Some(*specific_force_frd_m_s2),
+            Self::C172Autopilot(c172) => Some(c172.specific_force_frd_m_s2()),
             Self::AviateX500(rig) => Some(rig.body.specific_force_cg_body()),
             Self::AviateFixedWing(rig) => Some(rig.specific_force_frd_m_s2),
             Self::C172Mission(rig) => Some(rig.specific_force_frd_m_s2()),
@@ -306,17 +160,14 @@ impl FreeFlightPlant {
     /// Latched aircraft [`SystemControls`] when flying a JSBSim aircraft.
     #[must_use]
     pub fn system_controls(&self) -> Option<SystemControls> {
-        match self {
-            Self::Jsbsim { fdm, .. } => Some(fdm.system_controls()),
-            Self::AviateFixedWing(rig) => Some(rig.fdm.system_controls()),
-            _ => None,
-        }
+        self.jsbsim_fdm().map(JsbsimFdmBlock::system_controls)
     }
 
     /// Updates [`SystemControls`] on JSBSim-backed aircraft.
     pub fn set_system_controls(&mut self, controls: SystemControls) {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.set_system_controls(controls),
+            Self::C172Autopilot(c172) => c172.set_system_controls(controls),
             Self::AviateFixedWing(rig) => rig.fdm.set_system_controls(controls),
             _ => {}
         }
@@ -326,31 +177,22 @@ impl FreeFlightPlant {
     /// right, `z` up) on JSBSim-backed aircraft.
     #[must_use]
     pub fn cg_structural_in(&self) -> Option<DVec3> {
-        match self {
-            Self::Jsbsim { fdm, .. } => Some(fdm.cg_structural_in()),
-            Self::AviateFixedWing(rig) => Some(rig.fdm.cg_structural_in()),
-            _ => None,
-        }
+        self.jsbsim_fdm().map(JsbsimFdmBlock::cg_structural_in)
     }
 
     /// The ellipsoidal ground height the JSBSim plant was last given.
     #[cfg(test)]
     pub fn fdm_ground_m(&self) -> Option<f64> {
-        match self {
-            Self::Jsbsim { fdm, .. } => fdm.last_ground_sync_m(),
-            Self::AviateFixedWing(rig) => rig.fdm.last_ground_sync_m(),
-            _ => None,
-        }
+        self.jsbsim_fdm()
+            .and_then(JsbsimFdmBlock::last_ground_sync_m)
     }
 
     /// Current engine running state and propeller RPM on JSBSim-backed aircraft.
     #[must_use]
     pub fn engine_status(&self) -> Option<EngineStatus> {
         match self {
-            Self::Jsbsim { fdm, .. } => Some(fdm.engine_status()),
-            Self::AviateFixedWing(rig) => Some(rig.fdm.engine_status()),
             Self::C172Mission(rig) => Some(rig.engine_status()),
-            _ => None,
+            _ => self.jsbsim_fdm().map(JsbsimFdmBlock::engine_status),
         }
     }
 
@@ -359,6 +201,7 @@ impl FreeFlightPlant {
     pub fn articulation(&self, elapsed_s: f64) -> AirframeArticulation {
         match self {
             Self::Jsbsim { fdm, .. } => fdm.articulation(),
+            Self::C172Autopilot(c172) => c172.fdm().articulation(),
             Self::AviateFixedWing(rig) => rig.fdm.articulation(),
             Self::C172Mission(rig) => rig.articulation(),
             Self::AviateX500(rig) => AirframeArticulation::from_kinematic(
@@ -384,75 +227,16 @@ impl FreeFlightPlant {
         }
     }
 
-    /// Whether an in-process Aviate flight controller is armed (`None` on non-Aviate plants).
+    /// Whether an in-process Aviate flight controller that flies the vehicle is armed:
+    /// `None` on plants without one, and on the hand-flown C172, whose released servos
+    /// leave its flight controller nothing to fly.
     #[must_use]
     pub fn aviate_armed(&self) -> Option<bool> {
         match self {
             Self::AviateX500(rig) => Some(rig.runner.is_armed()),
             Self::AviateFixedWing(rig) => Some(rig.runner.is_armed()),
             Self::C172Mission(rig) => Some(rig.armed()),
-            Self::Jsbsim { .. } | Self::Kinematic(_) => None,
-        }
-    }
-
-    /// Captures the plant for a later [`Self::restore`].
-    #[must_use]
-    pub fn snapshot(&self) -> PlantSnapshot {
-        match self {
-            Self::Jsbsim {
-                fdm,
-                specific_force_frd_m_s2,
-            } => PlantSnapshot::Jsbsim {
-                fdm: Box::new(fdm.snapshot()),
-                specific_force_frd_m_s2: *specific_force_frd_m_s2,
-                system: Box::new(fdm.system_controls()),
-            },
-            Self::AviateX500(rig) => PlantSnapshot::AviateX500(Box::new(rig.snapshot())),
-            Self::AviateFixedWing(rig) => PlantSnapshot::AviateFixedWing(Box::new(rig.snapshot())),
-            Self::C172Mission(_) => PlantSnapshot::C172Mission,
-            Self::Kinematic(model) => PlantSnapshot::Kinematic(Box::new(model.snapshot())),
-        }
-    }
-
-    /// Rewinds to `snap`; Aviate controllers are rebuilt, fast-warmed, and re-armed there.
-    /// Fails, leaving the plant as it was, on a snapshot of another kind of plant.
-    pub fn restore(&mut self, snap: &PlantSnapshot) -> Result<(), AppSimError> {
-        match (self, snap) {
-            (
-                Self::Jsbsim {
-                    fdm,
-                    specific_force_frd_m_s2,
-                },
-                PlantSnapshot::Jsbsim {
-                    fdm: saved,
-                    specific_force_frd_m_s2: force,
-                    system,
-                },
-            ) => {
-                fdm.try_restore(saved)
-                    .map_err(sim_scenario::ScenarioError::from)?;
-                fdm.set_system_controls(**system);
-                *specific_force_frd_m_s2 = *force;
-                Ok(())
-            }
-            (Self::AviateX500(rig), PlantSnapshot::AviateX500(saved)) => rig.restore(saved),
-            (Self::AviateFixedWing(rig), PlantSnapshot::AviateFixedWing(saved)) => {
-                rig.restore(saved)
-            }
-            (Self::Kinematic(model), PlantSnapshot::Kinematic(saved)) => {
-                model.restore(saved);
-                Ok(())
-            }
-            (Self::C172Mission(_), PlantSnapshot::C172Mission) => {
-                Err(sim_scenario::ScenarioError::Unsupported {
-                    detail: "a flight on the real control chain cannot be rewound; restart it",
-                }
-                .into())
-            }
-            _ => Err(sim_scenario::ScenarioError::SnapshotMismatch {
-                detail: "the snapshot was taken from another free-flight plant",
-            }
-            .into()),
+            Self::Jsbsim { .. } | Self::C172Autopilot(_) | Self::Kinematic(_) => None,
         }
     }
 
@@ -476,6 +260,7 @@ impl FreeFlightPlant {
                 fdm,
                 specific_force_frd_m_s2,
             } => step_jsbsim_with_force(fdm, specific_force_frd_m_s2, controls, surface),
+            Self::C172Autopilot(c172) => c172.step(controls, surface),
             Self::AviateX500(rig) => step_aviate_x500(rig, controls),
             Self::AviateFixedWing(rig) => step_aviate_fixed_wing(rig, controls, surface),
             Self::C172Mission(rig) => rig.step(),

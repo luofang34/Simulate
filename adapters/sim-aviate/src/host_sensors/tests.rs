@@ -75,7 +75,7 @@ fn device_samples_become_hal_readings_in_the_boards_units_and_frame() {
 }
 
 fn suite() -> SensorSuite {
-    SensorSuite::new(&SensorSuiteSpec {
+    let spec = SensorSuiteSpec {
         imu: ImuGrade::ConsumerMems.spec(),
         static_port: PressureErrorSpec {
             white_sigma_pa: 3.0,
@@ -96,8 +96,9 @@ fn suite() -> SensorSuite {
         magnetometer_every: 5,
         gnss_every: 48,
         seed: 17,
-    })
-    .unwrap()
+    };
+    let earth = sim_bodies::BodyDescriptor::earth().unwrap();
+    SensorSuite::new(&spec, earth.fields().magnetic).unwrap()
 }
 
 /// A flight controller that is given device samples and nothing else comes

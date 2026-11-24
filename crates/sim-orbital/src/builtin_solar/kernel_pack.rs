@@ -1,8 +1,6 @@
 //! IO-free kernel-pack loader for epochs outside [`BuiltinSolarSystem2026_2028`]
 //! (such as Apollo 11 in July 1969).
 
-use std::collections::BTreeMap;
-
 use crate::{
     builtin_solar::{
         BuiltinSolarError, BuiltinSolarSystem2026_2028, EARTH_ITRF93_BPC_2026_2028_BYTES,
@@ -12,7 +10,6 @@ use crate::{
     constants::GravityConstantsCatalog,
     daf::{BpcFile, SpkFile},
     ephemeris::{MarsCenterApproximation, SpkEphemerisCatalog},
-    ids::NaifId,
     orientation::{IauPckCatalog, LunarTargetFrame, OrientationPolicy, StackedOrientationCatalog},
     time::TimeScaleCatalog,
 };
@@ -37,6 +34,7 @@ impl BuiltinSolarSystem2026_2028 {
         pack: &SolarSystemKernelPack<'_>,
     ) -> Result<Self, BuiltinSolarError> {
         let base = Self::load_verified()?;
+        let bodies = base.constants.body_catalog().clone();
         let mut spks = Vec::with_capacity(1_usize.saturating_add(pack.spk_files.len()));
         spks.push(SpkFile::from_bytes(SOLAR_SPK_2026_2028_BYTES)?);
         for bytes in pack.spk_files {
@@ -47,6 +45,7 @@ impl BuiltinSolarSystem2026_2028 {
         let constants = GravityConstantsCatalog::from_naif_gm_and_pck_bytes(
             GM_DE440_TPC_BYTES,
             PCK00011_TPC_BYTES,
+            &bodies,
         )?;
         let iau = IauPckCatalog::from_pck_bytes(PCK00011_TPC_BYTES)?;
         let mut earth_bpcs = vec![BpcFile::from_bytes(EARTH_ITRF93_BPC_2026_2028_BYTES)?];
@@ -62,10 +61,7 @@ impl BuiltinSolarSystem2026_2028 {
         } else {
             OrientationPolicy::RequirePrecision
         };
-        let mut policies = BTreeMap::new();
-        policies.insert(NaifId::EARTH, fallback_policy);
-        policies.insert(NaifId::MOON, fallback_policy);
-        policies.insert(NaifId::MARS, OrientationPolicy::AllowApproximateIau);
+        let policies = super::orientation_policies(&bodies, fallback_policy);
         let orientation = StackedOrientationCatalog::build(
             iau,
             earth_bpcs,

@@ -27,6 +27,9 @@ pub enum AppSimError {
     /// The navigation trial on the real control chain could not be built or stepped.
     #[error("the chain trial failed")]
     ChainTrial(#[from] sim_chain_trial::ChainTrialError),
+    /// The C172's own control chain could not be built, stepped, or returned to a snapshot.
+    #[error("the C172's flight chain failed")]
+    FlightChain(#[from] sim_flight_chain::ChainError),
     /// Tier-0 Aviate runner step or initialization failed.
     #[error("Aviate direct bridge failed")]
     Aviate(#[from] AviateBridgeError),

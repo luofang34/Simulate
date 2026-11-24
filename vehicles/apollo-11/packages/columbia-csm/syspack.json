@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "id": "apollo-11-columbia-csm",
   "name": "Apollo 11 Command and Service Module Columbia",
   "version": "1.0.0",
@@ -134,14 +134,23 @@
     }
   ],
   "dynamics": {
-    "RigidBodyBluntCapsule": {
-      "base_radius_m": 1.9558,
-      "nose_radius_m": 4.69,
-      "reference_point_body_m": [-4.69, 0.0, 0.0],
-      "normal_force_slope": 0.17,
-      "axial_drag_coeff": 1.3,
-      "pitch_damping_coeff": -10.0,
-      "sutton_graves_k": 0.00017415
+    "MultibodyComposed": {
+      "aero_elements": [
+        {
+          "site": "cm_structure",
+          "kind": {
+            "BluntCapsule": {
+              "base_radius_m": 1.9558,
+              "nose_radius_m": 4.69,
+              "reference_point_body_m": [-3.54, 0.0, 0.17],
+              "normal_force_slope": 0.17,
+              "axial_drag_coeff": 1.3,
+              "pitch_damping_coeff": -10.0,
+              "sutton_graves_k": 0.00017415
+            }
+          }
+        }
+      ]
     }
   },
   "devices": [

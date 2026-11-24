@@ -1,5 +1,6 @@
 //! Headless evaluator (`evaluate_analysis_request_artifact`) for [`AnalysisRequestArtifact`].
 
+use sim_analysis_contract::{LinkDirection, RfLinkSpec};
 use sim_geo::BodyEllipsoid;
 use sim_spacetime::{BodyOrientationCatalog, EphemerisCatalog, NaifId};
 
@@ -16,6 +17,7 @@ use crate::{
         AnalysisEndpoint, VerificationScope, evaluate_endpoint_link_access,
         evaluate_geometric_relay_access,
     },
+    signal::{LinkBudgetModels, evaluate_endpoint_link_budget},
     terrain::{DemElevationGrid, TerrainElevationSource, TerrainLosConfig},
 };
 
@@ -69,6 +71,10 @@ pub fn evaluate_analysis_request_artifact(
             .map(DemElevationGrid::content_hash),
     };
 
+    let verification_scope = match &outcome {
+        AnalysisOutcomePayload::LinkBudgetReport(report) => report.access.verification_scope,
+        _ => VerificationScope::geometric_visibility_only(),
+    };
     let mut artifact = AnalysisResultArtifact {
         schema_version: ANALYSIS_CONTRACT_SCHEMA_VERSION,
         result_id: result_id_str,
@@ -77,7 +83,7 @@ pub fn evaluate_analysis_request_artifact(
         execution_candidate_digest: request.execution_candidate_digest,
         request_digest: req_digest,
         job_status,
-        verification_scope: VerificationScope::geometric_visibility_only(),
+        verification_scope,
         time_scale: request.time_scale.clone(),
         coordinate_frames: request.coordinate_frames.clone(),
         numerical_accuracy,
@@ -172,6 +178,21 @@ fn execute_workload(
             ephemeris,
             orientation,
         ),
+        AnalysisWorkloadSpec::EndpointPairLinkBudget {
+            source_platform,
+            source_sensor,
+            target_station,
+            direction,
+            link,
+        } => execute_link_budget_workload(
+            request,
+            (source_platform, source_sensor, target_station),
+            *direction,
+            link,
+            terrain_arg,
+            ephemeris,
+            orientation,
+        ),
         AnalysisWorkloadSpec::AircraftSatelliteGroundRelay {
             aircraft,
             aircraft_to_sat_sensor,
@@ -230,6 +251,52 @@ fn execute_endpoint_pair_workload(
         orientation,
     )?;
     Ok(AnalysisOutcomePayload::EndpointPairReport(report))
+}
+
+fn execute_link_budget_workload(
+    request: &AnalysisRequestArtifact,
+    (platform, sensor, station): (
+        &SerializablePlatformSpec,
+        &VehicleSensorModel,
+        &SerializableGroundStationSpec,
+    ),
+    direction: LinkDirection,
+    link: &RfLinkSpec,
+    terrain_arg: Option<(&dyn TerrainElevationSource, &TerrainLosConfig)>,
+    ephemeris: &dyn EphemerisCatalog,
+    orientation: &dyn BodyOrientationCatalog,
+) -> Result<AnalysisOutcomePayload, AccessAnalysisError> {
+    let traj = sample_platform_trajectory(platform, orientation)?;
+    let platform_ep = AnalysisEndpoint::MovingPlatform {
+        endpoint_id: platform.endpoint_id,
+        label: &platform.label,
+        host_body: platform.host_body,
+        ellipsoid: BodyEllipsoid::WGS84,
+        trajectory: &traj,
+        attitude: Some(&traj),
+        sensor,
+        min_local_elevation_rad: platform.min_local_elevation_rad,
+    };
+    let station_ep = AnalysisEndpoint::SurfaceStation {
+        station: &station.station,
+        altitude_spec: station.altitude_spec.as_ref(),
+    };
+    let (source, target) = match direction {
+        LinkDirection::Downlink => (platform_ep, station_ep),
+        LinkDirection::Uplink => (station_ep, platform_ep),
+    };
+    let report = evaluate_endpoint_link_budget(
+        source,
+        target,
+        link,
+        &LinkBudgetModels::from_spec(link),
+        &request.occultation_env,
+        terrain_arg,
+        &request.query,
+        ephemeris,
+        orientation,
+    )?;
+    Ok(AnalysisOutcomePayload::LinkBudgetReport(Box::new(report)))
 }
 
 #[allow(clippy::too_many_arguments)]

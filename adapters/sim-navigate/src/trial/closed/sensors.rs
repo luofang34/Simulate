@@ -52,7 +52,11 @@ impl LiveSensors {
             false => None,
         };
         Ok(Self {
-            imu: SimulatedImu::new(request.imu_grade.grade().spec(), request.seeds.imu)?,
+            imu: SimulatedImu::new(
+                request.imu_grade.grade().spec(),
+                request.seeds.imu,
+                crate::inertial::earth_gravity()?,
+            )?,
             gnss: receiver(request)?,
             gnss_period: period_steps("gnss", request.gnss.rate_hz)?,
             baro: StaticPort::new(request)?,

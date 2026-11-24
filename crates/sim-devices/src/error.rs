@@ -48,20 +48,12 @@ pub enum DeviceError {
         /// Its value.
         value: f64,
     },
-    /// The geomagnetic model has no field for the position or date.
-    #[error(
-        "no magnetic field at latitude {lat_deg} deg, longitude {lon_deg} deg in {decimal_year}"
-    )]
+    /// The world's magnetic field has no value at the place or date asked.
+    #[error("the magnetic field has no value there")]
     NoMagneticField {
-        /// Latitude asked for.
-        lat_deg: f64,
-        /// Longitude asked for.
-        lon_deg: f64,
-        /// Date asked for, decimal years.
-        decimal_year: f64,
-        /// The model's reason.
+        /// The field's reason, with the place and date.
         #[source]
-        source: world_geomag::GeomagError,
+        source: sim_geo::MagneticFieldError,
     },
     /// An ideal inertial increment is not finite, or its interval is not
     /// finite and positive.

@@ -16,12 +16,17 @@ mod block;
 mod camera_sensor;
 mod controls;
 mod crew_port;
+mod flight_model;
 mod hitl_bridge;
 mod host;
 mod instrument;
 mod instrument_panel;
 mod jsbsim_fdm;
 mod kinematic;
+mod multi_vessel;
+mod multibody_vehicle;
+#[cfg(test)]
+mod recorded;
 mod rigid_body;
 mod schedule;
 mod session;
@@ -41,6 +46,9 @@ pub use crew_port::{
     CrewAction, CrewObservation, CrewPortError, CrewStationPort, StampedCrewAction,
     StampedCrewObservation,
 };
+pub use flight_model::coupled_mechanism::{CoupledMechanism, CoupledMechanismState};
+pub use flight_model::integration::{MotionTimeScale, VehicleIntegrator};
+pub use flight_model::loads::AeroLoad;
 pub use hitl_bridge::{
     BridgeError, BridgeSnapshot, BridgeStats, DeliveredResponse, EndpointError, ExternalEndpoint,
     ExternalNodeBridge, HitlSyncMode, StampedResponse,
@@ -58,6 +66,14 @@ pub use jsbsim_fdm::{
     JsbsimFdmConfig, JsbsimFdmSnapshot, MagnetoSwitch, PropellerVisualState, SystemControls,
 };
 pub use kinematic::{KinematicInput, KinematicModel};
+pub use multi_vessel::{
+    InterVesselLink, MultiVesselCoordinator, MultiVesselStepReport, SimVesselId,
+};
+pub use multibody_vehicle::{
+    CarriedReaction, CgTrimConfig, EllipsoidSurfaceProvider, JointDriveInput, MultibodySubsystems,
+    MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
+    MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands, SurfaceContactProvider,
+};
 pub use rigid_body::{
     PropellantBurn, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, RigidBodySnapshot,
     ThrusterWrench,

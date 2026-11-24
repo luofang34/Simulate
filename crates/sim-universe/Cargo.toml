@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 glam = { workspace = true }
 sim-atmosphere = { workspace = true }
+sim-bodies = { workspace = true }
 sim-core = { workspace = true }
 sim-devices = { workspace = true }
 sim-geo = { workspace = true }
@@ -21,3 +22,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 mbd-core = { workspace = true }
+mbd-systems = { workspace = true }

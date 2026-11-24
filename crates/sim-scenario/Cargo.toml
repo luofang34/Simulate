@@ -18,6 +18,7 @@ render = ["dep:sim-render", "dep:wgpu"]
 flightbag = { workspace = true }
 sim-apollo = { workspace = true }
 sim-atmosphere = { workspace = true }
+sim-bodies = { workspace = true }
 sim-devices = { workspace = true }
 sim-geo = { workspace = true }
 mbd-core = { workspace = true }

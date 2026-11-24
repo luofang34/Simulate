@@ -2,7 +2,6 @@
 //! its radar and shifting its mass, until a probe calls for cutoff.
 
 use glam::{DQuat, DVec3};
-use mbd_core::VacuumAero;
 use sim_apollo::{
     LM_DPS_EXHAUST_VELOCITY_M_S, LM_DPS_TANK, LM_DPS_THRUST_N, LM_DPS_THRUST_POINT_M,
     LM_LANDING_RADAR, LM_LEG_MINUS_Z, LM_PROBE_TIPS, LandingRadarAntenna, LandingRadarBlock,
@@ -15,6 +14,9 @@ use sim_core::{
     TickSpan, VehicleState,
 };
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime};
+
+#[path = "support/recorded.rs"]
+mod recorded;
 
 const HZ: u64 = 50;
 const START_HEIGHT_M: f64 = 13_000.0;
@@ -49,8 +51,9 @@ fn lander(body: BodyEllipsoid) -> RigidBody6DofBlock {
             initial,
         },
         build_apollo_lm_tree().unwrap(),
-        Box::new(VacuumAero),
+        Vec::new(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }
@@ -240,4 +243,33 @@ fn powered_descent_shifts_the_cg_reads_the_radar_and_latches_contact() {
         })
         .unwrap();
     assert!(probes.output().lunar_contact, "the light stays latched");
+}
+
+#[test]
+fn the_powered_descent_reaches_contact_where_it_was_recorded() {
+    let body = BodyEllipsoid::MOON_IAU;
+    let mut vehicle = lander(body);
+    let mut probes = LunarContactProbeBlock::new(vehicle.period()).unwrap();
+    fly_to_contact(&mut vehicle, &mut probes);
+    let state = vehicle.output();
+    let up = state.position_ecef.normalize();
+    let elapsed = vehicle
+        .now()
+        .duration_since(sim_core::SimInstant::START)
+        .as_seconds();
+    let fuel = vehicle.tree().state(LM_DPS_TANK).unwrap().fluid_mass_kg;
+    let sink = -state.velocity_ecef.dot(up);
+    let cg_x = vehicle.mass_properties().cg_body_m.x;
+    let height = body.fixed_to_geodetic(state.position_ecef).height_m;
+    // A closed-loop descent in vacuum: thrust and mass hold over a step,
+    // and the descent-rate loop keeps integration truncation from growing.
+    // Contact is sampled once a step, so it may move by one: 10 ms, 12 mm
+    // of descent and 50 g of propellant.
+    recorded::assert_rows(&[
+        ("contact_s", elapsed, 245.56, 0.011),
+        ("fuel_kg", fuel, 5892.499094498857, 0.1),
+        ("sink_m_s", sink, 1.1569105934391977, 1e-3),
+        ("cg_x_m", cg_x, -0.3056524827417353, 1e-5),
+        ("height_m", height, -1895.4116223701276, 0.02),
+    ]);
 }
