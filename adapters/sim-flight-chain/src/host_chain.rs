@@ -6,8 +6,11 @@
 //! serial line moves them on the vehicle. Nothing between the two is
 //! Simulate's: the core encodes every command and reads every report.
 
+mod snapshot;
 #[cfg(test)]
 mod tests;
+
+pub use snapshot::ChainSnapshot;
 
 use aviate_core::control::{ControlMode, VehicleController};
 use aviate_core::mixer::Mixer;

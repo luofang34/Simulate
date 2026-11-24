@@ -12,8 +12,8 @@ use glam::DVec3;
 use sim_atmosphere::AtmosphereField;
 use sim_aviate::{DirectActuatorCmd, direct_fixed_wing_controls};
 use sim_core::{
-    Block, ControlInputs, EngineStartMode, JsbsimFdmBlock, JsbsimFdmConfig, KinematicInput,
-    TickSpan, VehicleState,
+    Block, ControlInputs, EngineStartMode, JsbsimFdmBlock, JsbsimFdmConfig, JsbsimFdmSnapshot,
+    KinematicInput, TickSpan, VehicleState,
 };
 use sim_devices::SensedTruth;
 use sim_geo::{BodyEllipsoid, Geodetic, UtcTime, ecef_to_geodetic};
@@ -69,6 +69,15 @@ pub struct C172Airframe {
     air: SharedAir,
     utc: UtcTime,
     trim: ControlInputs,
+    specific_force_body_m_s2: DVec3,
+}
+
+/// What changes as a [`C172Airframe`] flies. The air field and the trim it started with
+/// stay the airframe's own.
+#[derive(Debug, Clone, PartialEq)]
+pub struct C172AirframeSnapshot {
+    fdm: JsbsimFdmSnapshot,
+    utc: UtcTime,
     specific_force_body_m_s2: DVec3,
 }
 
@@ -140,6 +149,25 @@ impl C172Airframe {
 }
 
 impl Airframe for C172Airframe {
+    type Snapshot = C172AirframeSnapshot;
+
+    fn snapshot(&self) -> C172AirframeSnapshot {
+        C172AirframeSnapshot {
+            fdm: self.fdm.snapshot(),
+            utc: self.utc,
+            specific_force_body_m_s2: self.specific_force_body_m_s2,
+        }
+    }
+
+    fn restore(&mut self, snapshot: &C172AirframeSnapshot) -> Result<(), ChainError> {
+        self.fdm
+            .try_restore(&snapshot.fdm)
+            .map_err(|e| ChainError::Plant(Box::new(e)))?;
+        self.utc = snapshot.utc;
+        self.specific_force_body_m_s2 = snapshot.specific_force_body_m_s2;
+        Ok(())
+    }
+
     fn period(&self) -> TickSpan {
         self.fdm.period()
     }

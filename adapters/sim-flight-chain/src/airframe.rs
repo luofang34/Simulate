@@ -17,6 +17,9 @@ const EARTH_RATE_RAD_S: f64 = 7.292_115e-5;
 
 /// A vehicle's dynamics under a flight controller's actuator command.
 pub trait Airframe {
+    /// Everything that changes as the airframe flies.
+    type Snapshot: Clone;
+
     /// The integration period, which is the flight controller's cycle.
     fn period(&self) -> TickSpan;
 
@@ -28,6 +31,12 @@ pub trait Airframe {
 
     /// One period under `command`.
     fn fly(&mut self, command: &DirectActuatorCmd) -> Result<(), ChainError>;
+
+    /// The airframe as it stands, to return to with [`Airframe::restore`].
+    fn snapshot(&self) -> Self::Snapshot;
+
+    /// Returns to `snapshot`, which this airframe took.
+    fn restore(&mut self, snapshot: &Self::Snapshot) -> Result<(), ChainError>;
 }
 
 /// One air field shared by a vehicle's dynamics and its air-data devices,
