@@ -21,7 +21,7 @@ use crate::{
     orientation::BodyOrientationCatalog,
     plant::{EnvironmentContext, EnvironmentLaw},
     time::{SimClockAdapter, TdbEpoch},
-    universe::SchedulerError,
+    universe::{SchedulerError, mutations::refuse_unapplied_loads},
 };
 
 /// Hard cap on speculative lookahead segments buffered per vessel (`O(log S)` rollback bound).
@@ -106,6 +106,7 @@ pub fn propose_vessel_horizon(
     }
 
     let capped_end = clamp_proposal_end(base_checkpoint, horizon_target);
+    refuse_unapplied_loads(base_checkpoint, &base_checkpoint.external.loads)?;
     if base_checkpoint.integrator_hint.propagator == PropagatorKind::PinnedSurfaceRest {
         return build_pinned_rest_proposal(base_checkpoint, capped_end, clock, orientation);
     }

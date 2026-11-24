@@ -11,6 +11,7 @@
 //! torque of the held dipole over each of its steps.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use glam::{DMat3, DVec3};
 use mbd_core::{ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
@@ -304,6 +305,8 @@ impl LocalPlant for Magsat {
             force_body_n: DVec3::ZERO,
             torque_body_nm: DVec3::ZERO,
             dipole_body_a_m2: self.controller.dipole_a_m2,
+            angular_impulse_body_nms: DVec3::ZERO,
+            internal_momentum_body_nms: DVec3::ZERO,
             body: self.orbital_properties(),
         })
     }
@@ -312,10 +315,11 @@ impl LocalPlant for Magsat {
     /// new one there and keeps its magnetometer and controller.
     fn adopt_base(
         &mut self,
-        body: BodyEllipsoid,
+        described: &Arc<BodyDescriptor>,
         state: &VehicleState,
         at: SimInstant,
     ) -> Result<bool, UniverseError> {
+        let body = described.ellipsoid;
         if body != self.body || at != self.now {
             return Ok(false);
         }

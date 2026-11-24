@@ -6,7 +6,10 @@
 //! owner reports again. A magnetic dipole the owner commands is held as the moment,
 //! not as a torque: the field it acts in turns with the vessel and changes along the
 //! orbit faster than an owner reports, so the orbital tier works the torque out from
-//! the held moment at every integrator stage. They live beside the guidance law rather than in it, so a
+//! the held moment at every integrator stage. Parts the owner moves inside the vessel (a
+//! slewing antenna, a spinning rotor) carry angular momentum relative to its body axes;
+//! the owner reports that momentum and the orbital tier holds it in the vessel's gyroscopic
+//! coupling, as it does a wheel's. They live beside the guidance law rather than in it, so a
 //! mission plan's burn and the owner's loads act together.
 //!
 //! The mass model integrates about the centre of mass and has no offset for it, so an
@@ -64,6 +67,11 @@ pub struct ExternalLoads {
     /// in the origin body's field is evaluated at every integrator stage.
     #[serde(default)]
     pub dipole_body_a_m2: [f64; 3],
+    /// Angular momentum of the vessel's internal parts moving relative to its body axes,
+    /// about the centre of mass, body axes, N·m·s. The vessel's angular momentum is
+    /// `I ω` plus this, and it enters the gyroscopic coupling at every integrator stage.
+    #[serde(default)]
+    pub internal_momentum_body_nms: [f64; 3],
     /// Mass properties replacing the configured dry mass and dry inertia, or `None` to
     /// fly the vessel's configured mass model.
     pub mass: Option<ExternalMassProperties>,
@@ -77,6 +85,7 @@ impl ExternalLoads {
             force_body_n: force_body_n.to_array(),
             torque_body_nm: torque_body_nm.to_array(),
             dipole_body_a_m2: [0.0; 3],
+            internal_momentum_body_nms: [0.0; 3],
             mass: Some(mass),
         }
     }
@@ -95,13 +104,39 @@ impl ExternalLoads {
         DVec3::from_array(self.dipole_body_a_m2)
     }
 
+    /// These loads with `momentum_body_nms` carried by the vessel's internal parts
+    /// relative to its body axes.
+    #[must_use]
+    pub fn with_internal_momentum(mut self, momentum_body_nms: DVec3) -> Self {
+        self.internal_momentum_body_nms = momentum_body_nms.to_array();
+        self
+    }
+
+    /// The held internal angular momentum, body axes, N·m·s.
+    #[must_use]
+    pub fn internal_momentum_body_nms(&self) -> DVec3 {
+        DVec3::from_array(self.internal_momentum_body_nms)
+    }
+
+    /// Whether anything held acts on the vessel's motion: a force, a torque, a dipole or
+    /// internal momentum. Held mass alone does not.
+    #[must_use]
+    pub fn acts_on_motion(&self) -> bool {
+        self.held_vectors().any(|&v| v != 0.0)
+    }
+
+    fn held_vectors(&self) -> impl Iterator<Item = &f64> {
+        self.force_body_n
+            .iter()
+            .chain(&self.torque_body_nm)
+            .chain(&self.dipole_body_a_m2)
+            .chain(&self.internal_momentum_body_nms)
+    }
+
     /// Whether every component is finite and any mass positive.
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        self.force_body_n.iter().all(|v| v.is_finite())
-            && self.torque_body_nm.iter().all(|v| v.is_finite())
-            && self.dipole_body_a_m2.iter().all(|v| v.is_finite())
-            && self.mass.is_none_or(|mass| mass.is_valid())
+        self.held_vectors().all(|v| v.is_finite()) && self.mass.is_none_or(|mass| mass.is_valid())
     }
 
     /// Whether `other` holds the same bits, so replacing one with the other changes no
@@ -112,13 +147,7 @@ impl ExternalLoads {
     }
 
     fn bit_pattern(&self) -> Vec<u64> {
-        let mut bits: Vec<u64> = self
-            .force_body_n
-            .iter()
-            .chain(&self.torque_body_nm)
-            .chain(&self.dipole_body_a_m2)
-            .map(|v| v.to_bits())
-            .collect();
+        let mut bits: Vec<u64> = self.held_vectors().map(|v| v.to_bits()).collect();
         if let Some(mass) = self.mass {
             bits.push(1);
             bits.push(mass.mass_kg.to_bits());
@@ -133,12 +162,7 @@ impl ExternalLoads {
     }
 
     pub(crate) fn write_to_hasher(&self, h: &mut DomainHasher) {
-        let held = self
-            .force_body_n
-            .iter()
-            .chain(&self.torque_body_nm)
-            .chain(&self.dipole_body_a_m2);
-        for &v in held {
+        for &v in self.held_vectors() {
             h.write_f64_canonical(v);
         }
         match self.mass {
@@ -195,10 +219,17 @@ pub(crate) struct ExternalWrenchLaw<'a> {
 impl ExternalWrenchLaw<'_> {
     /// Leaves the wrench untouched when nothing is held, so a vessel with no external owner
     /// keeps the exact bits it would have without this law.
-    fn add_to(&self, wrench: &mut PlantStageWrench) {
+    fn add_to(&self, state: &ContinuousPlantState, wrench: &mut PlantStageWrench) {
         if self.loads.has_wrench() {
             wrench.env_force_body_n += DVec3::from_array(self.loads.force_body_n);
             wrench.ext_torque_body_nm += DVec3::from_array(self.loads.torque_body_nm);
+        }
+        // In body axes the held momentum `h` turns with the vessel: the rate of
+        // `I ω + h` is the applied torque less `ω × (I ω + h)`, and the plant forms only
+        // the part without `h`.
+        let held = self.loads.internal_momentum_body_nms();
+        if held != DVec3::ZERO {
+            wrench.ext_torque_body_nm -= state.omega_body_rad_s.cross(held);
         }
     }
 }
@@ -211,7 +242,7 @@ impl ContinuousControlLaw for ExternalWrenchLaw<'_> {
         state: &ContinuousPlantState,
     ) -> PlantStageWrench {
         let mut wrench = self.inner.evaluate_stage(tau_s, epoch, state);
-        self.add_to(&mut wrench);
+        self.add_to(state, &mut wrench);
         wrench
     }
 
@@ -222,7 +253,7 @@ impl ContinuousControlLaw for ExternalWrenchLaw<'_> {
         state: &ContinuousPlantState,
     ) -> Result<PlantStageWrench, GravityError> {
         let mut wrench = self.inner.evaluate_stage_checked(tau_s, epoch, state)?;
-        self.add_to(&mut wrench);
+        self.add_to(state, &mut wrench);
         Ok(wrench)
     }
 }

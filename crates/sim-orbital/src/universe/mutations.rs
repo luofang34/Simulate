@@ -3,7 +3,7 @@
 use sim_spacetime::SimInstant;
 
 use crate::{
-    checkpoint::{ExternalLoads, VesselCheckpoint, VesselConfig},
+    checkpoint::{ExternalLoads, PropagatorKind, VesselCheckpoint, VesselConfig},
     ephemeris::EphemerisCatalog,
     events::{
         EventOrderKey, PlayerCommandPayload, ScheduledEvent, UniverseEventPayload, phase_ranks,
@@ -56,6 +56,29 @@ pub(crate) fn apply_checkpoint_event_mutation(
         UniverseEventPayload::Marker { .. } => {}
     }
     Ok(follow_up)
+}
+
+/// Refuses a checkpoint whose propagation is closed-form (an unperturbed Kepler arc, rest
+/// on a surface) while it holds anything that would change its motion: such a path
+/// evaluates no force model, so the loads would be dropped without a trace. Whether it
+/// refuses depends on the checkpoint alone, so every replay refuses at the same instant.
+pub(crate) fn refuse_unapplied_loads(
+    checkpoint: &VesselCheckpoint,
+    loads: &ExternalLoads,
+) -> Result<(), SchedulerError> {
+    let propagator = checkpoint.integrator_hint.propagator;
+    let closed_form = matches!(
+        propagator,
+        PropagatorKind::DormantKepler | PropagatorKind::PinnedSurfaceRest
+    );
+    if closed_form && (loads.acts_on_motion() || !checkpoint.environment.is_empty()) {
+        return Err(SchedulerError::LoadsNotPropagated {
+            vessel_id: checkpoint.vessel_id,
+            propagator,
+            instant: checkpoint.instant,
+        });
+    }
+    Ok(())
 }
 
 fn apply_mode_transition(
@@ -198,6 +221,10 @@ impl OrbitalUniverse {
     /// command or GNC tick writes, so their relative order at one instant does not change the
     /// trajectory. Speculation from this instant on is discarded and the vessel's `state_gen`
     /// advances, so events proposed on the superseded trajectory are skipped.
+    ///
+    /// A vessel on an unperturbed Kepler arc or at rest on a surface is refused loads that
+    /// act on its motion ([`SchedulerError::LoadsNotPropagated`]): its propagation would
+    /// not apply them.
     pub fn set_external_loads(
         &mut self,
         vessel_id: VesselId,
@@ -220,12 +247,69 @@ impl OrbitalUniverse {
             return Ok(false);
         }
         self.rollback_vessel(vessel_id, self.committed_instant)?;
+        if let Some(timeline) = self.vessels.get(&vessel_id) {
+            refuse_unapplied_loads(&timeline.committed_checkpoint, &loads)?;
+        }
         let timeline = self
             .vessels
             .get_mut(&vessel_id)
             .ok_or(SchedulerError::UnknownVessel(vessel_id))?;
         let checkpoint = &mut timeline.committed_checkpoint;
         checkpoint.external.loads = loads;
+        checkpoint.external.generation = checkpoint.external.generation.wrapping_add(1);
+        checkpoint.generations.bump_state_gen();
+        timeline.frontier_checkpoint = checkpoint.clone();
+        Ok(true)
+    }
+
+    /// Applies `impulse_body_nms`, an angular impulse about the centre of mass in body
+    /// axes, to `vessel_id` at `committed_instant`: its body rate changes by the inertia
+    /// it holds now, inverted, times the impulse. This is how an owner whose internal
+    /// parts moved hands the reaction to the body the orbital tier flies, together with
+    /// the internal momentum it reports through [`Self::set_external_loads`]; set those
+    /// loads first, so the impulse meets the inertia that goes with them.
+    ///
+    /// Like the held loads it is part of the vessel's checkpoint and not of the command
+    /// log, and it applies after every event at this instant has fired. A zero impulse
+    /// changes nothing and returns `false`. Speculation from this instant on is
+    /// discarded and the vessel's `state_gen` advances.
+    pub fn exchange_angular_momentum(
+        &mut self,
+        vessel_id: VesselId,
+        impulse_body_nms: glam::DVec3,
+    ) -> Result<bool, SchedulerError> {
+        let instant = self.committed_instant;
+        let invalid = SchedulerError::InvalidExternalLoads { vessel_id, instant };
+        if !impulse_body_nms.is_finite() {
+            return Err(invalid);
+        }
+        if !self.vessels.contains_key(&vessel_id) {
+            return Err(SchedulerError::UnknownVessel(vessel_id));
+        }
+        if impulse_body_nms == glam::DVec3::ZERO {
+            return Ok(false);
+        }
+        self.rollback_vessel(vessel_id, instant)?;
+        let timeline = self
+            .vessels
+            .get_mut(&vessel_id)
+            .ok_or(SchedulerError::UnknownVessel(vessel_id))?;
+        let checkpoint = &mut timeline.committed_checkpoint;
+        if checkpoint.integrator_hint.propagator != PropagatorKind::FullCoupled6Dof {
+            return Err(SchedulerError::LoadsNotPropagated {
+                vessel_id,
+                propagator: checkpoint.integrator_hint.propagator,
+                instant,
+            });
+        }
+        let inertia = checkpoint
+            .mass_model(&timeline.config)
+            .inertia_tensor(checkpoint.plant.propellant_mass_kg);
+        let rate_change = inertia.inverse() * impulse_body_nms;
+        if !rate_change.is_finite() {
+            return Err(invalid);
+        }
+        checkpoint.plant.omega_body_rad_s += rate_change;
         checkpoint.external.generation = checkpoint.external.generation.wrapping_add(1);
         checkpoint.generations.bump_state_gen();
         timeline.frontier_checkpoint = checkpoint.clone();

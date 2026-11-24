@@ -12,7 +12,7 @@ use super::telemetry::{build_telemetry, merge_dynamic_masses};
 use super::{MultibodyVehicleBlock, element_state};
 use crate::BlockError;
 use crate::flight_model::environment::CgGravity;
-use crate::flight_model::integration::StepSetup;
+use crate::flight_model::integration::{StepSetup, step_error};
 use crate::flight_model::loads::LoadReadout;
 
 pub(super) const BLOCK_NAME: &str = "multibody_vehicle";
@@ -86,9 +86,8 @@ pub(super) fn sample_env(
             source,
         })?;
     let wind_fixed = LocalFrame::at(&geo).ned_to_ecef() * sample.wind_ned_m_s;
-    let v_root_fixed = body_axes.rotation_world_from_root * body_axes.linear_vel_root_m_s;
-    let air_vel_root_m_s =
-        body_axes.rotation_world_from_root.conjugate() * (v_root_fixed - wind_fixed);
+    let air_vel_root_m_s = body_axes.rotation_world_from_root.conjugate()
+        * (body_axes.linear_vel_world_m_s - wind_fixed);
     let ambient = sample.ambient_gas();
     let v2 = air_vel_root_m_s.length_squared();
     Ok(EnvSample {
@@ -178,7 +177,7 @@ impl MultibodyVehicleBlock {
         elements.drives.clear();
         elements.drives.extend_from_slice(&input.joint_drives);
         for (idx, wheel) in elements.wheels.iter_mut().enumerate() {
-            wheel.0.command = input.wheel_commands.get(idx).copied().unwrap_or_default();
+            wheel.command = input.wheel_commands.get(idx).copied().unwrap_or_default();
         }
         elements.mechanisms.clear();
         elements.mechanisms.extend_from_slice(&input.mechanisms);
@@ -191,9 +190,9 @@ impl MultibodyVehicleBlock {
         state: &ModelState,
         input: &MultibodyVehicleInput,
     ) -> Result<LoadReadout, BlockError> {
-        let environment =
-            self.world
-                .environment(self.config.body, self.current_utc(), input, &state.base());
+        let environment = self
+            .world
+            .environment(self.config.body, self.current_utc(), input);
         let setup = StepSetup {
             model: &self.model,
             elements: &self.elements,
@@ -202,7 +201,7 @@ impl MultibodyVehicleBlock {
         };
         setup
             .read_loads(&self.mount, state, &mut self.work, &mut self.rates)
-            .map_err(|fault| fault.into_block_error(BLOCK_NAME))
+            .map_err(|source| step_error(BLOCK_NAME, source))
     }
 
     /// The state the model is integrated from this step: the vehicle's own,
@@ -212,9 +211,9 @@ impl MultibodyVehicleBlock {
             return Ok(self.state.clone());
         }
         let base = self.state.base();
-        let environment =
-            self.world
-                .environment(self.config.body, self.current_utc(), input, &base);
+        let environment = self
+            .world
+            .environment(self.config.body, self.current_utc(), input);
         let mut extended = self
             .model
             .state(&self.tree, &base, &self.elements, &environment)
@@ -230,12 +229,22 @@ impl MultibodyVehicleBlock {
         state: &mut ModelState,
         input: &MultibodyVehicleInput,
     ) -> Result<LoadReadout, BlockError> {
-        let pushed =
-            self.body_axes().rotation_world_from_root * self.telemetry.specific_force_cg_body;
+        // A far end is carried on with the acceleration this vehicle has
+        // as the step starts: the field at its root and the specific force
+        // last read at its centre of gravity. Both are the same vector in
+        // fixed and in world axes at that instant.
+        let far_end_acceleration = if self.elements.mechanisms.is_empty() {
+            DVec3::ZERO
+        } else {
+            self.world
+                .gravity
+                .attraction_fixed(state.base().position_world_m)
+                + self.body_axes().rotation_world_from_root * self.telemetry.specific_force_cg_body
+        };
         let environment = self
             .world
-            .environment(self.config.body, self.current_utc(), input, &state.base())
-            .pushed_by(pushed);
+            .environment(self.config.body, self.current_utc(), input)
+            .carrying_far_ends_at(far_end_acceleration);
         let setup = StepSetup {
             model: &self.model,
             elements: &self.elements,
@@ -250,7 +259,33 @@ impl MultibodyVehicleBlock {
                 &mut self.work,
                 &mut self.rates,
             )
-            .map_err(|fault| fault.into_block_error(BLOCK_NAME))
+            .map_err(|source| step_error(BLOCK_NAME, source))
+    }
+
+    /// Integrates the model across the period under the loads already held
+    /// and takes what it reached into the vehicle: joints into the tree, the
+    /// mass they now give, the states of the elements and of this step's
+    /// mechanisms. Returns the loads read at the end.
+    pub(super) fn integrate_held(
+        &mut self,
+        sub: &SubsystemStepOut,
+        input: &MultibodyVehicleInput,
+    ) -> Result<LoadReadout, BlockError> {
+        let mut state = self.step_state(input)?;
+        let readout = self.integrate(&mut state, input)?;
+        self.model
+            .write_joints(&state, &mut self.tree)
+            .map_err(block_multi)?;
+        let dyn_masses =
+            merge_dynamic_masses(&sub.fluid_out.mass_contributions, &sub.grain_contribs);
+        self.mass = self
+            .tree
+            .mass_properties_with_contributions(&dyn_masses)
+            .map_err(block_mbd)?;
+        self.mechanism_states = element_state::mechanism_states(&self.elements, &state);
+        element_state::copy_prefix(&state, &mut self.state);
+        self.elements.mechanisms.clear();
+        Ok(readout)
     }
 
     pub(super) fn advance_step(
@@ -284,21 +319,7 @@ impl MultibodyVehicleBlock {
         self.take_up_masses(&sub)?;
         self.hold_loads(&sub, input);
 
-        let mut state = self.step_state(input)?;
-        let readout = self.integrate(&mut state, input)?;
-        self.model
-            .write_joints(&state, &mut self.tree)
-            .map_err(block_multi)?;
-        let dyn_masses =
-            merge_dynamic_masses(&sub.fluid_out.mass_contributions, &sub.grain_contribs);
-        self.mass = self
-            .tree
-            .mass_properties_with_contributions(&dyn_masses)
-            .map_err(block_mbd)?;
-
-        self.mechanism_states = element_state::mechanism_states(&self.elements, &state);
-        element_state::copy_prefix(&state, &mut self.state);
-        self.elements.mechanisms.clear();
+        let readout = self.integrate_held(&sub, input)?;
         self.last_alpha_root_rad_s2 = readout.alpha_body;
         update_pinned_rest(self, &readout);
 
@@ -310,7 +331,6 @@ impl MultibodyVehicleBlock {
             &readout,
             specific_force,
             matches!(self.pinned_rest, PinnedSurfaceRest::Pinned { .. }),
-            self.moves_as_one_body(),
         ))
     }
 }

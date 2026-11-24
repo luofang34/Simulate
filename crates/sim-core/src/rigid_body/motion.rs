@@ -12,7 +12,7 @@ use sim_geo::GravityField;
 use super::{PropellantBurn, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput};
 use crate::flight_model::elements::VehicleElements;
 use crate::flight_model::environment::{CgGravity, FlightEnvironment};
-use crate::flight_model::integration::{MotionTimeScale, StepSetup, scaled_model};
+use crate::flight_model::integration::{MotionTimeScale, StepSetup, scaled_model, step_error};
 use crate::flight_model::loads::AeroLoad;
 use crate::flight_model::planet_frame::RootMount;
 use crate::{Block, BlockError, SimInstant};
@@ -114,7 +114,6 @@ pub(super) fn initial_state(start: &Start<'_>) -> Result<ModelState, BlockError>
         start.atmosphere,
         start.config.epoch,
         &[],
-        &base,
     );
     start
         .model
@@ -157,7 +156,6 @@ impl RigidBody6DofBlock {
             self.atmosphere.as_ref(),
             self.utc_at(instant),
             &input.control_surfaces_rad,
-            &self.state.base(),
         );
         let setup = StepSetup {
             model: &self.model,
@@ -167,7 +165,7 @@ impl RigidBody6DofBlock {
         };
         let readout = setup
             .read_loads(&self.mount, &self.state, &mut self.work, &mut self.rates)
-            .map_err(|fault| fault.into_block_error(BLOCK))?;
+            .map_err(|source| step_error(BLOCK, source))?;
         Ok(Loads {
             specific_force_cg_body: readout.external_force_body_n / mass.total_mass_kg,
             alpha_body: readout.alpha_body,
@@ -232,9 +230,7 @@ impl RigidBody6DofBlock {
             self.atmosphere.as_ref(),
             self.utc_at(self.now),
             &input.control_surfaces_rad,
-            &self.state.base(),
-        )
-        .pushed_by(self.output().attitude * self.loads.specific_force_cg_body);
+        );
         let setup = StepSetup {
             model: &self.model,
             elements: &self.elements,
@@ -243,7 +239,7 @@ impl RigidBody6DofBlock {
         };
         setup
             .advance(&mut self.stepper, &mut self.state, &mut self.work)
-            .map_err(|fault| fault.into_block_error(BLOCK))?;
+            .map_err(|source| step_error(BLOCK, source))?;
 
         self.apply_burns(&input.burns, dt_s).map_err(block_error)?;
         let mass = self.tree.mass_properties().map_err(block_error)?;

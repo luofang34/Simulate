@@ -39,7 +39,6 @@ pub(super) fn build_telemetry(
     loads: &LoadReadout,
     spec_force_cg_body: DVec3,
     is_pinned_rest: bool,
-    used_rigid_fast_path: bool,
 ) -> MultibodyVehicleTelemetry {
     let total_prop =
         subsystems.fluids.total_fluid_mass_kg() + subsystems.propulsion.total_solid_propellant_kg();
@@ -70,6 +69,6 @@ pub(super) fn build_telemetry(
         is_pinned_rest,
         is_splashed_down: loads.buoyancy_n > 0.0,
         total_buoyancy_n: loads.buoyancy_n,
-        used_rigid_fast_path,
+        used_rigid_fast_path: loads.rigid_fast_path,
     }
 }

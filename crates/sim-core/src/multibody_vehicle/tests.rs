@@ -14,7 +14,9 @@ use sim_geo::{BodyEllipsoid, Geodetic, LocalFrame, UtcTime};
 
 use super::*;
 
+mod carried;
 mod integrator_choice;
+mod rotating_frame;
 mod trajectory_reference;
 use crate::{
     Block, MotionTimeScale, RigidBody6DofBlock, RigidBodyConfig, RigidBodyInput, TICKS_PER_SECOND,
@@ -123,6 +125,7 @@ fn capsule_block(integrator: VehicleIntegrator) -> MultibodyVehicleBlock {
         aero,
         MultibodySubsystems::default(),
         Box::new(ReentryAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap()
 }
@@ -145,24 +148,6 @@ fn capsule_pair() -> (RigidBody6DofBlock, MultibodyVehicleBlock) {
     )
     .unwrap();
     (rigid, capsule_block(VehicleIntegrator::REAL_TIME))
-}
-
-#[test]
-fn rigid_fast_path_matches_rigid_body_block_on_rotating_earth() {
-    let (mut rigid, mut mb) = capsule_pair();
-    assert!(mb.telemetry().used_rigid_fast_path);
-
-    let in_l = RigidBodyInput::default();
-    let in_m = MultibodyVehicleInput::default();
-    for _ in 0..100 {
-        rigid.step(&in_l).unwrap();
-        mb.step(&in_m).unwrap();
-    }
-    let s1 = rigid.output();
-    let s2 = mb.output();
-    assert!((s1.position_ecef - s2.position_ecef).length() < 1e-4);
-    assert!((s1.velocity_ecef - s2.velocity_ecef).length() < 1e-4);
-    assert!(s1.attitude.angle_between(s2.attitude) < 1e-6);
 }
 
 /// The bus and its arm far from any field, at rest.
@@ -194,6 +179,7 @@ fn floating_arm_block() -> MultibodyVehicleBlock {
         Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }
@@ -361,6 +347,7 @@ fn footpad_lander_with(
         Vec::new(),
         subsystems,
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )
     .unwrap()
 }
@@ -425,6 +412,7 @@ fn detached_site_kinematics_is_rejected() {
         Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(BodyEllipsoid::WGS84),
     )
     .unwrap();
     let mut states = block.tree().states().to_vec();

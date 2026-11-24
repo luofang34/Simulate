@@ -100,14 +100,17 @@ pub trait LocalPlant {
     fn carry(&mut self, _context: &CarryContext) -> Result<CarriedLoads, UniverseError> {
         Err(UniverseError::NotCarryable)
     }
-    /// Takes `state`, fixed to `body`, as the plant's motion at `at` and
-    /// leaves its internals as they are, so the same plant flies on in the
-    /// local tier. `false` when it cannot, about another body than its own or
-    /// at an instant its internals have not reached; the universe then
-    /// rebuilds the vessel from its factory.
+    /// Takes `state`, fixed to the body `described`, as the plant's motion
+    /// at `at` and leaves its internals as they are, so the same plant flies
+    /// on in the local tier. The body is the one the vessel orbits now,
+    /// which need not be the plant's own: a plant that can fly about another
+    /// body makes it its own, with the gravity and air of that catalog
+    /// entry. `false` when it cannot, about a body it cannot move to or at
+    /// an instant its internals have not reached; the universe then rebuilds
+    /// the vessel from its factory.
     fn adopt_base(
         &mut self,
-        _body: BodyEllipsoid,
+        _described: &Arc<BodyDescriptor>,
         _state: &VehicleState,
         _at: SimInstant,
     ) -> Result<bool, UniverseError> {

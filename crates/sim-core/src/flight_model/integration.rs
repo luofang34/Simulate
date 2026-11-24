@@ -7,10 +7,14 @@ use mbd_multibody::{
     DormandPrince54, ForceElement, ModelState, MultibodyError, MultibodyModel, Rk4, Rosenbrock23,
     TimeScale, Tolerances, Workspace,
 };
+use sim_atmosphere::AtmosphereError;
 use sim_geo::BodyEllipsoid;
 
 use crate::BlockError;
 use crate::flight_model::environment::FlightEnvironment;
+use crate::flight_model::planet_frame::{
+    fixed_to_instantaneous_inertial, inertial_to_fixed_after_step,
+};
 
 /// How a vehicle's equations of motion are integrated across a block period.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,21 +100,18 @@ impl Stepper {
     }
 }
 
-/// Why a step could not be taken.
-pub(crate) enum StepFault {
-    /// The atmosphere could not be sampled somewhere along the step.
-    Environment(sim_atmosphere::AtmosphereError),
-    /// The model, an element or the integrator failed.
-    Model(MultibodyError),
-}
-
-impl StepFault {
-    pub(crate) fn into_block_error(self, block: &'static str) -> BlockError {
-        match self {
-            Self::Environment(source) => BlockError::Environment { block, source },
-            Self::Model(source) => BlockError::Multibody { block, source },
-        }
+/// A failure of a step or a load read as the error of `block`. A failed
+/// atmosphere query comes back as the atmosphere's own error.
+pub(crate) fn step_error(block: &'static str, source: MultibodyError) -> BlockError {
+    if let MultibodyError::Environment(failed) = &source
+        && let Some(atmosphere) = failed.downcast_ref::<AtmosphereError>()
+    {
+        return BlockError::Environment {
+            block,
+            source: atmosphere.clone(),
+        };
     }
+    BlockError::Multibody { block, source }
 }
 
 /// Everything fixed over one step of a model.
@@ -123,30 +124,30 @@ pub(crate) struct StepSetup<'a, 'e, E: ?Sized> {
 
 impl<'e, E: ForceElement<FlightEnvironment<'e>> + ?Sized> StepSetup<'_, 'e, E> {
     /// Advances `state` by one period. Its base is in the body's fixed axes
-    /// before and after, and is the base the environment's frame rides
-    /// with; in between the model is integrated in that frame, with time
-    /// counted from the start of the step. On error `state` is as it was.
+    /// before and after; in between the model is integrated in the
+    /// environment's world axes, with time counted from the start of the
+    /// step. On error `state` is as it was.
     pub(crate) fn advance(
         &self,
         stepper: &mut Stepper,
         state: &mut ModelState,
         work: &mut Workspace,
-    ) -> Result<(), StepFault> {
+    ) -> Result<(), MultibodyError> {
         self.advance_then(stepper, state, work, |_, _| Ok(()))
     }
 
     /// As [`Self::advance`], calling `at_end` with the state the step
-    /// reached while it is still in the step's frame, one period in.
+    /// reached while it is still in world axes, one period in.
     pub(crate) fn advance_then<T>(
         &self,
         stepper: &mut Stepper,
         state: &mut ModelState,
         work: &mut Workspace,
         at_end: impl FnOnce(&ModelState, &mut Workspace) -> Result<T, MultibodyError>,
-    ) -> Result<T, StepFault> {
+    ) -> Result<T, MultibodyError> {
         let start = state.clone();
         let (model, elements, env) = (self.model, self.elements, self.environment);
-        state.set_base(env.frame.start());
+        state.set_base(&fixed_to_instantaneous_inertial(&start.base(), &env.body));
         let advanced = match stepper {
             Stepper::FixedRk4(rk4) => {
                 model.advance(rk4, elements, env, state, 0.0, self.dt_s, work)
@@ -158,22 +159,19 @@ impl<'e, E: ForceElement<FlightEnvironment<'e>> + ?Sized> StepSetup<'_, 'e, E> {
                 model.advance(ros23, elements, env, state, 0.0, self.dt_s, work)
             }
         };
-        let outcome = advanced.and_then(|_| at_end(state, work));
-        let fault = match (env.take_failure(), outcome) {
-            (Some(error), _) => StepFault::Environment(error),
-            (None, Err(error)) => StepFault::Model(error),
-            (None, Ok(read)) => {
-                let ended = env
-                    .frame
-                    .base_in_fixed_axes(&state.base(), &env.body, self.dt_s);
+        match advanced.and_then(|_| at_end(state, work)) {
+            Ok(read) => {
+                let ended = inertial_to_fixed_after_step(&state.base(), &env.body, self.dt_s);
                 state.set_base(&ended);
-                return Ok(read);
+                Ok(read)
             }
-        };
-        // An atmosphere failure is only seen after the integrator has
-        // finished, so the whole state goes back, not only what a failed
-        // advance restores.
-        *state = start;
-        Err(fault)
+            Err(error) => {
+                // The base was re-expressed before the integrator saw it and
+                // the read at the end may fail after it finished, so the
+                // whole state goes back.
+                *state = start;
+                Err(error)
+            }
+        }
     }
 }

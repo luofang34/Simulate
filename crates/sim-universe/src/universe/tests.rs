@@ -408,6 +408,7 @@ fn multibody_coaster(
         Vec::new(),
         MultibodySubsystems::default(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )?;
     Ok(Box::new(MultibodyLocalPlant::new(block, body, start, 2.0)))
 }

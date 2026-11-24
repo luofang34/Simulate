@@ -28,6 +28,7 @@ pub(super) fn external_loads(loads: &CarriedLoads) -> ExternalLoads {
         ExternalMassProperties::new(loads.body.mass_kg, loads.body.inertia_cg_body),
     )
     .with_dipole(loads.dipole_body_a_m2)
+    .with_internal_momentum(loads.internal_momentum_body_nms)
 }
 
 /// `body` as a mass the orbital tier holds constant: all of it dry, because
@@ -137,8 +138,10 @@ impl Universe {
         Ok(())
     }
 
-    /// Brings `id`'s carried plant to [`Self::now`] without latching, for a
-    /// vessel about to leave the orbital tier.
+    /// Brings `id`'s carried plant to [`Self::now`], for a vessel about to
+    /// leave the orbital tier. What its internals did on the way is latched
+    /// as at any exchange, so the state the vessel leaves with has the
+    /// reaction of its joints in it.
     pub(super) fn bring_carried_to_now(&mut self, id: VesselId) -> Result<(), UniverseError> {
         let behind = match &self.vessel(id)?.flight {
             Flight::Orbital { carried } => carried
@@ -146,8 +149,8 @@ impl Universe {
                 .is_some_and(|plant| plant.now() < self.now),
             Flight::Local(_) => false,
         };
-        if behind {
-            self.carry_to_now(id)?;
+        if behind && let Some(loads) = self.carry_to_now(id)? {
+            self.latch(id, &loads)?;
         }
         Ok(())
     }
@@ -265,12 +268,18 @@ impl Universe {
         })
     }
 
-    /// Holds `loads` on `id` from [`Self::now`]. Loads with the same bits
-    /// as those held change nothing, so a carried vessel that only coasts
-    /// keeps the scheduler's long integration steps.
+    /// Holds `loads` on `id` from [`Self::now`] and hands its body the
+    /// angular impulse its joints' motion owes it, after the inertia that
+    /// goes with that motion is held. Loads with the same bits as those
+    /// held and no impulse change nothing, so a carried vessel that only
+    /// coasts keeps the scheduler's long integration steps.
     fn latch(&mut self, id: VesselId, loads: &CarriedLoads) -> Result<(), UniverseError> {
         self.orbital
             .set_external_loads(id, external_loads(loads))
+            .and_then(|_changed| {
+                self.orbital
+                    .exchange_angular_momentum(id, loads.angular_impulse_body_nms)
+            })
             .map(|_changed| ())
             .map_err(|e| UniverseError::Scheduler(Box::new(e)))
     }

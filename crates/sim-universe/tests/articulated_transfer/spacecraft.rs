@@ -4,7 +4,6 @@
 
 use glam::{DMat3, DVec3};
 use mbd_core::{ComponentId, ComponentSpec, ComponentState, ComponentTree, JointSpec, Placement};
-use mbd_multibody::JointDriveInput;
 use mbd_systems::{
     BatterySpec, BatteryState, ElectricThrusterSpec, ElectricThrusterState, ElectricalBus,
     FeedRegime, FluidNetwork, FluidSpecies, SolarArraySpec, SolarArrayState, TankGeometry, TankId,
@@ -13,9 +12,9 @@ use mbd_systems::{
 use sim_atmosphere::VacuumAtmosphere;
 use sim_bodies::BodyDescriptor;
 use sim_core::{
-    MotionTimeScale, MultibodySubsystems, MultibodyVehicleBlock, MultibodyVehicleConfig,
-    MultibodyVehicleInput, PropulsionCommands, SimInstant, TICKS_PER_SECOND, TickSpan,
-    VehicleIntegrator, VehicleState,
+    JointDriveInput, MotionTimeScale, MultibodySubsystems, MultibodyVehicleBlock,
+    MultibodyVehicleConfig, MultibodyVehicleInput, PropulsionCommands, SimInstant,
+    TICKS_PER_SECOND, TickSpan, VehicleIntegrator, VehicleState,
 };
 use sim_spacetime::SimEpoch;
 use sim_universe::{MultibodyLocalPlant, UniverseError};
@@ -23,12 +22,16 @@ use sim_universe::{MultibodyLocalPlant, UniverseError};
 /// The plant's step. A minute resolves the slow gimbal loop and keeps a
 /// voyage of months to a few hundred thousand carried steps.
 pub const BLOCK_PERIOD: TickSpan = TickSpan::from_ticks(60 * TICKS_PER_SECOND);
-/// How often the plant exchanges with the orbital tier.
+/// How often the plant exchanges with the orbital tier while it coasts.
 pub const CARRY_PERIOD: TickSpan = TickSpan::from_ticks(3_600 * TICKS_PER_SECOND);
 pub const BUS: ComponentId = ComponentId(0);
 pub const ANTENNA: ComponentId = ComponentId(1);
 pub const TANK: TankId = TankId(1);
 pub const XENON_KG: f64 = 20.0;
+const BUS_KG: f64 = 480.0;
+const ANTENNA_KG: f64 = 12.0;
+/// The antenna sits this far along the bus's Z axis, m.
+const ANTENNA_Z_M: f64 = -1.2;
 /// Antenna inertia about the gimbal axis, kg·m².
 pub const ANTENNA_INERTIA_KG_M2: f64 = 2.0;
 /// Natural frequency of the gimbal's position loop, rad/s: a quarter of a
@@ -61,14 +64,14 @@ fn tree() -> Result<ComponentTree, UniverseError> {
         part(
             "bus",
             Placement::ROOT,
-            480.0,
+            BUS_KG,
             DVec3::new(200.0, 300.0, 250.0),
             JointSpec::FIXED,
         ),
         part(
             "antenna",
-            Placement::child_of(BUS, DVec3::new(0.0, 0.0, -1.2)),
-            12.0,
+            Placement::child_of(BUS, DVec3::new(0.0, 0.0, ANTENNA_Z_M)),
+            ANTENNA_KG,
             DVec3::new(1.5, 1.5, ANTENNA_INERTIA_KG_M2),
             JointSpec::revolute(DVec3::Z, -2.5, 2.5),
         ),
@@ -170,7 +173,10 @@ fn subsystems() -> Result<MultibodySubsystems, UniverseError> {
     subsystems.propulsion.electric_thrusters.push((
         ElectricThrusterSpec {
             site: BUS,
-            mount_offset_local_m: DVec3::ZERO,
+            // On the line through the centre of gravity with the tank
+            // full, so the thrust does not spin the spacecraft up.
+            mount_offset_local_m: DVec3::Z * ANTENNA_Z_M * ANTENNA_KG
+                / (BUS_KG + ANTENNA_KG + XENON_KG),
             thrust_axis_local: DVec3::X,
             propellant_tank: TANK,
             isp_s: 2_000.0,
@@ -203,10 +209,13 @@ pub fn input(
     }
 }
 
-/// The torque a critically damped position loop asks of the gimbal motor.
-pub fn gimbal_effort_nm(command_rad: f64, angle_rad: f64, rate_rad_s: f64) -> f64 {
-    let stiffness = ANTENNA_INERTIA_KG_M2 * GIMBAL_LOOP_RAD_S * GIMBAL_LOOP_RAD_S;
-    let damping = 2.0 * ANTENNA_INERTIA_KG_M2 * GIMBAL_LOOP_RAD_S;
+/// The torque a critically damped position loop asks of the gimbal motor
+/// when it is closed once every `sample_s`: its natural frequency is a
+/// quarter of a radian per sample, [`GIMBAL_LOOP_RAD_S`] at the plant's step.
+pub fn gimbal_effort_nm(command_rad: f64, angle_rad: f64, rate_rad_s: f64, sample_s: f64) -> f64 {
+    let loop_rad_s = GIMBAL_LOOP_RAD_S * BLOCK_PERIOD.as_seconds() / sample_s;
+    let stiffness = ANTENNA_INERTIA_KG_M2 * loop_rad_s * loop_rad_s;
+    let damping = 2.0 * ANTENNA_INERTIA_KG_M2 * loop_rad_s;
     stiffness * (command_rad - angle_rad) - damping * rate_rad_s
 }
 
@@ -230,8 +239,8 @@ pub fn plant(
         Vec::new(),
         subsystems()?,
         Box::new(VacuumAtmosphere),
-    )?
-    .with_gravity(earth.fields().gravity);
+        earth.fields().gravity,
+    )?;
     Ok(
         MultibodyLocalPlant::new(block, earth.ellipsoid, start, 3.0)
             .with_carry_period(CARRY_PERIOD),

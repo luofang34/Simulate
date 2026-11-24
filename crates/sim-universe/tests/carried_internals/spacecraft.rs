@@ -274,6 +274,7 @@ pub fn plant(
         Vec::new(),
         subsystems(),
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(body),
     )?;
     let input = MultibodyVehicleInput {
         propulsion: PropulsionCommands {

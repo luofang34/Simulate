@@ -40,6 +40,15 @@ pub struct Voyage {
     pub rebuilds: Rc<Cell<u32>>,
 }
 
+/// Where and how a voyage starts: the spacecraft's position and velocity
+/// from the Earth's centre and the inertial rate of its body axes, all in
+/// ICRF axes, which its body axes start aligned with.
+pub struct Placed {
+    pub position_from_earth_m: DVec3,
+    pub velocity_from_earth_m_s: DVec3,
+    pub rate_body_rad_s: DVec3,
+}
+
 /// What the test follows of the plant's internals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Internals {
@@ -58,6 +67,36 @@ impl Voyage {
     /// The spacecraft in a 400 km parking orbit at 28.5°, in the local tier.
     #[cfg(test)]
     pub fn begin() -> Self {
+        // A voyage of months at a centimetre a step: the trims take out
+        // more than this leaves.
+        let tolerances = Dop853Tolerances {
+            rtol: 1.0e-9,
+            atol_pos_m: 1.0e-2,
+            atol_vel_m_s: 1.0e-6,
+            atol_att_rad: 1.0e-6,
+            atol_omega_rad_s: 1.0e-8,
+            ..Dop853Tolerances::default()
+        };
+        Self::placed(tolerances, |_, _, mu_earth, _| {
+            let inclination = 28.5_f64.to_radians();
+            Placed {
+                position_from_earth_m: DVec3::X * PARKING_RADIUS_M,
+                velocity_from_earth_m_s: DVec3::new(0.0, inclination.cos(), inclination.sin())
+                    * (mu_earth / PARKING_RADIUS_M).sqrt(),
+                rate_body_rad_s: DVec3::ZERO,
+            }
+        })
+    }
+
+    /// The spacecraft in the local tier of the Earth at the state `place`
+    /// gives it from the ephemeris, the starting epoch, the Earth's
+    /// gravitational parameter and Mars's, with the orbital tier
+    /// integrating to `tolerances`.
+    #[cfg(test)]
+    pub fn placed(
+        tolerances: Dop853Tolerances,
+        place: impl FnOnce(&dyn EphemerisCatalog, TdbEpoch, f64, f64) -> Placed,
+    ) -> Self {
         let solar = BuiltinSolarSystem2026_2028::load_verified().unwrap();
         let force_model = ForceModel::standard_solar_system(solar.constants.clone()).unwrap();
         let mu = |body| force_model.constants().require_mu(body).unwrap();
@@ -71,32 +110,21 @@ impl Voyage {
             orientation: Arc::clone(&orientation),
             force_model,
             quantum: TickSpan::from_ticks(600 * TICKS_PER_SECOND),
-            // A voyage of months at a centimetre a step: the trims take
-            // out more than this leaves.
-            tolerances: Dop853Tolerances {
-                rtol: 1.0e-9,
-                atol_pos_m: 1.0e-2,
-                atol_vel_m_s: 1.0e-6,
-                atol_att_rad: 1.0e-6,
-                atol_omega_rad_s: 1.0e-8,
-                ..Dop853Tolerances::default()
-            },
+            tolerances,
         };
         let mut universe = Universe::new(epoch.clone(), context);
-        let inclination = 28.5_f64.to_radians();
+        let start = epoch.tdb_at(SimInstant::START);
+        let placed = place(ephemeris.as_ref(), start, mu_earth, mu_mars);
         let inertial = ContinuousPlantState {
             primary_body: NaifId::EARTH,
-            pos_rel_icrf_m: DVec3::X * PARKING_RADIUS_M,
-            vel_rel_icrf_m_s: DVec3::new(0.0, inclination.cos(), inclination.sin())
-                * (mu_earth / PARKING_RADIUS_M).sqrt(),
+            pos_rel_icrf_m: placed.position_from_earth_m,
+            vel_rel_icrf_m_s: placed.velocity_from_earth_m_s,
             q_body_to_icrf: DQuat::IDENTITY,
-            omega_body_rad_s: DVec3::ZERO,
+            omega_body_rad_s: placed.rate_body_rad_s,
             propellant_mass_kg: 0.0,
             h_rw_body_nms: DVec3::ZERO,
         };
-        let rotation = orientation
-            .body_rotation(NaifId::EARTH, epoch.tdb_at(SimInstant::START))
-            .unwrap();
+        let rotation = orientation.body_rotation(NaifId::EARTH, start).unwrap();
         let state: VehicleState = to_body_fixed(&inertial, NaifId::EARTH, &rotation)
             .unwrap()
             .0;

@@ -70,8 +70,8 @@ pub use multi_vessel::{
     InterVesselLink, MultiVesselCoordinator, MultiVesselStepReport, SimVesselId,
 };
 pub use multibody_vehicle::{
-    CgTrimConfig, EllipsoidSurfaceProvider, MultibodySubsystems, MultibodyVehicleBlock,
-    MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
+    CarriedReaction, CgTrimConfig, EllipsoidSurfaceProvider, JointDriveInput, MultibodySubsystems,
+    MultibodyVehicleBlock, MultibodyVehicleConfig, MultibodyVehicleInput, MultibodyVehicleSnapshot,
     MultibodyVehicleTelemetry, PropulsionAssembly, PropulsionCommands, SurfaceContactProvider,
 };
 pub use rigid_body::{

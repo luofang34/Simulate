@@ -75,9 +75,11 @@ pub(super) fn hold_pinned_rest(
     let at_rest = hold.world_rot.conjugate() * (-block.apparent_gravity_fixed(cg_fixed));
     block.last_alpha_root_rad_s2 = DVec3::ZERO;
     block.mechanism_states.clear();
+    // A latched vehicle moves with the ground as one body.
     let loads = LoadReadout {
         any_contact: true,
         buoyancy_n: 0.0,
+        rigid_fast_path: true,
         ..lift
     };
     Ok(Some(build_telemetry(
@@ -86,7 +88,6 @@ pub(super) fn hold_pinned_rest(
         &sub,
         &loads,
         at_rest,
-        true,
         true,
     )))
 }
@@ -108,7 +109,7 @@ pub(super) fn update_pinned_rest(block: &mut MultibodyVehicleBlock, loads: &Load
         &spec,
         &PinnedRestInputs {
             any_contact: loads.any_contact,
-            speed_m_s: base.linear_vel_root_m_s.length(),
+            speed_m_s: base.linear_vel_world_m_s.length(),
             ang_rate_rad_s: base.angular_vel_root_rad_s.length(),
             world_pos_m: base.position_world_m,
             world_rot: base.rotation_world_from_root,

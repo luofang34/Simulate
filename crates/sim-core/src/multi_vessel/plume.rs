@@ -26,13 +26,13 @@ pub(super) fn site_world_kinematics(
     let pos = base.position_world_m
         + base.rotation_world_from_root * pose.position_root_m
         + rot_link * offset_local_m;
-    let vel_root = base.linear_vel_root_m_s
-        + base.angular_vel_root_rad_s.cross(pose.position_root_m)
-        + pose.linear_vel_root_m_s;
+    let vel_from_root =
+        base.angular_vel_root_rad_s.cross(pose.position_root_m) + pose.linear_vel_root_m_s;
     let omega_root = base.angular_vel_root_rad_s + pose.angular_vel_root_rad_s;
     let omega_world = base.rotation_world_from_root * omega_root;
-    let vel =
-        base.rotation_world_from_root * vel_root + omega_world.cross(rot_link * offset_local_m);
+    let vel = base.linear_vel_world_m_s
+        + base.rotation_world_from_root * vel_from_root
+        + omega_world.cross(rot_link * offset_local_m);
     Ok((pos, rot_link, vel, omega_world))
 }
 

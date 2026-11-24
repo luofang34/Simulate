@@ -12,7 +12,9 @@ use mbd_multibody::{
 use sim_atmosphere::AtmosphereField;
 use sim_geo::{BodyEllipsoid, GravityField, UtcTime};
 
+pub use carried::CarriedReaction;
 use element_state::CanopyState;
+pub use mbd_multibody::JointDriveInput;
 use step::{BLOCK_NAME, collect_dynamic_masses};
 use subsystems::validate_input;
 pub use subsystems::{
@@ -54,14 +56,13 @@ pub(crate) struct VehicleWorld {
 }
 
 impl VehicleWorld {
-    /// What the force elements sample over a step starting at `utc` with
-    /// the root at `base_fixed`, under the control channels of `input`.
+    /// What the force elements sample over a step starting at `utc`, under
+    /// the control channels of `input`.
     fn environment<'a>(
         &'a self,
         body: BodyEllipsoid,
         utc: UtcTime,
         input: &'a MultibodyVehicleInput,
-        base_fixed: &FloatingBaseState,
     ) -> FlightEnvironment<'a> {
         FlightEnvironment::new(
             body,
@@ -69,7 +70,6 @@ impl VehicleWorld {
             self.atmosphere.as_ref(),
             utc,
             &input.control_surfaces_rad,
-            base_fixed,
         )
         .over(self.surface.as_ref())
     }
@@ -115,13 +115,17 @@ pub struct MultibodyVehicleBlock {
 impl MultibodyVehicleBlock {
     /// Constructs a multibody vehicle block carrying the aerodynamic elements
     /// `aero` on the components they name, over the solid ellipsoid of
-    /// `config.body`. A vehicle that flies in vacuum has none.
+    /// `config.body` and in its truth gravity field `gravity`: the one
+    /// instance the body's catalog entry holds, so the vehicle's first loads
+    /// and every sensor aboard meet the same field. A vehicle that flies in
+    /// vacuum has no aerodynamic elements.
     pub fn new(
         config: MultibodyVehicleConfig,
         tree: ComponentTree,
         aero: Vec<AeroElement>,
         subsystems: MultibodySubsystems,
         atmosphere: Box<dyn AtmosphereField>,
+        gravity: Arc<dyn GravityField>,
     ) -> Result<Self, crate::BlockError> {
         let canopies = element_state::initial_canopies(&aero);
         Self::build_with_parts(
@@ -131,18 +135,11 @@ impl MultibodyVehicleBlock {
             subsystems,
             VehicleWorld {
                 atmosphere: Arc::from(atmosphere),
-                gravity: Arc::new(config.body),
+                gravity,
                 surface: Arc::new(EllipsoidSurfaceProvider::solid(config.body)),
             },
             PinnedSurfaceRest::Free,
         )
-    }
-
-    /// Replaces the truth gravity field read during integration.
-    #[must_use]
-    pub fn with_gravity(mut self, gravity: Arc<dyn GravityField>) -> Self {
-        self.world.gravity = gravity;
-        self
     }
 
     /// Replaces the terrain / ocean contact surface provider.
@@ -299,12 +296,6 @@ impl MultibodyVehicleBlock {
 
     pub(crate) fn snapshot_for_coord(&self) -> MultibodyVehicleSnapshot {
         crate::Block::snapshot(self)
-    }
-
-    /// Whether no joint has a degree of freedom, so the vehicle moves as one
-    /// rigid body.
-    fn moves_as_one_body(&self) -> bool {
-        self.model.layout().velocity_len() == 6
     }
 
     fn current_utc(&self) -> UtcTime {

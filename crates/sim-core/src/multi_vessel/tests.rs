@@ -55,6 +55,18 @@ fn tank_block(
     mass_kg: f64,
     pos_ecef: DVec3,
 ) -> MultibodyVehicleBlock {
+    tank_block_stepping(tree, tank_comp, tank_id, mass_kg, pos_ecef, 50)
+}
+
+/// [`tank_block`] stepping `steps_per_second` times a second.
+fn tank_block_stepping(
+    tree: ComponentTree,
+    tank_comp: ComponentId,
+    tank_id: u16,
+    mass_kg: f64,
+    pos_ecef: DVec3,
+    steps_per_second: u64,
+) -> MultibodyVehicleBlock {
     let mut fluids = FluidNetwork::new();
     fluids
         .add_tank(
@@ -81,7 +93,7 @@ fn tank_block(
     MultibodyVehicleBlock::new(
         MultibodyVehicleConfig {
             body: zero_grav_body(),
-            period: TickSpan::from_ticks(TICKS_PER_SECOND / 50),
+            period: TickSpan::from_ticks(TICKS_PER_SECOND / steps_per_second),
             epoch: UtcTime::from_unix_seconds(0.0),
             initial: VehicleState {
                 position_ecef: pos_ecef,
@@ -98,6 +110,7 @@ fn tank_block(
         Vec::new(),
         subs,
         Box::new(VacuumAtmosphere),
+        std::sync::Arc::new(zero_grav_body()),
     )
     .unwrap()
 }

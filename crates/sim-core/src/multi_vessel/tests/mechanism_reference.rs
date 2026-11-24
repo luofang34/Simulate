@@ -10,12 +10,23 @@ use crate::recorded::{assert_rows, vec_rows};
 const ORBIT_X_M: f64 = 7_000_000.0;
 
 fn single(name: &str, mass: f64, inertia: f64, x_m: f64) -> MultibodyVehicleBlock {
-    tank_block(
+    single_stepping(name, mass, inertia, x_m, 50)
+}
+
+fn single_stepping(
+    name: &str,
+    mass: f64,
+    inertia: f64,
+    x_m: f64,
+    steps_per_second: u64,
+) -> MultibodyVehicleBlock {
+    tank_block_stepping(
         ComponentTree::new([part(name, Placement::ROOT, JointSpec::FIXED, mass, inertia)]).unwrap(),
         ComponentId(0),
         0,
         50.0,
         DVec3::new(x_m, 0.0, 0.0),
+        steps_per_second,
     )
 }
 
@@ -184,13 +195,13 @@ fn a_reeled_in_tether_draws_two_vessels_together_as_recorded() {
     let gap = (b.position_ecef - a.position_ecef).length();
     let closing = (b.velocity_ecef - a.velocity_ecef).x;
     // The line's tension follows both vessels inside a step and its length
-    // pays out continuously, which halving the step confirms: the gap
-    // converges on 8.1136 m. Each vessel integrates against the other's
+    // pays out continuously. Each vessel integrates against the other's
     // anchor carried on from the start of the step, so the pair's momentum
-    // closes with the step (0.02 kg·m/s at 50 Hz, halving with it), not to
-    // round-off.
+    // closes with the step and not to round-off;
+    // `halving_the_step_keeps_the_reeled_in_gap_and_closes_the_pair_momentum`
+    // holds both to numbers.
     assert_rows(&[
-        ("gap_m", gap, 8.113_764_781_763_89, 0.02),
+        ("gap_m", gap, REELED_IN_GAP_M, 0.02),
         ("closing_m_s", closing, -0.777_834_309_755_426_6, 0.02),
         (
             "line_m",
@@ -206,4 +217,70 @@ fn a_reeled_in_tether_draws_two_vessels_together_as_recorded() {
         ),
         ("momentum", momentum.length(), 0.0, 0.25),
     ]);
+}
+
+/// The gap between the two vessels and the momentum of the pair after four
+/// seconds of reeling in, stepping `steps_per_second` times a second.
+fn reeled_in(steps_per_second: u64) -> (f64, f64) {
+    let mut coord = MultiVesselCoordinator::new(single_stepping(
+        "carrier",
+        1_000.0,
+        400.0,
+        ORBIT_X_M,
+        steps_per_second,
+    ));
+    let payload = coord.spawn_independent(single_stepping(
+        "payload",
+        800.0,
+        300.0,
+        ORBIT_X_M + 10.0,
+        steps_per_second,
+    ));
+    coord.add_link(reel_in_tether(payload));
+    for _ in 0..4 * steps_per_second {
+        coord.step_all(&BTreeMap::new()).unwrap();
+    }
+    let a = coord.vessel(SimVesselId(1)).unwrap().output();
+    let b = coord.vessel(payload).unwrap().output();
+    let momentum = a.velocity_ecef * 1_050.0 + b.velocity_ecef * 850.0;
+    (
+        (b.position_ecef - a.position_ecef).length(),
+        momentum.length(),
+    )
+}
+
+/// The gap recorded at 50 Hz by
+/// [`a_reeled_in_tether_draws_two_vessels_together_as_recorded`].
+const REELED_IN_GAP_M: f64 = 8.113_764_781_763_89;
+
+#[test]
+fn halving_the_step_keeps_the_reeled_in_gap_and_closes_the_pair_momentum() {
+    let flown = [50, 100, 200, 400, 800, 1_600].map(|rate| (rate, reeled_in(rate)));
+    // The gap does not close on a limit as the step halves: it moves by
+    // tenths of a millimetre either way from one step size to the next.
+    // What holds is that the recorded 50 Hz gap is within half a millimetre
+    // of the gap at every one of these steps, a fortieth of the tolerance
+    // it is held to.
+    for (rate, (gap, _)) in flown {
+        assert!(
+            (gap - REELED_IN_GAP_M).abs() < 5e-4,
+            "at {rate} Hz the gap is {gap} m"
+        );
+    }
+    // Each vessel integrates against the other's anchor carried on from the
+    // start of the step, so the momentum of the pair is not exact; it is
+    // first order in the step, halving with it towards zero.
+    assert!(
+        flown[0].1.1 < 0.025,
+        "pair momentum at 50 Hz: {:?}",
+        flown[0]
+    );
+    for pair in flown.windows(2) {
+        let ((_, (_, coarse)), (rate, (_, fine))) = (pair[0], pair[1]);
+        let ratio = coarse / fine;
+        assert!(
+            (1.7..2.2).contains(&ratio),
+            "halving the step to {rate} Hz took the pair momentum from {coarse} to {fine} kg·m/s"
+        );
+    }
 }

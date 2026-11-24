@@ -177,10 +177,10 @@ spherical-harmonic core, reached only through `sim-bodies`:
 
 One instance of each field is the truth of one world, and a host hands it
 to everything that reads that world. `BodyDescriptor::fields` gives both
-handles of a body: `RigidBody6DofBlock::new`, the simulated inertial unit
-and `sim_devices::gravimeter_truth` take its gravity,
-`MultibodyVehicleBlock::with_gravity` sets it on a multibody vehicle, and
-`SensorSuite::new` takes its magnetic field for the magnetometer. None of
+handles of a body: `RigidBody6DofBlock::new`,
+`MultibodyVehicleBlock::new`, the simulated inertial unit and
+`sim_devices::gravimeter_truth` take its gravity, and `SensorSuite::new`
+takes its magnetic field for the magnetometer. None of
 them builds a field for itself. A universe's local-plant factory is handed
 the catalog entry of the body a vessel comes down to, and a carried plant is
 told the catalog field at each exchange. A navigator's reference model is a

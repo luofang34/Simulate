@@ -36,14 +36,25 @@ fn a_capsule_arc_through_the_upper_atmosphere_ends_where_it_was_recorded() {
         rigid.step(&RigidBodyInput::default()).unwrap();
         multibody.step(&MultibodyVehicleInput::default()).unwrap();
     }
-    // The capsule's pitch damping reads the inertial rate of its link, the
-    // planet's spin included: 4.5e-5 rad/s across the capsule's axis here,
-    // 5e-4 N·m of damping moment, 2e-7 rad of attitude over this second
-    // against damping on the rate relative to the air. A micrometre of
-    // trajectory does not show it.
-    let tolerance = [1e-6, 1e-6, 1e-6];
+    // The recorded arc sampled the air at the centre of gravity. The
+    // capsule's element samples it at its reference point 2 m aft, which
+    // rides 0.1 m higher here: 1.4e-5 less density, 7e-7 m/s² along the
+    // axis and 1.4e-9 rad of attitude over this second, most of it across
+    // the nose's Y and Z. Sampling at the centre of gravity instead
+    // reproduces the recorded attitude to 2e-12.
+    let tolerance = [1e-6, 1e-6, 2e-9];
     let mut rows = state_rows(&multibody.output(), &CAPSULE_MULTIBODY, tolerance);
     rows.extend(state_rows(&rigid.output(), &CAPSULE_RIGID, tolerance));
+    // The nose's X component is where damping against the planet's spin
+    // showed, 1.6e-7 off; with the air turning with the planet it is back
+    // within 1e-9 of the recording.
+    let nose_x = (multibody.output().attitude * DVec3::X).x;
+    rows.push((
+        "nose_x_in_turning_air",
+        nose_x,
+        CAPSULE_MULTIBODY[2][0],
+        1e-9,
+    ));
     assert_rows(&rows);
 }
 
@@ -123,7 +134,7 @@ fn a_driven_arm_on_a_floating_bus_ends_where_it_was_recorded() {
         ),
         (
             "base_vel_y",
-            base.linear_vel_root_m_s.y,
+            base.linear_vel_root_m_s().y,
             -0.007_563_895_563_945_003,
             1e-10,
         ),

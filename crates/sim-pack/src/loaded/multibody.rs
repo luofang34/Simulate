@@ -43,8 +43,8 @@ impl LoadedSyspack {
             aero,
             subsystems,
             atmosphere,
+            gravity,
         )
-        .map(|block| block.with_gravity(gravity))
         .map_err(|err| PackError::DeviceBuild {
             device: "multibody_vehicle".to_owned(),
             source: Box::new(err),

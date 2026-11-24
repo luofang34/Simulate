@@ -1,13 +1,14 @@
 //! Frames a vehicle is integrated and reported in.
 //!
-//! Dynamics run in inertial axes that coincide with the central body's fixed
-//! axes at the start of a step; state is kept and reported in the fixed
-//! axes. A vehicle's body axes are the root axes of its component tree, in
+//! Dynamics run in inertial axes centred on the central body that coincide
+//! with its fixed axes at the start of a step; state is kept and reported in
+//! the fixed axes, so what rests on the ground keeps its coordinates and
+//! world-axis element states turn with the ground from step to step. A vehicle's body axes are the root axes of its component tree, in
 //! which the root link itself may be mounted with an offset.
 
-use glam::{DMat3, DQuat, DVec3};
+use glam::{DQuat, DVec3};
 use mbd_core::{ComponentId, ComponentTree, MbdError};
-use mbd_multibody::{FloatingBaseState, PointKinematics};
+use mbd_multibody::FloatingBaseState;
 use sim_geo::BodyEllipsoid;
 
 use crate::VehicleState;
@@ -30,13 +31,12 @@ pub(crate) fn fixed_to_instantaneous_inertial(
     body: &BodyEllipsoid,
 ) -> FloatingBaseState {
     let omega_p = spin(body);
-    let v_fixed = base_fixed.rotation_world_from_root * base_fixed.linear_vel_root_m_s;
-    let v_inertial = v_fixed + omega_p.cross(base_fixed.position_world_m);
     let q_conj = base_fixed.rotation_world_from_root.conjugate();
     FloatingBaseState {
         position_world_m: base_fixed.position_world_m,
         rotation_world_from_root: base_fixed.rotation_world_from_root,
-        linear_vel_root_m_s: q_conj * v_inertial,
+        linear_vel_world_m_s: base_fixed.linear_vel_world_m_s
+            + omega_p.cross(base_fixed.position_world_m),
         angular_vel_root_rad_s: base_fixed.angular_vel_root_rad_s + q_conj * omega_p,
     }
 }
@@ -51,34 +51,14 @@ pub(crate) fn inertial_to_fixed_after_step(
     let q_f_from_i = fixed_from_inertial(body, dt_s);
     let pos_fixed = q_f_from_i * base_i_next.position_world_m;
     let rot_fixed = (q_f_from_i * base_i_next.rotation_world_from_root).normalize();
-    let v_i_in_f = q_f_from_i * base_i_next.linear_vel_world_m_s();
+    let v_i_in_f = q_f_from_i * base_i_next.linear_vel_world_m_s;
     let omega_p = spin(body);
-    let v_rel_fixed = v_i_in_f - omega_p.cross(pos_fixed);
     let q_conj = rot_fixed.conjugate();
     FloatingBaseState {
         position_world_m: pos_fixed,
         rotation_world_from_root: rot_fixed,
-        linear_vel_root_m_s: q_conj * v_rel_fixed,
+        linear_vel_world_m_s: v_i_in_f - omega_p.cross(pos_fixed),
         angular_vel_root_rad_s: base_i_next.angular_vel_root_rad_s - q_conj * omega_p,
-    }
-}
-
-/// A point of a link given in the step's inertial axes, as the ground sees
-/// it `elapsed_s` into the step: position, velocity and rates relative to
-/// the rotating body, in its fixed axes.
-pub(crate) fn point_in_fixed_axes(
-    point: &PointKinematics,
-    body: &BodyEllipsoid,
-    elapsed_s: f64,
-) -> PointKinematics {
-    let turn = DMat3::from_quat(fixed_from_inertial(body, elapsed_s));
-    let omega_p = spin(body);
-    PointKinematics {
-        position_world_m: turn * point.position_world_m,
-        velocity_world_m_s: turn
-            * (point.velocity_world_m_s - omega_p.cross(point.position_world_m)),
-        angular_vel_world_rad_s: turn * (point.angular_vel_world_rad_s - omega_p),
-        rotation_world_from_link: turn * point.rotation_world_from_link,
     }
 }
 
@@ -132,11 +112,11 @@ impl RootMount {
         let attitude = self.attitude(base);
         let rate_body = self.body_from_link * base.angular_vel_root_rad_s;
         let arm_world = attitude * self.origin_body_m;
-        let velocity_world = base.linear_vel_world_m_s() - (attitude * rate_body).cross(arm_world);
         FloatingBaseState {
             position_world_m: base.position_world_m - arm_world,
             rotation_world_from_root: attitude,
-            linear_vel_root_m_s: attitude.conjugate() * velocity_world,
+            linear_vel_world_m_s: base.linear_vel_world_m_s
+                - (attitude * rate_body).cross(arm_world),
             angular_vel_root_rad_s: rate_body,
         }
     }
@@ -148,11 +128,10 @@ impl RootMount {
         let arm_world = vehicle.attitude * arm_body;
         let rate_world = vehicle.attitude * vehicle.angular_rate_body;
         let rotation = (vehicle.attitude * self.body_from_link).normalize();
-        let velocity_world = vehicle.velocity_ecef + rate_world.cross(arm_world);
         FloatingBaseState {
             position_world_m: vehicle.position_ecef + arm_world,
             rotation_world_from_root: rotation,
-            linear_vel_root_m_s: rotation.conjugate() * velocity_world,
+            linear_vel_world_m_s: vehicle.velocity_ecef + rate_world.cross(arm_world),
             angular_vel_root_rad_s: self.vector_in_link(vehicle.angular_rate_body),
         }
     }
@@ -165,7 +144,7 @@ impl RootMount {
         let arm_world = attitude * (cg_body_m - self.origin_body_m);
         VehicleState {
             position_ecef: base.position_world_m + arm_world,
-            velocity_ecef: base.linear_vel_world_m_s() + (attitude * rate_body).cross(arm_world),
+            velocity_ecef: base.linear_vel_world_m_s + (attitude * rate_body).cross(arm_world),
             attitude,
             angular_rate_body: rate_body,
         }

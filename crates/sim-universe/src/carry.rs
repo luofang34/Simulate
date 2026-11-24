@@ -54,6 +54,14 @@ pub struct CarriedLoads {
     /// at every integration stage, so the moment is what a plant reports,
     /// never the torque it would make at the exchange instant.
     pub dipole_body_a_m2: DVec3,
+    /// Angular impulse the motion of the vessel's joints since the last
+    /// exchange puts on its body, about the centre of gravity, body axes,
+    /// N·m·s. The orbital tier applies it once, at the exchange.
+    pub angular_impulse_body_nms: DVec3,
+    /// Angular momentum of the vessel's parts moving relative to its body
+    /// axes now, about the centre of gravity, body axes, N·m·s. The orbital
+    /// tier holds it in the vessel's gyroscopic coupling.
+    pub internal_momentum_body_nms: DVec3,
     /// Mass properties at the exchange instant. The plant owns the mass: the
     /// orbital tier holds this constant and integrates no propellant flow.
     pub body: OrbitalBody,

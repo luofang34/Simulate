@@ -6,15 +6,15 @@ use mbd_aero::AeroElement;
 use mbd_core::{ComponentId, WrenchAtSite};
 use mbd_multibody::{
     ContactPointState, DockingCapture, DockingState, ForceElement, Kinematics, ModelState,
-    MultibodyError, PortAnchor, PortKinematics, Tether, TetherAnchor, TetherEnds, WheelState,
-    WinchTetherState, Workspace,
+    MultibodyError, PortAnchor, PortKinematics, SurfaceQuery, Tether, TetherAnchor, TetherEnds,
+    WheelState, WinchTetherState, Workspace,
 };
 
 use crate::flight_model::coupled_mechanism::CoupledMechanism;
 use crate::flight_model::elements::{VehicleElements, aero_lens};
 use crate::flight_model::environment::FlightEnvironment;
-use crate::flight_model::integration::{StepFault, StepSetup, Stepper};
-use crate::flight_model::planet_frame::RootMount;
+use crate::flight_model::integration::{StepSetup, Stepper};
+use crate::flight_model::planet_frame::{RootMount, fixed_to_instantaneous_inertial};
 
 /// Aerodynamic load on a whole vehicle, in its body axes.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,6 +58,9 @@ pub(crate) struct LoadReadout {
     pub(crate) buoyancy_n: f64,
     /// Inertial angular acceleration of the root, body axes, rad/s².
     pub(crate) alpha_body: DVec3,
+    /// Whether the solve behind these loads treated the vehicle as one
+    /// rigid body.
+    pub(crate) rigid_fast_path: bool,
 }
 
 /// The blocks of the flat state not yet handed to an element.
@@ -119,14 +122,13 @@ impl Reader<'_, '_> {
         blocks: &mut Blocks<'_>,
     ) -> Result<AeroLoad, MultibodyError> {
         let mut total = AeroLoad::ZERO;
-        let world = self.environment.at(self.time_s);
         for element in elements {
             let (states, modes) = aero_lens(element);
             let (state, mode) = blocks.take(states, modes);
             if !self.kinematics.is_attached(element.component) {
                 continue;
             }
-            let flow = element.flow(self.kinematics, &world)?;
+            let flow = element.flow(self.kinematics, self.environment, self.time_s)?;
             let wrench = element.loads(&flow, state, mode)?.wrench;
             let (rotation, origin) = link_in_body(self.kinematics, self.mount, element.component)?;
             let force = rotation * wrench.force_link_n;
@@ -152,45 +154,44 @@ impl Reader<'_, '_> {
         let mut any = false;
         for contact in &elements.contacts {
             let (state, mode) = blocks.take(3, 1);
-            let spec = &contact.0;
-            if !self.kinematics.is_attached(spec.component) {
+            if !self.kinematics.is_attached(contact.component) {
                 continue;
             }
-            let point = self.kinematics.point(spec.component, spec.offset_local_m)?;
-            let Some((on_ground, surface)) = self.environment.ground_under(&point, self.time_s)
-            else {
-                continue;
-            };
+            let point = self
+                .kinematics
+                .point(contact.component, contact.offset_local_m)?;
+            let surface = self
+                .environment
+                .surface_at(point.position_world_m, self.time_s)?;
             let typed = ContactPointState::from_blocks(state, mode);
-            let out = spec.evaluate(&typed, &on_ground, &surface);
+            let out = contact.evaluate(&typed, &point, &surface);
             any |= out.normal_force_n > 0.0;
-            force += wrench_force_body(self.kinematics, self.mount, &out.wrench(spec, &on_ground))?;
+            force += wrench_force_body(self.kinematics, self.mount, &out.wrench(contact, &point))?;
         }
         for wheel in &elements.wheels {
             let (state, _) = blocks.take(1, 0);
-            let spec = &wheel.0.spec;
+            let spec = &wheel.spec;
             if !self.kinematics.is_attached(spec.component) {
                 continue;
             }
             let hub = self
                 .kinematics
                 .point(spec.component, spec.hub_offset_local_m)?;
-            let Some((on_ground, surface)) = self.environment.ground_under(&hub, self.time_s)
-            else {
-                continue;
-            };
+            let surface = self
+                .environment
+                .surface_at(hub.position_world_m, self.time_s)?;
             let typed = WheelState {
                 spin_rate_rad_s: state.first().copied().unwrap_or(0.0),
             };
             let out = spec.evaluate(
                 &typed,
-                &wheel.0.command,
-                &on_ground,
+                &wheel.command,
+                &hub,
                 &surface,
-                wheel.0.spin_inertia_kg_m2,
+                wheel.spin_inertia_kg_m2,
             )?;
             any |= out.contact_load_n > 0.0;
-            force += wrench_force_body(self.kinematics, self.mount, &out.wrench(spec, &on_ground))?;
+            force += wrench_force_body(self.kinematics, self.mount, &out.wrench(spec, &hub))?;
         }
         Ok((force, any))
     }
@@ -203,7 +204,7 @@ impl Reader<'_, '_> {
         if !self.kinematics.is_attached(hull.component()) {
             return Ok((DVec3::ZERO, 0.0));
         }
-        let totals = hull.totals(self.kinematics, &self.environment.at(self.time_s))?;
+        let totals = hull.totals(self.kinematics, self.environment, self.time_s)?;
         let (rotation, _) = link_in_body(self.kinematics, self.mount, hull.component())?;
         Ok((rotation * totals.force_local_n, totals.total_buoyancy_n))
     }
@@ -285,7 +286,7 @@ fn coupled_force_body(
     for mechanism in mechanisms {
         let (states, modes) = lens(mechanism);
         let (state, mode) = blocks.take(states, modes);
-        world += match &mechanism.seen_from(&reader.environment.frame, reader.time_s) {
+        world += match &mechanism.carried_on(reader.environment, reader.time_s) {
             CoupledMechanism::Tether(tether, _) => tether_force_world(
                 kinematics,
                 tether,
@@ -301,29 +302,25 @@ fn coupled_force_body(
 }
 
 impl StepSetup<'_, '_, VehicleElements> {
-    /// Reads the loads at `state` taken as the start of the environment's
-    /// step: its base, in fixed axes, is the one the environment's frame
-    /// rides with. `rates` is scratch.
+    /// Reads the loads at `state`, whose base is in fixed axes, taken as
+    /// the start of the environment's step. `rates` is scratch.
     pub(crate) fn read_loads(
         &self,
         mount: &RootMount,
         state: &ModelState,
         work: &mut Workspace,
         rates: &mut Vec<f64>,
-    ) -> Result<LoadReadout, StepFault> {
-        let mut in_frame = state.clone();
-        in_frame.set_base(self.environment.frame.start());
-        let readout = self
-            .loads_at(mount, &in_frame, 0.0, work, rates)
-            .map_err(StepFault::Model);
-        match self.environment.take_failure() {
-            Some(error) => Err(StepFault::Environment(error)),
-            None => readout,
-        }
+    ) -> Result<LoadReadout, MultibodyError> {
+        let mut in_world = state.clone();
+        in_world.set_base(&fixed_to_instantaneous_inertial(
+            &state.base(),
+            &self.environment.body,
+        ));
+        self.loads_at(mount, &in_world, 0.0, work, rates)
     }
 
     /// Advances `state` by one period as [`StepSetup::advance`] does and
-    /// reads the loads at the state it reaches, in the step's own frame, so
+    /// reads the loads at the state it reaches, at the end of the step, so
     /// that what the far ends of its mechanisms did over the step is in
     /// them.
     pub(crate) fn advance_and_read(
@@ -333,7 +330,7 @@ impl StepSetup<'_, '_, VehicleElements> {
         state: &mut ModelState,
         work: &mut Workspace,
         rates: &mut Vec<f64>,
-    ) -> Result<LoadReadout, StepFault> {
+    ) -> Result<LoadReadout, MultibodyError> {
         self.advance_then(stepper, state, work, |ended, work| {
             self.loads_at(mount, ended, self.dt_s, work, rates)
         })
@@ -359,7 +356,8 @@ impl StepSetup<'_, '_, VehicleElements> {
             work,
             rates,
         )?;
-        let alpha_body = mount.body_from_link * work.base_accel().ang;
+        let alpha_body = mount.body_from_link * work.base_angular_accel_root_rad_s2();
+        let rigid_fast_path = work.used_rigid_fast_path();
 
         let kinematics = self.model.kinematics(state, work)?;
         let reader = Reader {
@@ -387,6 +385,7 @@ impl StepSetup<'_, '_, VehicleElements> {
             any_contact,
             buoyancy_n,
             alpha_body,
+            rigid_fast_path,
         })
     }
 }

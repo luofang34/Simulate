@@ -380,10 +380,10 @@ impl VesselCheckpoint {
 
     /// Canonical SHA-256 hash of instantaneous physical and actuator state only
     /// (`vessel_id`, `instant`, `plant`, `actuators`, `pinned_surface`, and the externally
-    /// held loads, dipole and mass).
+    /// held loads, dipole, internal momentum and mass).
     #[must_use]
     pub fn physics_state_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v3");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-physics-state:v4");
         self.write_physics_state_to_hasher(&mut h);
         h.finish()
     }
@@ -393,7 +393,7 @@ impl VesselCheckpoint {
     /// own, the environment loads, integrator continuation, and audit).
     #[must_use]
     pub fn checkpoint_hash(&self) -> ContentHash {
-        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v5");
+        let mut h = DomainHasher::new(b"sim-orbital:vessel-checkpoint:v6");
         self.write_physics_state_to_hasher(&mut h);
         self.gnc.write_to_hasher(&mut h);
         self.environment.write_to_hasher(&mut h);

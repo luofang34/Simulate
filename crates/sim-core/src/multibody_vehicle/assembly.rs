@@ -15,7 +15,7 @@ use super::{
     MultibodyVehicleTelemetry, VehicleAero, VehicleWorld,
 };
 use crate::BlockError;
-use crate::flight_model::elements::{GroundContact, GroundWheel, VehicleElements};
+use crate::flight_model::elements::{VehicleElements, wheel_spin_inertia_estimate};
 use crate::flight_model::environment::{CgGravity, FlightEnvironment};
 use crate::flight_model::integration::{Stepper, scaled_model};
 use crate::flight_model::planet_frame::RootMount;
@@ -24,21 +24,16 @@ use crate::flight_model::planet_frame::RootMount;
 /// `elements`.
 fn take_up_specs(elements: &mut VehicleElements, subsystems: &MultibodySubsystems) {
     elements.contacts.clear();
-    elements.contacts.extend(
-        subsystems
-            .contact_points
-            .iter()
-            .map(|(spec, _)| GroundContact(*spec)),
-    );
+    elements
+        .contacts
+        .extend(subsystems.contact_points.iter().map(|(spec, _)| *spec));
     elements.wheels.clear();
     elements
         .wheels
-        .extend(subsystems.wheels.iter().map(|(spec, _)| {
-            GroundWheel(Wheel {
-                spec: *spec,
-                spin_inertia_kg_m2: GroundWheel::spin_inertia_estimate(spec),
-                command: mbd_multibody::WheelCommand::default(),
-            })
+        .extend(subsystems.wheels.iter().map(|(spec, _)| Wheel {
+            spec: *spec,
+            spin_inertia_kg_m2: wheel_spin_inertia_estimate(spec),
+            command: mbd_multibody::WheelCommand::default(),
         }));
     if elements.hull != subsystems.hydrodynamics {
         elements.hull.clone_from(&subsystems.hydrodynamics);
@@ -96,7 +91,7 @@ impl MultibodyVehicleBlock {
                 &tree,
                 &base,
                 &elements,
-                &world.environment(config.body, config.epoch, &input, &base),
+                &world.environment(config.body, config.epoch, &input),
             )
             .map_err(block_multi)?;
         let mut block = Self {
@@ -150,7 +145,7 @@ impl MultibodyVehicleBlock {
                 + self.subsystems.propulsion.total_solid_propellant_kg(),
             bus_voltage_v: self.subsystems.electrical.nominal_bus_voltage_v(),
             ao_remaining_fraction: 1.0,
-            used_rigid_fast_path: self.moves_as_one_body(),
+            used_rigid_fast_path: loads.rigid_fast_path,
             is_pinned_rest: matches!(self.pinned_rest, PinnedSurfaceRest::Pinned { .. }),
             ..MultibodyVehicleTelemetry::default()
         })
@@ -173,7 +168,7 @@ impl MultibodyVehicleBlock {
         let input = MultibodyVehicleInput::default();
         let environment = self
             .world
-            .environment(self.config.body, self.config.epoch, &input, base);
+            .environment(self.config.body, self.config.epoch, &input);
         self.state = self
             .model
             .state(&self.tree, base, &self.elements, &environment)

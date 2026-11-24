@@ -239,9 +239,10 @@ impl Universe {
 
     /// Hands `id` from orbital propagation back to flight dynamics about the
     /// body it currently orbits, at [`Self::now`]. A carried plant is brought
-    /// to this instant and takes the orbital state as its own; it must be at
-    /// one of its step instants. A vessel without one, or whose plant cannot
-    /// adopt the state, is built by its factory.
+    /// to this instant and takes the orbital state as its own, about that
+    /// body even when it left from another; it must be at one of its step
+    /// instants. A vessel without one, or whose plant cannot adopt the
+    /// state, is built by its factory.
     pub fn demote_to_local(&mut self, id: VesselId) -> Result<(), UniverseError> {
         let Flight::Orbital { carried } = &self.vessel(id)?.flight else {
             return Err(UniverseError::AlreadyInTier(id));
@@ -268,7 +269,7 @@ impl Universe {
         let (state, _extras) = to_body_fixed(&checkpoint.plant, naif, &rotation)?;
         let mut kept = None;
         if let Some(mut plant) = self.take_carried(id)
-            && plant.adopt_base(body, &state, self.now)?
+            && plant.adopt_base(&described, &state, self.now)?
         {
             kept = Some(plant);
         }

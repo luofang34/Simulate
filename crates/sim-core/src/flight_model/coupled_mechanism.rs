@@ -9,8 +9,7 @@ use mbd_multibody::{
     Tether, TetherAnchor, WinchTetherState,
 };
 
-use crate::flight_model::elements::fill;
-use crate::flight_model::environment::{FlightEnvironment, StepFrame};
+use crate::flight_model::environment::FlightEnvironment;
 
 type Env<'e> = FlightEnvironment<'e>;
 type Ctx<'c, 'e> = ElementContext<'c, Env<'e>>;
@@ -49,18 +48,14 @@ pub enum CoupledMechanismState {
     Docking(DockingState),
 }
 
-fn latch(set: bool) -> f64 {
-    if set { 1.0 } else { 0.0 }
-}
-
-fn anchor_seen(anchor: TetherAnchor, frame: &StepFrame, elapsed_s: f64) -> TetherAnchor {
+fn anchor_at(anchor: TetherAnchor, world: &Env<'_>, elapsed_s: f64) -> TetherAnchor {
     match anchor {
         TetherAnchor::World {
             position_world_m,
             velocity_world_m_s,
         } => {
             let (position_world_m, velocity_world_m_s) =
-                frame.seen(position_world_m, velocity_world_m_s, elapsed_s);
+                world.far_end(position_world_m, velocity_world_m_s, elapsed_s);
             TetherAnchor::World {
                 position_world_m,
                 velocity_world_m_s,
@@ -70,11 +65,11 @@ fn anchor_seen(anchor: TetherAnchor, frame: &StepFrame, elapsed_s: f64) -> Tethe
     }
 }
 
-fn port_seen(anchor: PortAnchor, frame: &StepFrame, elapsed_s: f64) -> PortAnchor {
+fn port_at(anchor: PortAnchor, world: &Env<'_>, elapsed_s: f64) -> PortAnchor {
     match anchor {
         PortAnchor::World(port) => {
             let (position_world_m, velocity_world_m_s) =
-                frame.seen(port.position_world_m, port.velocity_world_m_s, elapsed_s);
+                world.far_end(port.position_world_m, port.velocity_world_m_s, elapsed_s);
             let turned = DQuat::from_scaled_axis(port.angular_vel_world_rad_s * elapsed_s);
             PortAnchor::World(PortKinematics {
                 position_world_m,
@@ -88,22 +83,22 @@ fn port_seen(anchor: PortAnchor, frame: &StepFrame, elapsed_s: f64) -> PortAncho
 }
 
 impl CoupledMechanism {
-    /// The mechanism with its far ends where the step's frame sees them
+    /// The mechanism with its far ends where `world` carries them
     /// `elapsed_s` into the step.
-    pub(crate) fn seen_from(&self, frame: &StepFrame, elapsed_s: f64) -> Self {
+    pub(crate) fn carried_on(&self, world: &Env<'_>, elapsed_s: f64) -> Self {
         match *self {
             Self::Tether(tether, state) => Self::Tether(
                 Tether {
-                    anchor_a: anchor_seen(tether.anchor_a, frame, elapsed_s),
-                    anchor_b: anchor_seen(tether.anchor_b, frame, elapsed_s),
+                    anchor_a: anchor_at(tether.anchor_a, world, elapsed_s),
+                    anchor_b: anchor_at(tether.anchor_b, world, elapsed_s),
                     ..tether
                 },
                 state,
             ),
             Self::Docking(ring, state) => Self::Docking(
                 DockingCapture {
-                    port_a: port_seen(ring.port_a, frame, elapsed_s),
-                    port_b: port_seen(ring.port_b, frame, elapsed_s),
+                    port_a: port_at(ring.port_a, world, elapsed_s),
+                    port_b: port_at(ring.port_b, world, elapsed_s),
                     ..ring
                 },
                 state,
@@ -154,8 +149,8 @@ impl ForceElement<Env<'_>> for CoupledMechanism {
     /// The state the mechanism was handed, in place of a fresh one.
     fn initial_state(&self, state: &mut [f64], modes: &mut [f64]) {
         match self {
-            Self::Rail(_, s) => fill(modes, [latch(s.fired), latch(s.ready_to_release)]),
-            Self::Hinge(_, s) => fill(modes, [latch(s.unlatched), latch(s.ready_to_release)]),
+            Self::Rail(_, s) => s.write_modes(modes),
+            Self::Hinge(_, s) => s.write_modes(modes),
             Self::Tether(_, s) => s.write_blocks(state, modes),
             Self::Docking(_, s) => s.write_blocks(state, modes),
         }
@@ -173,7 +168,7 @@ impl ForceElement<Env<'_>> for CoupledMechanism {
         loads: &mut Loads<'_>,
         state_dot: &mut [f64],
     ) -> Result<(), MultibodyError> {
-        let seen = self.seen_from(&ctx.inputs.frame, ctx.time_s);
+        let seen = self.carried_on(ctx.inputs, ctx.time_s);
         each_mechanism!(&seen, e => e.evaluate(ctx, state, modes, loads, state_dot))
     }
 
@@ -183,7 +178,7 @@ impl ForceElement<Env<'_>> for CoupledMechanism {
         state: &mut [f64],
         modes: &mut [f64],
     ) -> Result<bool, MultibodyError> {
-        let seen = self.seen_from(&ctx.inputs.frame, ctx.time_s);
+        let seen = self.carried_on(ctx.inputs, ctx.time_s);
         each_mechanism!(&seen, e => e.transition(ctx, state, modes))
     }
 }

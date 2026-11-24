@@ -83,6 +83,7 @@ fn a_body_without_gravity_needs_its_time_scale_stated() {
             Vec::new(),
             MultibodySubsystems::default(),
             Box::new(VacuumAtmosphere),
+            std::sync::Arc::new(body),
         )
     };
     assert!(matches!(

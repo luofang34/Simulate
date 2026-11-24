@@ -1,11 +1,14 @@
 //! A multibody vehicle whose internals stay alive in either tier.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use glam::DVec3;
+use sim_atmosphere::AtmosphereField;
+use sim_bodies::BodyDescriptor;
 use sim_core::{
-    Block, MultibodyVehicleBlock, MultibodyVehicleInput, MultibodyVehicleSnapshot, SimInstant,
-    TickSpan, VehicleState,
+    Block, CarriedReaction, EllipsoidSurfaceProvider, MultibodyVehicleBlock, MultibodyVehicleInput,
+    MultibodyVehicleSnapshot, SimInstant, TickSpan, VehicleState,
 };
 use sim_geo::BodyEllipsoid;
 
@@ -26,9 +29,12 @@ pub const DEFAULT_MAX_CARRIED_THRUST_ACCEL_M_S2: f64 = 1.0e-2;
 /// planetary atmospheric flight, surface contact, powered ascent, and orbital promotion.
 ///
 /// The same plant flies in both tiers. In the orbital tier its subsystems
-/// step with the base prescribed ([`LocalPlant::carry`]) and its thrust is
-/// what the orbital integrator applies, so tank levels, battery charge and
-/// temperatures carry through a promotion and back.
+/// and joints step with the base prescribed ([`LocalPlant::carry`]); its
+/// thrust is what the orbital integrator applies, and what its joints'
+/// motion does to its angular momentum is handed to that integrator at each
+/// exchange. Tank levels, battery charge, temperatures and joint angles
+/// carry through a promotion and back, and through a demotion about another
+/// body than the one the plant left.
 pub struct MultibodyLocalPlant {
     block: MultibodyVehicleBlock,
     input: MultibodyVehicleInput,
@@ -44,6 +50,8 @@ struct MultibodyPlantSnapshot {
     block: MultibodyVehicleSnapshot,
     input: MultibodyVehicleInput,
     start: SimInstant,
+    /// The body the block's state is fixed to.
+    body: BodyEllipsoid,
 }
 
 impl MultibodyLocalPlant {
@@ -101,6 +109,13 @@ impl MultibodyLocalPlant {
     /// Mutable access to active vehicle step input.
     pub fn set_input(&mut self, input: MultibodyVehicleInput) {
         self.input = input;
+    }
+
+    /// Exchanges with the orbital tier every `period` from the next exchange
+    /// on, rounded up to whole block periods: short while a loop closed
+    /// through the exchanges slews a joint, long while the vessel coasts.
+    pub fn set_carry_period(&mut self, period: TickSpan) {
+        self.carry_period = whole_periods(period, self.block.period());
     }
 
     /// The input the next step reads. While the plant is carried its solar
@@ -177,11 +192,11 @@ impl LocalPlant for MultibodyLocalPlant {
     }
 
     /// The plant stays in the local tier while the base and the internals
-    /// act on each other faster than an exchange can pass on: in ground
+    /// act on each other in ways an exchange cannot pass on: in ground
     /// contact or pinned rest, splashed down, in sensible dynamic pressure,
-    /// under an external wrench, while any joint is driven or moving, and
-    /// under thrust beyond the carried limit. Small steady thrust does not
-    /// hold it: [`LocalPlant::carry`] reports that to the orbital tier.
+    /// under an external wrench, and under thrust beyond the carried limit.
+    /// Small steady thrust and joints in motion do not hold it:
+    /// [`LocalPlant::carry`] reports both to the orbital tier.
     fn holds_local_tier(&self) -> bool {
         let tel = self.block.telemetry();
         tel.in_ground_contact
@@ -189,7 +204,6 @@ impl LocalPlant for MultibodyLocalPlant {
             || tel.is_splashed_down
             || tel.dynamic_pressure_pa > 0.1
             || !self.input.external_wrenches.is_empty()
-            || self.block.joints_in_motion(&self.input)
             || !self.thrust_can_be_carried()
     }
 
@@ -217,9 +231,12 @@ impl LocalPlant for MultibodyLocalPlant {
         self.input.sun_visibility = context.solar_lit_fraction;
         let mut force = DVec3::ZERO;
         let mut torque = DVec3::ZERO;
+        let mut reaction = CarriedReaction::NONE;
         let mut steps = 0_u32;
         while self.now().advanced(self.block.period()) <= context.at {
-            self.block.step_carried(&self.input, &context.state)?;
+            let step = self.block.step_carried(&self.input, &context.state)?;
+            reaction.angular_impulse_cg_body_nms += step.angular_impulse_cg_body_nms;
+            reaction.internal_momentum_cg_body_nms = step.internal_momentum_cg_body_nms;
             let tel = self.block.telemetry();
             force += tel.total_thrust_body_n;
             torque += tel.thrust_torque_cg_body_nm;
@@ -231,24 +248,46 @@ impl LocalPlant for MultibodyLocalPlant {
         } else {
             (force / f64::from(steps), torque / f64::from(steps))
         };
+        if steps == 0 {
+            reaction.internal_momentum_cg_body_nms = self.block.internal_momentum_cg_body()?;
+        }
         Ok(CarriedLoads {
             force_body_n,
             torque_body_nm,
             dipole_body_a_m2: DVec3::ZERO,
+            angular_impulse_body_nms: reaction.angular_impulse_cg_body_nms,
+            internal_momentum_body_nms: reaction.internal_momentum_cg_body_nms,
             body: self.body_properties(),
         })
     }
 
+    /// About another body than its own the plant moves there: the block
+    /// takes that entry's ellipsoid, gravity and air and its solid surface,
+    /// and every tank, bus, temperature and joint stays as it is. A
+    /// snapshot taken about the body it left is refused from then on.
     fn adopt_base(
         &mut self,
-        body: BodyEllipsoid,
+        described: &Arc<BodyDescriptor>,
         state: &VehicleState,
         at: SimInstant,
     ) -> Result<bool, UniverseError> {
-        if body != self.body || at != self.now() {
+        if at != self.now() {
             return Ok(false);
         }
-        self.block.adopt_base_state(state)?;
+        let body = described.ellipsoid;
+        if body == self.body {
+            self.block.adopt_base_state(state)?;
+            return Ok(true);
+        }
+        let air: Arc<dyn AtmosphereField> = described.atmosphere().clone();
+        self.block.rehome(
+            body,
+            described.fields().gravity,
+            air,
+            Arc::new(EllipsoidSurfaceProvider::solid(body)),
+            state,
+        )?;
+        self.body = body;
         Ok(true)
     }
 
@@ -257,6 +296,7 @@ impl LocalPlant for MultibodyLocalPlant {
             block: self.block.snapshot(),
             input: self.input.clone(),
             start: self.start,
+            body: self.body,
         }))
     }
 
@@ -264,7 +304,9 @@ impl LocalPlant for MultibodyLocalPlant {
         let Some(saved) = snapshot.downcast_ref::<MultibodyPlantSnapshot>() else {
             return false;
         };
-        if self.block.try_restore(&saved.block).is_err() {
+        // A state fixed to another body means nothing in this one's axes,
+        // and the fields of the body the plant left are not kept.
+        if saved.body != self.body || self.block.try_restore(&saved.block).is_err() {
             return false;
         }
         self.input = saved.input.clone();

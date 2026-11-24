@@ -90,6 +90,7 @@ impl SurfaceContactProvider for EllipsoidSurfaceProvider {
         Some(SurfaceSample {
             surface_point_world_m: self.body.geodetic_to_fixed(&surf_geo),
             outward_normal_world: LocalFrame::at(&surf_geo).up(),
+            velocity_world_m_s: DVec3::ZERO,
             medium: self.medium,
             mu_static_override: None,
             mu_dynamic_override: None,
